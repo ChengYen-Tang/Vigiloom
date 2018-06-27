@@ -20,7 +20,7 @@
     <MvcBuildViews>false</MvcBuildViews>
     <UseIISExpress>true</UseIISExpress>
     <Use64BitIISExpress />
-    <IISExpressSSLPort />
+    <IISExpressSSLPort>44391</IISExpressSSLPort>
     <IISExpressAnonymousAuthentication />
     <IISExpressWindowsAuthentication />
     <IISExpressUseClassicPipelineMode />
@@ -207,8 +207,11 @@
     <Compile Include="App_Start\Startup.Auth.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
     <Compile Include="Controllers\AccountController.cs" />
+    <Compile Include="Controllers\DeviceGroupsController.cs" />
+    <Compile Include="Controllers\DevicesController.cs" />
     <Compile Include="Controllers\HomeController.cs" />
     <Compile Include="Controllers\ManageController.cs" />
+    <Compile Include="Controllers\PingDatasController.cs" />
     <Compile Include="Controllers\UserAdminController.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
@@ -373,6 +376,21 @@
     <Content Include="Views\UsersAdmin\Details.cshtml" />
     <Content Include="Views\UsersAdmin\Edit.cshtml" />
     <Content Include="Views\UsersAdmin\Index.cshtml" />
+    <Content Include="Views\Devices\Create.cshtml" />
+    <Content Include="Views\Devices\Delete.cshtml" />
+    <Content Include="Views\Devices\Details.cshtml" />
+    <Content Include="Views\Devices\Edit.cshtml" />
+    <Content Include="Views\Devices\Index.cshtml" />
+    <Content Include="Views\DeviceGroups\Create.cshtml" />
+    <Content Include="Views\DeviceGroups\Delete.cshtml" />
+    <Content Include="Views\DeviceGroups\Details.cshtml" />
+    <Content Include="Views\DeviceGroups\Edit.cshtml" />
+    <Content Include="Views\DeviceGroups\Index.cshtml" />
+    <Content Include="Views\PingDatas\Create.cshtml" />
+    <Content Include="Views\PingDatas\Delete.cshtml" />
+    <Content Include="Views\PingDatas\Details.cshtml" />
+    <Content Include="Views\PingDatas\Edit.cshtml" />
+    <Content Include="Views\PingDatas\Index.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
