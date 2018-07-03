@@ -17,7 +17,7 @@ using System.Runtime.InteropServices;
 // ComVisible 為 false 的方式來控制，讓此組件中的類型在 
 // COM 組件中為不可見。如果您需要從
 // COM 存取此組件中的型別，請在該型別上將 ComVisible 屬性設定為 true。
-[assembly: ComVisible(false)]
+[assembly: ComVisible(true)]
 
 // 下列 GUID 為專案公開 (Expose) 至 COM 時所要使用的 typelib ID
 [assembly: Guid("05f2ae4f-7ac5-4e3a-b300-607dbc119a7f")]
@@ -31,5 +31,5 @@ using System.Runtime.InteropServices;
 //
 // 您可以指定所有值或預設修訂和組件數目
 // 指定為預設值:
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("2.0.1807.0")]
+[assembly: AssemblyFileVersion("1.0.1807.0")]
