@@ -109,6 +109,12 @@
                 @if (Request.IsAuthenticated)
                 {
                     <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
+                        <a class="nav-link" href="@Url.Action("Index","DeviceGroups")">
+                            <i class="fa fa-object-group"></i>
+                            <span class="nav-link-text">群組管理</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
                         <a class="nav-link" href="@Url.Action("Index","UsersAdmin")">
                             <i class="fa fa-users"></i>
                             <span class="nav-link-text">帳戶管理</span>

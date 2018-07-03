@@ -18,7 +18,7 @@ namespace Pingvalue.Controllers
         // GET: DeviceGroups
         public async Task<ActionResult> Index()
         {
-            return View(await db.DeviceGroups.ToListAsync());
+            return View(await db.DeviceGroups.Select(c => new DeviceGroupViewModel { Id = c.Id, GroupName = c.GroupName, CreateTime = c.CreateTime }).ToListAsync());
         }
 
         // GET: DeviceGroups/Details/5
@@ -33,7 +33,11 @@ namespace Pingvalue.Controllers
             {
                 return HttpNotFound();
             }
-            return View(deviceGroup);
+            return View(new DeviceGroupViewModel {
+                Id = deviceGroup.Id,
+                GroupName = deviceGroup.GroupName,
+                CreateTime = deviceGroup.CreateTime
+            });
         }
 
         // GET: DeviceGroups/Create
@@ -47,12 +51,14 @@ namespace Pingvalue.Controllers
         // more details see https://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Create([Bind(Include = "Id,GroupName,CreateTime")] DeviceGroup deviceGroup)
+        public async Task<ActionResult> Create([Bind(Include = "GroupName")] CreateDeviceGroupViewModel deviceGroup)
         {
             if (ModelState.IsValid)
             {
-                deviceGroup.Id = Guid.NewGuid();
-                db.DeviceGroups.Add(deviceGroup);
+                db.DeviceGroups.Add(new DeviceGroup {
+                    Id = Guid.NewGuid(),
+                    GroupName = deviceGroup.GroupName
+                });
                 await db.SaveChangesAsync();
                 return RedirectToAction("Index");
             }
@@ -72,7 +78,10 @@ namespace Pingvalue.Controllers
             {
                 return HttpNotFound();
             }
-            return View(deviceGroup);
+            return View(new EditDeviceGroupViewModel {
+                Id = deviceGroup.Id,
+                GroupName = deviceGroup.GroupName
+            });
         }
 
         // POST: DeviceGroups/Edit/5
@@ -80,15 +89,21 @@ namespace Pingvalue.Controllers
         // more details see https://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Edit([Bind(Include = "Id,GroupName,CreateTime")] DeviceGroup deviceGroup)
+        public async Task<ActionResult> Edit([Bind(Include = "Id,GroupName")] EditDeviceGroupViewModel NewDeviceGroup)
         {
             if (ModelState.IsValid)
             {
+                DeviceGroup deviceGroup = await db.DeviceGroups.FindAsync(NewDeviceGroup.Id);
+                if (deviceGroup == null)
+                {
+                    return HttpNotFound();
+                }
+                deviceGroup.GroupName = NewDeviceGroup.GroupName;
                 db.Entry(deviceGroup).State = EntityState.Modified;
                 await db.SaveChangesAsync();
                 return RedirectToAction("Index");
             }
-            return View(deviceGroup);
+            return View(NewDeviceGroup);
         }
 
         // GET: DeviceGroups/Delete/5
@@ -103,7 +118,12 @@ namespace Pingvalue.Controllers
             {
                 return HttpNotFound();
             }
-            return View(deviceGroup);
+            return View(new DeviceGroupViewModel
+            {
+                Id = deviceGroup.Id,
+                GroupName = deviceGroup.GroupName,
+                CreateTime = deviceGroup.CreateTime
+            });
         }
 
         // POST: DeviceGroups/Delete/5

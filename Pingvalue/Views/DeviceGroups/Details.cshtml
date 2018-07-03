@@ -1,34 +1,42 @@
-﻿@model Pingvalue.Models.DeviceGroup
+﻿@model Pingvalue.Models.DeviceGroupViewModel
 
 @{
     ViewBag.Title = "Details";
 }
 
-<h2>Details</h2>
+<div class="container-fluid">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            @Html.ActionLink("群組管理", "Index")
+        </li>
+        <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
+    </ol>
 
-<div>
-    <h4>DeviceGroup</h4>
-    <hr />
-    <dl class="dl-horizontal">
-        <dt>
-            @Html.DisplayNameFor(model => model.GroupName)
-        </dt>
+    <div>
+        <h4>群組</h4>
+        <hr />
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.GroupName)
+            </dt>
 
-        <dd>
-            @Html.DisplayFor(model => model.GroupName)
-        </dd>
+            <dd>
+                @Html.DisplayFor(model => model.GroupName)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.CreateTime)
+            </dt>
 
-        <dt>
-            @Html.DisplayNameFor(model => model.CreateTime)
-        </dt>
+            <dd>
+                @Html.DisplayFor(model => model.CreateTime)
+            </dd>
+        </dl>
+    </div>
 
-        <dd>
-            @Html.DisplayFor(model => model.CreateTime)
-        </dd>
-
-    </dl>
+    <p>
+        @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
+        @Html.ActionLink("Back to List", "Index")
+    </p>
 </div>
-<p>
-    @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
-    @Html.ActionLink("Back to List", "Index")
-</p>

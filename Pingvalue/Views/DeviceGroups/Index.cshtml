@@ -1,39 +1,75 @@
-﻿@model IEnumerable<Pingvalue.Models.DeviceGroup>
+﻿@model IEnumerable<Pingvalue.Models.DeviceGroupViewModel>
 
 @{
     ViewBag.Title = "Index";
 }
 
-<h2>Index</h2>
+<div class="container-fluid">
+    <!-- Breadcrumbs-->
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            @Html.ActionLink("群組管理", "Index")
+        </li>
+        <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
+    </ol>
 
-<p>
-    @Html.ActionLink("Create New", "Create")
-</p>
-<table class="table">
-    <tr>
-        <th>
-            @Html.DisplayNameFor(model => model.GroupName)
-        </th>
-        <th>
-            @Html.DisplayNameFor(model => model.CreateTime)
-        </th>
-        <th></th>
-    </tr>
+    <!-- Example DataTables Card-->
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fa fa-table"></i> 群組
+            <div class=" pull-right">
+                @Html.ActionLink("Create New", "Create", null, new { @class = "btn btn-success btn-sm" })
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>@Html.DisplayNameFor(model => model.GroupName)</th>
+                            <th>@Html.DisplayNameFor(model => model.CreateTime)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr>
+                            <th>@Html.DisplayNameFor(model => model.GroupName)</th>
+                            <th>@Html.DisplayNameFor(model => model.CreateTime)</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                    <tbody>
+                        @foreach (var item in Model)
+                        {
+                            <tr>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.GroupName)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.CreateTime)
+                                </td>
+                                <td>
+                                    @Html.ActionLink("Edit", "Edit", new { id = item.Id }) |
+                                    @Html.ActionLink("Details", "Details", new { id = item.Id }) |
+                                    @Html.ActionLink("Delete", "Delete", new { id = item.Id })
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 
-@foreach (var item in Model) {
-    <tr>
-        <td>
-            @Html.DisplayFor(modelItem => item.GroupName)
-        </td>
-        <td>
-            @Html.DisplayFor(modelItem => item.CreateTime)
-        </td>
-        <td>
-            @Html.ActionLink("Edit", "Edit", new { id=item.Id }) |
-            @Html.ActionLink("Details", "Details", new { id=item.Id }) |
-            @Html.ActionLink("Delete", "Delete", new { id=item.Id })
-        </td>
-    </tr>
+@section css
+{
+    @Styles.Render("~/Content/dataTables")
 }
 
-</table>
+@section scripts
+{
+    @Scripts.Render("~/bundles/chart")
+    @Scripts.Render("~/bundles/dataTables")
+    @Scripts.Render("~/bundles/sb-Admin-chart")
+}
