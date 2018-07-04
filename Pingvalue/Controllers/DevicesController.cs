@@ -18,7 +18,14 @@ namespace Pingvalue.Controllers
         // GET: Devices
         public async Task<ActionResult> Index()
         {
-            return View(await db.Devices.ToListAsync());
+            return View(await db.Devices.Select(c => 
+            new DeviceViewModel {
+                Id = c.Id,
+                CreateTime = c.CreateTime,
+                DeviceName = c.DeviceName,
+                IPAddress = c.IPAddress,
+                IsOnline = c.IsOnline})
+            .ToListAsync());
         }
 
         // GET: Devices/Details/5
@@ -37,8 +44,9 @@ namespace Pingvalue.Controllers
         }
 
         // GET: Devices/Create
-        public ActionResult Create()
+        public async Task<ActionResult> Create()
         {
+            ViewBag.RoleId = new SelectList(await db.DeviceGroups.ToListAsync(), "Id", "GroupName");
             return View();
         }
 
@@ -47,12 +55,17 @@ namespace Pingvalue.Controllers
         // more details see https://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Create([Bind(Include = "Id,DeviceName,IPAddress,IsOnline,CreateTime")] Device device)
+        public async Task<ActionResult> Create(CreateDeviceViewModel device, params Guid[] selectedGroups)
         {
             if (ModelState.IsValid)
             {
-                device.Id = Guid.NewGuid();
-                db.Devices.Add(device);
+                db.Devices.Add(new Device {
+                    Id = Guid.NewGuid(),
+                    DeviceName = device.DeviceName,
+                    IPAddress = device.IPAddress,
+                    IsOnline = false,
+                    DeviceGroups = await db.DeviceGroups.Where(c => selectedGroups.Contains(c.Id)).ToListAsync()
+                });
                 await db.SaveChangesAsync();
                 return RedirectToAction("Index");
             }
@@ -68,11 +81,23 @@ namespace Pingvalue.Controllers
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
             Device device = await db.Devices.FindAsync(id);
+
             if (device == null)
             {
                 return HttpNotFound();
             }
-            return View(device);
+            return View(new EditeDeviceViewModel
+            {
+                Id = device.Id,
+                DeviceName = device.DeviceName,
+                IPAddress = device.IPAddress,
+                GroupList = db.DeviceGroups.ToList().Select(x => new SelectListItem
+                {
+                    Selected = device.DeviceGroups.Contains(x),
+                    Text = x.GroupName,
+                    Value = x.Id.ToString()
+                })
+            });
         }
 
         // POST: Devices/Edit/5
@@ -80,15 +105,34 @@ namespace Pingvalue.Controllers
         // more details see https://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Edit([Bind(Include = "Id,DeviceName,IPAddress,IsOnline,CreateTime")] Device device)
+        public async Task<ActionResult> Edit([Bind(Include = "Id,DeviceName,IPAddress")] EditeDeviceViewModel NewDevice, params Guid[] selectedGroups)
         {
             if (ModelState.IsValid)
             {
+                Device device = await db.Devices.FindAsync(NewDevice.Id);
+                if (device == null)
+                {
+                    return HttpNotFound();
+                }
+                device.DeviceName = NewDevice.DeviceName;
+                device.IPAddress = NewDevice.IPAddress;
+                device.DeviceGroups.Clear();
+
+                var ExceptGroups = db.DeviceGroups.Where(c => selectedGroups.Contains(c.Id)).Except(device.DeviceGroups);
+
+                foreach (DeviceGroup Group in ExceptGroups)
+                {
+                    if (selectedGroups.Contains(Group.Id))
+                        device.DeviceGroups.Add(Group);
+                    else
+                        device.DeviceGroups.Remove(Group);
+                }
+
                 db.Entry(device).State = EntityState.Modified;
                 await db.SaveChangesAsync();
                 return RedirectToAction("Index");
             }
-            return View(device);
+            return View(NewDevice);
         }
 
         // GET: Devices/Delete/5
@@ -103,7 +147,13 @@ namespace Pingvalue.Controllers
             {
                 return HttpNotFound();
             }
-            return View(device);
+            return View(new DeviceViewModel {
+                Id = device.Id,
+                CreateTime = device.CreateTime,
+                DeviceName = device.DeviceName,
+                IPAddress = device.IPAddress,
+                IsOnline = device.IsOnline
+            });
         }
 
         // POST: Devices/Delete/5

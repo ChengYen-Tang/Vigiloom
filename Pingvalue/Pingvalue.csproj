@@ -211,11 +211,11 @@
     <Compile Include="Controllers\DevicesController.cs" />
     <Compile Include="Controllers\HomeController.cs" />
     <Compile Include="Controllers\ManageController.cs" />
-    <Compile Include="Controllers\PingDatasController.cs" />
     <Compile Include="Controllers\UserAdminController.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
+    <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Models\AccountViewModels.cs" />
     <Compile Include="Models\DeviceModels.cs" />
     <Compile Include="Models\DeviceViewModels.cs" />
@@ -384,14 +384,8 @@
     <Content Include="Views\Devices\Index.cshtml" />
     <Content Include="Views\DeviceGroups\Create.cshtml" />
     <Content Include="Views\DeviceGroups\Delete.cshtml" />
-    <Content Include="Views\DeviceGroups\Details.cshtml" />
     <Content Include="Views\DeviceGroups\Edit.cshtml" />
     <Content Include="Views\DeviceGroups\Index.cshtml" />
-    <Content Include="Views\PingDatas\Create.cshtml" />
-    <Content Include="Views\PingDatas\Delete.cshtml" />
-    <Content Include="Views\PingDatas\Details.cshtml" />
-    <Content Include="Views\PingDatas\Edit.cshtml" />
-    <Content Include="Views\PingDatas\Index.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

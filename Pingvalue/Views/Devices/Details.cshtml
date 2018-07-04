@@ -1,50 +1,60 @@
-﻿@model Pingvalue.Models.Device
+﻿@model Pingvalue.Models.DeviceViewModel
 
 @{
     ViewBag.Title = "Details";
 }
 
-<h2>Details</h2>
+<div class="container-fluid">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            @Html.ActionLink("群組管理", "Index")
+        </li>
+        <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
+    </ol>
 
-<div>
-    <h4>Device</h4>
-    <hr />
-    <dl class="dl-horizontal">
-        <dt>
-            @Html.DisplayNameFor(model => model.DeviceName)
-        </dt>
+    <div>
+        <h4>設備</h4>
+        <hr />
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.DeviceName)
+            </dt>
 
-        <dd>
-            @Html.DisplayFor(model => model.DeviceName)
-        </dd>
+            <dd>
+                @Html.DisplayFor(model => model.DeviceName)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.IPAddress)
+            </dt>
 
-        <dt>
-            @Html.DisplayNameFor(model => model.IPAddress)
-        </dt>
+            <dd>
+                @Html.DisplayFor(model => model.IPAddress)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.IsOnline)
+            </dt>
 
-        <dd>
-            @Html.DisplayFor(model => model.IPAddress)
-        </dd>
+            <dd>
+                @Html.DisplayFor(model => model.IsOnline)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.CreateTime)
+            </dt>
 
-        <dt>
-            @Html.DisplayNameFor(model => model.IsOnline)
-        </dt>
+            <dd>
+                @Html.DisplayFor(model => model.CreateTime)
+            </dd>
+        </dl>
+    </div>
 
-        <dd>
-            @Html.DisplayFor(model => model.IsOnline)
-        </dd>
-
-        <dt>
-            @Html.DisplayNameFor(model => model.CreateTime)
-        </dt>
-
-        <dd>
-            @Html.DisplayFor(model => model.CreateTime)
-        </dd>
-
-    </dl>
+    <p>
+        @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
+        @Html.ActionLink("Back to List", "Index")
+    </p>
 </div>
-<p>
-    @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
-    @Html.ActionLink("Back to List", "Index")
-</p>

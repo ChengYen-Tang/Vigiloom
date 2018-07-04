@@ -20,7 +20,7 @@ namespace Pingvalue.Models
             this.Devices = new List<Device>();
         }
 
-        public ICollection<Device> Devices { get; set; }
+        public virtual ICollection<Device> Devices { get; set; }
     }
 
     public partial class Device
@@ -45,8 +45,8 @@ namespace Pingvalue.Models
             this.pingDatas = new List<PingData>();
         }
 
-        public ICollection<DeviceGroup> DeviceGroups { get; set; }
-        public ICollection<PingData> pingDatas { get; set; }
+        public virtual ICollection<DeviceGroup> DeviceGroups { get; set; }
+        public virtual ICollection<PingData> pingDatas { get; set; }
     }
 
     public partial class PingData
@@ -66,6 +66,6 @@ namespace Pingvalue.Models
             this.CreateTime = DateTime.Now;
         }
 
-        public Device Device { get; set; }
+        public virtual Device Device { get; set; }
     }
 }

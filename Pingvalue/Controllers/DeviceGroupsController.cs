@@ -21,25 +21,6 @@ namespace Pingvalue.Controllers
             return View(await db.DeviceGroups.Select(c => new DeviceGroupViewModel { Id = c.Id, GroupName = c.GroupName, CreateTime = c.CreateTime }).ToListAsync());
         }
 
-        // GET: DeviceGroups/Details/5
-        public async Task<ActionResult> Details(Guid? id)
-        {
-            if (id == null)
-            {
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
-            }
-            DeviceGroup deviceGroup = await db.DeviceGroups.FindAsync(id);
-            if (deviceGroup == null)
-            {
-                return HttpNotFound();
-            }
-            return View(new DeviceGroupViewModel {
-                Id = deviceGroup.Id,
-                GroupName = deviceGroup.GroupName,
-                CreateTime = deviceGroup.CreateTime
-            });
-        }
-
         // GET: DeviceGroups/Create
         public ActionResult Create()
         {
