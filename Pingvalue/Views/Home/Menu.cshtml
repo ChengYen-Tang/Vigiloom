@@ -1,0 +1,23 @@
+﻿@model IEnumerable<Pingvalue.Models.DeviceGroup>
+
+@{
+    Layout = null;
+}
+
+@foreach (var Group in Model)
+{
+    <li class="nav-item" data-toggle="tooltip" data-placement="right" title="@Group.GroupName">
+        <a class="nav-link nav-link-collapse collapsed" data-toggle="collapse" href="#@Group.Id" data-parent="#exampleAccordion">
+            <i class="fa fa-area-chart"></i>
+            <span class="nav-link-text">@Group.GroupName</span>
+        </a>
+        <ul class="sidenav-second-level collapse" id="@Group.Id">
+            @foreach (var Device in Group.Devices)
+            {
+                <li>
+                    <a href="@Url.Action("Details","Devices", new { id = Device.Id})">@Device.DeviceName</a>
+                </li>
+            }
+        </ul>
+    </li>
+}
