@@ -10,9 +10,12 @@ namespace Pingvalue.Controllers
     {
         private PingvalueModels db = new PingvalueModels();
 
-        public ActionResult Index()
+        public async Task<ActionResult> Index()
         {
-            return View();
+            var Release = from Devices in db.Devices
+                          select new HomeViewModels { Id = Devices.Id, DeviceName = Devices.DeviceName, IPAddress = Devices.IPAddress, IsOnline = Devices.IsOnline };
+
+            return View(await Release.OrderBy(c => c.DeviceName).ToListAsync());
         }
 
         public ActionResult About()
