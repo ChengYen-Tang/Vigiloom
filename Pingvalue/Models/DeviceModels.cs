@@ -42,11 +42,11 @@ namespace Pingvalue.Models
             this.CreateTime = DateTime.Now;
 
             this.DeviceGroups = new List<DeviceGroup>();
-            this.pingDatas = new List<PingData>();
+            this.PingDatas = new List<PingData>();
         }
 
         public virtual ICollection<DeviceGroup> DeviceGroups { get; set; }
-        public virtual ICollection<PingData> pingDatas { get; set; }
+        public ICollection<PingData> PingDatas { get; set; }
     }
 
     public partial class PingData

@@ -215,10 +215,10 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
-    <Compile Include="Migrations\Configuration.cs" />
     <Compile Include="Models\AccountViewModels.cs" />
     <Compile Include="Models\DeviceModels.cs" />
     <Compile Include="Models\DeviceViewModels.cs" />
+    <Compile Include="Models\HomeViewModels.cs" />
     <Compile Include="Models\IdentityModels.cs" />
     <Compile Include="Models\ManageViewModels.cs" />
     <Compile Include="Models\PingvalueModels.cs" />
@@ -391,6 +391,7 @@
     <Content Include="Views\DeviceGroups\Delete.cshtml" />
     <Content Include="Views\DeviceGroups\Edit.cshtml" />
     <Content Include="Views\DeviceGroups\Index.cshtml" />
+    <Content Include="Views\Home\Menu.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

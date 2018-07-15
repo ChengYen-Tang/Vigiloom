@@ -28,6 +28,7 @@ namespace Pingvalue.Controllers
             .ToListAsync());
         }
 
+        [AllowAnonymous]
         // GET: Devices/Details/5
         public async Task<ActionResult> Details(Guid? id, DateTime? Date)
         {
