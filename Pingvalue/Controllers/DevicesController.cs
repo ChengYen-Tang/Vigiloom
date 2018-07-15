@@ -29,18 +29,64 @@ namespace Pingvalue.Controllers
         }
 
         // GET: Devices/Details/5
-        public async Task<ActionResult> Details(Guid? id)
+        public async Task<ActionResult> Details(Guid? id, DateTime? Date)
         {
             if (id == null)
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Device device = await db.Devices.FindAsync(id);
-            if (device == null)
+
+            if (Date == null)
+                Date = DateTime.Today;
+
+            DateTime MaxDate = Date.Value.AddDays(1);
+            List<PingData> Datas = await (
+                from Devices in db.Devices
+                from PingDatas in Devices.pingDatas
+                where Devices.Id == id && PingDatas.CreateTime >= Date && PingDatas.CreateTime < MaxDate
+                select PingDatas
+                ).ToListAsync();
+
+            if (Datas == null)
             {
                 return HttpNotFound();
             }
-            return View(device);
+
+            string CharDelayList = "";
+            string ChartTimeList = "";
+
+            foreach (PingData Data in Datas)
+            {
+                long[] ArrayNewPingData = new long[4];
+                ArrayNewPingData[0] = Data.Delay1;
+                ArrayNewPingData[1] = Data.Delay2;
+                ArrayNewPingData[2] = Data.Delay3;
+                ArrayNewPingData[3] = Data.Delay4;
+                double TotalDelay = 0;
+                int DelayCount = 0;
+                if (ArrayNewPingData[0] != -1 || ArrayNewPingData[1] != -1 || ArrayNewPingData[2] != -1 || ArrayNewPingData[3] != -1)
+                {
+                    for (int i = 0; i < 4; i++)
+                        if (ArrayNewPingData[i] != -1)
+                        {
+                            DelayCount++;
+                            TotalDelay = TotalDelay + Convert.ToDouble(ArrayNewPingData[i]);
+                        }
+                    CharDelayList += (TotalDelay / DelayCount) + ",";
+                }
+                else
+                    CharDelayList += "null";
+                ChartTimeList += Convert.ToChar(34) + Data.CreateTime.Hour + ":" + Data.CreateTime.Minute + Convert.ToChar(34) + ",";
+            }
+            DetailDeviceViewModel Detail = new DetailDeviceViewModel
+            {
+                Id = (Guid)id,
+                PingDatas = Datas,
+                DatetimePicker = Date.Value.Year + "-" + Date.Value.Month + "-" + Date.Value.Day,
+                CharDelayList = CharDelayList,
+                ChartTimeList = ChartTimeList.TrimEnd(new char[] { ','})
+            };
+            return View(Detail);
         }
 
         // GET: Devices/Create

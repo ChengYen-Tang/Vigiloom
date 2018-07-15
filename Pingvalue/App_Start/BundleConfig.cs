@@ -27,6 +27,13 @@ namespace Pingvalue
             bundles.Add(new ScriptBundle("~/bundles/sb-admin").Include(
                     "~/Scripts/sb-admin/sb-admin.min.js"));
 
+            bundles.Add(new ScriptBundle("~/bundles/zingchart").Include(
+                    "~/Scripts/zingchart.min.js"));
+
+            bundles.Add(new ScriptBundle("~/bundles/bootstrap-datetimepicker").Include(
+                    "~/Scripts/moment-with-locales.min.js",
+                    "~/Scripts/bootstrap-datetimepicker.js"));
+
             bundles.Add(new ScriptBundle("~/bundles/dataTables").Include(
                     "~/Scripts/dataTables/jquery.dataTables.js",
                     "~/Scripts/dataTables/dataTables.bootstrap4.js"));
@@ -35,8 +42,7 @@ namespace Pingvalue
                     "~/Scripts/chart.js/Chart.min.js"));
 
             bundles.Add(new ScriptBundle("~/bundles/sb-Admin-chart").Include(
-                    "~/Scripts/sb-admin/sb-admin-datatables.min.js",
-                    "~/Scripts/sb-admin/sb-admin-charts.min.js"));
+                    "~/Scripts/sb-admin/sb-admin-datatables.min.js"));
 
             bundles.Add(new StyleBundle("~/Content/css").Include(
                  "~/Content/font-awesome/css/font-awesome.min.css",
@@ -45,6 +51,9 @@ namespace Pingvalue
 
             bundles.Add(new StyleBundle("~/Content/Site").Include(
                       "~/Content/Site.css"));
+
+            bundles.Add(new StyleBundle("~/Content/bootstrap-datetimepicker").Include(
+                      "~/Content/bootstrap-datetimepicker-build.css"));
 
             bundles.Add(new StyleBundle("~/Content/dataTables").Include(
                       "~/Content/dataTables/dataTables.bootstrap4.css"));

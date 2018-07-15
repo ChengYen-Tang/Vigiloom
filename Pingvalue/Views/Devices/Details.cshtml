@@ -1,4 +1,4 @@
-﻿@model Pingvalue.Models.DeviceViewModel
+﻿@model Pingvalue.Models.DetailDeviceViewModel
 
 @{
     ViewBag.Title = "Details";
@@ -11,50 +11,292 @@
         </li>
         <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
     </ol>
-
-    <div>
-        <h4>設備</h4>
-        <hr />
-        <dl class="dl-horizontal">
-            <dt>
-                @Html.DisplayNameFor(model => model.DeviceName)
-            </dt>
-
-            <dd>
-                @Html.DisplayFor(model => model.DeviceName)
-            </dd>
-        </dl>
-        <dl class="dl-horizontal">
-            <dt>
-                @Html.DisplayNameFor(model => model.IPAddress)
-            </dt>
-
-            <dd>
-                @Html.DisplayFor(model => model.IPAddress)
-            </dd>
-        </dl>
-        <dl class="dl-horizontal">
-            <dt>
-                @Html.DisplayNameFor(model => model.IsOnline)
-            </dt>
-
-            <dd>
-                @Html.DisplayFor(model => model.IsOnline)
-            </dd>
-        </dl>
-        <dl class="dl-horizontal">
-            <dt>
-                @Html.DisplayNameFor(model => model.CreateTime)
-            </dt>
-
-            <dd>
-                @Html.DisplayFor(model => model.CreateTime)
-            </dd>
-        </dl>
+    <div class="row">
+        <div class="col-sm-6 col-md-4">
+            <div class="input-group" style="max-width: 300px;margin-bottom: 8px;">
+                <div class="input-group-append" data-target="#datetimepicker" data-toggle="datetimepicker">
+                    <div class="input-group-text"><i class="fa fa-calendar"></i></div>
+                </div>
+                <input type="text" class="form-control" id="datetimepicker" value=@Model.DatetimePicker />
+            </div>
+        </div>
     </div>
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fa fa-table"></i> 圖表
+        </div>
+        <div class="card-body">
+            <div id='myChart'></div>
+        </div>
 
-    <p>
-        @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
-        @Html.ActionLink("Back to List", "Index")
-    </p>
+    </div>
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fa fa-table"></i> 延遲
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th><span class="fa fa-clock-o"></span></th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 1</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 2</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 3</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 4</th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr>
+                            <th><span class="fa fa-clock-o"></span></th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 1</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 2</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 3</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 4</th>
+                        </tr>
+                    </tfoot>
+                    <tbody>
+                        @foreach (var item in Model.PingDatas)
+                        {
+                            <tr>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.CreateTime)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.Delay1)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.Delay2)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.Delay3)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.Delay4)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
+
+@section css
+{
+    @Styles.Render("~/Content/bootstrap-datetimepicker")
+    @Styles.Render("~/Content/dataTables")
+}
+
+@section scripts
+{
+    @Scripts.Render("~/bundles/chart")
+    @Scripts.Render("~/bundles/dataTables")
+    @Scripts.Render("~/bundles/sb-Admin-chart")
+    @Scripts.Render("~/bundles/bootstrap-datetimepicker")
+    <script>
+        $("#datetimepicker").datetimepicker({
+            format: "YYYY-MM-DD",
+            dayViewHeaderFormat: "YYYY MMMM",
+            locale: "zh-tw",
+            useCurrent: false,
+            minDate: "@DateTime.Now.AddYears(-2).Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")",
+            maxDate: "@DateTime.Now.Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")"
+        });
+        $("#datetimepicker").on("dp.change", function (e) {
+            location.href = "/Devices/Details?ID=@Model.Id&Date=" + e.date.format("YYYY-MM-DD");
+        });
+    </script>
+    @Scripts.Render("~/bundles/zingchart")
+    <script>
+        window.resetZoom = function (chart) {
+            zingchart.exec(chart.id, 'viewall');
+        }
+        var myConfig = {
+            "gui": {
+                "behaviors": [
+                    {
+                        "id": "Reload",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "SaveAsImage",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "Print",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "BugReport",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "FullScreen",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "ZoomIn",
+                        "enabled": "all"
+                    },
+                    {
+                        "id": "ZoomOut",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "ViewAll",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "LogScale",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "DownloadPDF",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "3D",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "HideGuide",
+                        "enabled": "none"
+                    }
+                ],
+                "context-menu": {
+                    "button": {
+                        "visible": 0
+                    },
+                    "gear": {
+                        "visible": 0
+                    },
+                    "custom-items": [
+                        {
+                            "text": "Reset Zoom",
+                            "function": "resetZoom(this)",
+                            "id": "reset-zoom"
+                        }
+                    ]
+                }
+            },
+            "graphset": [
+                {
+                    "type": "line",
+                    "background-color": "#f4f4f4",
+                    "plot": {
+                        "mode": "fast",
+                        "exact": true,
+                        "smartSampling": true,
+                        "maxNodes": 0,
+                        "maxTrackers": 0,
+                        "lineWidth": 2,
+                        "shadow": false,
+                        "marker": {
+                            "type": "none",
+                            "shadow": false
+                        }
+                    },
+                    "plotarea": {
+                        "background-color": "#fbfbfb",
+                        "margin-top": "30px",
+                        "margin-left": "50px",
+                        "margin-right": "30px"
+                    },
+                    "scaleX": {
+                        label: {  /*Add a scale title with a label object*/
+                            text: "4個Delay平均延遲---單位(ms)",
+                        }, labels: [@Model.ChartTimeList]
+            ,
+                        "autoFit": true,
+                        "zooming": true,
+                        "normalize": true,
+                        "lineWidth": 1,
+                        "line-color": "#c7c9c9",
+                        "tick": {
+                            "lineWidth": 1,
+                            "line-color": "#c7c9c9"
+                        },
+                        "guide": {
+                            "visible": false
+                        },
+                        "item": {
+                            "font-color": "#818181",
+                            "font-family": "Arial",
+                            "padding-top": "5px"
+                        },
+                        "maxLabels": 10
+                    },
+                    "scrollX": {
+
+                    },
+                    "scaleY": {
+                        "minValue": "auto",
+                        "autoFit": true,
+                        "lineWidth": 1,
+                        "line-color": "#c7c9c9",
+                        "tick": {
+                            "lineWidth": 1,
+                            "line-color": "#c7c9c9"
+                        },
+                        "item": {
+                            "font-color": "#818181",
+                            "font-family": "Arial",
+                            "padding-right": "5px"
+                        },
+                        "guide": {
+                            "lineStyle": "solid",
+                            "line-color": "#c7c9c9",
+                            "alpha": 0.2
+                        }
+                    },
+                    "tooltip": {
+                        "visible": false
+                    },
+                    "crosshairX": {
+                        "lineWidth": 1,
+                        "line-color": "#003849",
+                        "marker": {
+                            "size": 4,
+                            "type": "circle",
+                            "borderColor": "#fff",
+                            "borderWidth": 1
+                        },
+                        "scale-label": {
+                            "font-color": "#ffffff",
+                            "background-color": "#003849",
+                            "padding": "5px 10px 5px 10px",
+                            "border-radius": "5px"
+                        },
+                        "plotLabel": {
+                            "multiple": false,
+                            "callout": false,
+                            "shadow": false,
+                            "padding": "5px 10px 5px 10px",
+                            "border-radius": "5px",
+                            "alpha": 1,
+                            "headerText": "Time %scale-key-text<br>",
+                            "text": "<b>%plot-text:</b> %node-value ms"
+                        }
+                    },
+                    "series": [
+                        {
+                            "values": [@Model.CharDelayList],
+                            "line-color": "#7ca82b",
+                            "line-width": 1,
+                            "text": "Average Delay"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        zingchart.render({
+            id: 'myChart',
+            data: myConfig,
+            height: "100%",
+            width: "100%"
+        });
+    </script>
+}

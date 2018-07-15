@@ -82,4 +82,13 @@ namespace Pingvalue.Models
 
         public IEnumerable<SelectListItem> GroupList { get; set; }
     }
+
+    public class DetailDeviceViewModel
+    {
+        public Guid Id { get; set; }
+        public List<PingData> PingDatas { get; set; }
+        public string DatetimePicker { get; set; }
+        public string ChartTimeList { get; set; }
+        public string CharDelayList { get; set; }
+    }
 }
