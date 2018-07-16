@@ -15,6 +15,7 @@ namespace Pingvalue.Models
         public virtual DbSet<DeviceGroup> DeviceGroups { get; set; }
         public virtual DbSet<Device> Devices { get; set; }
         public virtual DbSet<PingData> PingDatas { get; set; }
+        public virtual DbSet<SpeedTest> SpeedTests { get; set; }
 
 
         protected override void OnModelCreating(DbModelBuilder modelBuilder)
