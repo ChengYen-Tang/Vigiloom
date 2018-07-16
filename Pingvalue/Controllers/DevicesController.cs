@@ -43,7 +43,7 @@ namespace Pingvalue.Controllers
             DateTime MaxDate = Date.Value.AddDays(1);
             List<PingData> Datas = await (
                 from Devices in db.Devices
-                from PingDatas in Devices.pingDatas
+                from PingDatas in Devices.PingDatas
                 where Devices.Id == id && PingDatas.CreateTime >= Date && PingDatas.CreateTime < MaxDate
                 select PingDatas
                 ).ToListAsync();
