@@ -7,11 +7,11 @@
 @foreach (var Group in Model)
 {
     <li class="nav-item" data-toggle="tooltip" data-placement="right" title="@Group.GroupName">
-        <a class="nav-link nav-link-collapse collapsed" data-toggle="collapse" href="#@Group.Id+MENU" data-parent="#exampleAccordion">
+        <a class="nav-link nav-link-collapse collapsed" data-toggle="collapse" href="#@Group.Id-MENU" data-parent="#exampleAccordion">
             <i class="fa fa-area-chart"></i>
             <span class="nav-link-text">@Group.GroupName</span>
         </a>
-        <ul class="sidenav-second-level collapse" id="@Group.Id+MENU">
+        <ul class="sidenav-second-level collapse" id="@Group.Id-MENU">
             @foreach (var Device in Group.Devices)
             {
                 <li>
