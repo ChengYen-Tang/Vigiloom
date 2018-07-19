@@ -9,6 +9,7 @@ namespace Pingvalue
         public void Configuration(IAppBuilder app)
         {
             ConfigureAuth(app);
+            AppConfig.LoadConfig();
         }
     }
 }
