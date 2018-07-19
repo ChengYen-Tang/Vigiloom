@@ -18,20 +18,6 @@ namespace Pingvalue.Controllers
             return View(await Release.OrderBy(c => c.DeviceName).ToListAsync());
         }
 
-        public ActionResult About()
-        {
-            ViewBag.Message = "Your application description page.";
-
-            return View();
-        }
-
-        public ActionResult Contact()
-        {
-            ViewBag.Message = "Your contact page.";
-
-            return View();
-        }
-
         public ActionResult Menu()
         {
             return View(db.DeviceGroups.ToList());

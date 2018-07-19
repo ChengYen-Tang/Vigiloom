@@ -11,6 +11,7 @@ using Pingvalue.Models;
 
 namespace Pingvalue.Controllers
 {
+    [Authorize]
     public class DeviceGroupsController : Controller
     {
         private PingvalueModels db = new PingvalueModels();

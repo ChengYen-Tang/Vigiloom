@@ -211,6 +211,7 @@
     <Compile Include="Controllers\DevicesController.cs" />
     <Compile Include="Controllers\HomeController.cs" />
     <Compile Include="Controllers\ManageController.cs" />
+    <Compile Include="Controllers\SpeedTestsController.cs" />
     <Compile Include="Controllers\UserAdminController.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
@@ -223,6 +224,7 @@
     <Compile Include="Models\ManageViewModels.cs" />
     <Compile Include="Models\PingvalueModels.cs" />
     <Compile Include="Models\SpeedTestModels.cs" />
+    <Compile Include="Models\SpeedTestViewModels.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Startup.cs" />
   </ItemGroup>
@@ -355,8 +357,6 @@
     <Content Include="Views\_ViewStart.cshtml" />
     <Content Include="Views\Shared\Error.cshtml" />
     <Content Include="Views\Shared\_Layout.cshtml" />
-    <Content Include="Views\Home\About.cshtml" />
-    <Content Include="Views\Home\Contact.cshtml" />
     <Content Include="Views\Home\Index.cshtml" />
     <Content Include="Views\Account\Login.cshtml" />
     <Content Include="Views\Account\ResetPassword.cshtml" />
@@ -393,6 +393,8 @@
     <Content Include="Views\DeviceGroups\Edit.cshtml" />
     <Content Include="Views\DeviceGroups\Index.cshtml" />
     <Content Include="Views\Home\Menu.cshtml" />
+    <Content Include="Views\SpeedTests\Details.cshtml" />
+    <Content Include="Views\SpeedTests\Index.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

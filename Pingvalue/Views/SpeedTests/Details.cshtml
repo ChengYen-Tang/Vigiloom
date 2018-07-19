@@ -1,0 +1,88 @@
+﻿@model Pingvalue.Models.DetailSpeedTestViewModel
+
+@{
+    ViewBag.Title = "Details";
+}
+
+<div class="container-fluid">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            @Html.ActionLink("網路測速", "Index")
+        </li>
+        <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
+    </ol>
+
+    <div>
+        <h4>測速</h4>
+        <hr />
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.TestTime)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.TestTime)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.ISP)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.ISP)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                客戶端座標
+            </dt>
+            <dd>
+                (@Html.DisplayFor(model => model.ClientLongitude),@Html.DisplayFor(model => model.ClientLatitude))
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.Server)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.Server)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                伺服器端座標
+            </dt>
+            <dd>
+                (@Html.DisplayFor(model => model.ServerLongitude),@Html.DisplayFor(model => model.ServerLatitude))
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.DelayTime)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.DelayTime)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.SpeetUpload)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.SpeetUpload)
+            </dd>
+        </dl>
+        <dl class="dl-horizontal">
+            <dt>
+                @Html.DisplayNameFor(model => model.SpeedDownload)
+            </dt>
+            <dd>
+                @Html.DisplayFor(model => model.SpeedDownload)
+            </dd>
+        </dl>
+    </div>
+
+    <p>
+        @Html.ActionLink("Edit", "Edit", new { id = Model.Id }) |
+        @Html.ActionLink("Back to List", "Index")
+    </p>
+</div>

@@ -23,7 +23,13 @@
         </button>
         <div class="collapse navbar-collapse" id="navbarResponsive">
             <ul class="navbar-nav navbar-sidenav" id="exampleAccordion">
-                @Html.Action("Menu","Home")
+                <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
+                    <a class="nav-link" href="@Url.Action("Index","SpeedTests")">
+                        <i class="fa fa-tachometer"></i>
+                        <span class="nav-link-text">網路測速</span>
+                    </a>
+                </li>
+                @Html.Action("Menu", "Home")
                 @if (Request.IsAuthenticated)
                 {
                     <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">

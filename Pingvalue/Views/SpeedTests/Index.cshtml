@@ -1,0 +1,302 @@
+﻿@model Pingvalue.Models.IndexSpeedTestViewModel
+
+@{
+    ViewBag.Title = "Index";
+}
+
+<div class="container-fluid">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item">
+            @Html.ActionLink("網路測速", "Index")
+        </li>
+        <li class="breadcrumb-item active">@ViewContext.RouteData.Values["action"]</li>
+    </ol>
+    <div class="row">
+        <div class="col-sm-6 col-md-4">
+            <div class="input-group" style="max-width: 300px;margin-bottom: 8px;">
+                <div class="input-group-append" data-target="#datetimepicker" data-toggle="datetimepicker">
+                    <div class="input-group-text"><i class="fa fa-calendar"></i></div>
+                </div>
+                <input type="text" class="form-control" id="datetimepicker" value=@Model.DatetimePicker />
+            </div>
+        </div>
+    </div>
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fa fa-table"></i> 圖表
+        </div>
+        <div class="card-body">
+            <div id='myChart'></div>
+        </div>
+    </div>
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fa fa-table"></i> 測速
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>測試時間</th>
+                            <th>下載速度</th>
+                            <th>上傳速度</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tfoot>
+                        <tr>
+                            <th>測試時間</th>
+                            <th>下載速度</th>
+                            <th>上傳速度</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                    <tbody>
+                        @foreach (var item in Model.SpeedTestDatas)
+                        {
+                            <tr>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.TestTime)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.SpeetUpload)
+                                </td>
+                                <td>
+                                    @Html.DisplayFor(modelItem => item.SpeedDownload)
+                                </td>
+                                <td>
+                                    @Html.ActionLink("Details", "Details", new { id = item.Id })
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section css
+{
+    @Styles.Render("~/Content/bootstrap-datetimepicker")
+    @Styles.Render("~/Content/dataTables")
+}
+
+@section scripts
+{
+    @Scripts.Render("~/bundles/chart")
+    @Scripts.Render("~/bundles/dataTables")
+    @Scripts.Render("~/bundles/sb-Admin-chart")
+    @Scripts.Render("~/bundles/bootstrap-datetimepicker")
+    <script>
+        $("#datetimepicker").datetimepicker({
+            format: "YYYY-MM-DD",
+            dayViewHeaderFormat: "YYYY MMMM",
+            locale: "zh-tw",
+            useCurrent: false,
+            minDate: "@DateTime.Now.AddYears(-2).Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")",
+            maxDate: "@DateTime.Now.Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")"
+        });
+        $("#datetimepicker").on("dp.change", function (e) {
+            location.href = "/SpeedTests/Index?Date=" + e.date.format("YYYY-MM-DD");
+        });
+    </script>
+    @Scripts.Render("~/bundles/zingchart")
+    <script>
+        window.resetZoom = function (chart) {
+            zingchart.exec(chart.id, 'viewall');
+        }
+        var myConfig = {
+            "gui": {
+                "behaviors": [
+                    {
+                        "id": "Reload",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "SaveAsImage",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "Print",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "BugReport",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "FullScreen",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "ZoomIn",
+                        "enabled": "all"
+                    },
+                    {
+                        "id": "ZoomOut",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "ViewAll",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "LogScale",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "DownloadPDF",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "3D",
+                        "enabled": "none"
+                    },
+                    {
+                        "id": "HideGuide",
+                        "enabled": "none"
+                    }
+                ],
+                "context-menu": {
+                    "button": {
+                        "visible": 0
+                    },
+                    "gear": {
+                        "visible": 0
+                    },
+                    "custom-items": [
+                        {
+                            "text": "Reset Zoom",
+                            "function": "resetZoom(this)",
+                            "id": "reset-zoom"
+                        }
+                    ]
+                }
+            },
+            "graphset": [
+                {
+                    "type": "line",
+                    "background-color": "#f4f4f4",
+                    "plot": {
+                        "mode": "fast",
+                        "exact": true,
+                        "smartSampling": true,
+                        "maxNodes": 0,
+                        "maxTrackers": 0,
+                        "lineWidth": 2,
+                        "shadow": false,
+                        "marker": {
+                            "type": "none",
+                            "shadow": false
+                        }
+                    },
+                    "plotarea": {
+                        "background-color": "#fbfbfb",
+                        "margin-top": "30px",
+                        "margin-left": "50px",
+                        "margin-right": "30px"
+                    },
+                    "scaleX": {
+                        label: {  /*Add a scale title with a label object*/
+                    text: "網路測速---單位(Mbps)",
+                },
+                /*Add your scale labels with a labels array*/
+                labels: [@Model.ChartTimeList]
+            ,
+                        "autoFit": true,
+                        "zooming": true,
+                        "normalize": true,
+                        "lineWidth": 1,
+                        "line-color": "#c7c9c9",
+                        "tick": {
+                            "lineWidth": 1,
+                            "line-color": "#c7c9c9"
+                        },
+                        "guide": {
+                            "visible": false
+                        },
+                        "item": {
+                            "font-color": "#818181",
+                            "font-family": "Arial",
+                            "padding-top": "5px"
+                        },
+                        "maxLabels": 10
+                    },
+                    "scrollX": {
+
+                    },
+                    "scaleY": {
+                        "minValue": "auto",
+                        "autoFit": true,
+                        "lineWidth": 1,
+                        "line-color": "#c7c9c9",
+                        "tick": {
+                            "lineWidth": 1,
+                            "line-color": "#c7c9c9"
+                        },
+                        "item": {
+                            "font-color": "#818181",
+                            "font-family": "Arial",
+                            "padding-right": "5px"
+                        },
+                        "guide": {
+                            "lineStyle": "solid",
+                            "line-color": "#c7c9c9",
+                            "alpha": 0.2
+                        }
+                    },
+                    "tooltip": {
+                        "visible": false
+                    },
+                    "crosshairX": {
+                        "lineWidth": 1,
+                        "line-color": "#003849",
+                        "marker": {
+                            "size": 4,
+                            "type": "circle",
+                            "borderColor": "#fff",
+                            "borderWidth": 1
+                        },
+                        "scale-label": {
+                            "font-color": "#ffffff",
+                            "background-color": "#003849",
+                            "padding": "5px 10px 5px 10px",
+                            "border-radius": "5px"
+                        },
+                        "plotLabel": {
+                            "multiple": false,
+                            "callout": false,
+                            "shadow": false,
+                            "padding": "5px 10px 5px 10px",
+                            "border-radius": "5px",
+                            "alpha": 1,
+                            "headerText": "Time %scale-key-text<br>",
+                            "text": "<b>%plot-text:</b> %node-value Mbps"
+                        }
+                    },
+                    "series": [
+                        {
+                            "values": [@Model.CharDownloadList],
+                            "line-width": 2,
+                            "text":"下載速度"
+                        },
+                        {
+                            "values": [@Model.CharUploadList],
+                            "line-width": 2,
+                            "text": "上傳速度"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        zingchart.render({
+            id: 'myChart',
+            data: myConfig,
+            height: "100%",
+            width: "100%"
+        });
+    </script>
+}

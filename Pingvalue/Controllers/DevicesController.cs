@@ -11,6 +11,7 @@ using Pingvalue.Models;
 
 namespace Pingvalue.Controllers
 {
+    [Authorize]
     public class DevicesController : Controller
     {
         private PingvalueModels db = new PingvalueModels();
@@ -46,7 +47,7 @@ namespace Pingvalue.Controllers
                 from PingDatas in Devices.PingDatas
                 where Devices.Id == id && PingDatas.CreateTime >= Date && PingDatas.CreateTime < MaxDate
                 select PingDatas
-                ).ToListAsync();
+                ).OrderByDescending(c => c.CreateTime).ToListAsync();
 
             if (Datas == null)
             {
@@ -56,7 +57,7 @@ namespace Pingvalue.Controllers
             string CharDelayList = "";
             string ChartTimeList = "";
 
-            foreach (PingData Data in Datas)
+            foreach (PingData Data in Datas.OrderBy(c => c.CreateTime))
             {
                 long[] ArrayNewPingData = new long[4];
                 ArrayNewPingData[0] = Data.Delay1;
@@ -84,7 +85,7 @@ namespace Pingvalue.Controllers
                 Id = (Guid)id,
                 PingDatas = Datas,
                 DatetimePicker = Date.Value.Year + "-" + Date.Value.Month + "-" + Date.Value.Day,
-                CharDelayList = CharDelayList,
+                CharDelayList = CharDelayList.TrimEnd(new char[] { ',' }),
                 ChartTimeList = ChartTimeList.TrimEnd(new char[] { ','})
             };
             return View(Detail);
