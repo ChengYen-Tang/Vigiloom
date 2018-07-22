@@ -1,9 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Web;
 
 namespace Pingvalue
 {
@@ -11,15 +8,37 @@ namespace Pingvalue
     {
         public static string LineToken { get; private set; }
         public static string LineRetornMessage { get; private set; }
+        public static string LineGroupToken { get; private set; }
+
+        private readonly static string ConfigPath 
+            = AppDomain.CurrentDomain.BaseDirectory + "Config.json";
 
         public static void LoadConfig()
         {
-            string ConfigPath = AppDomain.CurrentDomain.BaseDirectory + "Config.json";
-            string ConfigContent = File.ReadAllText(ConfigPath);
-            dynamic JsonObject = JsonConvert.DeserializeObject(ConfigContent);
+            try
+            {
+                string ConfigContent = File.ReadAllText(ConfigPath);
+                dynamic JsonObject = JsonConvert.DeserializeObject(ConfigContent);
 
-            LineToken = JsonObject["LineToken"];
-            LineRetornMessage = JsonObject["LineRetornMessage"];
+                LineToken = JsonObject["LineToken"];
+                LineRetornMessage = JsonObject["LineRetornMessage"];
+                LineGroupToken = JsonObject["LineGroupToken"];
+            }
+            catch
+            {
+                SaveConfig();
+            }
+        }
+
+        public static void SaveConfig()
+        {
+            File.WriteAllText(ConfigPath, JsonConvert.SerializeObject(
+                    new
+                    {
+                        LineToken,
+                        LineRetornMessage,
+                        LineGroupToken
+                    }));
         }
     }
 }

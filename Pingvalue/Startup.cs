@@ -1,5 +1,6 @@
 ﻿using Microsoft.Owin;
 using Owin;
+using Hangfire;
 
 [assembly: OwinStartupAttribute(typeof(Pingvalue.Startup))]
 namespace Pingvalue
@@ -10,6 +11,14 @@ namespace Pingvalue
         {
             ConfigureAuth(app);
             AppConfig.LoadConfig();
+
+            GlobalConfiguration.Configuration.UseSqlServerStorage("DefaultConnection");
+            RecurringJob.AddOrUpdate(() => WorkScript.StartPing(), "*/5 * * * *");
+            RecurringJob.AddOrUpdate(() => WorkScript.StartSpeedTest(), "*/30 * * * *");
+            RecurringJob.AddOrUpdate(() => WorkScript.ClearOldData(), "0 0 * * *");
+
+            app.UseHangfireServer();
+            app.UseHangfireDashboard();
         }
     }
 }
