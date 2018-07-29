@@ -26,6 +26,9 @@ namespace Pingvalue
             }
             catch
             {
+                LineToken = "";
+                LineRetornMessage = "";
+                LineGroupToken = "";
                 SaveConfig();
             }
         }

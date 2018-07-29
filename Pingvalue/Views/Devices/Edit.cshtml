@@ -16,42 +16,42 @@
     {
         @Html.AntiForgeryToken()
 
-    <div class="form-horizontal">
-        <h4>Edit Device.</h4>
-        <hr />
-        @Html.ValidationSummary(true)
-        @Html.HiddenFor(model => model.Id)
+        <div class="form-horizontal">
+            <h4>Edit Device.</h4>
+            <hr />
+            @Html.ValidationSummary(true)
+            @Html.HiddenFor(model => model.Id)
 
-        <div class="form-group">
-            @Html.LabelFor(m => m.DeviceName, new { @class = "col-md-2 control-label" })
-            <div class="col-md-10">
-                @Html.TextBoxFor(m => m.DeviceName, new { @class = "form-control" })
+            <div class="form-group">
+                @Html.LabelFor(m => m.DeviceName, new { @class = "col-md-2 control-label" })
+                <div class="col-md-10">
+                    @Html.TextBoxFor(m => m.DeviceName, new { @class = "form-control" })
+                </div>
+            </div>
+            <div class="form-group">
+                @Html.LabelFor(m => m.IPAddress, new { @class = "col-md-2 control-label" })
+                <div class="col-md-10">
+                    @Html.TextBoxFor(m => m.IPAddress, new { @class = "form-control" })
+                </div>
+            </div>
+            <div class="form-group">
+                @Html.Label("Groups", new { @class = "control-label col-md-2" })
+                <div class="col-md-10">
+                    @foreach (var item in Model.GroupList)
+                    {
+                        <div class="form-check form-check-inline">
+                            <input type="checkbox" name="selectedGroups" value="@item.Value" checked="@item.Selected" class="form-check-input" id="@item.Value" />
+                            @Html.Label(item.Text, new { @class = "form-check-label", @for = item.Value })
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="col-md-offset-2 col-md-10">
+                    <input type="submit" value="Save" class="btn btn-default" />
+                </div>
             </div>
         </div>
-        <div class="form-group">
-            @Html.LabelFor(m => m.IPAddress, new { @class = "col-md-2 control-label" })
-            <div class="col-md-10">
-                @Html.TextBoxFor(m => m.IPAddress, new { @class = "form-control" })
-            </div>
-        </div>
-        <div class="form-group">
-            @Html.Label("Groups", new { @class = "control-label col-md-2" })
-            <div class="col-md-10">
-                @foreach (var item in Model.GroupList)
-                {
-                    <div class="form-check form-check-inline">
-                        <input type="checkbox" name="selectedGroups" value="@item.Value" checked="@item.Selected" class="form-check-input" id="@item.Value" />
-                        @Html.Label(item.Text, new { @class = "form-check-label", @for = item.Value })
-                    </div>
-                }
-            </div>
-        </div>
-        <div class="form-group">
-            <div class="col-md-offset-2 col-md-10">
-                <input type="submit" value="Save" class="btn btn-default" />
-            </div>
-        </div>
-    </div>
     }
 
     <div>

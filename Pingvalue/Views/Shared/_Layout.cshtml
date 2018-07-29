@@ -33,6 +33,12 @@
                 @if (Request.IsAuthenticated)
                 {
                     <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
+                        <a class="nav-link" href="@Url.Action("Index","Config")">
+                            <i class="fa fa-pencil fa-fw"></i>
+                            <span class="nav-link-text">組態設定</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
                         <a class="nav-link" href="@Url.Action("Index","DeviceGroups")">
                             <i class="fa fa-object-group"></i>
                             <span class="nav-link-text">群組管理</span>
