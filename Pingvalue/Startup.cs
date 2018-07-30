@@ -15,7 +15,7 @@ namespace Pingvalue
             GlobalConfiguration.Configuration.UseSqlServerStorage("DefaultConnection");
             RecurringJob.AddOrUpdate(() => WorkScript.StartPingAsync(), "*/5 * * * *");
             RecurringJob.AddOrUpdate(() => WorkScript.StartSpeedTestAsync(), "*/30 * * * *");
-            RecurringJob.AddOrUpdate(() => WorkScript.ClearOldData(), "0 0 * * *");
+            RecurringJob.AddOrUpdate(() => WorkScript.ClearOldDataAsync(), "0 0 * * *");
 
             app.UseHangfireServer();
             app.UseHangfireDashboard();

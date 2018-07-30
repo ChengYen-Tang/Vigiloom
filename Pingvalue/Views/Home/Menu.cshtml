@@ -1,18 +1,18 @@
-﻿@model IEnumerable<Pingvalue.Models.DeviceGroup>
+﻿@model List<Pingvalue.Models.DeviceGroup>
 
 @{
     Layout = null;
 }
 
-@foreach (var Group in Model)
+@for (int i = 0; i < Model.Count(); i++)
 {
-    <li class="nav-item" data-toggle="tooltip" data-placement="right" title="@Group.GroupName">
-        <a class="nav-link nav-link-collapse collapsed" data-toggle="collapse" href="#@Group.Id-MENU" data-parent="#exampleAccordion">
+    <li class="nav-item" data-toggle="tooltip" data-placement="right" title="@Model[i].GroupName">
+        <a class="nav-link nav-link-collapse collapsed" data-toggle="collapse" href="#@Model[i].GroupName-@i" data-parent="#exampleAccordion">
             <i class="fa fa-area-chart"></i>
-            <span class="nav-link-text">@Group.GroupName</span>
+            <span class="nav-link-text">@Model[i].GroupName</span>
         </a>
-        <ul class="sidenav-second-level collapse" id="@Group.Id-MENU">
-            @foreach (var Device in Group.Devices)
+        <ul class="sidenav-second-level collapse" id="@Model[i].GroupName-@i">
+            @foreach (var Device in Model[i].Devices)
             {
                 <li>
                     <a href="@Url.Action("Details","Devices", new { id = Device.Id})">@Device.DeviceName</a>
@@ -20,4 +20,9 @@
             }
         </ul>
     </li>
+}
+
+@foreach (var Group in Model)
+{
+
 }

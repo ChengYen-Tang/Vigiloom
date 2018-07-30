@@ -15,20 +15,29 @@ namespace Pingvalue
     public class WorkScript
     {
         private static PingvalueModels db = new PingvalueModels();
+        private static object DBLock = new object();
 
         private static SpeedTestClient client;
         private static Settings settings;
         private const string DefaultCountry = "Taiwan";
         private static List<string> ServerList = new List<string>() { "SEEDNET", "NCIC Telecom", "Far Eastone Telecommunications Co., Ltd.", "FarEasTone Telecom" };
 
-        public static void ClearOldData()
+        public static async Task ClearOldDataAsync()
         {
             DateTime Date = DateTime.Today.AddYears(-2);
-            var PingOldData = db.PingDatas.Where(c => c.CreateTime <= Date).ToList();
-            var SpeedOldData = db.SpeedTests.Where(c => c.TestTime <= Date).ToList();
-            db.PingDatas.RemoveRange(PingOldData);
-            db.SpeedTests.RemoveRange(SpeedOldData);
-            db.SaveChanges();
+
+            try
+            {
+                var PingOldData = db.PingDatas.Where(c => c.CreateTime <= Date).ToList();
+                var SpeedOldData = db.SpeedTests.Where(c => c.TestTime <= Date).ToList();
+                db.PingDatas.RemoveRange(PingOldData);
+                db.SpeedTests.RemoveRange(SpeedOldData);
+                await db.SaveChangesAsync();
+            }
+            catch
+            {
+
+            }
         }
 
         public static async Task StartPingAsync()

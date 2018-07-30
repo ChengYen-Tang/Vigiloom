@@ -56,18 +56,38 @@
                                 <td>
                                     @Html.DisplayFor(modelItem => item.CreateTime)
                                 </td>
-                                <td>
-                                    @Html.DisplayFor(modelItem => item.Delay1)
-                                </td>
-                                <td>
-                                    @Html.DisplayFor(modelItem => item.Delay2)
-                                </td>
-                                <td>
-                                    @Html.DisplayFor(modelItem => item.Delay3)
-                                </td>
-                                <td>
-                                    @Html.DisplayFor(modelItem => item.Delay4)
-                                </td>
+                                @if (item.Delay1 < 0)
+                                {
+                                    <td>Time out</td>
+                                }
+                                else
+                                {
+                                    <td>@Html.DisplayFor(modelItem => item.Delay1) ms</td>
+                                }
+                                @if (item.Delay2 < 0)
+                                {
+                                    <td>Time out</td>
+                                }
+                                else
+                                {
+                                    <td>@Html.DisplayFor(modelItem => item.Delay2) ms</td>
+                                }
+                                @if (item.Delay3 < 0)
+                                {
+                                    <td>Time out</td>
+                                }
+                                else
+                                {
+                                    <td>@Html.DisplayFor(modelItem => item.Delay3) ms</td>
+                                }
+                                @if (item.Delay4 < 0)
+                                {
+                                    <td>Time out</td>
+                                }
+                                else
+                                {
+                                    <td>@Html.DisplayFor(modelItem => item.Delay4) ms</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -201,7 +221,7 @@
                     "scaleX": {
                         label: {  /*Add a scale title with a label object*/
                             text: "4個Delay平均延遲---單位(ms)",
-                        }, labels: [@Model.ChartTimeList]
+                        }, labels: [@Html.Raw(Model.ChartTimeList)]
             ,
                         "autoFit": true,
                         "zooming": true,

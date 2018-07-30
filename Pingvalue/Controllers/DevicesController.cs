@@ -77,8 +77,8 @@ namespace Pingvalue.Controllers
                     CharDelayList += (TotalDelay / DelayCount) + ",";
                 }
                 else
-                    CharDelayList += "null";
-                ChartTimeList += Convert.ToChar(34) + Data.CreateTime.Hour + ":" + Data.CreateTime.Minute + Convert.ToChar(34) + ",";
+                    CharDelayList += "null" + ",";
+                ChartTimeList = ChartTimeList + Convert.ToChar(34) + Data.CreateTime.Hour + ":" + Data.CreateTime.Minute + Convert.ToChar(34) + ",";
             }
             DetailDeviceViewModel Detail = new DetailDeviceViewModel
             {

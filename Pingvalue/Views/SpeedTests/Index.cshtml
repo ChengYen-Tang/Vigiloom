@@ -203,7 +203,7 @@
                     text: "網路測速---單位(Mbps)",
                 },
                 /*Add your scale labels with a labels array*/
-                labels: [@Model.ChartTimeList]
+                labels: [@Html.Raw(Model.ChartTimeList)]
             ,
                         "autoFit": true,
                         "zooming": true,
