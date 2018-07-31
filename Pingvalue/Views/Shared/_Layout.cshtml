@@ -9,6 +9,7 @@
     <meta name="author" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewBag.Title - Pingvalue</title>
+    <link href="~/Content/font-awesome/css/font-awesome.min.css" rel="stylesheet">
     @Styles.Render("~/Content/css")
     @Scripts.Render("~/bundles/modernizr")
     @RenderSection("css", required: false)
@@ -34,7 +35,7 @@
                 {
                     <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
                         <a class="nav-link" href="@Url.Action("Index","Config")">
-                            <i class="fa fa-pencil fa-fw"></i>
+                            <i class="fa fa-fw fa-wrench"></i>
                             <span class="nav-link-text">組態設定</span>
                         </a>
                     </li>

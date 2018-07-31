@@ -24,13 +24,16 @@ namespace Pingvalue.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult Index(ConfigViewModels Config)
         {
-
-            return View(new ConfigViewModels
+            if (ModelState.IsValid)
             {
-                LineGroupToken = AppConfig.LineGroupToken,
-                LineRetornMessage = AppConfig.LineRetornMessage,
-                LineToken = AppConfig.LineToken
-            });
+                AppConfig.LineGroupToken = Config.LineGroupToken;
+                AppConfig.LineToken = Config.LineToken;
+                AppConfig.LineRetornMessage = Config.LineRetornMessage;
+                AppConfig.SaveConfig();
+                return RedirectToAction("Index");
+            }
+
+            return View(Config);
         }
     }
 }

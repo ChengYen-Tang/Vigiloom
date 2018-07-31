@@ -6,9 +6,9 @@ namespace Pingvalue
 {
     public class AppConfig
     {
-        public static string LineToken { get; private set; }
-        public static string LineRetornMessage { get; private set; }
-        public static string LineGroupToken { get; private set; }
+        public static string LineToken { get; set; }
+        public static string LineRetornMessage { get; set; }
+        public static string LineGroupToken { get; set; }
 
         private readonly static string ConfigPath 
             = AppDomain.CurrentDomain.BaseDirectory + "Config.json";

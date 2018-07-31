@@ -20,7 +20,7 @@ namespace Pingvalue.Controllers
 
         public ActionResult Menu()
         {
-            return View(db.DeviceGroups.ToList());
+            return View(db.DeviceGroups.OrderBy(c => c.GroupName).ToList());
         }
 
         protected override void Dispose(bool disposing)

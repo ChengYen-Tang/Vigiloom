@@ -45,7 +45,6 @@ namespace Pingvalue
                     "~/Scripts/sb-admin/sb-admin-datatables.min.js"));
 
             bundles.Add(new StyleBundle("~/Content/css").Include(
-                 "~/Content/font-awesome/css/font-awesome.min.css",
                       "~/Content/bootstrap.css",
                       "~/Content/sb-admin/sb-admin.css"));
 
@@ -54,9 +53,6 @@ namespace Pingvalue
 
             bundles.Add(new StyleBundle("~/Content/bootstrap-datetimepicker").Include(
                       "~/Content/bootstrap-datetimepicker-build.css"));
-
-            bundles.Add(new StyleBundle("~/Content/dataTables").Include(
-                      "~/Content/dataTables/dataTables.bootstrap4.css"));
         }
     }
 }

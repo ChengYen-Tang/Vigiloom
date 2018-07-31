@@ -107,6 +107,8 @@ namespace Pingvalue.Controllers
         {
             if (ModelState.IsValid)
             {
+                selectedGroups = selectedGroups ?? new Guid[] { };
+
                 db.Devices.Add(new Device {
                     Id = Guid.NewGuid(),
                     DeviceName = device.DeviceName,
@@ -165,6 +167,8 @@ namespace Pingvalue.Controllers
                 device.DeviceName = NewDevice.DeviceName;
                 device.IPAddress = NewDevice.IPAddress;
                 device.DeviceGroups.Clear();
+
+                selectedGroups = selectedGroups ?? new Guid[] { };
 
                 var ExceptGroups = db.DeviceGroups.Where(c => selectedGroups.Contains(c.Id)).Except(device.DeviceGroups);
 
