@@ -19,9 +19,13 @@ namespace Pingvalue.Controllers
                 var ReceivedMessage = isRock.LineBot.Utility.Parsing(postData);
                 //回覆訊息
                 if (ReceivedMessage.events[0].source.groupId == null)
-                    isRock.LineBot.Utility.ReplyMessage(ReceivedMessage.events[0].replyToken,AppConfig.LineRetornMessage ,AppConfig.LineToken);
-                else if (ReceivedMessage.events[0].message.text.ToLower() == "Get Group Id".ToLower() && ReceivedMessage.events[0].source.groupId != null)
-                    isRock.LineBot.Utility.ReplyMessage(ReceivedMessage.events[0].replyToken, ReceivedMessage.events[0].source.groupId, AppConfig.LineToken);
+                    isRock.LineBot.Utility.ReplyMessage(ReceivedMessage.events[0].replyToken, AppConfig.LineRetornMessage, AppConfig.LineToken);
+                else if (ReceivedMessage.events[0].message.text.ToLower() == "Set Group Id".ToLower() && ReceivedMessage.events[0].source.groupId != null)
+                {
+                    AppConfig.LineGroupToken = ReceivedMessage.events[0].source.groupId;
+                    AppConfig.SaveConfig();
+                    isRock.LineBot.Utility.ReplyMessage(ReceivedMessage.events[0].replyToken, "Setting completed", AppConfig.LineToken);
+                }
 
                 //回覆API OK
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
