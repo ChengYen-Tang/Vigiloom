@@ -61,13 +61,13 @@ namespace Pingvalue
                     }
                     else
                     {
-                        PingDelay[i] = -1;
+                        PingDelay[i] = long.MaxValue;
                     }
                 }
 
                 lock (PingLock)
                 {
-                    if (PingDelay.Where(c => c != -1).Count() > 0)
+                    if (PingDelay.Where(c => c != long.MaxValue).Count() > 0)
                     {
                         if (!device.IsOnline)
                         {

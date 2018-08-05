@@ -57,7 +57,7 @@ namespace Pingvalue.Controllers
             string CharDelayList = "";
             string ChartTimeList = "";
 
-            foreach (PingData Data in Datas.OrderBy(c => c.CreateTime))
+            foreach (PingData Data in Datas)
             {
                 long[] ArrayNewPingData = new long[4];
                 ArrayNewPingData[0] = Data.Delay1;
@@ -66,14 +66,14 @@ namespace Pingvalue.Controllers
                 ArrayNewPingData[3] = Data.Delay4;
                 double TotalDelay = 0;
                 int DelayCount = 0;
-                if (ArrayNewPingData[0] != -1 || ArrayNewPingData[1] != -1 || ArrayNewPingData[2] != -1 || ArrayNewPingData[3] != -1)
+                if (ArrayNewPingData[0] != long.MaxValue || ArrayNewPingData[1] != long.MaxValue || ArrayNewPingData[2] != long.MaxValue || ArrayNewPingData[3] != long.MaxValue)
                 {
                     for (int i = 0; i < 4; i++)
-                        if (ArrayNewPingData[i] != -1)
-                        {
-                            DelayCount++;
-                            TotalDelay = TotalDelay + Convert.ToDouble(ArrayNewPingData[i]);
-                        }
+                    {
+                        DelayCount++;
+                        TotalDelay = TotalDelay + Convert.ToDouble(ArrayNewPingData[i]);
+                    }
+
                     CharDelayList += (TotalDelay / DelayCount) + ",";
                 }
                 else
@@ -83,7 +83,14 @@ namespace Pingvalue.Controllers
             DetailDeviceViewModel Detail = new DetailDeviceViewModel
             {
                 Id = (Guid)id,
-                PingDatas = Datas,
+                PingDatas = Datas.Select(c => new DetailPingDataViewModel {
+                    CreateTime = c.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    Delay1 = c.Delay1,
+                    Delay2 = c.Delay2,
+                    Delay3 = c.Delay3,
+                    Delay4 = c.Delay4,
+                    AverageDelay = (c.Delay1 + c.Delay2 + c.Delay3 + c.Delay4) / 4
+                }).ToList(),
                 DatetimePicker = Date.Value.Year + "-" + Date.Value.Month + "-" + Date.Value.Day,
                 CharDelayList = CharDelayList.TrimEnd(new char[] { ',' }),
                 ChartTimeList = ChartTimeList.TrimEnd(new char[] { ','})

@@ -34,61 +34,73 @@
                     <thead>
                         <tr>
                             <th><span class="fa fa-clock-o"></span></th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 1</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 2</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 3</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 4</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 1 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 2 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 3 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 4 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>平均延遲 (ms)</th>
                         </tr>
                     </thead>
                     <tfoot>
                         <tr>
                             <th><span class="fa fa-clock-o"></span></th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 1</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 2</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 3</th>
-                            <th><span class="fa fa-bar-chart"></span>延遲 4</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 1 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 2 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 3 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>延遲 4 (ms)</th>
+                            <th><span class="fa fa-bar-chart"></span>平均延遲 (ms)</th>
                         </tr>
                     </tfoot>
                     <tbody>
                         @foreach (var item in Model.PingDatas)
                         {
-                            <tr>
+                        <tr>
+                            <td>
+                                @Html.DisplayFor(modelItem => item.CreateTime)
+                            </td>
+                            @if (item.Delay1 == long.MaxValue)
+                            {
+                                <td>Time out</td>
+                            }
+                            else
+                            {
+                                <td>@Html.DisplayFor(modelItem => item.Delay1)</td>
+                            }
+                            @if (item.Delay2 == long.MaxValue)
+                            {
+                                <td>Time out</td>
+                            }
+                            else
+                            {
+                                <td>@Html.DisplayFor(modelItem => item.Delay2)</td>
+                            }
+                            @if (item.Delay3 == long.MaxValue)
+                            {
+                                <td>Time out</td>
+                            }
+                            else
+                            {
+                                <td>@Html.DisplayFor(modelItem => item.Delay3)</td>
+                            }
+                            @if (item.Delay4 == long.MaxValue)
+                            {
+                                <td>Time out</td>
+                            }
+                            else
+                            {
+                                <td>@Html.DisplayFor(modelItem => item.Delay4)</td>
+                            }
+                            @if (item.Delay1 == long.MaxValue && item.Delay2 == long.MaxValue && item.Delay3 == long.MaxValue && item.Delay4 == long.MaxValue)
+                            {
+                                <td>Time out</td>
+                            }
+                            else
+                            {
                                 <td>
-                                    @Html.DisplayFor(modelItem => item.CreateTime)
+                                    @Html.DisplayFor(modelItem => item.AverageDelay)
                                 </td>
-                                @if (item.Delay1 < 0)
-                                {
-                                    <td>Time out</td>
-                                }
-                                else
-                                {
-                                    <td>@Html.DisplayFor(modelItem => item.Delay1) ms</td>
-                                }
-                                @if (item.Delay2 < 0)
-                                {
-                                    <td>Time out</td>
-                                }
-                                else
-                                {
-                                    <td>@Html.DisplayFor(modelItem => item.Delay2) ms</td>
-                                }
-                                @if (item.Delay3 < 0)
-                                {
-                                    <td>Time out</td>
-                                }
-                                else
-                                {
-                                    <td>@Html.DisplayFor(modelItem => item.Delay3) ms</td>
-                                }
-                                @if (item.Delay4 < 0)
-                                {
-                                    <td>Time out</td>
-                                }
-                                else
-                                {
-                                    <td>@Html.DisplayFor(modelItem => item.Delay4) ms</td>
-                                }
-                            </tr>
+                            }
+                        </tr>
                         }
                     </tbody>
                 </table>

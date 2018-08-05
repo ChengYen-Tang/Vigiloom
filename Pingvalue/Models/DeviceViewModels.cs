@@ -83,10 +83,20 @@ namespace Pingvalue.Models
         public IEnumerable<SelectListItem> GroupList { get; set; }
     }
 
+    public class DetailPingDataViewModel
+    {
+        public string CreateTime { get; set; }
+        public long Delay1 { get; set; }
+        public long Delay2 { get; set; }
+        public long Delay3 { get; set; }
+        public long Delay4 { get; set; }
+        public double AverageDelay { get; set; }
+    }
+
     public class DetailDeviceViewModel
     {
         public Guid Id { get; set; }
-        public List<PingData> PingDatas { get; set; }
+        public List<DetailPingDataViewModel> PingDatas { get; set; }
         public string DatetimePicker { get; set; }
         public string ChartTimeList { get; set; }
         public string CharDelayList { get; set; }
