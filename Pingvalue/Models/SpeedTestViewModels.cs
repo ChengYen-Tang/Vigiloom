@@ -11,7 +11,7 @@ namespace Pingvalue.Models
         [Key]
         [Required]
         public Guid Id { get; set; }
-        public DateTime TestTime { get; set; }
+        public string TestTime { get; set; }
         public string SpeedDownload { get; set; }
         public string SpeetUpload { get; set; }
     }

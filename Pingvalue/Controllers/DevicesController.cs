@@ -57,7 +57,7 @@ namespace Pingvalue.Controllers
             string CharDelayList = "";
             string ChartTimeList = "";
 
-            foreach (PingData Data in Datas)
+            foreach (PingData Data in Datas.OrderBy(c => c.CreateTime))
             {
                 long[] ArrayNewPingData = new long[4];
                 ArrayNewPingData[0] = Data.Delay1;
@@ -84,7 +84,7 @@ namespace Pingvalue.Controllers
             {
                 Id = (Guid)id,
                 PingDatas = Datas.Select(c => new DetailPingDataViewModel {
-                    CreateTime = c.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    CreateTime = c.CreateTime.ToString("yyyy-MM-dd HH:mm"),
                     Delay1 = c.Delay1,
                     Delay2 = c.Delay2,
                     Delay3 = c.Delay3,

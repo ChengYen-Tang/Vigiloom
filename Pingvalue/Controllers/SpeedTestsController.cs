@@ -28,7 +28,7 @@ namespace Pingvalue.Controllers
                 .Select(c => new SpeedTestViewModel
                 {
                     Id = c.Id,
-                    TestTime = c.TestTime,
+                    TestTime = c.TestTime.ToString(),
                     SpeedDownload = c.SpeedDownload,
                     SpeetUpload = c.SpeetUpload
                 }).ToListAsync();
@@ -39,6 +39,7 @@ namespace Pingvalue.Controllers
 
             foreach (var SpeedTestData in SpeedTestDatas.OrderBy(c => c.TestTime))
             {
+                SpeedTestData.TestTime = DateTime.Parse(SpeedTestData.TestTime).ToString("yyyy-MM-dd HH:mm");
                 if (SpeedTestData.SpeedDownload == "Failed")
                 {
                     SpeedTestData.SpeedDownload = "0 bps";
@@ -65,7 +66,7 @@ namespace Pingvalue.Controllers
                 {
                     UploadStrings[0] = (Convert.ToDouble(UploadStrings[0]) / 1024).ToString();
                 }
-                ChartTimeList = ChartTimeList + Convert.ToChar(34) + SpeedTestData.TestTime.Hour + ":" + SpeedTestData.TestTime.Minute + Convert.ToChar(34) + ",";
+                ChartTimeList = ChartTimeList + Convert.ToChar(34) + DateTime.Parse(SpeedTestData.TestTime).Hour + ":" + DateTime.Parse(SpeedTestData.TestTime).Minute + Convert.ToChar(34) + ",";
                 CharDownloadList = CharDownloadList + DownloadStrings[0] + ",";
                 CharUploadList = CharUploadList + UploadStrings[0] + ",";
             }
