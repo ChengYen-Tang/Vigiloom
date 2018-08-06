@@ -14,9 +14,6 @@ namespace Pingvalue
 {
     public class WorkScript
     {
-        private static PingvalueModels db = new PingvalueModels();
-        private static object DBLock = new object();
-
         private static SpeedTestClient client;
         private static Settings settings;
         private const string DefaultCountry = "Taiwan";
@@ -28,11 +25,14 @@ namespace Pingvalue
 
             try
             {
-                var PingOldData = db.PingDatas.Where(c => c.CreateTime <= Date).ToList();
-                var SpeedOldData = db.SpeedTests.Where(c => c.TestTime <= Date).ToList();
-                db.PingDatas.RemoveRange(PingOldData);
-                db.SpeedTests.RemoveRange(SpeedOldData);
-                await db.SaveChangesAsync();
+                using (PingvalueModels db = new PingvalueModels())
+                {
+                    var PingOldData = db.PingDatas.Where(c => c.CreateTime <= Date).ToList();
+                    var SpeedOldData = db.SpeedTests.Where(c => c.TestTime <= Date).ToList();
+                    db.PingDatas.RemoveRange(PingOldData);
+                    db.SpeedTests.RemoveRange(SpeedOldData);
+                    await db.SaveChangesAsync();
+                }
             }
             catch
             {
@@ -47,72 +47,74 @@ namespace Pingvalue
             List<string> StatusChangeDevices = new List<string>();
             object PingLock = new object();
 
-            Parallel.ForEach(await db.Devices.ToListAsync(), (device) =>
-            {
-                long[] PingDelay = new long[5];
-                for (int i = 0; i < 5; i++)
-                {
-                    Ping pingSender = new Ping();
-                    IPAddress address = IPAddress.Parse(device.IPAddress);
-                    PingReply reply = pingSender.Send(address, 999);
-                    if (reply.Status == IPStatus.Success)
-                    {
-                        PingDelay[i] = reply.RoundtripTime;
-                    }
-                    else
-                    {
-                        PingDelay[i] = long.MaxValue;
-                    }
-                }
-
-                lock (PingLock)
-                {
-                    if (PingDelay.Where(c => c != long.MaxValue).Count() > 0)
-                    {
-                        if (!device.IsOnline)
-                        {
-                            device.IsOnline = !device.IsOnline;
-                            StatusChangeDevices.Add(
-                                "群組 :" + string.Join(",", device.DeviceGroups.Select(c => c.GroupName)) + 
-                                " 設備 :" + device.DeviceName +
-                                " IP位置 :" + device.IPAddress + 
-                                " 在 " + PingTime +
-                                " 恢復連線"
-                                );
-                            db.Entry(device).State = EntityState.Modified;
-                        }
-                    }
-                    else
-                        if (device.IsOnline)
-                        {
-                            device.IsOnline = !device.IsOnline;
-                            StatusChangeDevices.Add(
-                                "群組 :" + string.Join(",", device.DeviceGroups.Select(c => c.GroupName)) +
-                                " 設備 :" + device.DeviceName +
-                                " IP位置 :" + device.IPAddress +
-                                " 在 " + PingTime +
-                                " 4次Ping測試結果 TimedOut"
-                                );
-                            db.Entry(device).State = EntityState.Modified;
-                        }
-
-                    PingDatas.Add(new PingData
-                    {
-                        Id = Guid.NewGuid(),
-                        CreateTime = PingTime,
-                        Device = device,
-                        Delay1 = PingDelay[1],
-                        Delay2 = PingDelay[2],
-                        Delay3 = PingDelay[3],
-                        Delay4 = PingDelay[4]
-                    });
-                }
-            });
-
             try
             {
-                db.PingDatas.AddRange(PingDatas);
-                await db.SaveChangesAsync();
+                using (PingvalueModels db = new PingvalueModels())
+                {
+                    Parallel.ForEach(await db.Devices.ToListAsync(), (device) =>
+                    {
+                        long[] PingDelay = new long[5];
+                        for (int i = 0; i < 5; i++)
+                        {
+                            Ping pingSender = new Ping();
+                            IPAddress address = IPAddress.Parse(device.IPAddress);
+                            PingReply reply = pingSender.Send(address, 999);
+                            if (reply.Status == IPStatus.Success)
+                            {
+                                PingDelay[i] = reply.RoundtripTime;
+                            }
+                            else
+                            {
+                                PingDelay[i] = long.MaxValue;
+                            }
+                        }
+
+                        lock (PingLock)
+                        {
+                            if (PingDelay.Where(c => c != long.MaxValue).Count() > 0)
+                            {
+                                if (!device.IsOnline)
+                                {
+                                    device.IsOnline = !device.IsOnline;
+                                    StatusChangeDevices.Add(
+                                        "群組 :" + string.Join(",", device.DeviceGroups.Select(c => c.GroupName)) +
+                                        " 設備 :" + device.DeviceName +
+                                        " IP位置 :" + device.IPAddress +
+                                        " 在 " + PingTime +
+                                        " 恢復連線"
+                                        );
+                                    db.Entry(device).State = EntityState.Modified;
+                                }
+                            }
+                            else
+                                if (device.IsOnline)
+                            {
+                                device.IsOnline = !device.IsOnline;
+                                StatusChangeDevices.Add(
+                                    "群組 :" + string.Join(",", device.DeviceGroups.Select(c => c.GroupName)) +
+                                    " 設備 :" + device.DeviceName +
+                                    " IP位置 :" + device.IPAddress +
+                                    " 在 " + PingTime +
+                                    " 4次Ping測試結果 TimedOut"
+                                    );
+                                db.Entry(device).State = EntityState.Modified;
+                            }
+
+                            PingDatas.Add(new PingData
+                            {
+                                Id = Guid.NewGuid(),
+                                CreateTime = PingTime,
+                                Device = device,
+                                Delay1 = PingDelay[1],
+                                Delay2 = PingDelay[2],
+                                Delay3 = PingDelay[3],
+                                Delay4 = PingDelay[4]
+                            });
+                        }
+                    });
+                    db.PingDatas.AddRange(PingDatas);
+                    await db.SaveChangesAsync();
+                }
 
                 LineBotMessage(string.Join("\n", StatusChangeDevices));
             }
@@ -120,6 +122,7 @@ namespace Pingvalue
             {
 
             }
+
         }
 
         private static bool LineBotMessage(string Message)
@@ -180,8 +183,11 @@ namespace Pingvalue
 
             try
             {
-                db.SpeedTests.Add(SpeetTestData);
-                await db.SaveChangesAsync();
+                using (PingvalueModels db = new PingvalueModels())
+                {
+                    db.SpeedTests.Add(SpeetTestData);
+                    await db.SaveChangesAsync();
+                }
             }
             catch
             {
