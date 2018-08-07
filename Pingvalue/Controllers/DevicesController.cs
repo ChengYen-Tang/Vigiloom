@@ -220,6 +220,8 @@ namespace Pingvalue.Controllers
         [ValidateAntiForgeryToken]
         public async Task<ActionResult> DeleteConfirmed(Guid id)
         {
+            List<PingData> pingDatas = await db.PingDatas.Where(c => c.Device.Id == id).ToListAsync();
+            db.PingDatas.RemoveRange(pingDatas);
             Device device = await db.Devices.FindAsync(id);
             db.Devices.Remove(device);
             await db.SaveChangesAsync();
