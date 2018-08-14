@@ -9,6 +9,7 @@ namespace Pingvalue
     {
         public void Configuration(IAppBuilder app)
         {
+            LogGenerator.Add("Owin startup");
             ConfigureAuth(app);
             AppConfig.LoadConfig();
 
@@ -19,6 +20,7 @@ namespace Pingvalue
 
             app.UseHangfireServer();
             app.UseHangfireDashboard();
+            LogGenerator.Add("Owin startup done.");
         }
     }
 }

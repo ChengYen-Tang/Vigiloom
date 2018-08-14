@@ -13,11 +13,13 @@ namespace Pingvalue
     {
         protected void Application_Start()
         {
+            LogGenerator.Add("Application startup");
             AreaRegistration.RegisterAllAreas();
             GlobalConfiguration.Configure(WebApiConfig.Register);
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
+            LogGenerator.Add("Application startup done.");
         }
     }
 }

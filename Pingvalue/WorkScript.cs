@@ -34,9 +34,9 @@ namespace Pingvalue
                     await db.SaveChangesAsync();
                 }
             }
-            catch
+            catch(Exception ex)
             {
-
+                LogGenerator.Add("Failed to clear old data: " + ex.Message);
             }
         }
 
@@ -118,9 +118,9 @@ namespace Pingvalue
 
                 LineBotMessage(string.Join("\n", StatusChangeDevices));
             }
-            catch
+            catch(Exception ex)
             {
-
+                LogGenerator.Add("Failed to start ping: " + ex.Message);
             }
 
         }
@@ -133,8 +133,9 @@ namespace Pingvalue
 
                 return true;
             }
-            catch
+            catch(Exception ex)
             {
+                LogGenerator.Add("LineBotMessage Error: " + ex.Message);
                 return false;
             }
         }
@@ -189,9 +190,9 @@ namespace Pingvalue
                     await db.SaveChangesAsync();
                 }
             }
-            catch
+            catch(Exception ex)
             {
-
+                LogGenerator.Add("Start speed test db error: " + ex.Message);
             }
         }
 

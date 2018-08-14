@@ -10,22 +10,23 @@ namespace Pingvalue
         public static string LineRetornMessage { get; set; }
         public static string LineGroupToken { get; set; }
 
-        private readonly static string ConfigPath 
+        private readonly static string ConfigFile 
             = AppDomain.CurrentDomain.BaseDirectory + "Config.json";
 
         public static void LoadConfig()
         {
             try
             {
-                string ConfigContent = File.ReadAllText(ConfigPath);
+                string ConfigContent = File.ReadAllText(ConfigFile);
                 dynamic JsonObject = JsonConvert.DeserializeObject(ConfigContent);
 
                 LineToken = JsonObject["LineToken"];
                 LineRetornMessage = JsonObject["LineRetornMessage"];
                 LineGroupToken = JsonObject["LineGroupToken"];
             }
-            catch
+            catch(Exception ex)
             {
+                LogGenerator.Add("Failed to load config: " + ex.Message);
                 LineToken = "";
                 LineRetornMessage = "";
                 LineGroupToken = "";
@@ -35,7 +36,7 @@ namespace Pingvalue
 
         public static void SaveConfig()
         {
-            File.WriteAllText(ConfigPath, JsonConvert.SerializeObject(
+            File.WriteAllText(ConfigFile, JsonConvert.SerializeObject(
                     new
                     {
                         LineToken,
