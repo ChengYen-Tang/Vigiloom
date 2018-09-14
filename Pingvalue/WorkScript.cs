@@ -53,10 +53,10 @@ namespace Pingvalue
                 {
                     Parallel.ForEach(await db.Devices.ToListAsync(), (device) =>
                     {
+                        Ping pingSender = new Ping();
                         long[] PingDelay = new long[5];
                         for (int i = 0; i < 5; i++)
                         {
-                            Ping pingSender = new Ping();
                             IPAddress address = IPAddress.Parse(device.IPAddress);
                             PingReply reply = pingSender.Send(address, 999);
                             if (reply.Status == IPStatus.Success)
@@ -68,7 +68,7 @@ namespace Pingvalue
                                 PingDelay[i] = long.MaxValue;
                             }
                         }
-
+                        pingSender.Dispose();
                         lock (PingLock)
                         {
                             if (PingDelay.Where(c => c != long.MaxValue).Count() > 0)
@@ -95,7 +95,7 @@ namespace Pingvalue
                                     " 設備 :" + device.DeviceName +
                                     " IP位置 :" + device.IPAddress +
                                     " 在 " + PingTime +
-                                    " 4次Ping測試結果 TimedOut"
+                                    " 離線"
                                     );
                                 db.Entry(device).State = EntityState.Modified;
                             }
