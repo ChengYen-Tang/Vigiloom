@@ -45,8 +45,8 @@ namespace Pingvalue
                     "~/Scripts/sb-admin/sb-admin-datatables.min.js"));
 
             bundles.Add(new StyleBundle("~/Content/css").Include(
-                      "~/Content/bootstrap.css",
-                      "~/Content/sb-admin/sb-admin.css"));
+                      "~/Content/bootstrap.min.css",
+                      "~/Content/sb-admin/sb-admin.min.css"));
 
             bundles.Add(new StyleBundle("~/Content/Site").Include(
                       "~/Content/Site.css"));

@@ -83,6 +83,7 @@ namespace Pingvalue.Controllers
             DetailDeviceViewModel Detail = new DetailDeviceViewModel
             {
                 Id = (Guid)id,
+                DeviceName = db.Devices.Find(id).DeviceName,
                 PingDatas = Datas.Select(c => new DetailPingDataViewModel {
                     CreateTime = c.CreateTime.ToString("yyyy-MM-dd HH:mm"),
                     Delay1 = c.Delay1,

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
-using System.Web;
 
 namespace Pingvalue
 {
@@ -58,7 +57,7 @@ namespace Pingvalue
                         for (int i = 0; i < 5; i++)
                         {
                             IPAddress address = IPAddress.Parse(device.IPAddress);
-                            PingReply reply = pingSender.Send(address, 999);
+                            PingReply reply = pingSender.Send(address);
                             if (reply.Status == IPStatus.Success)
                             {
                                 PingDelay[i] = reply.RoundtripTime;

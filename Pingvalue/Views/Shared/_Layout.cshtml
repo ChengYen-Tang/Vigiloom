@@ -9,24 +9,28 @@
     <meta name="author" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewBag.Title - Pingvalue</title>
-    <link href="~/Content/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+    <link href="~/Content/font-awesome/css/all.min.css" rel="stylesheet">
     @Styles.Render("~/Content/css")
     @Scripts.Render("~/bundles/modernizr")
     @RenderSection("css", required: false)
 
 </head>
 
-<body class="fixed-nav sticky-footer bg-dark" id="page-top">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top" id="mainNav">
-        @Html.ActionLink("Pingvalue", "Index", "Home", new { area = "" }, new { @class = "navbar-brand" })
-        <button class="navbar-toggler navbar-toggler-right" type="button" data-toggle="collapse" data-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarResponsive">
-            <ul class="navbar-nav navbar-sidenav" id="exampleAccordion">
+<body id="page-top">
+    <nav class="navbar navbar-expand navbar-dark bg-dark static-top" id="mainNav">
+            @Html.ActionLink("Pingvalue", "Index", "Home", new { area = "" }, new { @class = "navbar-brand mr-1" })
+            <button class="btn btn-link btn-sm text-white order-1 order-sm-0" id="sidebarToggle" href="#">
+                <i class="fas fa-bars"></i>
+            </button>
+            <ul class="navbar-nav ml-auto navbar-right">
+                @Html.Partial("_LoginPartial")
+            </ul>
+        </nav>
+        <div id="wrapper">
+            <ul class="sidebar navbar-nav" id="exampleAccordion">
                 <li class="nav-item" data-toggle="tooltip" data-placement="right" title="Account">
                     <a class="nav-link" href="@Url.Action("Index","SpeedTests")">
-                        <i class="fa fa-tachometer"></i>
+                        <i class="fas fa-fw fa-tachometer-alt"></i>
                         <span class="nav-link-text">網路測速</span>
                     </a>
                 </li>
@@ -59,33 +63,24 @@
                     </li>
                 }
             </ul>
-            <ul class="navbar-nav sidenav-toggler">
-                <li class="nav-item">
-                    <a class="nav-link text-center" id="sidenavToggler">
-                        <i class="fa fa-fw fa-angle-left"></i>
-                    </a>
-                </li>
-            </ul>
-            <ul class="navbar-nav ml-auto navbar-right">
-                @Html.Partial("_LoginPartial")
-            </ul>
-        </div>
-    </nav>
-    <div class="content-wrapper">
-        @RenderBody()
-        <!-- /.content-wrapper-->
-        <footer class="sticky-footer">
-            <div class="container">
-                <div class="text-center">
-                    <small>Copyright © 2018 by Cheng-Yen Tang. All rights reserved.</small>
+            <div id="content-wrapper">
+                <div container-fluid>
+                    @RenderBody()
                 </div>
             </div>
-        </footer>
-        <!-- Scroll to Top Button-->
-        <a class="scroll-to-top rounded" href="#page-top">
-            <i class="fa fa-angle-up"></i>
-        </a>
-    </div>
+            <!-- /.content-wrapper-->
+            <footer class="sticky-footer">
+                <div class="container my-auto">
+                    <div class="copyright text-center my-auto">
+                        <small>Copyright © 2018 by Cheng-Yen Tang. All rights reserved.</small>
+                    </div>
+                </div>
+            </footer>
+            <!-- Scroll to Top Button-->
+            <a class="scroll-to-top rounded" href="#page-top">
+                <i class="fa fa-angle-up"></i>
+            </a>
+        </div>
 
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")

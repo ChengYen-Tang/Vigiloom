@@ -96,6 +96,7 @@ namespace Pingvalue.Models
     public class DetailDeviceViewModel
     {
         public Guid Id { get; set; }
+        public string DeviceName { get; set; }
         public List<DetailPingDataViewModel> PingDatas { get; set; }
         public string DatetimePicker { get; set; }
         public string ChartTimeList { get; set; }
