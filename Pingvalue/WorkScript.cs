@@ -115,7 +115,8 @@ namespace Pingvalue
                     await db.SaveChangesAsync();
                 }
 
-                LineBotMessage(string.Join("\n", StatusChangeDevices));
+                if (StatusChangeDevices.Count != 0)
+                    LineBotMessage(string.Join("\n", StatusChangeDevices));
             }
             catch(Exception ex)
             {
