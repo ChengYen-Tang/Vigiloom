@@ -30,7 +30,7 @@ namespace Pingvalue.Controllers
                     Id = c.Id,
                     TestTime = c.TestTime.ToString(),
                     SpeedDownload = c.SpeedDownload,
-                    SpeetUpload = c.SpeetUpload
+                    SpeedUpload = c.SpeetUpload
                 }).ToListAsync();
 
             string ChartTimeList = "";
@@ -44,12 +44,12 @@ namespace Pingvalue.Controllers
                 {
                     SpeedTestData.SpeedDownload = "0 bps";
                 }
-                if (SpeedTestData.SpeetUpload == "Failed")
+                if (SpeedTestData.SpeedUpload == "Failed")
                 {
-                    SpeedTestData.SpeetUpload = "0 bps";
+                    SpeedTestData.SpeedUpload = "0 bps";
                 }
                 string[] DownloadStrings = SpeedTestData.SpeedDownload.Split(' ');
-                string[] UploadStrings = SpeedTestData.SpeetUpload.Split(' ');
+                string[] UploadStrings = SpeedTestData.SpeedUpload.Split(' ');
                 if (DownloadStrings[1] == "bps")
                 {
                     DownloadStrings[0] = (Convert.ToDouble(DownloadStrings[0]) / 1048576).ToString();
@@ -103,7 +103,7 @@ namespace Pingvalue.Controllers
                 ServerLatitude = speedTest.ServerLatitude,
                 ServerLongitude = speedTest.ServerLongitude,
                 SpeedDownload = speedTest.SpeedDownload,
-                SpeetUpload = speedTest.SpeetUpload
+                SpeedUpload = speedTest.SpeetUpload
             });
         }
 

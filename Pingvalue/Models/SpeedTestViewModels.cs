@@ -13,7 +13,7 @@ namespace Pingvalue.Models
         public Guid Id { get; set; }
         public string TestTime { get; set; }
         public string SpeedDownload { get; set; }
-        public string SpeetUpload { get; set; }
+        public string SpeedUpload { get; set; }
     }
 
     public class IndexSpeedTestViewModel
@@ -45,6 +45,6 @@ namespace Pingvalue.Models
         [Display(Name = "下載速度")]
         public string SpeedDownload { get; set; }
         [Display(Name = "上傳速度")]
-        public string SpeetUpload { get; set; }
+        public string SpeedUpload { get; set; }
     }
 }

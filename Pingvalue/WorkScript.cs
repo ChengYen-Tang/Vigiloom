@@ -20,7 +20,7 @@ namespace Pingvalue
 
         public static async Task ClearOldDataAsync()
         {
-            DateTime Date = DateTime.Today.AddYears(-2);
+            DateTime Date = DateTime.Today.AddYears(-1);
 
             try
             {

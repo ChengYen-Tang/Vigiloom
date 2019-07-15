@@ -127,7 +127,7 @@
             dayViewHeaderFormat: "YYYY MMMM",
             locale: "zh-tw",
             useCurrent: false,
-            minDate: "@DateTime.Now.AddYears(-2).Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")",
+            minDate: "@DateTime.Now.AddYears(-1).Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")",
             maxDate: "@DateTime.Now.Year.ToString("00")-@DateTime.Now.Month.ToString("00")-@DateTime.Now.Day.ToString("00")"
         });
         $("#datetimepicker").on("dp.change", function (e) {
