@@ -59,6 +59,8 @@ jobs:
           pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test Web identity and account flows on Linux
         run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --logger trx --results-directory "$RUNNER_TEMP/web-sql-results"
+      - name: Test Worker scheduling and restart on Linux
+        run: dotnet test tests/Vigiloom.Worker.Tests/Vigiloom.Worker.Tests.csproj --configuration Release --logger trx --results-directory "$RUNNER_TEMP/worker-sql-results"
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |
