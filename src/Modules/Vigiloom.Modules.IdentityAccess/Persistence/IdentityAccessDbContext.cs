@@ -11,6 +11,27 @@ public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbCon
 {
     public DbSet<AccountAuditEvent> AccountAuditEvents => Set<AccountAuditEvent>();
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        UpdateTimestamps();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        UpdateTimestamps();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void UpdateTimestamps()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in ChangeTracker.Entries<Account>().Where(entry => entry.State == EntityState.Modified))
+            entry.Property(account => account.UpdatedAt).CurrentValue = now;
+        foreach (var entry in ChangeTracker.Entries<Role>().Where(entry => entry.State == EntityState.Modified))
+            entry.Property(role => role.UpdatedAt).CurrentValue = now;
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

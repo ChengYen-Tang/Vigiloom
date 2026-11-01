@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
@@ -13,6 +16,9 @@ internal static class IdentityRegistration
         services.AddScoped<AccountAdministration>();
         services.AddScoped<AccountPasswordReset>();
         services.AddScoped<SelfPasswordChange>();
+        services.AddScoped<TwoFactorManagement>();
+        services.AddScoped<TwoFactorChallenge>();
+        services.AddScoped<AccountLogout>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
@@ -33,8 +39,25 @@ internal static class IdentityRegistration
             options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
         }).AddRoles<Role>()
           .AddEntityFrameworkStores<IdentityAccessDbContext>()
-          .AddSignInManager()
+          .AddSignInManager<BoundSignInManager>()
           .AddDefaultTokenProviders();
+        services.AddScoped<IUserStore<Account>, ProtectedUserStore>();
+        services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
+        {
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Events.OnValidatePrincipal = async context =>
+            {
+                var id = context.Principal?.FindFirstValue(ClaimTypes.Name);
+                var stamp = context.Principal?.FindFirstValue(BoundSignInManager.StampClaim);
+                var db = context.HttpContext.RequestServices.GetRequiredService<IdentityAccessDbContext>();
+                var account = id is not null && Guid.TryParse(id, out var parsed)
+                    ? await db.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Id == parsed) : null;
+                if (account is null || stamp is null || account.SecurityStamp != stamp || !account.TwoFactorEnabled ||
+                    (account.LockoutEnabled && account.LockoutEnd > DateTimeOffset.UtcNow)) context.RejectPrincipal();
+            };
+        });
         services.ConfigureApplicationCookie(options =>
         {
             options.Cookie.HttpOnly = true;

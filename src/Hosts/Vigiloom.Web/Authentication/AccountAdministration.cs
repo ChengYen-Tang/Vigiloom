@@ -158,6 +158,32 @@ public sealed class AccountAdministration(
         return new(AccountOperationResult.Success, code);
     }
 
+    public async Task<AccountOperationResult> ResetTwoFactorAsync(ClaimsPrincipal actor, Guid accountId, string administratorPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var actorId = await EnsureAdministratorAsync(actor);
+        if (actorId == accountId) return AccountOperationResult.SelfTwoFactorReset;
+        await using var transaction = await AccountMutationLock.AcquireAsync(db, cancellationToken);
+        await EnsureCurrentAdministratorAsync(actor, actorId);
+        var administrator = await users.FindByIdAsync(actorId.ToString());
+        if (administrator is null || !await users.CheckPasswordAsync(administrator, administratorPassword))
+            return AccountOperationResult.InvalidCredentials;
+        var account = await users.FindByIdAsync(accountId.ToString());
+        if (account is null) return AccountOperationResult.NotFound;
+        if (!await users.GetTwoFactorEnabledAsync(account)) return AccountOperationResult.Success;
+        var disabled = await users.SetTwoFactorEnabledAsync(account, false);
+        if (!disabled.Succeeded) return AccountOperationResult.Failed(disabled);
+        var removed = await users.RemoveAuthenticationTokenAsync(account, ProtectedUserStore.InternalProvider, ProtectedUserStore.AuthenticatorKeyName);
+        if (!removed.Succeeded) return AccountOperationResult.Failed(removed);
+        _ = await users.GenerateNewTwoFactorRecoveryCodesAsync(account, 0);
+        var rotated = await users.UpdateSecurityStampAsync(account);
+        if (!rotated.Succeeded) return AccountOperationResult.Failed(rotated);
+        db.AccountAuditEvents.Add(new AccountAuditEvent(actorId, accountId, "TwoFactorResetByAdministrator", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return AccountOperationResult.Success;
+    }
+
     private async Task<Guid> EnsureAdministratorAsync(ClaimsPrincipal actor)
     {
         if (!(await authorization.AuthorizeAsync(actor, AccessPolicies.Administrator)).Succeeded ||
@@ -169,7 +195,7 @@ public sealed class AccountAdministration(
     private async Task EnsureCurrentAdministratorAsync(ClaimsPrincipal principal, Guid actorId)
     {
         // A request may wait for the lock while another administrator changes or revokes its actor.
-        var account = await CurrentAccount.FindValidAsync(users, principal, identityOptions);
+        var account = await CurrentAccount.FindValidAsync(db, users, principal, identityOptions);
         if (account is null || account.Id != actorId || !await users.IsInRoleAsync(account, BuiltInRoles.Administrator))
             throw new UnauthorizedAccessException("Administrator authorization is no longer valid.");
     }
@@ -181,7 +207,8 @@ public sealed class AccountAdministration(
                 join membership in db.UserRoles on account.Id equals membership.UserId
                 join role in db.Roles on membership.RoleId equals role.Id
                 where account.Id != excluded && role.NormalizedName == "ADMINISTRATOR" &&
-                    (account.LockoutEnd == null || account.LockoutEnd <= now)
+                    account.PasswordHash != null && account.PasswordHash != "" &&
+                    (!account.LockoutEnabled || account.LockoutEnd == null || account.LockoutEnd <= now)
                 select account.Id).AnyAsync(token);
     }
 
@@ -191,7 +218,7 @@ public sealed class AccountAdministration(
 public sealed record ResetCodeResult(AccountOperationResult Result, string? Code);
 public sealed record AccountSummary(Guid Id, string UserName, IReadOnlyList<string> Roles);
 public sealed record AccountPage(IReadOnlyList<AccountSummary> Accounts, int TotalCount, int Page, int PageSize);
-public enum AccountOperationStatus { Success, NotFound, InvalidRole, LastAdministrator, SelfDeletion, ValidationFailed }
+public enum AccountOperationStatus { Success, NotFound, InvalidRole, LastAdministrator, SelfDeletion, SelfTwoFactorReset, InvalidCredentials, ValidationFailed }
 public sealed record AccountOperationResult(AccountOperationStatus Status, IReadOnlyList<string> Errors)
 {
     public static AccountOperationResult Success { get; } = new(AccountOperationStatus.Success, []);
@@ -199,6 +226,8 @@ public sealed record AccountOperationResult(AccountOperationStatus Status, IRead
     public static AccountOperationResult InvalidRole { get; } = new(AccountOperationStatus.InvalidRole, []);
     public static AccountOperationResult LastAdministrator { get; } = new(AccountOperationStatus.LastAdministrator, []);
     public static AccountOperationResult SelfDeletion { get; } = new(AccountOperationStatus.SelfDeletion, []);
+    public static AccountOperationResult SelfTwoFactorReset { get; } = new(AccountOperationStatus.SelfTwoFactorReset, []);
+    public static AccountOperationResult InvalidCredentials { get; } = new(AccountOperationStatus.InvalidCredentials, []);
     public static AccountOperationResult Failed(IdentityResult result) => new(AccountOperationStatus.ValidationFailed,
         result.Errors.Select(error => error.Description).ToArray());
 }

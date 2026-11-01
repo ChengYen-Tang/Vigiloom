@@ -1,0 +1,129 @@
+@page "/account/two-factor-settings"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-login")]
+@attribute [ExcludeFromInteractiveRouting]
+@layout AccountLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using QRCoder
+@using Vigiloom.Modules.IdentityAccess.Domain
+@using Vigiloom.Web.Authentication
+@inject TwoFactorManagement Management
+@inject UserManager<Account> Users
+@inject SignInManager<Account> SignIn
+
+<PageTitle>雙重驗證設定 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="settings-title">
+    <h1 id="settings-title">雙重驗證</h1>
+    <p class="account-description">使用驗證器 App 為帳號增加一層保護。</p>
+    @if (message is not null) { <p class="@(isError ? "account-error" : "account-success")" role="status">@message</p> }
+    @if (recoveryCodes is not null)
+    {
+        <div class="management-notice"><h2>保存復原碼</h2><p>每個復原碼僅能使用一次。請妥善保存；離開後無法再次查看。</p><textarea readonly rows="10" aria-label="雙重驗證復原碼">@string.Join(Environment.NewLine, recoveryCodes)</textarea></div>
+    }
+    @if (!enabled)
+    {
+        <EditForm Model="BeginInput" FormName="begin-two-factor" method="post" OnValidSubmit="BeginAsync">
+            <DataAnnotationsValidator />
+            <div class="account-field"><label for="begin-password">目前密碼</label><input id="begin-password" name="BeginInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => BeginInput.Password" /></div>
+            <button class="account-primary" type="submit">設定驗證器</button>
+        </EditForm>
+        @if (key is not null)
+        {
+            <div class="account-qr"><p>使用驗證器 App 掃描 QR code，或手動輸入下方密鑰。</p><img src="@qrData" alt="驗證器設定 QR code" /><code>@key</code></div>
+        }
+        @if (pending)
+        {
+            <EditForm Model="ConfirmInput" FormName="enable-two-factor" method="post" OnValidSubmit="EnableAsync">
+                <DataAnnotationsValidator />
+                <div class="account-field"><label for="confirm-totp">驗證器代碼</label><input id="confirm-totp" name="ConfirmInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => ConfirmInput.Code" /></div>
+                <button class="account-primary" type="submit">啟用雙重驗證</button>
+            </EditForm>
+        }
+    }
+    else
+    {
+        <p>雙重驗證已啟用。</p>
+        <EditForm Model="DisableInput" FormName="disable-two-factor" method="post" OnValidSubmit="DisableAsync">
+            <DataAnnotationsValidator />
+            <div class="account-field"><label for="disable-password">目前密碼</label><input id="disable-password" name="DisableInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => DisableInput.Password" /></div>
+            <div class="account-field"><label for="disable-code">驗證器代碼或復原碼</label><input id="disable-code" name="DisableInput.Code" autocomplete="one-time-code" maxlength="64" required /><ValidationMessage For="() => DisableInput.Code" /></div>
+            <button class="management-danger" type="submit">停用雙重驗證</button>
+        </EditForm>
+    }
+    <p class="account-footer"><a href="/">返回總覽</a></p>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "begin-two-factor")] private PasswordModel BeginInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "enable-two-factor")] private CodeModel ConfirmInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "disable-two-factor")] private DisableModel DisableInput { get; set; } = default!;
+    private bool enabled;
+    private bool pending;
+    private bool isError;
+    private string? message;
+    private string? key;
+    private string? qrData;
+    private IReadOnlyList<string>? recoveryCodes;
+    protected override async Task OnInitializedAsync()
+    {
+        BeginInput ??= new(); ConfirmInput ??= new(); DisableInput ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        var user = await Users.GetUserAsync(HttpContext.User);
+        enabled = user is not null && await Users.GetTwoFactorEnabledAsync(user);
+        pending = user is not null && !enabled && await Users.GetAuthenticatorKeyAsync(user) is not null;
+    }
+    private async Task BeginAsync()
+    {
+        var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
+        var result = await Management.BeginAsync(HttpContext.User, BeginInput.Password);
+        BeginInput.Password = "";
+        if (result.Status != TwoFactorStatus.Success || result.Key is null) { Fail(); return; }
+        await RenewCookieAsync(persistent);
+        key = result.Key;
+        pending = true;
+        var accountName = HttpContext.User.Identity?.Name ?? "account";
+        var uri = $"otpauth://totp/Vigiloom:{Uri.EscapeDataString(accountName)}?secret={Uri.EscapeDataString(key)}&issuer=Vigiloom&digits=6&period=30";
+        using var generator = new QRCodeGenerator();
+        using var qr = generator.CreateQrCode(uri, QRCodeGenerator.ECCLevel.Q);
+        using var png = new PngByteQRCode(qr);
+        qrData = "data:image/png;base64," + Convert.ToBase64String(png.GetGraphic(6));
+    }
+    private async Task EnableAsync()
+    {
+        var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
+        var result = await Management.EnableAsync(HttpContext.User, ConfirmInput.Code.Replace(" ", "", StringComparison.Ordinal));
+        ConfirmInput.Code = "";
+        if (result.Status != TwoFactorStatus.Success) { Fail(); return; }
+        await RenewCookieAsync(persistent);
+        enabled = true;
+        recoveryCodes = result.RecoveryCodes;
+        message = "雙重驗證已啟用。";
+    }
+    private async Task DisableAsync()
+    {
+        var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
+        var result = await Management.DisableAsync(HttpContext.User, DisableInput.Password, DisableInput.Code.Trim());
+        DisableInput.Password = DisableInput.Code = "";
+        if (result.Status != TwoFactorStatus.Success) { Fail(); return; }
+        await RenewCookieAsync(persistent);
+        enabled = false;
+        message = "雙重驗證已停用。";
+    }
+    private async Task RenewCookieAsync(bool persistent)
+    {
+        var user = await Users.FindByIdAsync(Users.GetUserId(HttpContext.User) ?? "")
+            ?? throw new InvalidOperationException("The current account no longer exists.");
+        await SignIn.SignInAsync(user, persistent);
+    }
+    private void Fail() { isError = true; message = "無法完成操作，請確認密碼或驗證碼。"; }
+    private sealed class PasswordModel { [Required, StringLength(1024)] public string Password { get; set; } = ""; }
+    private sealed class CodeModel { [Required, StringLength(64)] public string Code { get; set; } = ""; }
+    private sealed class DisableModel
+    {
+        [Required, StringLength(1024)] public string Password { get; set; } = "";
+        [Required, StringLength(64)] public string Code { get; set; } = "";
+    }
+}

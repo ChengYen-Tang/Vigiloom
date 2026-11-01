@@ -1,5 +1,6 @@
 @page "/account/manage/{Id:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = AccessPolicies.Administrator)]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-login")]
 @attribute [ExcludeFromInteractiveRouting]
 @using System.ComponentModel.DataAnnotations
 @using Vigiloom.Modules.IdentityAccess.Domain
@@ -39,6 +40,13 @@
         <section class="management-panel"><h2>重設密碼</h2><p>建立一次性代碼，讓帳號持有人自行設定新密碼。舊密碼及工作階段會立即失效。</p>
             <EditForm Model="this" FormName="reset-code" method="post" OnValidSubmit="ResetAsync"><button class="management-button" type="submit">產生重設代碼</button></EditForm>
         </section>
+        <section class="management-panel"><h2>重置雙重驗證</h2><p>若帳號持有人遺失驗證器及復原碼，可重置其雙重驗證；需要你的管理員密碼。</p>
+            <EditForm Model="ResetTwoFactorInput" FormName="reset-two-factor" method="post" OnValidSubmit="ResetTwoFactorAsync">
+                <DataAnnotationsValidator />
+                <div class="account-field"><label for="admin-password">管理員密碼</label><input id="admin-password" name="ResetTwoFactorInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => ResetTwoFactorInput.Password" /></div>
+                <button class="management-button" type="submit">重置雙重驗證</button>
+            </EditForm>
+        </section>
         <section class="management-panel"><h2>刪除帳號</h2><p>刪除後此帳號將無法登入。</p>
             <EditForm Model="DeleteInput" FormName="delete-account" method="post" OnValidSubmit="DeleteAsync">
                 <label class="account-checkbox"><InputCheckbox @bind-Value="DeleteInput.Confirmed" /> 我確認要刪除此帳號</label>
@@ -53,6 +61,7 @@
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "rename-account")] private NameModel NameInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "change-role")] private RoleModel RoleInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "reset-two-factor")] private PasswordModel ResetTwoFactorInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "delete-account")] private DeleteModel DeleteInput { get; set; } = default!;
     private AccountSummary? account;
     private string? message;
@@ -61,7 +70,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        NameInput ??= new(); RoleInput ??= new(); DeleteInput ??= new();
+        NameInput ??= new(); RoleInput ??= new(); ResetTwoFactorInput ??= new(); DeleteInput ??= new();
         HttpContext.Response.Headers.CacheControl = "no-store";
         account = await Administration.GetAsync(HttpContext.User, Id);
         if (HttpMethods.IsGet(HttpContext.Request.Method))
@@ -88,6 +97,12 @@
         if (result.Result.Status == AccountOperationStatus.Success) { code = result.Code; message = null; }
         else SetMessage(result.Result, "");
     }
+    private async Task ResetTwoFactorAsync()
+    {
+        var result = await Administration.ResetTwoFactorAsync(HttpContext.User, Id, ResetTwoFactorInput.Password);
+        ResetTwoFactorInput.Password = "";
+        SetMessage(result, "雙重驗證已重置，該帳號需重新登入。");
+    }
     private async Task DeleteAsync()
     {
         if (!DeleteInput.Confirmed) { isError = true; message = "請先確認刪除。"; return; }
@@ -102,5 +117,6 @@
     }
     private sealed class NameModel { [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = ""; }
     private sealed class RoleModel { [Required] public string Role { get; set; } = BuiltInRoles.ReadOnly; }
+    private sealed class PasswordModel { [Required, StringLength(1024)] public string Password { get; set; } = ""; }
     private sealed class DeleteModel { public bool Confirmed { get; set; } }
 }

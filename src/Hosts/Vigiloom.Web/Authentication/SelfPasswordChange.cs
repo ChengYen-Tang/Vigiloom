@@ -12,7 +12,7 @@ public sealed class SelfPasswordChange(IdentityAccessDbContext db, UserManager<A
         CancellationToken cancellationToken = default)
     {
         await using var transaction = await AccountMutationLock.AcquireAsync(db, cancellationToken);
-        var account = await CurrentAccount.FindValidAsync(users, principal, options)
+        var account = await CurrentAccount.FindValidAsync(db, users, principal, options)
             ?? throw new UnauthorizedAccessException("The account session is no longer valid.");
         var changed = await users.ChangePasswordAsync(account, currentPassword, newPassword);
         if (!changed.Succeeded) return AccountOperationResult.Failed(changed);

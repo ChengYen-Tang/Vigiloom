@@ -28,6 +28,7 @@ internal static partial class LocalRecoveryCommand
         services.AddVigiloomDataProtection(configuration);
         services.AddModuleSqlServer<IdentityAccessDbContext>(connection, "identity");
         services.AddIdentityCore<Account>().AddRoles<Role>().AddEntityFrameworkStores<IdentityAccessDbContext>().AddDefaultTokenProviders();
+        services.AddScoped<IUserStore<Account>, ProtectedUserStore>();
         services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
         services.AddScoped<AdministratorRecovery>();
         using var provider = services.BuildServiceProvider();
