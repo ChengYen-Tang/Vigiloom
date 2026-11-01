@@ -34,6 +34,30 @@ public sealed class SpeedtestNetProbeTests
         Assert.AreEqual(3_000_000L, result.Bytes);
         Assert.AreEqual("Example (#18475) · speedtest.example.com", result.Server);
         Assert.AreEqual("Taipei", result.City);
+        Assert.AreEqual(25d, result.Latitude);
+        Assert.AreEqual(121d, result.Longitude);
+    }
+
+    [TestMethod]
+    [DataRow(91d, 121d)]
+    [DataRow(25d, -181d)]
+    [DataRow(double.NaN, 0d)]
+    [DataRow(0d, double.PositiveInfinity)]
+    public async Task MeasureAsync_InvalidCoordinatesAreNotReported(double latitude, double longitude)
+    {
+        var server = Server(); server.Latitude = latitude; server.Longitude = longitude;
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(2_000_000, 2000)),
+            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
+        };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Success, result.State);
+        Assert.IsNull(result.Latitude);
+        Assert.IsNull(result.Longitude);
     }
 
     [TestMethod]

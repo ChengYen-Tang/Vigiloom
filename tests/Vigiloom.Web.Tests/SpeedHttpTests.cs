@@ -7,6 +7,10 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Web.Tests;
 [TestClass]
@@ -53,6 +57,31 @@ public sealed class SpeedHttpTests
         Assert.IsNotNull(detail); Assert.AreEqual(SpeedTestState.Queued, detail.Summary.State); Assert.IsNull(detail.Summary.DownloadMbps);
         using var invalidRange = await reader.GetAsync("/api/v1/speed-tests?from=2026-01-01T00:00:00Z&to=2026-11-01T00:00:00Z", token);
         Assert.AreEqual(HttpStatusCode.BadRequest, invalidRange.StatusCode);
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task Details_ShowCoordinatesOnlyWhenProvided() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        var withCoordinates = new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow,
+            State = SpeedTestState.Success, Latitude = 25.033, Longitude = 121.5654 };
+        var missing = new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow, State = SpeedTestState.NoServer };
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+        {
+            db.SpeedRuns.AddRange(withCoordinates, missing);
+            await db.SaveChangesAsync(token);
+        }
+        using var reader = Client(factory);
+        await LoginAsync(reader, "reader", token);
+        using var populatedPage = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token);
+        Assert.AreEqual(HttpStatusCode.OK, populatedPage.StatusCode);
+        Assert.Contains("25.033, 121.5654", await TextAsync(populatedPage, token));
+        using var missingPage = await reader.GetAsync($"/speed-tests/{missing.Id:D}", token);
+        Assert.AreEqual(HttpStatusCode.OK, missingPage.StatusCode);
+        var html = await new HtmlParser().ParseDocumentAsync(await missingPage.Content.ReadAsStringAsync(token), token);
+        var coordinate = html.QuerySelectorAll("dl div").Single(x => x.QuerySelector("dt")?.TextContent == "座標");
+        Assert.AreEqual("供應商未提供", coordinate.QuerySelector("dd")?.TextContent);
     }, TestContext.CancellationToken);
     private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new("https://localhost") });
     private static Dictionary<string,string> Hidden(IElement form) => form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
