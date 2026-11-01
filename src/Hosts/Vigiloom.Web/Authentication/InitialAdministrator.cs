@@ -27,7 +27,8 @@ public sealed class InitialAdministrator(
                 @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 30000;
             IF @result < 0 THROW 50000, 'Could not acquire initial administrator lock.', 1;
             """, cancellationToken);
-        if (await db.Users.AnyAsync(cancellationToken))
+        if (await db.Users.AnyAsync(cancellationToken) ||
+            await db.AccountAuditEvents.AnyAsync(entry => entry.Action == "InitialAdministratorCreated", cancellationToken))
             return new(InitialAdministratorStatus.AlreadyInitialized, []);
 
         var account = new Account { UserName = userName };
@@ -37,6 +38,8 @@ public sealed class InitialAdministrator(
         var assigned = await users.AddToRoleAsync(account, BuiltInRoles.Administrator);
         if (!assigned.Succeeded)
             throw new InvalidOperationException("Failed to assign the built-in Administrator role. Verify that migrations and role initialization ran.");
+        db.AccountAuditEvents.Add(new AccountAuditEvent(null, account.Id, "InitialAdministratorCreated", DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(InitialAdministratorStatus.Created, []);
     }

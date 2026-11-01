@@ -101,6 +101,12 @@ public sealed class InitialAdministratorTests
             Assert.IsTrue(loginResponse.Headers.TryGetValues("Set-Cookie", out var cookies));
             Assert.IsTrue(cookies.Any(cookie => cookie.Contains(".AspNetCore.Identity.Application", StringComparison.Ordinal) &&
                 cookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && cookie.Contains("httponly", StringComparison.OrdinalIgnoreCase)));
+            var sessionCookie = cookies.Single(cookie => cookie.StartsWith(".AspNetCore.Identity.Application=", StringComparison.Ordinal)).Split(';')[0];
+            using var staleClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false, HandleCookies = false, BaseAddress = new Uri("https://localhost")
+            });
+            staleClient.DefaultRequestHeaders.Add("Cookie", sessionCookie);
             var logout = await HiddenFields("/account/logout");
             using var noTokenLogout = await client.PostAsync("/account/logout", new FormUrlEncodedContent(new Dictionary<string, string> { ["_handler"] = "logout" }), token);
             Assert.AreEqual(HttpStatusCode.BadRequest, noTokenLogout.StatusCode);
@@ -109,6 +115,9 @@ public sealed class InitialAdministratorTests
             using var unauthorized = await client.GetAsync("/account/logout", token);
             Assert.AreEqual(HttpStatusCode.Redirect, unauthorized.StatusCode);
             Assert.Contains("/account/login", unauthorized.Headers.Location?.OriginalString ?? "");
+            using var staleSession = await staleClient.GetAsync("/account/logout", token);
+            Assert.AreEqual(HttpStatusCode.Redirect, staleSession.StatusCode);
+            Assert.Contains("/account/login", staleSession.Headers.Location?.OriginalString ?? "");
         }, TestContext.CancellationToken);
 
     [TestMethod]
@@ -155,5 +164,9 @@ public sealed class InitialAdministratorTests
             var role = await roleManager.FindByNameAsync("Administrator");
             Assert.IsNotNull(role);
             Assert.IsTrue((await roleManager.UpdateAsync(role)).Succeeded);
+            // Even out-of-band account deletion must not reopen first-time setup.
+            await check.Database.ExecuteSqlRawAsync("DELETE FROM [identity].[AspNetUserRoles]; DELETE FROM [identity].[AspNetUsers];", token);
+            Assert.AreEqual(InitialAdministratorStatus.AlreadyInitialized,
+                (await Attempt(Token, "replacement", "Strong-Password-789")).Status);
         }, TestContext.CancellationToken);
 }

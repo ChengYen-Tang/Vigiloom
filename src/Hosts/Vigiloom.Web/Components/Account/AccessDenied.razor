@@ -1,0 +1,10 @@
+@page "/account/access-denied"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@layout AccountLayout
+
+<PageTitle>無法存取 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="denied-title">
+    <h1 id="denied-title">無法存取此頁面</h1>
+    <p class="account-description">目前的帳號沒有執行此操作的權限。</p>
+    <p class="account-footer"><a href="/">返回總覽</a></p>
+</section>

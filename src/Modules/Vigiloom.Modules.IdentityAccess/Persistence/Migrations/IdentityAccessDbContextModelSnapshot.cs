@@ -219,6 +219,37 @@ namespace Vigiloom.Modules.IdentityAccess.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.IdentityAccess.Domain.AccountAuditEvent", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SubjectId", "OccurredAt", "RowId");
+
+                    b.ToTable("AccountAuditEvents", "identity");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.IdentityAccess.Domain.Role", b =>
                 {
                     b.Property<Guid>("Id")
