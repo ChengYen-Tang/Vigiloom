@@ -95,6 +95,39 @@ public sealed class SpeedSqlTests
         Assert.IsNull(await history.GetAsync(Guid.CreateVersion7(), token));
         await Assert.ThrowsAsync<ArgumentException>(() => history.QueryAsync(new(now.AddDays(-90), now), token));
     });
+
+    [TestMethod]
+    public Task History_FiltersSortsAndPagesConsistently() => WithDatabase(async (factory, token) =>
+    {
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        await using (var db = factory.CreateDbContext())
+        {
+            for (var i = 1; i <= 51; i++)
+                db.SpeedRuns.Add(new SpeedRun { RequestId = Guid.CreateVersion7(), State = SpeedTestState.Success,
+                    RequestedAt = start.AddMinutes(i), Server = "Taipei test server", DownloadMbps = i, UploadMbps = 100 - i });
+            db.SpeedRuns.Add(new SpeedRun { RequestId = Guid.CreateVersion7(), State = SpeedTestState.Success,
+                RequestedAt = start.AddMinutes(52), Server = "Other server", DownloadMbps = 1000 });
+            await db.SaveChangesAsync(token);
+        }
+
+        var history = new SpeedHistory(factory);
+        var query = new SpeedHistoryQuery(start, start.AddDays(1), "Taipei", "download", true);
+        var first = await history.QueryAsync(query, token);
+        var second = await history.QueryAsync(query with { Page = 2 }, token);
+        Assert.AreEqual(51, first.Total);
+        Assert.HasCount(50, first.Items);
+        Assert.HasCount(1, second.Items);
+        Assert.AreEqual(51d, first.Items[0].DownloadMbps);
+        Assert.AreEqual(2d, first.Items[^1].DownloadMbps);
+        Assert.AreEqual(1d, second.Items[0].DownloadMbps);
+        Assert.HasCount(51, first.Trend);
+        Assert.AreEqual(1d, first.Trend[0].DownloadMbps);
+        Assert.AreEqual(51d, first.Trend[^1].DownloadMbps);
+        Assert.IsNotNull(await history.GetAsync(second.Items[0].Id, token));
+        var ascending = await history.QueryAsync(query with { Sort = "upload", Descending = false }, token);
+        Assert.AreEqual(49d, ascending.Items[0].UploadMbps);
+        Assert.AreEqual(98d, ascending.Items[^1].UploadMbps);
+    });
     private Task WithDatabase(Func<Factory, CancellationToken, Task> action) => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
