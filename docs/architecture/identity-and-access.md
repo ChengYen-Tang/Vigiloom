@@ -16,6 +16,8 @@ Administrator changes and password resets invalidate existing sessions by updati
 
 User creation and authorization changes belong to REQ-03; external API credentials belong to REQ-04. The earlier discussed AI Agent analysis remains separately deferred and does not block this requirement.
 
+The `/api/v1/accounts` endpoints use the same administrator checks and application services as the UI; `/api/v1/session/password` permits an authenticated user to change their own password. In this requirement they accept the existing browser session cookie. Before a state-changing API request, obtain a token from `GET /api/v1/session/antiforgery` and send it in the `RequestVerificationToken` header together with the associated cookies. Setup and reset codes are returned once with `Cache-Control: no-store`; handle them as credentials. Unauthenticated and unauthorized API calls return 401 and 403 rather than HTML redirects. The separate API-credential requirement will define programmatic authentication without repurposing browser cookies.
+
 ## Data Protection deployment
 
 Identity cookies and reset codes use ASP.NET Core Data Protection. The default `Vigiloom:DataProtection:ApplicationName` is `Vigiloom`; choose a distinct name and key ring per installation. Optionally configure `Vigiloom:DataProtection:KeyRingPath` (environment variable `Vigiloom__DataProtection__KeyRingPath`) to persist the key ring to a directory. All Web instances for the same installation must use the same application name and shared persistent key ring; a container must mount persistent storage. The host account needs read/write access and other accounts must not be able to read or modify the directory. Explicit filesystem storage does not automatically encrypt keys at rest.

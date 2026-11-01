@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Hosting;
@@ -29,7 +31,8 @@ public sealed class AccountManagementHttpTests
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
-                    ["Vigiloom:SetupToken"] = setupSecret
+                    ["Vigiloom:SetupToken"] = setupSecret,
+                    ["Vigiloom:Authentication:RequestsPerMinute"] = "100"
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
@@ -71,6 +74,38 @@ public sealed class AccountManagementHttpTests
                 Assert.AreEqual(HttpStatusCode.Redirect, reset.StatusCode);
             using (var login = await Post(reader, "/account/login", "login", ("Input.UserName", "reader"), ("Input.Password", "Reader-Password-123")))
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+            using (var anonymous = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") }))
+            using (var denied = await anonymous.GetAsync("/api/v1/accounts/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync("/api/v1/accounts/", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/accounts/", new { userName = "api-reader", role = "Read only" }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, anti.StatusCode);
+                using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+            }
+            Guid apiId;
+            using (var apiCreated = await admin.PostAsJsonAsync("/api/v1/accounts/", new { userName = "api-reader", role = "Read only" }, token))
+            {
+                Assert.AreEqual(HttpStatusCode.Created, apiCreated.StatusCode);
+                Assert.IsTrue(apiCreated.Headers.CacheControl?.NoStore);
+                using var json = JsonDocument.Parse(await apiCreated.Content.ReadAsStringAsync(token));
+                apiId = json.RootElement.GetProperty("id").GetGuid();
+                Assert.IsFalse(string.IsNullOrEmpty(json.RootElement.GetProperty("setupCode").GetString()));
+            }
+            using (var apiGet = await admin.GetAsync($"/api/v1/accounts/{apiId}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, apiGet.StatusCode);
+                var body = await apiGet.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain("password", body, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("setupCode", body, StringComparison.OrdinalIgnoreCase);
+            }
+            using (var renamed = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/name", new { userName = "api-renamed" }, token)) Assert.AreEqual(HttpStatusCode.NoContent, renamed.StatusCode);
+            using (var invalidRole = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Unknown" }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidRole.StatusCode);
+            using (var role = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Administrator" }, token)) Assert.AreEqual(HttpStatusCode.NoContent, role.StatusCode);
+            using (var reset = await admin.PostAsync($"/api/v1/accounts/{apiId}/password-reset", null, token)) Assert.AreEqual(HttpStatusCode.OK, reset.StatusCode);
+            using (var deleted = await admin.DeleteAsync($"/api/v1/accounts/{apiId}", token)) Assert.AreEqual(HttpStatusCode.NoContent, deleted.StatusCode);
             using (var denied = await reader.GetAsync("/account/manage", token))
             {
                 Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
@@ -98,6 +133,14 @@ public sealed class AccountManagementHttpTests
                 Assert.AreEqual(HttpStatusCode.Redirect, afterRename.StatusCode);
             using (var renamedLogin = await Post(reader, "/account/login", "login", ("Input.UserName", "reader2"), ("Input.Password", "Reader-New-Password-456")))
                 Assert.AreEqual(HttpStatusCode.Redirect, renamedLogin.StatusCode);
+            using (var forged = await reader.PostAsync(detailUrl, new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["_handler"] = "change-role", ["RoleInput.Role"] = "Administrator"
+            }), token))
+            {
+                Assert.AreEqual(HttpStatusCode.Redirect, forged.StatusCode);
+                Assert.Contains("/account/access-denied", forged.Headers.Location?.OriginalString ?? "");
+            }
             using (var promote = await Post(admin, detailUrl, "change-role", ("RoleInput.Role", "Administrator")))
                 Assert.AreEqual(HttpStatusCode.OK, promote.StatusCode);
             using (var stale = await reader.GetAsync("/account/change-password", token))
@@ -115,6 +158,16 @@ public sealed class AccountManagementHttpTests
             using (var resetAgain = await Post(reader, "/account/reset-password", "reset-password", ("Input.UserName", "reader2"),
                 ("Input.Code", resetCode!), ("Input.Password", "Reader-Reset-Password-789"), ("Input.ConfirmPassword", "Reader-Reset-Password-789")))
                 Assert.AreEqual(HttpStatusCode.Redirect, resetAgain.StatusCode);
+            using (var login = await Post(reader, "/account/login", "login", ("Input.UserName", "reader2"), ("Input.Password", "Reader-Reset-Password-789")))
+                Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+            using (var anti = await reader.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
+                reader.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+            }
+            using (var changed = await reader.PutAsJsonAsync("/api/v1/session/password", new { currentPassword = "Reader-Reset-Password-789", newPassword = "Reader-Final-Password-123" }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, changed.StatusCode);
+            using (var stale = await reader.GetAsync("/api/v1/session/antiforgery", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, stale.StatusCode);
             using (var deletion = await Post(admin, detailUrl, "delete-account", ("DeleteInput.Confirmed", "true")))
                 Assert.AreEqual(HttpStatusCode.Redirect, deletion.StatusCode);
             await using (var db = await contexts.CreateDbContextAsync(token))
