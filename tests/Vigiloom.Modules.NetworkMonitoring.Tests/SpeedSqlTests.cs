@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
@@ -14,6 +16,31 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 public sealed class SpeedSqlTests
 {
     public TestContext TestContext { get; set; } = null!;
+    [TestMethod]
+    public Task PooledContexts_CanWriteConcurrentlyWithoutSharingState() => WithDatabase(async (factory, token) =>
+    {
+        string connection;
+        await using (var context = factory.CreateDbContext()) connection = context.Database.GetDbConnection().ConnectionString;
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<NetworkDbContext>(connection, "network", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var pooled = provider.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var firstId = Guid.CreateVersion7();
+        var secondId = Guid.CreateVersion7();
+        await using (var first = await pooled.CreateDbContextAsync(token))
+        await using (var second = await pooled.CreateDbContextAsync(token))
+        {
+            Assert.AreNotSame(first, second);
+            first.SpeedRuns.Add(new SpeedRun { Id = firstId, RequestId = Guid.CreateVersion7(), RequestedAt = now, State = SpeedTestState.NoServer });
+            second.SpeedRuns.Add(new SpeedRun { Id = secondId, RequestId = Guid.CreateVersion7(), RequestedAt = now, State = SpeedTestState.NoServer });
+            await Task.WhenAll(first.SaveChangesAsync(token), second.SaveChangesAsync(token));
+        }
+        await using var check = await pooled.CreateDbContextAsync(token);
+        Assert.IsEmpty(check.ChangeTracker.Entries());
+        Assert.AreEqual(2, await check.SpeedRuns.CountAsync(x => x.Id == firstId || x.Id == secondId, token));
+    });
+
     [TestMethod]
     public Task ConsentConcurrencyCancellationAndRecovery() => WithDatabase(async (factory, token) =>
     {
