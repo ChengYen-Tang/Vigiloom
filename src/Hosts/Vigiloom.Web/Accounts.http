@@ -1,4 +1,4 @@
-@baseUrl = https://localhost:5001
+@baseUrl = https://localhost:7043
 @accountId = 00000000-0000-0000-0000-000000000000
 @antiforgery = REPLACE_WITH_TOKEN_FROM_SESSION_ENDPOINT
 
