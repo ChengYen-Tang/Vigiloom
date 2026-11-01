@@ -3,7 +3,7 @@ name: SQL Server integration
 on:
   push:
     branches:
-      - codex/req-02-data-foundation
+      - master
   pull_request:
   workflow_dispatch:
 
