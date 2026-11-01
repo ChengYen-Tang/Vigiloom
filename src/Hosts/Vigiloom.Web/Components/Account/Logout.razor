@@ -1,0 +1,39 @@
+@page "/account/logout"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [ExcludeFromInteractiveRouting]
+@layout AccountLayout
+@using Microsoft.AspNetCore.Identity
+@using Vigiloom.Modules.IdentityAccess.Domain
+@inject SignInManager<Account> SignInManager
+@inject Vigiloom.Web.Authentication.AccountLogout AccountLogout
+@inject NavigationManager Navigation
+
+<PageTitle>登出 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="logout-title">
+    <h1 id="logout-title">登出 Vigiloom</h1>
+    <p class="account-description">登出會結束此帳號在所有裝置上的登入。</p>
+    @if (error is not null)
+    {
+        <p class="account-error" role="alert">@error</p>
+    }
+    <EditForm Model="this" FormName="logout" method="post" OnValidSubmit="LogoutAsync">
+        <button class="account-primary" type="submit">登出</button>
+    </EditForm>
+    <p class="account-footer"><a href="/">返回總覽</a></p>
+</section>
+
+@code {
+    private string? error;
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    private async Task LogoutAsync()
+    {
+        if (!await AccountLogout.RevokeSessionsAsync(HttpContext.User, HttpContext.RequestAborted))
+        {
+            error = "無法結束登入，請稍後重試。";
+            return;
+        }
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/account/login", forceLoad: true);
+    }
+}

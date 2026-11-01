@@ -1,0 +1,87 @@
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
+using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.IdentityAccess.Persistence;
+
+namespace Vigiloom.Web.Authentication;
+
+internal static class IdentityRegistration
+{
+    public static IServiceCollection AddVigiloomIdentity(this IServiceCollection services)
+    {
+        services.AddScoped<InitialAdministrator>();
+        services.AddScoped<AccountAdministration>();
+        services.AddScoped<AccountPasswordReset>();
+        services.AddScoped<SelfPasswordChange>();
+        services.AddScoped<TwoFactorManagement>();
+        services.AddScoped<TwoFactorChallenge>();
+        services.AddScoped<AccountLogout>();
+        services.AddCascadingAuthenticationState();
+        services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+        services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = IdentityConstants.ApplicationScheme;
+            options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
+        }).AddIdentityCookies();
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
+            options.AddPolicy(AccessPolicies.MonitoringRead, policy => policy.RequireRole(BuiltInRoles.Administrator, BuiltInRoles.ReadOnly));
+        });
+        services.AddIdentityCore<Account>(options =>
+        {
+            options.Password.RequiredLength = 12;
+            options.Lockout.AllowedForNewUsers = true;
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        }).AddRoles<Role>()
+          .AddEntityFrameworkStores<IdentityAccessDbContext>()
+          .AddSignInManager<BoundSignInManager>()
+          .AddDefaultTokenProviders();
+        services.AddScoped<IUserStore<Account>, ProtectedUserStore>();
+        services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
+        {
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Events.OnValidatePrincipal = async context =>
+            {
+                var id = context.Principal?.FindFirstValue(ClaimTypes.Name);
+                var stamp = context.Principal?.FindFirstValue(BoundSignInManager.StampClaim);
+                var db = context.HttpContext.RequestServices.GetRequiredService<IdentityAccessDbContext>();
+                var account = id is not null && Guid.TryParse(id, out var parsed)
+                    ? await db.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Id == parsed) : null;
+                if (account is null || stamp is null || account.SecurityStamp != stamp || !account.TwoFactorEnabled ||
+                    (account.LockoutEnabled && account.LockoutEnd > DateTimeOffset.UtcNow)) context.RejectPrincipal();
+            };
+        });
+        services.ConfigureApplicationCookie(options =>
+        {
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.LoginPath = "/account/login";
+            options.AccessDeniedPath = "/account/access-denied";
+            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            options.SlidingExpiration = true;
+            options.Events.OnRedirectToLogin = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/api")) context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                else context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            };
+            options.Events.OnRedirectToAccessDenied = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/api")) context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                else context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            };
+        });
+        services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
+        services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.Zero);
+        return services;
+    }
+}

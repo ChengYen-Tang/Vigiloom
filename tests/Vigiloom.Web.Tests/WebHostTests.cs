@@ -9,6 +9,20 @@ namespace Vigiloom.Web.Tests;
 public sealed class WebHostTests(TestContext testContext)
 {
     [TestMethod]
+    public async Task LoginRateLimit_ReturnsTooManyRequests()
+    {
+        using var factory = CreateFactory("Development");
+        using var client = CreateClient(factory);
+        for (var request = 0; request < 30; request++)
+        {
+            using var allowed = await client.GetAsync("/account/login", testContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+        }
+        using var rejected = await client.GetAsync("/account/login", testContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+    }
+
+    [TestMethod]
     public async Task Home_AutoComponent_IsPrerendered()
     {
         using var factory = CreateFactory("Development");

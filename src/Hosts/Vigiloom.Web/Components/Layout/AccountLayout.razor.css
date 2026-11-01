@@ -1,0 +1,4 @@
+.account-shell { min-height: 100vh; background: #f5f8fc; color: #142344; font-family: system-ui, sans-serif; }
+.account-header { display: flex; align-items: center; height: 68px; padding: 0 24px; background: white; border-bottom: 1px solid #e3eaf3; }
+.account-brand { color: #12213d; font-size: 1.4rem; font-weight: 750; text-decoration: none; }
+.account-main { display: flex; justify-content: center; padding: clamp(32px, 8vh, 80px) 16px; }

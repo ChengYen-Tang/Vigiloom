@@ -1,0 +1,77 @@
+@page "/account/login"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-login")]
+@attribute [ExcludeFromInteractiveRouting]
+@layout AccountLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Http.HttpResults
+@using Microsoft.AspNetCore.Identity
+@using Vigiloom.Modules.IdentityAccess.Domain
+@inject SignInManager<Account> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>登入 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="login-title">
+    <h1 id="login-title">登入 Vigiloom</h1>
+    <p class="account-description">使用你的帳號查看監控資訊。</p>
+    @if ((Setup == "complete" || Password == "changed") && error is null)
+    {
+        <p class="account-success" role="status">設定已完成，請登入。</p>
+    }
+    @if (error is not null)
+    {
+        <p class="account-error" role="alert">@error</p>
+    }
+    <EditForm Model="Input" FormName="login" method="post" OnValidSubmit="LoginAsync">
+        <DataAnnotationsValidator />
+        <div class="account-field">
+            <label for="login-name">帳號</label>
+            <InputText id="login-name" @bind-Value="Input.UserName" autocomplete="username" maxlength="256" required />
+            <ValidationMessage For="() => Input.UserName" />
+        </div>
+        <div class="account-field">
+            <label for="login-password">密碼</label>
+            <input id="login-password" name="Input.Password" type="password" autocomplete="current-password" maxlength="1024" required />
+            <ValidationMessage For="() => Input.Password" />
+        </div>
+        <label class="account-checkbox"><InputCheckbox @bind-Value="Input.RememberMe" /> 記住登入</label>
+        <button class="account-primary" type="submit">登入</button>
+    </EditForm>
+    <p class="account-footer"><a href="/account/reset-password">使用代碼設定密碼</a> · <a href="/account/setup">首次設定</a></p>
+</section>
+
+@code {
+    private string? error;
+    [SupplyParameterFromForm] private LoginInput Input { get; set; } = default!;
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private string? Setup { get; set; }
+    [SupplyParameterFromQuery] private string? Password { get; set; }
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task LoginAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(Input.UserName, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        Input.Password = string.Empty;
+        if (result.RequiresTwoFactor)
+        {
+            var destination = RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/";
+            Navigation.NavigateTo($"/account/two-factor?returnUrl={Uri.EscapeDataString(destination)}&remember={Input.RememberMe}", forceLoad: true);
+            return;
+        }
+        if (result.Succeeded)
+        {
+            var destination = RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/";
+            Navigation.NavigateTo(destination, forceLoad: true);
+            return;
+        }
+        error = "帳號或密碼錯誤，或帳號暫時無法登入。";
+    }
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = "";
+        [Required(ErrorMessage = "請輸入密碼。"), StringLength(1024)] public string Password { get; set; } = "";
+        public bool RememberMe { get; set; }
+    }
+}
