@@ -7,6 +7,8 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Web.Components;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Api;
+using MudBlazor.Services;
+using Vigiloom.Contracts.Workspace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,9 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configurati
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentity();
+builder.Services.AddMudServices();
+builder.Services.AddScoped<WorkspaceIdentityService>();
+builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -103,11 +108,20 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), web =>
 app.UseHttpsRedirection();
 app.UseRateLimiter();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/workspace")) context.Response.Headers.CacheControl = "no-store";
+    await next();
+});
 app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
+app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
+    (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
+    .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)
+    .WithSummary("Get the current monitoring user's identity");
 app.MapGet("/api/v1/access", (HttpContext context) => TypedResults.Ok(new ApiClientAccessResponse(
     context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value,
     context.User.FindAll("scope").Select(claim => claim.Value).ToArray())))

@@ -1,14 +1,60 @@
 using System.Net;
 using System.Text.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class WebHostTests(TestContext testContext)
 {
+    [TestMethod]
+    public async Task PublicStaticAssets_DoNotRevalidateAnAuthenticatedCookie()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddSingleton<CountingValidator>();
+                services.AddSingleton<ISecurityStampValidator>(provider => provider.GetRequiredService<CountingValidator>());
+            });
+        });
+        using var client = CreateClient(factory);
+        var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "test-user"), new Claim(ClaimTypes.Name, "test-user")], IdentityConstants.ApplicationScheme);
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), new AuthenticationProperties
+        {
+            IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10)
+        }, IdentityConstants.ApplicationScheme);
+        client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={options.TicketDataFormat!.Protect(ticket)}");
+        var counter = factory.Services.GetRequiredService<CountingValidator>();
+        using (var asset = await client.GetAsync("/_framework/blazor.web.js", testContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.OK, asset.StatusCode);
+        Assert.AreEqual(0, counter.Count);
+        using (var page = await client.GetAsync("/", testContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+        Assert.IsGreaterThan(0, counter.Count);
+    }
+
+    [TestMethod]
+    [DataRow("/_content/MudBlazor/MudBlazor.min.css")]
+    [DataRow("/_content/MudBlazor/MudBlazor.min.js")]
+    [DataRow("/_content/Vizor.ECharts/js/vizor-echarts-bundle-min.js")]
+    public async Task SharedComponentAssets_AreAvailable(string path)
+    {
+        using var factory = CreateFactory("Development");
+        using var client = CreateClient(factory);
+        using var response = await client.GetAsync(path, testContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [TestMethod]
     public async Task ApiRateLimit_ReturnsProblemDetailsAndRetryAfter()
     {
@@ -148,4 +194,15 @@ public sealed class WebHostTests(TestContext testContext)
             BaseAddress = new Uri("https://localhost"),
             AllowAutoRedirect = false
         });
+
+    private sealed class CountingValidator : ISecurityStampValidator
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public Task ValidateAsync(CookieValidatePrincipalContext context)
+        {
+            Interlocked.Increment(ref count);
+            return Task.CompletedTask;
+        }
+    }
 }

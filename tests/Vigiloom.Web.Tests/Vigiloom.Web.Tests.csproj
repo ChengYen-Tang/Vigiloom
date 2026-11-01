@@ -5,6 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Playwright" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="Otp.NET" />
   </ItemGroup>

@@ -1,0 +1,36 @@
+@using Vizor.ECharts
+
+<figure class="time-series-chart" data-runtime="@RendererInfo.Name">
+    <figcaption>@Title @if (!string.IsNullOrWhiteSpace(Unit)) { <span>(@Unit)</span> }</figcaption>
+    @if (Points.Count == 0)
+    {
+        <p>目前沒有資料。</p>
+    }
+    else
+    {
+        <div role="img" aria-label="@Title"><EChart @key="options" Options="options" Width="100%" Height="280px" /></div>
+        <details>
+            <summary>以表格查看資料</summary>
+            <table><thead><tr><th scope="col">時間（UTC）</th><th scope="col">數值 @Unit</th></tr></thead><tbody>
+                @foreach (var point in Points)
+                {
+                    <tr><td>@point.Time.ToUniversalTime().ToString("u")</td><td>@(point.Value?.ToString("G") ?? "無資料")</td></tr>
+                }
+            </tbody></table>
+        </details>
+    }
+</figure>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Unit { get; set; } = "";
+    [Parameter] public IReadOnlyList<TimeSeriesPoint> Points { get; set; } = [];
+    private ChartOptions options = new();
+    protected override void OnParametersSet() => options = CreateOptions(Points);
+    internal static ChartOptions CreateOptions(IReadOnlyList<TimeSeriesPoint> points) => new()
+        {
+            XAxis = new() { Type = AxisType.Time },
+            YAxis = new() { Type = AxisType.Value },
+            Series = new() { new LineSeries { Data = points.Select(point => new object?[] { point.Time.ToUnixTimeMilliseconds(), point.Value }).ToArray(), ConnectNulls = false } }
+        };
+}
