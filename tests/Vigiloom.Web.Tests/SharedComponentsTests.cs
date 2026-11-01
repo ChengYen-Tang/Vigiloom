@@ -12,6 +12,25 @@ namespace Vigiloom.Web.Tests;
 public sealed class SharedComponentsTests
 {
     [TestMethod]
+    public void TimeSeries_UsesActualUnevenTimestampsAndDoesNotConnectMissingSamples()
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        TimeSeriesPoint[] points = [
+            new(start, 1), new(start.AddMinutes(1), null), new(start.AddHours(12), 3)
+        ];
+        var build = typeof(TimeSeriesChart).GetMethod("CreateOptions", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.IsNotNull(build);
+        var options = (Vizor.ECharts.ChartOptions)build.Invoke(null, [points])!;
+        Assert.AreEqual(Vizor.ECharts.AxisType.Time, options.XAxis!.Type);
+        var series = (Vizor.ECharts.LineSeries)options.Series![0];
+        Assert.IsFalse(series.ConnectNulls ?? true);
+        var values = (object?[][])series.Data!;
+        Assert.AreEqual(60_000L, (long)values[1][0]! - (long)values[0][0]!);
+        Assert.AreEqual(43_140_000L, (long)values[2][0]! - (long)values[1][0]!);
+        Assert.IsNull(values[1][1]);
+    }
+
+    [TestMethod]
     public async Task Components_PrerenderWithoutJavaScript_AndPreserveMissingSamples()
     {
         var services = new ServiceCollection();
