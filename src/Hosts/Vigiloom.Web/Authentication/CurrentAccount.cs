@@ -13,6 +13,7 @@ internal static class CurrentAccount
     {
         var id = users.GetUserId(principal);
         var stamp = principal.FindFirstValue(options.Value.ClaimsIdentity.SecurityStampClaimType);
+        if (principal.HasClaim(claim => claim.Type == SessionLifetime.ExpirationClaim) && !SessionLifetime.IsCurrent(principal)) return null;
         if (id is null || stamp is null) return null;
         var account = await users.FindByIdAsync(id);
         if (account is null) return null;

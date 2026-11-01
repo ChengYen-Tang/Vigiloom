@@ -9,6 +9,7 @@ internal sealed class ServerWorkspaceIdentityClient(AuthenticationStateProvider 
     public async Task<WorkspaceIdentity?> GetAsync(CancellationToken cancellationToken = default)
     {
         var state = await authentication.GetAuthenticationStateAsync();
+        if (!SessionLifetime.IsCurrent(state.User)) return null;
         return await service.GetAsync(state.User, cancellationToken);
     }
 }
