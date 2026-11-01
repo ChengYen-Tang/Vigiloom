@@ -80,7 +80,7 @@ public sealed class SpeedBrowserTests
         await page.Locator(".device-table-wrap a").First.ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "測速結果", Exact = true }).WaitForAsync();
         Assert.Contains("未完整完成", await page.Locator("main").InnerTextAsync());
-        Assert.Contains("供應商未提供", await page.Locator("main").InnerTextAsync());
+        Assert.Contains("目前無資料", await page.Locator("main").InnerTextAsync());
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Button, new() { Name = "取消這筆測試" }).CountAsync());
         await page.GotoAsync(url + "/speed-tests");
         await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });

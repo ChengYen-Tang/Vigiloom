@@ -80,8 +80,10 @@ public sealed class SpeedHttpTests
         using var missingPage = await reader.GetAsync($"/speed-tests/{missing.Id:D}", token);
         Assert.AreEqual(HttpStatusCode.OK, missingPage.StatusCode);
         var html = await new HtmlParser().ParseDocumentAsync(await missingPage.Content.ReadAsStringAsync(token), token);
-        var coordinate = html.QuerySelectorAll("dl div").Single(x => x.QuerySelector("dt")?.TextContent == "座標");
-        Assert.AreEqual("供應商未提供", coordinate.QuerySelector("dd")?.TextContent);
+        var coordinate = html.QuerySelectorAll("dl div").Single(x => x.QuerySelector("dt")?.TextContent == "伺服器座標");
+        Assert.AreEqual("目前無資料", coordinate.QuerySelector("dd")?.TextContent);
+        var isp = html.QuerySelectorAll("dl div").Single(x => x.QuerySelector("dt")?.TextContent == "測速端 ISP");
+        Assert.AreEqual("目前無資料", isp.QuerySelector("dd")?.TextContent);
         Assert.Contains("此測試未完整完成", html.Body!.TextContent);
         using var notFoundPage = await reader.GetAsync($"/speed-tests/{Guid.CreateVersion7():D}", token);
         Assert.AreEqual(HttpStatusCode.OK, notFoundPage.StatusCode);
