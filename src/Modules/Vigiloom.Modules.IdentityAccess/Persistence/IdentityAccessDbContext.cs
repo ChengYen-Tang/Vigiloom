@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Vigiloom.Modules.IdentityAccess.Domain;
 
 namespace Vigiloom.Modules.IdentityAccess.Persistence;
@@ -16,14 +17,14 @@ public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbCon
         account.ToTable("AspNetUsers", table => table.HasCheckConstraint("CK_AspNetUsers_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
         account.HasKey(x => x.Id).IsClustered(false);
         account.Property(x => x.Id).ValueGeneratedNever();
-        account.Property(x => x.RowId).UseIdentityColumn();
+        account.Property(x => x.RowId).UseIdentityColumn().Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
         account.HasIndex(x => x.RowId).IsUnique().IsClustered();
         account.Property(x => x.Version).IsRowVersion();
         var role = modelBuilder.Entity<Role>();
         role.ToTable("AspNetRoles", table => table.HasCheckConstraint("CK_AspNetRoles_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
         role.HasKey(x => x.Id).IsClustered(false);
         role.Property(x => x.Id).ValueGeneratedNever();
-        role.Property(x => x.RowId).UseIdentityColumn();
+        role.Property(x => x.RowId).UseIdentityColumn().Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
         role.HasIndex(x => x.RowId).IsUnique().IsClustered();
         role.Property(x => x.Version).IsRowVersion();
         // Identity owns the related claim, login, token and membership keys.
