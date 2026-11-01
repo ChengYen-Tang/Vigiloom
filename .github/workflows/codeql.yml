@@ -76,7 +76,8 @@ jobs:
           languages: go
           build-mode: manual
       - name: Build NDT7 adapter
-        run: go -C tools/ndt7 build -a -mod=readonly ./...
+        working-directory: tools/ndt7
+        run: go build -a -mod=readonly ./...
       - name: Analyze Go
         uses: github/codeql-action/analyze@v4
         with:
