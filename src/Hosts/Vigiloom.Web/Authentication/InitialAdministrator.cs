@@ -34,7 +34,7 @@ public sealed class InitialAdministrator(
         var created = await users.CreateAsync(account, password);
         if (!created.Succeeded)
             return new(InitialAdministratorStatus.ValidationFailed, created.Errors.Select(error => error.Description).ToArray());
-        var assigned = await users.AddToRoleAsync(account, "Administrator");
+        var assigned = await users.AddToRoleAsync(account, BuiltInRoles.Administrator);
         if (!assigned.Succeeded)
             throw new InvalidOperationException("Failed to assign the built-in Administrator role. Verify that migrations and role initialization ran.");
         await transaction.CommitAsync(cancellationToken);

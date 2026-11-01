@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.WebAssembly.Server;
@@ -7,12 +9,27 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class IdentityConfigurationTests
 {
+    [TestMethod]
+    public async Task Policies_EnforceRoleBoundaries()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment("Development"));
+        var authorization = factory.Services.GetRequiredService<IAuthorizationService>();
+        static ClaimsPrincipal Principal(string? role) => role is null
+            ? new ClaimsPrincipal(new ClaimsIdentity())
+            : new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, role)], "test"));
+        Assert.IsTrue((await authorization.AuthorizeAsync(Principal(BuiltInRoles.Administrator), AccessPolicies.Administrator)).Succeeded);
+        Assert.IsFalse((await authorization.AuthorizeAsync(Principal(BuiltInRoles.ReadOnly), AccessPolicies.Administrator)).Succeeded);
+        Assert.IsTrue((await authorization.AuthorizeAsync(Principal(BuiltInRoles.ReadOnly), AccessPolicies.MonitoringRead)).Succeeded);
+        Assert.IsFalse((await authorization.AuthorizeAsync(Principal(null), AccessPolicies.MonitoringRead)).Succeeded);
+    }
+
     [TestMethod]
     public void Identity_UsesBuiltInStoresAndRestrictiveCookieSettings()
     {

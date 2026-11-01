@@ -17,7 +17,11 @@ internal static class IdentityRegistration
             options.DefaultScheme = IdentityConstants.ApplicationScheme;
             options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
         }).AddIdentityCookies();
-        services.AddAuthorization();
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
+            options.AddPolicy(AccessPolicies.MonitoringRead, policy => policy.RequireRole(BuiltInRoles.Administrator, BuiltInRoles.ReadOnly));
+        });
         services.AddIdentityCore<Account>(options =>
         {
             options.Password.RequiredLength = 12;

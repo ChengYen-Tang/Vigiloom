@@ -1,5 +1,12 @@
 @inherits LayoutComponentBase
 
+<header class="main-header">
+    <a href="/" class="main-brand">Vigiloom</a>
+    <Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+        <Authorized><a href="/account/logout">登出</a></Authorized>
+        <NotAuthorized><a href="/account/login">登入</a></NotAuthorized>
+    </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+</header>
 @Body
 
 <div id="blazor-error-ui" data-nosnippet>

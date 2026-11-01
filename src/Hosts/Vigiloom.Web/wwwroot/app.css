@@ -1,3 +1,5 @@
+html, body { margin: 0; }
+
 h1:focus {
     outline: none;
 }
@@ -36,3 +38,20 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+.account-card { width: min(100%, 440px); padding: clamp(24px, 5vw, 36px); background: #fff; border: 1px solid #e3eaf3; border-radius: 8px; box-shadow: 0 6px 24px #12213d0a; }
+.account-card h1 { margin: 0; color: #101e3d; font-size: 1.5rem; }
+.account-description { margin: 8px 0 28px; color: #667a99; }
+.account-field { display: grid; gap: 7px; margin: 0 0 20px; }
+.account-field label { font-weight: 600; }
+.account-field input:not([type=checkbox]) { width: 100%; min-height: 44px; box-sizing: border-box; padding: 10px 12px; border: 1px solid #b7c6da; border-radius: 5px; font: inherit; }
+.account-field input:focus-visible, .account-primary:focus-visible, .account-checkbox input:focus-visible { outline: 3px solid #9ac4ff; outline-offset: 2px; }
+.account-hint { color: #667a99; font-size: .875rem; }
+.account-checkbox { display: flex; gap: 8px; align-items: center; margin-bottom: 24px; }
+.account-primary { width: 100%; min-height: 44px; border: 0; border-radius: 5px; color: white; background: #075ff0; font: inherit; font-weight: 650; cursor: pointer; }
+.account-primary:hover { background: #004bc4; }
+.account-error { padding: 12px; color: #9c1717; background: #fff0f0; border-radius: 5px; }
+.account-footer { margin: 20px 0 0; text-align: center; }
+.account-footer a { color: #075ff0; }
+
+.account-success { padding: 12px; color: #0a6632; background: #eaf8f0; border-radius: 5px; }
