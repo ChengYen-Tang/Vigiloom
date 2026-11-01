@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
+using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options) : DbContext(options)
 {
+    public DbSet<SpeedSetting> SpeedSettings => Set<SpeedSetting>();
+    public DbSet<SpeedRun> SpeedRuns => Set<SpeedRun>();
     public DbSet<PingSample> PingSamples => Set<PingSample>();
     public DbSet<PingSetting> PingSettings => Set<PingSetting>();
     public DbSet<PingTargetState> PingTargets => Set<PingTargetState>();
@@ -12,6 +15,33 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("network");
+        var speedSettings = modelBuilder.Entity<SpeedSetting>();
+        speedSettings.ToTable("SpeedSettings", t => t.HasCheckConstraint("CK_SpeedSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        speedSettings.HasKey(x => x.Id).IsClustered(false);
+        speedSettings.Property(x => x.Id).ValueGeneratedNever();
+        speedSettings.Property(x => x.RowId).UseIdentityColumn();
+        speedSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        speedSettings.Property(x => x.Name).HasMaxLength(32);
+        speedSettings.HasIndex(x => x.Name).IsUnique();
+        speedSettings.Property(x => x.ConsentPolicy).HasMaxLength(128);
+        speedSettings.Property(x => x.Version).IsRowVersion();
+        var run = modelBuilder.Entity<SpeedRun>();
+        run.ToTable("SpeedRuns", t => t.HasCheckConstraint("CK_SpeedRuns_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        run.HasKey(x => x.Id).IsClustered(false);
+        run.Property(x => x.Id).ValueGeneratedNever();
+        run.Property(x => x.RowId).UseIdentityColumn();
+        run.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        run.Property(x => x.Location).HasMaxLength(32);
+        run.Property(x => x.Provider).HasMaxLength(100);
+        run.Property(x => x.Server).HasMaxLength(253);
+        run.Property(x => x.City).HasMaxLength(100);
+        run.Property(x => x.Country).HasMaxLength(100);
+        run.Property(x => x.Isp).HasMaxLength(256);
+        run.Property(x => x.DiagnosticCode).HasMaxLength(64);
+        run.Property(x => x.Version).IsRowVersion();
+        run.HasIndex(x => x.Location).IsUnique().HasFilter("[State] < 2");
+        run.HasIndex(x => new { x.RequestedBy, x.RequestId }).IsUnique().HasFilter(null);
+        run.HasIndex(x => new { x.RequestedAt, x.RowId });
         var sample = modelBuilder.Entity<PingSample>();
         sample.ToTable("PingSamples");
         sample.HasKey(x => x.RowId).IsClustered();

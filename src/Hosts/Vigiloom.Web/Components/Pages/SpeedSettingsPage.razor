@@ -1,0 +1,82 @@
+@page "/settings/speed-tests"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.SpeedTests
+@using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests
+@inject SpeedSettings Settings
+@inject ILogger<SpeedSettingsPage> Logger
+<PageTitle>網路測速設定 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <header class="device-heading"><div><h1>網路測速設定</h1><p>從中央 Worker 的位置量測對外路徑，與各設備的 Ping 分開。</p></div></header>
+    <section class="device-panel">
+        <h2>先了解測試會公開的資訊</h2>
+        <p>M-Lab 會公開並永久保留對外 IP、量測時間與測試結果，通常無法移除。Vigiloom 內的 Private 設定不會限制第三方公開資料。</p>
+        <p>測試會占用上下傳頻寬。商業整合須自行確認並符合 M-Lab 的贊助或其他貢獻條件；Vigiloom 不替部署者承諾費用或取得許可。</p>
+        <p><a href="https://www.measurementlab.net/aup/" target="_blank" rel="noopener noreferrer">M-Lab 使用政策</a> · <a href="https://www.measurementlab.net/privacy/" target="_blank" rel="noopener noreferrer">M-Lab 隱私政策</a></p>
+        @if (error) { <p role="alert">無法讀取設定，請稍後重新整理。</p> }
+        else
+        {
+            @if (message is not null) { <p role="status">@message</p> }
+            <EditForm Model="Input" FormName="speed-settings" method="post" OnSubmit="SaveAsync">
+                <DataAnnotationsValidator /><ValidationSummary /><InputHidden @bind-Value="Input.Version" /><InputHidden @bind-Value="Input.Policy" />
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Consent" /> 我已閱讀上述政策，了解資訊會公開與流量成本，並已確認本部署符合使用條件，同意由中央位置執行測試。</label>
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Automatic" /> 啟用自動測速（預設關閉）</label>
+                <label for="speed-hours">自動間隔（6～168 小時，加入 ±20% 抖動）</label><InputNumber id="speed-hours" @bind-Value="Input.Hours" min="6" max="168" />
+                <label for="speed-budget">每次流量預算（1～200 MiB，上下傳合計）</label><InputNumber id="speed-budget" @bind-Value="Input.MaxMiB" min="1" max="200" />
+                <label for="speed-timeout">每次最長時間（5～60 秒）</label><InputNumber id="speed-timeout" @bind-Value="Input.Timeout" min="5" max="60" />
+                <p>每個中央位置同時只執行一筆；滾動 24 小時最多 4 次自動、手動與自動合計最多 40 次。失敗、取消與保留名額仍計數。撤回同意會取消待執行與進行中測試；關閉自動只停止自動測試。</p>
+                <p>達流量上限即停止，結果標記部分／超額中止；已在途或系統緩衝封包可能使線路流量稍高，不宣稱精確的線路位元組硬上限。</p>
+                <div class="device-actions"><button type="submit">儲存測速設定</button><a href="/speed-tests">查看測速紀錄</a></div>
+            </EditForm>
+            @if (snapshot is not null)
+            {
+                <p>最近 24 小時已保留 @snapshot.ReservedToday 次，其中自動 @snapshot.AutomaticToday 次。</p>
+                <p>下次自動排程（UTC）：@(snapshot.NextAutomaticAt?.ToString("u") ?? "未啟用")</p>
+                @if (snapshot.NextAllowedAt is { } allowed) { <p>總量限制最早可執行（UTC）：@allowed.ToString("u")</p> }
+            }
+        }
+    </section>
+</main>
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "speed-settings")] private SpeedForm Input { get; set; } = default!;
+    private SpeedSettingsSnapshot? snapshot;
+    private bool error;
+    private string? message;
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        try
+        {
+            snapshot = await Settings.GetAsync(HttpContext.RequestAborted);
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { Automatic = snapshot.Automatic, Hours = snapshot.IntervalHours,
+                MaxMiB = snapshot.MaxMiB, Timeout = snapshot.TimeoutSeconds, Consent = snapshot.Consent, Version = snapshot.Version, Policy = snapshot.ConsentPolicy };
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not load speed settings: {ExceptionType}", ex.GetType().Name); error = true; }
+    }
+    private async Task SaveAsync(EditContext context)
+    {
+        if (!context.Validate() || !Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new SpeedSettingsInput(Input.Automatic, Input.Hours, Input.MaxMiB, Input.Timeout, Input.Consent, Input.Version, Input.Policy);
+        if (!SpeedSettings.Valid(input)) { message = "請檢查數值範圍；啟用自動測試前須先同意使用條件。"; return; }
+        try
+        {
+            if (await Settings.UpdateAsync(input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                snapshot = saved; Input.Version = saved.Version; message = "設定已儲存；中央 Worker 會使用新設定，同意撤回即阻止新的測試。";
+            }
+            else message = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not save speed settings: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+    }
+    private sealed class SpeedForm
+    {
+        public bool Automatic { get; set; }
+        public int Hours { get; set; } = 6;
+        public int MaxMiB { get; set; } = 200;
+        public int Timeout { get; set; } = 60;
+        public bool Consent { get; set; }
+        public string? Policy { get; set; }
+        public string? Version { get; set; }
+    }
+}
