@@ -8,6 +8,7 @@ using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 
@@ -233,6 +234,50 @@ public sealed class SpeedSqlTests
             try { await activeRun.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None); }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
         }
+    });
+
+    [TestMethod]
+    [DoNotParallelize]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Runner_RealClientPersistsMeasurementAndHistory() => WithDatabase(async (factory, token) =>
+    {
+        var settings = new SpeedSettings(factory);
+        var queue = new SpeedQueue(factory);
+        var actor = Guid.CreateVersion7();
+        var initial = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new(false, 6, 200, 60, true, initial.Version, initial.ConsentPolicy), actor, token));
+        var request = await queue.RequestAsync(Guid.CreateVersion7(), actor, false, token);
+        Assert.AreEqual(SpeedRequestStatus.Accepted, request.Status);
+        Assert.IsNotNull(request.RunId);
+
+        var handler = new ControlledPhaseHandler();
+        var probe = new SpeedtestNetProbe(new ControlledPhaseFactory(handler));
+        var runner = new SpeedRunner(queue, probe, NullLogger<SpeedRunner>.Instance);
+        await runner.RunOnceAsync(token);
+
+        var history = new SpeedHistory(factory);
+        var detail = await history.GetAsync(request.RunId.Value, token);
+        Assert.IsNotNull(detail);
+        Assert.AreEqual(SpeedTestState.Success, detail.Summary.State);
+        Assert.AreEqual("central", detail.Summary.Location);
+        Assert.AreEqual("Example (#1) · speedtest.example.com", detail.Summary.Server);
+        Assert.AreEqual("Taipei", detail.City);
+        Assert.IsNotNull(detail.Summary.StartedAt);
+        Assert.IsNotNull(detail.Summary.CompletedAt);
+        Assert.IsNotNull(detail.Summary.DownloadMbps);
+        Assert.IsGreaterThan(0d, detail.Summary.DownloadMbps.Value);
+        Assert.IsNotNull(detail.Summary.UploadMbps);
+        Assert.IsGreaterThan(0d, detail.Summary.UploadMbps.Value);
+        Assert.IsNotNull(detail.Summary.Bytes);
+        Assert.IsGreaterThan(170L * 1048576, detail.Summary.Bytes.Value);
+        Assert.IsNull(detail.Isp);
+        var page = await history.QueryAsync(new(detail.Summary.RequestedAt.AddMinutes(-1), detail.Summary.RequestedAt.AddMinutes(1)), token);
+        Assert.HasCount(1, page.Items);
+        Assert.AreEqual(detail.Summary.Id, page.Items[0].Id);
+        Assert.AreEqual(detail.Summary.DownloadMbps, page.Items[0].DownloadMbps);
+        Assert.AreEqual(detail.Summary.UploadMbps, page.Items[0].UploadMbps);
+        Assert.HasCount(1, page.Trend);
+        Assert.AreEqual(detail.Summary.Id, page.Trend[0].Id);
     });
 
     private sealed class FixedProbe(SpeedMeasurement result) : ISpeedProbe
