@@ -23,7 +23,8 @@
         @if (saved) { <p class="jobs-success" role="status">背景工作檢查頻率已儲存。</p> }
         @if (conflict) { <p class="jobs-notice" role="alert">設定已被其他管理員修改，請重新整理後再試。</p> }
         @if (pending) { <p class="jobs-notice" role="status">設定已儲存，正在等待背景服務套用。</p> }
-        @if (saveError) { <p class="jobs-notice" role="alert">無法儲存設定，請確認資料庫連線後重試。</p> }
+        @if (refreshRequired) { <p class="jobs-notice" role="alert">無法取得最新設定，請重新整理後再操作。</p> }
+        @if (saveError) { <p class="jobs-notice" role="alert">無法確認儲存結果，請重新整理並檢查設定。</p> }
         @if (overview.Workers == 0)
         {
             <section class="jobs-notice" role="status"><strong>目前沒有已連線的背景服務。</strong> 工作可能無法執行，請確認 Vigiloom 背景服務狀態。</section>
@@ -53,14 +54,14 @@
         <section class="jobs-panel jobs-settings" aria-labelledby="schedule-title">
             <h2 id="schedule-title">背景工作檢查頻率</h2>
             <p>設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。</p>
-            @if (!scheduleApplied) { <p role="status">目前排程尚未套用；背景服務啟動後會自動同步。</p> }
+            @if (!scheduleApplied && !refreshRequired) { <p role="status">目前排程尚未套用；背景服務啟動後會自動同步。</p> }
             <EditForm Model="Input" FormName="job-schedule" method="post" OnValidSubmit="SaveAsync">
                 <InputHidden @bind-Value="Input.Version" />
                 <label for="schedule-interval">檢查間隔</label>
                 <InputSelect id="schedule-interval" @bind-Value="Input.Minutes">
                     @foreach (var minutes in new[] { 1, 2, 5, 10, 15, 30, 60 }) { <option value="@minutes">@minutes 分鐘</option> }
                 </InputSelect>
-                <button type="submit">儲存設定</button>
+                <button type="submit" disabled="@(refreshRequired || conflict || saveError)">儲存設定</button>
             </EditForm>
         </section>
     }
@@ -73,6 +74,7 @@
     private bool saveError;
     private bool conflict;
     private bool pending;
+    private bool refreshRequired;
     private bool scheduleApplied;
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "job-schedule")] private ScheduleInput Input { get; set; } = default!;
@@ -101,9 +103,6 @@
             auditIds = await Audit.BeginAsync(actor, "/settings/jobs/schedule", [OutboxScheduleManager.ScheduleId], HttpContext.RequestAborted);
             Schedule.SetIntervalMinutes(Input.Minutes, Input.Version ?? "", actor);
             saved = true;
-            var snapshot = Schedule.GetSnapshot();
-            scheduleApplied = snapshot.Applied;
-            Input.Version = snapshot.Version;
             await RecordOutcomeAsync(auditIds, "accepted");
         }
         catch (ScheduleConflictException)
@@ -122,6 +121,20 @@
             Logger.LogWarning("Could not save background schedule: {ExceptionType}", exception.GetType().Name);
             if (auditIds is not null) await RecordOutcomeAsync(auditIds, "unknown");
             saveError = true;
+        }
+        if (saved || pending)
+        {
+            try
+            {
+                var snapshot = Schedule.GetSnapshot();
+                scheduleApplied = snapshot.Applied;
+                Input.Version = snapshot.Version;
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning("Could not refresh background schedule: {ExceptionType}", exception.GetType().Name);
+                refreshRequired = true;
+            }
         }
     }
 

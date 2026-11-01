@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using AngleSharp.Html.Parser;
 using Hangfire;
+using Hangfire.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -38,6 +39,11 @@ public sealed class DashboardSecurityTests
                 ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
                 ["Vigiloom:SetupToken"] = setupSecret
             }));
+            builder.ConfigureServices(services =>
+            {
+                services.AddSingleton<FailingRecurringManager>(sp => new(new RecurringJobManager(sp.GetRequiredService<JobStorage>())));
+                services.AddSingleton<IRecurringJobManager>(sp => sp.GetRequiredService<FailingRecurringManager>());
+            });
         });
         await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
         var identity = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
@@ -132,17 +138,40 @@ public sealed class DashboardSecurityTests
             Assert.AreEqual(HttpStatusCode.OK, changed.StatusCode);
             var text = (await new HtmlParser().ParseDocumentAsync(await changed.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
             Assert.Contains("背景工作檢查頻率已儲存", text);
+            Assert.DoesNotContain("無法確認儲存結果", text);
             fields[form.QuerySelector("select")!.GetAttribute("name")!] = "15";
             using var stale = await admin.PostAsync("/settings/jobs", new FormUrlEncodedContent(fields), token);
-            var staleText = (await new HtmlParser().ParseDocumentAsync(await stale.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
-            Assert.Contains("設定已被其他管理員修改", staleText);
+            var staleDocument = await new HtmlParser().ParseDocumentAsync(await stale.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("設定已被其他管理員修改", staleDocument.Body!.TextContent);
+            var staleForm = staleDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "job-schedule");
+            Assert.IsTrue(staleForm.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
         }
         using (var scope = factory.Services.CreateScope())
             Assert.AreEqual(5, scope.ServiceProvider.GetRequiredService<OutboxScheduleManager>().GetSnapshot().Minutes);
+        using (var settingsPage = await admin.GetAsync("/settings/jobs", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await settingsPage.Content.ReadAsStringAsync(token), token);
+            var form = document.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "job-schedule");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            var intervalName = form.QuerySelector("select")!.GetAttribute("name")!;
+            fields[intervalName] = "10";
+            factory.Services.GetRequiredService<FailingRecurringManager>().FailNext = true;
+            using var pending = await admin.PostAsync("/settings/jobs", new FormUrlEncodedContent(fields), token);
+            var pendingDocument = await new HtmlParser().ParseDocumentAsync(await pending.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("設定已儲存，正在等待背景服務套用", pendingDocument.Body!.TextContent);
+            var pendingForm = pendingDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "job-schedule");
+            Assert.IsFalse(pendingForm.QuerySelector("button[type=submit]")!.HasAttribute("disabled"));
+            fields = pendingForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            fields[intervalName] = "15";
+            using var retry = await admin.PostAsync("/settings/jobs", new FormUrlEncodedContent(fields), token);
+            var retryText = (await new HtmlParser().ParseDocumentAsync(await retry.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("背景工作檢查頻率已儲存", retryText);
+            Assert.DoesNotContain("設定已被其他管理員修改", retryText);
+        }
         await using (var audit = connection.CreateCommand())
         {
             audit.CommandText = "SELECT COUNT(*) FROM scheduling.DashboardAudit WHERE Action='/settings/jobs/schedule' AND Result='accepted'";
-            Assert.AreEqual(1, (int)(await audit.ExecuteScalarAsync(token))!);
+            Assert.AreEqual(2, (int)(await audit.ExecuteScalarAsync(token))!);
         }
         await using (var drop = connection.CreateCommand())
         {
@@ -171,6 +200,18 @@ public sealed class DashboardSecurityTests
         fields["Input.Password"] = password;
         using var response = await client.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
         Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
+    private sealed class FailingRecurringManager(IRecurringJobManager inner) : IRecurringJobManager
+    {
+        public bool FailNext { get; set; }
+        public void AddOrUpdate(string recurringJobId, Job job, string cronExpression, RecurringJobOptions options)
+        {
+            if (FailNext) { FailNext = false; throw new InvalidOperationException("Simulated schedule update failure."); }
+            inner.AddOrUpdate(recurringJobId, job, cronExpression, options);
+        }
+        public void Trigger(string recurringJobId) => inner.Trigger(recurringJobId);
+        public void RemoveIfExists(string recurringJobId) => inner.RemoveIfExists(recurringJobId);
     }
 
     public static void Probe() { }
