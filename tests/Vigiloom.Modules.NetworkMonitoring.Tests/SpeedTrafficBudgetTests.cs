@@ -5,6 +5,22 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 [TestClass]
 public sealed class SpeedTrafficBudgetTests
 {
+    [TestMethod]
+    public async Task Content_SeparatesReceivedAndSentWhileSharingTheLimit()
+    {
+        var budget = new SpeedTrafficBudget(100, () => Assert.Fail("The budget should not be exhausted."), CancellationToken.None);
+        using var sent = new SpeedBudgetContent(new ByteArrayContent(new byte[3]), budget, TrafficDirection.Sent);
+        using var bufferedResponse = new SpeedBudgetContent(new ByteArrayContent(new byte[4]), budget, TrafficDirection.Received);
+        using var streamedResponse = new SpeedBudgetContent(new ByteArrayContent(new byte[3]), budget, TrafficDirection.Received);
+        await sent.CopyToAsync(Stream.Null, TestContext.CancellationToken);
+        await bufferedResponse.CopyToAsync(Stream.Null, TestContext.CancellationToken);
+        await using var responseStream = await streamedResponse.ReadAsStreamAsync(TestContext.CancellationToken);
+        var buffer = new byte[3];
+        Assert.AreEqual(3, await responseStream.ReadAsync(buffer, TestContext.CancellationToken));
+        Assert.AreEqual(3L, budget.BytesSent);
+        Assert.AreEqual(7L, budget.BytesReceived);
+        Assert.AreEqual(10L, budget.BytesTransferred);
+    }
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
     public async Task OutstandingReservations_DoNotPrematurelyExhaustBudget()
@@ -84,7 +100,7 @@ public sealed class SpeedTrafficBudgetTests
         var budget = new SpeedTrafficBudget(10, stop.Cancel, stop.Token);
         var held = await budget.ReserveAsync(9, stop.Token);
         using var destination = new MemoryStream();
-        using var stream = new SpeedBudgetStream(destination, budget, leaveOpen: true);
+        using var stream = new SpeedBudgetStream(destination, budget, TrafficDirection.Sent, leaveOpen: true);
 
         var writing = stream.WriteAsync(new byte[] { 1, 2, 3, 4, 5 }, stop.Token).AsTask();
         Assert.IsFalse(writing.IsCompleted, "The remaining bytes should wait for the outstanding reservation.");
@@ -102,7 +118,7 @@ public sealed class SpeedTrafficBudgetTests
         using var stop = new CancellationTokenSource();
         var budget = new SpeedTrafficBudget(10, stop.Cancel, stop.Token);
         using var destination = new FailingWriteStream();
-        using var stream = new SpeedBudgetStream(destination, budget, leaveOpen: true);
+        using var stream = new SpeedBudgetStream(destination, budget, TrafficDirection.Sent, leaveOpen: true);
         var writing = stream.WriteAsync(new byte[10], stop.Token).AsTask();
         await destination.Started.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.CancellationToken);
         var waiting = budget.ReserveAsync(3, stop.Token).AsTask();

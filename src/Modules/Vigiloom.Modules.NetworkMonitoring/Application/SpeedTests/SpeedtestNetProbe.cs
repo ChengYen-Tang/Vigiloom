@@ -57,17 +57,16 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
             }
             selected = fastest.Server;
             latency = (await service.GetServerLatencyAsync(selected, deadline.Token)).LatencyMilliseconds;
+            var beforeDownload = budget.BytesReceived;
             var down = await service.GetDownloadSpeedAsync(selected, deadline.Token);
             bytes = down.BytesProcessed;
-            download = Speed(down);
+            download = Speed(down, transport is null ? down.BytesProcessed : budget.BytesReceived - beforeDownload);
+            var beforeUpload = budget.BytesSent;
             var up = await service.GetUploadSpeedAsync(selected, deadline.Token);
             bytes += up.BytesProcessed;
-            upload = Speed(up);
-            var downLimit = Math.Max(1, lease.MaxMiB / 2) * 1048576L;
-            var upLimit = Math.Max(1, lease.MaxMiB - Math.Max(1, lease.MaxMiB / 2)) * 1048576L;
-            var limited = budget.Reached || down.BytesProcessed >= downLimit || up.BytesProcessed >= upLimit;
+            upload = Speed(up, transport is null ? up.BytesProcessed : budget.BytesSent - beforeUpload);
             var sufficientDuration = down.ElapsedMilliseconds >= 2000 && up.ElapsedMilliseconds >= 2000;
-            var state = limited ? SpeedTestState.BudgetExceeded :
+            var state = budget.Reached ? SpeedTestState.BudgetExceeded :
                 download is not null && upload is not null && down.RequestsFailed == 0 && up.RequestsFailed == 0 && sufficientDuration
                 ? SpeedTestState.Success : download is not null || upload is not null ? SpeedTestState.Partial : SpeedTestState.Failed;
             return Result(state, state == SpeedTestState.Success ? null : "measurement_incomplete");
@@ -98,8 +97,8 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         }
     }
 
-    private static double? Speed(SpeedTestResult result) => result.RequestsSucceeded > 0 && result.BytesProcessed > 0 && result.ElapsedMilliseconds > 0
-        ? result.BytesProcessed * 8d / result.ElapsedMilliseconds / 1000d : null;
+    private static double? Speed(SpeedTestResult result, long transferredBytes) => result.RequestsSucceeded > 0 && transferredBytes > 0 && result.ElapsedMilliseconds > 0
+        ? transferredBytes * 8d / result.ElapsedMilliseconds / 1000d : null;
 
     private static bool IsValidCandidate(IServer server) => Uri.TryCreate(server.Url, UriKind.Absolute, out var uri)
         && uri.Scheme is "http" or "https" && uri.Port is 80 or 443 or 8080 && string.IsNullOrEmpty(uri.UserInfo)
@@ -148,9 +147,9 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
             if (uri is null || !hosts.Contains(uri.Host) || uri.Port is not (80 or 443 or 8080) ||
                 uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo))
                 throw new HttpRequestException("Untrusted speed test endpoint.");
-            if (request.Content is not null) request.Content = new SpeedBudgetContent(request.Content, budget);
+            if (request.Content is not null) request.Content = new SpeedBudgetContent(request.Content, budget, TrafficDirection.Sent);
             var response = await base.SendAsync(request, cancellationToken);
-            if (response.Content is not null) response.Content = new SpeedBudgetContent(response.Content, budget);
+            if (response.Content is not null) response.Content = new SpeedBudgetContent(response.Content, budget, TrafficDirection.Received);
             return response;
         }
     }

@@ -2,6 +2,8 @@ using System.Net;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
+internal enum TrafficDirection { Received, Sent }
+
 // Shared by all concurrent request and response bodies in one measurement.
 internal sealed class SpeedTrafficBudget
 {
@@ -11,6 +13,8 @@ internal sealed class SpeedTrafficBudget
     private readonly CancellationToken stopping;
     private long remaining;
     private long transferred;
+    private long received;
+    private long sent;
     private bool reached;
     private TaskCompletionSource? changed;
 
@@ -21,6 +25,8 @@ internal sealed class SpeedTrafficBudget
     }
 
     public long BytesTransferred { get { lock (gate) return transferred; } }
+    public long BytesReceived { get { lock (gate) return received; } }
+    public long BytesSent { get { lock (gate) return sent; } }
     public bool Reached { get { lock (gate) return reached; } }
 
     public int Reserve(int requested)
@@ -55,7 +61,7 @@ internal sealed class SpeedTrafficBudget
         }
     }
 
-    public void Complete(int reserved, int actual)
+    public void Complete(int reserved, int actual, TrafficDirection direction = TrafficDirection.Received)
     {
         var exhausted = false;
         TaskCompletionSource? notify;
@@ -63,6 +69,8 @@ internal sealed class SpeedTrafficBudget
         {
             remaining += reserved - actual;
             transferred += actual;
+            if (direction == TrafficDirection.Sent) sent += actual;
+            else received += actual;
             if (transferred >= maximum && !reached) { reached = true; exhausted = true; }
             notify = changed;
             changed = null;
@@ -76,23 +84,25 @@ internal sealed class SpeedBudgetContent : HttpContent
 {
     private readonly HttpContent inner;
     private readonly SpeedTrafficBudget budget;
+    private readonly TrafficDirection direction;
 
-    public SpeedBudgetContent(HttpContent inner, SpeedTrafficBudget budget)
+    public SpeedBudgetContent(HttpContent inner, SpeedTrafficBudget budget, TrafficDirection direction)
     {
         this.inner = inner;
         this.budget = budget;
+        this.direction = direction;
         foreach (var header in inner.Headers) Headers.TryAddWithoutValidation(header.Key, header.Value);
     }
 
     protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => SerializeToStreamAsync(stream, context, CancellationToken.None);
     protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
     {
-        using var limited = new SpeedBudgetStream(stream, budget, leaveOpen: true);
+        using var limited = new SpeedBudgetStream(stream, budget, direction, leaveOpen: true);
         await inner.CopyToAsync(limited, cancellationToken);
     }
-    protected override async Task<Stream> CreateContentReadStreamAsync() => new SpeedBudgetStream(await inner.ReadAsStreamAsync(), budget, leaveOpen: false);
+    protected override async Task<Stream> CreateContentReadStreamAsync() => new SpeedBudgetStream(await inner.ReadAsStreamAsync(), budget, direction, leaveOpen: false);
     protected override async Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken) =>
-        new SpeedBudgetStream(await inner.ReadAsStreamAsync(cancellationToken), budget, leaveOpen: false);
+        new SpeedBudgetStream(await inner.ReadAsStreamAsync(cancellationToken), budget, direction, leaveOpen: false);
     protected override bool TryComputeLength(out long length)
     {
         length = inner.Headers.ContentLength.GetValueOrDefault();
@@ -105,7 +115,7 @@ internal sealed class SpeedBudgetContent : HttpContent
     }
 }
 
-internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget, bool leaveOpen) : Stream
+internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget, TrafficDirection direction, bool leaveOpen) : Stream
 {
     public override bool CanRead => inner.CanRead;
     public override bool CanSeek => false;
@@ -122,7 +132,7 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
         var reserved = budget.Reserve(count);
         var actual = 0;
         try { return actual = inner.Read(buffer, offset, reserved); }
-        finally { budget.Complete(reserved, actual); }
+        finally { budget.Complete(reserved, actual, direction); }
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
@@ -130,7 +140,7 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
         var reserved = await budget.ReserveAsync(buffer.Length, token).ConfigureAwait(false);
         var actual = 0;
         try { return actual = await inner.ReadAsync(buffer[..reserved], token); }
-        finally { budget.Complete(reserved, actual); }
+        finally { budget.Complete(reserved, actual, direction); }
     }
 
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken token) => ReadAsync(buffer.AsMemory(offset, count), token).AsTask();
@@ -142,7 +152,7 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
             var reserved = budget.Reserve(count);
             var actual = 0;
             try { inner.Write(buffer, offset, reserved); actual = reserved; }
-            finally { budget.Complete(reserved, actual); }
+            finally { budget.Complete(reserved, actual, direction); }
             offset += reserved;
             count -= reserved;
         }
@@ -155,7 +165,7 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
             var reserved = await budget.ReserveAsync(buffer.Length, token).ConfigureAwait(false);
             var actual = 0;
             try { await inner.WriteAsync(buffer[..reserved], token).ConfigureAwait(false); actual = reserved; }
-            finally { budget.Complete(reserved, actual); }
+            finally { budget.Complete(reserved, actual, direction); }
             buffer = buffer[reserved..];
         }
     }
