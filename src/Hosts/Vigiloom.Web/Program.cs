@@ -9,6 +9,11 @@ using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Api;
 using MudBlazor.Services;
 using Vigiloom.Contracts.Workspace;
+using Vigiloom.Infrastructure.Scheduling;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Web.Scheduling;
+using Hangfire;
+using Hangfire.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +24,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "identity");
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network");
+builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
+builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentity();
 builder.Services.AddMudServices();
@@ -103,18 +110,33 @@ else
     app.UseHsts();
 }
 
-app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), web =>
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs"), web =>
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace")) context.Response.Headers.CacheControl = "no-store";
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings/jobs"))
+        context.Response.Headers.CacheControl = "no-store";
     await next();
 });
 app.UseAuthorization();
 app.UseAntiforgery();
+
+// Resolve storage only for an authorized Dashboard request; liveness and public assets do not depend on SQL.
+((IApplicationBuilder)app).Map("/admin/jobs", dashboard =>
+{
+    dashboard.UseMiddleware<DashboardGuard>();
+    dashboard.Run(async context =>
+    {
+        var options = new DashboardOptions { AppPath = "/settings/jobs", Authorization = [new AdministratorDashboardFilter()] };
+        var middleware = new AspNetCoreDashboardMiddleware(_ => Task.CompletedTask,
+            context.RequestServices.GetRequiredService<JobStorage>(), options,
+            context.RequestServices.GetRequiredService<Hangfire.Dashboard.RouteCollection>(), finalizeWhenNotFound: true);
+        await middleware.Invoke(context);
+    });
+});
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
