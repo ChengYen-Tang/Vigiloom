@@ -1,10 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Persistence;
 
-internal static class AccountMutationLock
+public static class AccountMutationLock
 {
     public static async Task<IDbContextTransaction> AcquireAsync(IdentityAccessDbContext db, CancellationToken token)
     {

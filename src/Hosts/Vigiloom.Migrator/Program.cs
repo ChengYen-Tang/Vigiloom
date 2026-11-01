@@ -1,3 +1,4 @@
+using Vigiloom.Migrator.Recovery;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -5,6 +6,14 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+
+if (args.Length > 0)
+{
+    if (args.Length != 2 || args[0] != "recover-admin")
+        throw new ArgumentException("Usage: Vigiloom.Migrator [recover-admin <account-name>]");
+    await LocalRecoveryCommand.RunAsync(args[1]);
+    return;
+}
 
 var connectionString = Environment.GetEnvironmentVariable("VIGILOOM_MIGRATION_SQL_CONNECTION");
 if (string.IsNullOrWhiteSpace(connectionString))

@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
