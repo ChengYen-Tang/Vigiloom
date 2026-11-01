@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
@@ -128,6 +129,75 @@ public sealed class SpeedSqlTests
         Assert.AreEqual(49d, ascending.Items[0].UploadMbps);
         Assert.AreEqual(98d, ascending.Items[^1].UploadMbps);
     });
+
+    [TestMethod]
+    public Task Runner_PersistsFailedAndTimedOutRunsWithoutZeroSpeeds() => WithDatabase(async (factory, token) =>
+    {
+        var queue = new SpeedQueue(factory);
+        var settings = new SpeedSettings(factory);
+        var actor = Guid.CreateVersion7();
+        var initial = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new(false, 6, 5, 10, true, initial.Version, initial.ConsentPolicy), actor, token));
+        foreach (var (state, code) in new[] { (SpeedTestState.NoServer, "no_valid_servers"), (SpeedTestState.TimedOut, "timeout"),
+            (SpeedTestState.Failed, "provider_error"), (SpeedTestState.Cancelled, "cancelled") })
+        {
+            var request = await queue.RequestAsync(Guid.CreateVersion7(), actor, false, token);
+            Assert.AreEqual(SpeedRequestStatus.Accepted, request.Status);
+            Assert.IsNotNull(request.RunId);
+            var runner = new SpeedRunner(queue, new FixedProbe(new(state, DiagnosticCode: code)), NullLogger<SpeedRunner>.Instance);
+            await runner.RunOnceAsync(token);
+            var detail = await new SpeedHistory(factory).GetAsync(request.RunId.Value, token);
+            Assert.IsNotNull(detail);
+            Assert.AreEqual(state, detail.Summary.State);
+            Assert.AreEqual(code, detail.DiagnosticCode);
+            Assert.AreEqual("central", detail.Summary.Location);
+            Assert.IsNotNull(detail.Summary.CompletedAt);
+            Assert.IsNull(detail.Summary.DownloadMbps);
+            Assert.IsNull(detail.Summary.UploadMbps);
+        }
+        var active = await queue.RequestAsync(Guid.CreateVersion7(), actor, false, token);
+        Assert.IsNotNull(active.RunId);
+        var waiting = new WaitingProbe();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var activeRun = new SpeedRunner(queue, waiting, NullLogger<SpeedRunner>.Instance).RunOnceAsync(stop.Token);
+        try
+        {
+            await waiting.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            Assert.IsTrue(await queue.CancelAsync(active.RunId.Value, token));
+            await activeRun.WaitAsync(TimeSpan.FromSeconds(5), token);
+            var cancelled = await new SpeedHistory(factory).GetAsync(active.RunId.Value, token);
+            Assert.IsNotNull(cancelled);
+            Assert.AreEqual(SpeedTestState.Cancelled, cancelled.Summary.State);
+            Assert.AreEqual("cancelled", cancelled.DiagnosticCode);
+            Assert.AreEqual(8d, cancelled.Summary.DownloadMbps);
+            Assert.IsNull(cancelled.Summary.UploadMbps);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            try { await activeRun.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None); }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        }
+    });
+
+    private sealed class FixedProbe(SpeedMeasurement result) : ISpeedProbe
+    {
+        public Task<SpeedMeasurement> MeasureAsync(SpeedLease lease, CancellationToken token) => Task.FromResult(result);
+    }
+    private sealed class WaitingProbe : ISpeedProbe
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<SpeedMeasurement> MeasureAsync(SpeedLease lease, CancellationToken token)
+        {
+            Started.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return new(SpeedTestState.Cancelled, DownloadMbps: 8, DiagnosticCode: "cancelled");
+            }
+            throw new InvalidOperationException("The probe should only stop through cancellation.");
+        }
+    }
     private Task WithDatabase(Func<Factory, CancellationToken, Task> action) => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
