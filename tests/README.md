@@ -24,4 +24,4 @@ dotnet test Vigiloom.slnx --configuration Release --no-build
 
 使用 MSTest 非同步 Cleanup／finally 釋放 context、連線與交易，再刪除 DB 並驗證不存在；失敗必須回報。取消時採獨立清理 token；testhost 強制中止的殘留需依擁有權 manifest 補清。標記 Integration／Database 的資料庫測試與純單元測試區分。
 
-測試 fixture 與 `recover`／`recover-run` 指令見 [SQL Server 測試輔助工具](Vigiloom.Testing.SqlServer/README.md)；模組 migration／SQL 驗證在 REQ-02-T02。Linux／CI 的獨立 SQL Server 路徑仍需驗證。
+測試 fixture 與 `recover`／`recover-run` 指令見 [SQL Server 測試輔助工具](Vigiloom.Testing.SqlServer/README.md)；模組 migration／SQL 驗證在 REQ-02-T02。Windows LocalDB 與 Linux SQL Server 2022 均已執行資料庫測試。

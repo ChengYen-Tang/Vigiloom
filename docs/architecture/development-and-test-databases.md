@@ -40,7 +40,7 @@ LocalDB 屬 SQL Server Express 的本機開發引擎，適合 Windows 本機的 
 
 程序被強制終止或斷電時，程序內 Cleanup 無法保證執行。需由外層 runner／後續明確清理工具依 manifest 補清，確認擁有者 run 已結束且無其他 testhost 使用；只處理自身登記資源。不能在下次啟動時掃前綴就直接刪除所有舊資料庫。
 
-LocalDB fixture 與手動補清入口見 [SQL Server 測試輔助工具](../../tests/Vigiloom.Testing.SqlServer/README.md)。正常／失敗／並行／中止復原由 REQ-02-T03 驗證，模組 migration／schema 由 REQ-02-T02 驗證；Linux／獨立 SQL Server 路徑仍需實測。
+LocalDB fixture 與手動補清入口見 [SQL Server 測試輔助工具](../../tests/Vigiloom.Testing.SqlServer/README.md)。正常／失敗／並行／中止復原由 REQ-02-T03 驗證，模組 migration／schema 由 REQ-02-T02 驗證；Windows LocalDB 與 Linux SQL Server 2022 均已執行資料庫測試。
 
 ## 需要驗收的情境
 
