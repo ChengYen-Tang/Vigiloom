@@ -1,0 +1,7 @@
+# REQ-18 Agent identity design
+
+The Administrator starts from a deep-monitoring device's detail page. The identity page uses the existing device layout and the [selected visual system](visual-system.md): a clear device heading, separate panels, blue primary actions, readable status text and responsive existing layout. Agent identity is independent of Ping and application services. Read-only users cannot access the management page or management APIs.
+
+The page distinguishes waiting enrollment, consumed enrollment, expiration, revocation and invalidation by device archive. A new enrollment secret appears once with its expiration and a warning to transfer it securely; subsequent lists never expose it. Revocation requires a confirmation. A device that is disabled, archived or not configured for deep monitoring explains why enrollment is unavailable. The page explicitly states that the Agent installer is not yet available; it does not promise an unverified installation flow or fabricate connection status.
+
+Server-side authorization, antiforgery, bounded request sizes and no-store responses supplement UI visibility. The security and lifecycle design is in [agent-identity.md](../architecture/agent-identity.md). The current initial implementation has HTTP form and SQL tests, but final desktop/mobile browser design QA, real installation and local credential recovery remain outstanding and must not be treated as completed acceptance.

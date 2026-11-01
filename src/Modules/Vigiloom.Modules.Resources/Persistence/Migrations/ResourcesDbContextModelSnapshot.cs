@@ -33,6 +33,9 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .HasMaxLength(253)
                         .HasColumnType("nvarchar(253)");
 
+                    b.Property<long>("AgentAuthorizationGeneration")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
