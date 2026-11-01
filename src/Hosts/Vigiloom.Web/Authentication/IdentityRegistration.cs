@@ -10,6 +10,7 @@ internal static class IdentityRegistration
     public static IServiceCollection AddVigiloomIdentity(this IServiceCollection services)
     {
         services.AddScoped<InitialAdministrator>();
+        services.AddScoped<AccountAdministration>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
