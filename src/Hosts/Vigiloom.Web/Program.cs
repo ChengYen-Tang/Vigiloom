@@ -13,6 +13,8 @@ using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.NetworkMonitoring.Application;
 using Hangfire;
 using Hangfire.Dashboard;
 
@@ -32,6 +34,9 @@ builder.Services.AddVigiloomIdentity();
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
+builder.Services.AddScoped<PingSettings>();
+builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
@@ -120,7 +125,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings/jobs") || context.Request.Path.StartsWithSegments("/devices"))
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices"))
         context.Response.Headers.CacheControl = "no-store";
     await next();
 });
@@ -144,6 +149,7 @@ app.UseAntiforgery();
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
+app.MapPingEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
     .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)

@@ -1,5 +1,3 @@
-using System.Security.Claims;
-using Microsoft.AspNetCore.Antiforgery;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Web.Authentication;
@@ -27,33 +25,21 @@ internal static class DeviceEndpoints
             .RequireAuthorization("DeviceWrite").Produces<IReadOnlyList<DeviceDetails>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Find devices using a target address");
         devices.MapPost("/", async (DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
-            await Write(context, async actor => Response(await service.CreateAsync(input, actor, token), created: true)))
+            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.CreateAsync(input, actor, token), created: true)))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Create a private device");
         devices.MapPut("/{id:guid}", async (Guid id, DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
-            await Write(context, async actor => Response(await service.UpdateAsync(id, input, actor, token))))
+            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.UpdateAsync(id, input, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Update a device");
         devices.MapPost("/{id:guid}/archive", async (Guid id, DeviceVersionRequest input, HttpContext context, DeviceManagement service, CancellationToken token) =>
-            await Write(context, async actor => Response(await service.SetArchivedAsync(id, true, input.Version, actor, token))))
+            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.SetArchivedAsync(id, true, input.Version, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Archive a device");
         devices.MapPost("/{id:guid}/restore", async (Guid id, DeviceVersionRequest input, HttpContext context, DeviceManagement service, CancellationToken token) =>
-            await Write(context, async actor => Response(await service.SetArchivedAsync(id, false, input.Version, actor, token))))
+            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.SetArchivedAsync(id, false, input.Version, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Restore a device in the disabled state");
-    }
-
-    private static async Task<IResult> Write(HttpContext context, Func<Guid, Task<IResult>> operation)
-    {
-        var apiIdentity = context.User.Identities.FirstOrDefault(identity => identity.AuthenticationType == ApiCredentialHandler.SchemeName && identity.HasClaim("scope", "monitoring.write"));
-        if (apiIdentity is null)
-        {
-            try { await context.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(context); }
-            catch (AntiforgeryValidationException) { return Results.BadRequest(); }
-        }
-        var id = apiIdentity?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(id, out var actor) && actor != Guid.Empty ? await operation(actor) : Results.Forbid();
     }
 
     private static IResult Response(DeviceResult result, bool created = false) => result.Status switch
