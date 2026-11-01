@@ -12,8 +12,9 @@ public partial class SpeedTests
     [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
     [SupplyParameterFromQuery(Name = "descending")] public bool? Descending { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public int? Page { get; set; }
-    [PersistentState] public SpeedHistoryPage? Result { get; set; }
+    [PersistentState] public SpeedHistoryPage? PrerenderedResult { get; set; }
     [PersistentState] public string? ResultKey { get; set; }
+    private SpeedHistoryPage? Result { get; set; }
     private SpeedHistoryQuery query = new(DateTimeOffset.UtcNow.Date.AddDays(-7), DateTimeOffset.UtcNow.Date.AddDays(1));
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? activeLoad;
@@ -21,6 +22,7 @@ public partial class SpeedTests
     private bool loading, error, unauthorized, invalid;
     protected override async Task OnParametersSetAsync()
     {
+        Result ??= PrerenderedResult;
         var from = ParseDate(From, DateTime.UtcNow.Date.AddDays(-7));
         var to = ParseDate(To, DateTime.UtcNow.Date);
         invalid = from is null || to is null || to < from || to - from >= TimeSpan.FromDays(31) ||
@@ -56,6 +58,10 @@ public partial class SpeedTests
             var result = await History.QueryAsync(query, load.Token);
             load.Token.ThrowIfCancellationRequested();
             Result = result; ResultKey = QueryKey(query);
+            // Large persisted payloads can exceed SignalR's 32 KiB circuit-start limit.
+            // For larger histories, reload after activation instead of persisting them.
+            PrerenderedResult = !RendererInfo.IsInteractive && result.Items.Count + result.Trend.Count <= 20 &&
+                System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(result).Length <= 8192 ? result : null;
         }
         catch (OperationCanceledException) when (load.IsCancellationRequested) { }
         catch (UnauthorizedAccessException) { Result = null; ResultKey = null; unauthorized = true; }

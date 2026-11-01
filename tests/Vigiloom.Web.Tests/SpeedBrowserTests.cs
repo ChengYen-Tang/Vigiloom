@@ -95,6 +95,47 @@ public sealed class SpeedBrowserTests
         Assert.AreEqual(0, await page.Locator(".device-table-wrap tbody tr").CountAsync());
         Assert.IsEmpty(errors);
     }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task History_PagesFilteredResultsInBrowser() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+        {
+            var now = DateTimeOffset.UtcNow.AddMinutes(-52);
+            for (var i = 1; i <= 51; i++)
+                db.SpeedRuns.Add(new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = now.AddMinutes(i),
+                    State = SpeedTestState.Success, Server = "Taipei test server", DownloadMbps = i });
+            db.SpeedRuns.Add(new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = now, State = SpeedTestState.NoServer });
+            await db.SaveChangesAsync(token);
+        }
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        var page = await browser.NewPageAsync();
+        await using var wasmGate = await AutoRenderGate.HoldAsync(page);
+        await page.GotoAsync(factory.ClientOptions.BaseAddress.ToString().TrimEnd('/') + "/speed-tests");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.Locator("main[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await page.Locator("#speed-search").FillAsync("Taipei");
+        await page.GetByRole(AriaRole.Button, new() { Name = "套用篩選" }).ClickAsync();
+        await page.WaitForFunctionAsync("() => document.querySelector('.device-pagination')?.innerText.includes('第 1 頁') && document.querySelectorAll('.device-table-wrap tbody tr').length === 50 && document.querySelector('main')?.innerText.includes('共 51 筆紀錄')");
+        await page.GetByRole(AriaRole.Button, new() { Name = "下一頁" }).ClickAsync();
+        await page.WaitForFunctionAsync("() => document.querySelector('.device-pagination')?.innerText.includes('第 2 頁') && document.querySelectorAll('.device-table-wrap tbody tr').length === 1");
+        Assert.Contains("Taipei test server", await page.Locator(".device-table-wrap tbody tr").InnerTextAsync());
+        Assert.IsFalse(await page.GetByRole(AriaRole.Button, new() { Name = "下一頁" }).IsEnabledAsync());
+        var filteredUrl = await page.GetByRole(AriaRole.Link, new() { Name = "開啟目前篩選的連結" }).GetAttributeAsync("href");
+        await wasmGate.ReleaseAsync();
+        await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await page.GotoAsync(new Uri(factory.ClientOptions.BaseAddress, filteredUrl!).ToString());
+        await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+        await page.WaitForFunctionAsync("() => document.querySelector('.device-pagination')?.innerText.includes('第 2 頁') && document.querySelectorAll('.device-table-wrap tbody tr').length === 1");
+        Assert.Contains("Taipei test server", await page.Locator(".device-table-wrap tbody tr").InnerTextAsync());
+    }, TestContext.CancellationToken);
+
     [TestMethod]
     public Task AdministratorCanConsentQueueAndCancelWithoutRunningExternalTest() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
