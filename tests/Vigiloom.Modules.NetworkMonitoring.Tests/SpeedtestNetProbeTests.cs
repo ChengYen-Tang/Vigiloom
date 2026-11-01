@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 public sealed class SpeedtestNetProbeTests
 {
     private static SpeedLease Lease() => new(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 10);
-    private static OoklaServer Server() => new() { Url = "http://speedtest.example.com:8080/speedtest/upload.php", Location = "Taipei", Sponsor = "Example", Country = "Taiwan", Latitude = 25, Longitude = 121 };
+    private static OoklaServer Server() => new() { Id = 18475, Url = "http://speedtest.example.com:8080/speedtest/upload.php", Location = "Taipei", Sponsor = "Example", Country = "Taiwan", Latitude = 25, Longitude = 121 };
     private static SpeedTestResult Measurement(long bytes, long ms, int success = 1, int failed = 0) =>
         new() { BytesProcessed = bytes, ElapsedMilliseconds = ms, RequestsSucceeded = success, RequestsFailed = failed };
 
@@ -32,7 +32,7 @@ public sealed class SpeedtestNetProbeTests
         Assert.AreEqual(4d, result.UploadMbps);
         Assert.AreEqual(3d, result.LatencyMilliseconds);
         Assert.AreEqual(3_000_000L, result.Bytes);
-        Assert.AreEqual("speedtest.example.com", result.Server);
+        Assert.AreEqual("Example (#18475) · speedtest.example.com", result.Server);
         Assert.AreEqual("Taipei", result.City);
     }
 

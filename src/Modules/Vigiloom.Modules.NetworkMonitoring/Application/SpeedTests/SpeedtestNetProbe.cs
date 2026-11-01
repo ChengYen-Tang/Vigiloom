@@ -86,7 +86,11 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         SpeedMeasurement Result(SpeedTestState state, string? diagnostic)
         {
             var server = selected as OoklaServer;
-            return new(state, selected is null ? null : new Uri(selected.Url).Host, selected?.Location, server?.Country,
+            var display = selected is null ? null : server is { Id: > 0 }
+                ? $"{server.Sponsor} (#{server.Id}) · {new Uri(selected.Url).Host}"
+                : new Uri(selected.Url).Host;
+            if (display is { Length: > 253 }) display = display[..253];
+            return new(state, display, selected?.Location, server?.Country,
                 download, upload, latency, transport is not null ? budget.BytesTransferred : bytes, server?.Latitude, server?.Longitude, diagnostic);
         }
     }
