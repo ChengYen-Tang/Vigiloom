@@ -15,7 +15,7 @@
         else if (settings is { Consent: false }) { <h2>尚未啟用 Speedtest.net 測試</h2><p>請先由設定頁了解測速及第三方使用條件，再啟用測試。</p><a class="device-primary" href="/settings/speed-tests">前往測速設定</a> }
         else if (settings is not null)
         {
-            <p>從中央 Worker 執行一次測試，最多 @settings.MaxMiB MiB／@settings.TimeoutSeconds 秒，會占用上下傳頻寬。測試連線會到 Speedtest.net 服務端；這不是每台設備的連線速度。</p>
+            <p>從中央 Worker 執行一次測試，參考流量預算為 @settings.MaxMiB MiB、最長 @settings.TimeoutSeconds 秒，會占用上下傳頻寬；實際線路流量可能高於預算。測試連線會到 Speedtest.net 服務端；這不是每台設備的連線速度。</p>
             <p>最近 24 小時已保留 @settings.ReservedToday 次；執行中不能再新增另一筆。</p>
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="speed-start" method="post" OnValidSubmit="StartAsync">
