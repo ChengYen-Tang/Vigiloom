@@ -36,7 +36,9 @@ internal static class IdentityRegistration
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, PublicAssetAuthentication>(
                 PublicAssetAuthentication.AssetScheme, _ => { })
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiCredentialHandler>(
-                ApiCredentialHandler.SchemeName, _ => { });
+                ApiCredentialHandler.SchemeName, _ => { })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentCredentialHandler>(
+                AgentCredentialHandler.SchemeName, _ => { });
         services.AddAuthorization(options =>
         {
             options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
@@ -45,6 +47,8 @@ internal static class IdentityRegistration
                 .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.read"));
             options.AddPolicy("ApiClientWrite", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.write"));
+            options.AddPolicy("Agent", policy => policy.AddAuthenticationSchemes(AgentCredentialHandler.SchemeName)
+                .RequireAuthenticatedUser().RequireClaim("vigiloom:principal-type", "agent"));
             options.AddPolicy("DeviceRead", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
                     context.User.IsInRole(BuiltInRoles.ReadOnly) || context.User.HasClaim("scope", "monitoring.read")));
