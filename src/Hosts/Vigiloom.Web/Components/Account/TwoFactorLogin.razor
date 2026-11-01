@@ -1,0 +1,69 @@
+@page "/account/two-factor"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-login")]
+@attribute [ExcludeFromInteractiveRouting]
+@layout AccountLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Http.HttpResults
+@using Microsoft.AspNetCore.Identity
+@using Vigiloom.Modules.IdentityAccess.Domain
+@inject SignInManager<Account> SignInManager
+@inject Vigiloom.Web.Authentication.TwoFactorChallenge Challenge
+@inject NavigationManager Navigation
+
+<PageTitle>雙重驗證 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="two-factor-title">
+    <h1 id="two-factor-title">雙重驗證</h1>
+    <p class="account-description">輸入驗證器 App 中的 6 位數代碼。</p>
+    @if (error is not null) { <p class="account-error" role="alert">@error</p> }
+    <EditForm Model="TotpInput" FormName="totp-login" method="post" OnValidSubmit="LoginWithAuthenticatorAsync">
+        <DataAnnotationsValidator />
+        <div class="account-field"><label for="totp-code">驗證碼</label><input id="totp-code" name="TotpInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => TotpInput.Code" /></div>
+        <button class="account-primary" type="submit">驗證並登入</button>
+    </EditForm>
+    <details class="account-secondary"><summary>使用復原碼</summary>
+        <EditForm Model="RecoveryInput" FormName="recovery-login" method="post" OnValidSubmit="LoginWithRecoveryAsync">
+            <DataAnnotationsValidator />
+            <div class="account-field"><label for="recovery-code">復原碼</label><input id="recovery-code" name="RecoveryInput.Code" autocomplete="off" maxlength="64" required /><ValidationMessage For="() => RecoveryInput.Code" /></div>
+            <button class="management-button" type="submit">使用復原碼登入</button>
+        </EditForm>
+    </details>
+    <p class="account-footer"><a href="/account/login">返回登入</a></p>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private string? error;
+    [SupplyParameterFromForm(FormName = "totp-login")] private CodeModel TotpInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "recovery-login")] private CodeModel RecoveryInput { get; set; } = default!;
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private bool Remember { get; set; }
+    protected override async Task OnInitializedAsync()
+    {
+        TotpInput ??= new(); RecoveryInput ??= new();
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+            Navigation.NavigateTo("/account/login", forceLoad: true);
+    }
+    private async Task LoginWithAuthenticatorAsync()
+    {
+        var code = TotpInput.Code.Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
+        var result = await Challenge.CompleteAsync(HttpContext, code, recovery: false, Remember, HttpContext.RequestAborted);
+        Complete(result);
+    }
+    private async Task LoginWithRecoveryAsync()
+    {
+        var result = await Challenge.CompleteAsync(HttpContext, RecoveryInput.Code.Trim(), recovery: true, Remember, HttpContext.RequestAborted);
+        Complete(result);
+    }
+    private void Complete(SignInResult result)
+    {
+        TotpInput.Code = RecoveryInput.Code = "";
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/", forceLoad: true);
+            return;
+        }
+        error = "代碼無效或登入已過期，請重試或重新登入。";
+    }
+    private sealed class CodeModel { [Required, StringLength(64)] public string Code { get; set; } = ""; }
+}

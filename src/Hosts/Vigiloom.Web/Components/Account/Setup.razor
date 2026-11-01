@@ -1,0 +1,77 @@
+@page "/account/setup"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-setup")]
+@attribute [ExcludeFromInteractiveRouting]
+@layout AccountLayout
+@using System.ComponentModel.DataAnnotations
+@using Vigiloom.Web.Authentication
+@inject InitialAdministrator SetupAdministrator
+@inject NavigationManager Navigation
+
+<PageTitle>建立管理員 - Vigiloom</PageTitle>
+<section class="account-card" aria-labelledby="setup-title">
+    <h1 id="setup-title">建立管理員</h1>
+    <p class="account-description">完成首次設定，開始使用 Vigiloom。</p>
+    @if (error is not null)
+    {
+        <p class="account-error" role="alert">@error</p>
+    }
+    <EditForm Model="Input" FormName="setup" method="post" OnValidSubmit="CreateAsync">
+        <DataAnnotationsValidator />
+        <div class="account-field">
+            <label for="setup-token">設定密鑰</label>
+            <input id="setup-token" name="Input.SetupToken" type="password" autocomplete="off" maxlength="256" required />
+            <ValidationMessage For="() => Input.SetupToken" />
+            <span class="account-hint">請輸入安裝時設定的密鑰。</span>
+        </div>
+        <div class="account-field">
+            <label for="setup-name">管理員帳號</label>
+            <InputText id="setup-name" @bind-Value="Input.UserName" autocomplete="username" maxlength="256" required />
+            <ValidationMessage For="() => Input.UserName" />
+        </div>
+        <div class="account-field">
+            <label for="setup-password">密碼</label>
+            <input id="setup-password" name="Input.Password" type="password" autocomplete="new-password" maxlength="1024" required />
+            <ValidationMessage For="() => Input.Password" />
+            <span class="account-hint">至少 12 個字元，包含大小寫英文字母、數字及符號。</span>
+        </div>
+        <div class="account-field">
+            <label for="setup-confirm">確認密碼</label>
+            <input id="setup-confirm" name="Input.ConfirmPassword" type="password" autocomplete="new-password" maxlength="1024" required />
+            <ValidationMessage For="() => Input.ConfirmPassword" />
+        </div>
+        <button class="account-primary" type="submit">建立管理員</button>
+        <p class="account-footer"><a href="/account/login">已有帳號？登入</a></p>
+    </EditForm>
+</section>
+
+@code {
+    private string? error;
+    [SupplyParameterFromForm] private SetupInput Input { get; set; } = default!;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task CreateAsync()
+    {
+        var result = await SetupAdministrator.CreateAsync(Input.SetupToken, Input.UserName, Input.Password);
+        Input.SetupToken = Input.Password = Input.ConfirmPassword = string.Empty;
+        if (result.Status == InitialAdministratorStatus.Created)
+        {
+            Navigation.NavigateTo("/account/login?setup=complete", forceLoad: true);
+            return;
+        }
+        error = result.Status switch
+        {
+            InitialAdministratorStatus.ValidationFailed => string.Join(" ", result.Errors),
+            _ => "無法完成首次設定，請確認設定密鑰與系統狀態。"
+        };
+    }
+
+    private sealed class SetupInput
+    {
+        [Required(ErrorMessage = "請輸入設定密鑰。"), StringLength(256)] public string SetupToken { get; set; } = "";
+        [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = "";
+        [Required(ErrorMessage = "請輸入密碼。"), StringLength(1024)] public string Password { get; set; } = "";
+        [Required, StringLength(1024), Compare(nameof(Password), ErrorMessage = "兩次密碼不一致。")] public string ConfirmPassword { get; set; } = "";
+    }
+}

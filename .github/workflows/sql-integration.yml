@@ -53,6 +53,23 @@ jobs:
           printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
       - name: Test database lifecycle on Linux
         run: dotnet test tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj --configuration Release --filter 'TestCategory=Database' --logger trx --results-directory "$RUNNER_TEMP/sql-results"
+      - name: Test Web identity and account flows on Linux
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --logger trx --results-directory "$RUNNER_TEMP/web-sql-results"
+      - name: Verify recovery requires local administrator privileges
+        shell: bash
+        run: |
+          set +e
+          output=$(dotnet run --project src/Hosts/Vigiloom.Migrator --configuration Release --no-build -- recover-admin test-account 2>&1)
+          result=$?
+          set -e
+          if [ "$result" -eq 0 ]; then
+            echo 'Recovery unexpectedly accepted an unprivileged account.' >&2
+            exit 1
+          fi
+          case "$output" in
+            *"Run recovery with local administrator privileges"*) ;;
+            *) echo 'Recovery did not reject the unprivileged operator as expected.' >&2; exit 1 ;;
+          esac
       - name: Verify development sentinel and test cleanup
         run: |
           docker exec -e SQLCMDPASSWORD vigiloom-test-sql /opt/mssql-tools18/bin/sqlcmd \
