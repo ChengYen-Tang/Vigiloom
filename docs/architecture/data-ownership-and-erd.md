@@ -54,6 +54,8 @@ erDiagram
 | 模組／資料 | 類別 | 最低欄位、參照與唯一性 |
 |---|---|---|
 | IdentityAccess / User、Role | R | 身分採 Guid Identity 模型；User 正規化登入名稱依 Identity 唯一索引；Role 正規化名稱唯一；角色建立一次後 ID 穩定 |
+| IdentityAccess / ApiCredential | R | 第三方 API 獨立身分，保存名稱、scope、到期／撤銷時間及不可還原 verifier；不保存原始密鑰、不繼承人員角色；建立者 Guid 供追溯，帳號刪除後保留 |
+| IdentityAccess / ApiCredentialAuditEvent | D | 憑證 Id、操作者 Id、動作與時間；供安全稽核，保留歷史識別而不因帳號刪除 cascade |
 | IdentityAccess / UserRole、Claim、Login、Token | F | Identity 框架 key／關聯；UserRole 關聯 User、Role 的 Guid；Claims／Logins／Tokens 保留框架契約 |
 | Resources / Device | R | 名稱、目標位址、監測模式、生命週期；一個 Device 可被多個群組引用；位址不是全域身份 |
 | Resources / Group | R | 名稱及編輯版本；能容納 Device 與 Service，群組不授權、不隱式改公開或收集 |
