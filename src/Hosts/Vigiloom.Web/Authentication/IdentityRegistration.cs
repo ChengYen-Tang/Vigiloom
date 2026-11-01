@@ -45,6 +45,12 @@ internal static class IdentityRegistration
                 .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.read"));
             options.AddPolicy("ApiClientWrite", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.write"));
+            options.AddPolicy("DeviceRead", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
+                .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
+                    context.User.IsInRole(BuiltInRoles.ReadOnly) || context.User.HasClaim("scope", "monitoring.read")));
+            options.AddPolicy("DeviceWrite", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
+                .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
+                    context.User.HasClaim("scope", "monitoring.write")));
         });
         services.AddIdentityCore<Account>(options =>
         {

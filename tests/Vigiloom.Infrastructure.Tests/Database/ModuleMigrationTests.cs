@@ -12,6 +12,8 @@ using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Infrastructure.Tests.Database;
@@ -56,19 +58,19 @@ public sealed class ModuleMigrationTests
             SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
             WHERE i.is_primary_key = 1 AND i.type_desc = 'CLUSTERED'
-              AND ((s.name = 'resources' AND t.name = 'DeviceGroups') OR (s.name = 'network' AND t.name = 'PingSamples'))
+              AND ((s.name = 'resources' AND t.name IN ('DeviceGroups', 'DeviceTargets', 'DeviceAudits')) OR (s.name = 'network' AND t.name = 'PingSamples'))
             """;
-        Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(4, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.foreign_keys f
             JOIN sys.tables t ON t.object_id = f.parent_object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
-            WHERE (s.name = 'resources' AND t.name = 'DeviceGroups' OR s.name = 'network' AND t.name = 'PingSamples')
+            WHERE (s.name = 'resources' AND t.name IN ('DeviceGroups', 'DeviceTargets', 'DeviceAudits') OR s.name = 'network' AND t.name = 'PingSamples')
               AND f.delete_referential_action_desc = 'NO_ACTION'
             """;
-        Assert.AreEqual(3, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
-        Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(3, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
         Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
     });
@@ -128,6 +130,51 @@ public sealed class ModuleMigrationTests
         first.ChangeTracker.Clear();
         Assert.AreEqual(0, await first.Groups.CountAsync(token));
         Assert.AreEqual(id, (await first.Devices.SingleAsync(token)).Id);
+    });
+
+    [TestMethod]
+    public Task DeviceManagement_PersistsTargetsAuditsAndEnforcesConcurrency() => WithDatabase(async (connectionString, token) =>
+    {
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<ResourcesDbContext>(connectionString, "resources");
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        var service = new DeviceManagement(factory, TimeProvider.System);
+        var actor = Guid.CreateVersion7();
+        var input = new DeviceInput("Router", " EXAMPLE.COM. ", ["2001:0DB8::1"], false);
+        var created = await service.CreateAsync(input, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Success, created.Status);
+        Assert.AreEqual(7, created.Device!.Id.Version);
+        Assert.AreEqual("example.com", created.Device.Address);
+        Assert.AreEqual("2001:db8::1", created.Device.AdditionalTargets.Single());
+        var duplicate = await service.CreateAsync(input with { AdditionalTargets = ["EXAMPLE.com"] }, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Invalid, duplicate.Status);
+        var blockedPublication = await service.CreateAsync(input with { Public = true }, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Invalid, blockedPublication.Status);
+        var disabled = await service.CreateAsync(input with { Name = "Disabled", Enabled = false }, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Success, disabled.Status);
+        Assert.IsFalse((await service.GetAsync(disabled.Device!.Id, token))!.Enabled);
+        var matches = await service.FindAddressMatchesAsync(["2001:0db8::1", "EXAMPLE.COM"], created.Device.Id, token);
+        Assert.HasCount(1, matches);
+        Assert.AreEqual(disabled.Device.Id, matches[0].Id);
+        var updated = await service.UpdateAsync(created.Device.Id, input with { Name = "Router 2", Version = created.Device.Version }, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Success, updated.Status);
+        Assert.AreEqual(created.Device.Id, updated.Device!.Id);
+        var stale = await service.UpdateAsync(created.Device.Id, input with { Version = created.Device.Version }, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Conflict, stale.Status);
+        var archived = await service.SetArchivedAsync(created.Device.Id, true, updated.Device.Version, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
+        Assert.IsTrue(archived.Device!.Archived);
+        Assert.IsFalse(archived.Device.Enabled);
+        Assert.AreEqual(1, (await service.ListAsync(null, null, false, false, 1, token)).Total);
+        var restored = await service.SetArchivedAsync(created.Device.Id, false, archived.Device.Version, actor, token);
+        Assert.AreEqual(DeviceResultStatus.Success, restored.Status);
+        Assert.IsFalse(restored.Device!.Enabled);
+        Assert.AreEqual(created.Device.Id, restored.Device.Id);
+        await using var verify = await factory.CreateDbContextAsync(token);
+        Assert.AreEqual(5, await verify.DeviceAudits.CountAsync(token));
+        Assert.AreEqual(2, await verify.DeviceTargets.CountAsync(token));
     });
 
     [TestMethod]
