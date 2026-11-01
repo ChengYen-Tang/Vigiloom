@@ -12,11 +12,11 @@
     <a href="/speed-tests">← 返回測速紀錄</a><header class="device-heading"><h1>手動測速</h1></header>
     <section class="device-panel">
         @if (error) { <p role="alert">無法讀取測速設定，請稍後重新整理。</p> }
-        else if (settings is { Consent: false }) { <h2>尚未同意 M-Lab 測試</h2><p>測試結果及對外 IP 會由第三方公開並永久保存。請先由設定頁閱讀政策、確認使用條件並同意。</p><a class="device-primary" href="/settings/speed-tests">前往測速設定</a> }
+        else if (settings is { Consent: false }) { <h2>尚未啟用 Speedtest.net 測試</h2><p>請先由設定頁了解測速及第三方使用條件，再啟用測試。</p><a class="device-primary" href="/settings/speed-tests">前往測速設定</a> }
         else if (settings is not null)
         {
-            <p>從中央 Worker 執行一次測試，最多 @settings.MaxMiB MiB／@settings.TimeoutSeconds 秒，會占用上下傳頻寬。M-Lab 會公開對外 IP、時間及結果；這不是每台設備的連線速度。</p>
-            <p>最近 24 小時已保留 @settings.ReservedToday 次（合計上限 40）；執行中不能再新增另一筆。</p>
+            <p>從中央 Worker 執行一次測試，最多 @settings.MaxMiB MiB／@settings.TimeoutSeconds 秒，會占用上下傳頻寬。測試連線會到 Speedtest.net 服務端；這不是每台設備的連線速度。</p>
+            <p>最近 24 小時已保留 @settings.ReservedToday 次；執行中不能再新增另一筆。</p>
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="speed-start" method="post" OnValidSubmit="StartAsync">
                 <InputHidden @bind-Value="Input.RequestId" />
@@ -50,7 +50,6 @@
         else if (result is not null) message = result.Status switch
         {
             SpeedRequestStatus.ConsentRequired => "同意已撤回或條件已更新，請先到設定頁確認。",
-            SpeedRequestStatus.RateLimited => $"已達次數上限；最早可執行（UTC）：{result.NextAllowedAt:u}",
             _ => "已有待執行或進行中的測試，請從紀錄查看結果。"
         };
     }

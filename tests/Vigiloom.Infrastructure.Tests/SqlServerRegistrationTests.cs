@@ -8,6 +8,25 @@ namespace Vigiloom.Infrastructure.Tests;
 public sealed class SqlServerRegistrationTests
 {
     [TestMethod]
+    public void PooledFactory_ReusesDisposedContextAndClearsTrackedEntities()
+    {
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<FactoryTestContext>("Server=localhost;Database=VigiloomTests;Integrated Security=true;TrustServerCertificate=true", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<FactoryTestContext>>();
+        FactoryTestContext original;
+        using (var first = factory.CreateDbContext())
+        {
+            original = first;
+            first.Add(new FactoryTestEntity { Id = 1 });
+            Assert.HasCount(1, first.ChangeTracker.Entries());
+        }
+        using var second = factory.CreateDbContext();
+        Assert.AreSame(original, second);
+        Assert.IsEmpty(second.ChangeTracker.Entries());
+        Assert.AreEqual("VigiloomTests", second.Database.GetDbConnection().Database);
+    }
+    [TestMethod]
     public void AddModuleSqlServer_FactoryCreatesIndependentContexts_WithSqlServerProvider()
     {
         var services = new ServiceCollection();
@@ -40,5 +59,9 @@ public sealed class SqlServerRegistrationTests
     }
 
     // This context has no product model and never opens a database connection.
-    public sealed class FactoryTestContext(DbContextOptions<FactoryTestContext> options) : DbContext(options);
+    public sealed class FactoryTestContext(DbContextOptions<FactoryTestContext> options) : DbContext(options)
+    {
+        public DbSet<FactoryTestEntity> Entities => Set<FactoryTestEntity>();
+    }
+    public sealed class FactoryTestEntity { public int Id { get; set; } }
 }

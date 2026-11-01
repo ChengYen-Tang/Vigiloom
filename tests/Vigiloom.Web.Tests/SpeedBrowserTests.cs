@@ -28,9 +28,9 @@ public sealed class SpeedBrowserTests
         {
             var now = DateTimeOffset.UtcNow.AddMinutes(-5);
             db.SpeedRuns.AddRange(new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = now, State = SpeedTestState.Success,
-                Server = "fixture.measurement-lab.org", DownloadMbps = 80, UploadMbps = 20, LatencyMilliseconds = 4, Bytes = 1024, CompletedAt = now },
+                Server = "speedtest.example.com", DownloadMbps = 80, UploadMbps = 20, LatencyMilliseconds = 4, Bytes = 1024, CompletedAt = now },
                 new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = now.AddMinutes(1), State = SpeedTestState.BudgetExceeded,
-                    Server = "fixture.measurement-lab.org", DownloadMbps = 40, Bytes = 1048576, CompletedAt = now.AddMinutes(1) },
+                    Server = "speedtest.example.com", DownloadMbps = 40, Bytes = 1048576, CompletedAt = now.AddMinutes(1) },
                 new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = now.AddMinutes(2), State = SpeedTestState.NoServer, CompletedAt = now.AddMinutes(2) });
             await db.SaveChangesAsync(token);
         }
@@ -88,6 +88,41 @@ public sealed class SpeedBrowserTests
         Assert.AreEqual(0, await page.Locator(".device-table-wrap tbody tr").CountAsync());
         Assert.IsEmpty(errors);
     }, TestContext.CancellationToken);
+    [TestMethod]
+    public Task AdministratorCanConsentQueueAndCancelWithoutRunningExternalTest() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token);
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 390, Height = 844 } });
+        var page = await context.NewPageAsync();
+        var baseUrl = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        await page.GotoAsync(baseUrl + "/speed-tests/start");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "尚未啟用 Speedtest.net 測試" }).WaitForAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "前往測速設定" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "網路測速設定", Exact = true }).WaitForAsync();
+        Assert.Contains("Speedtest.net 使用條款", await page.Locator("main").InnerTextAsync());
+        await page.GetByLabel("我了解測試將連線至第三方服務", new() { Exact = false }).CheckAsync();
+        await page.Locator("#speed-budget").FillAsync("2");
+        await page.Locator("#speed-timeout").FillAsync("5");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存測速設定" }).ClickAsync();
+        await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "設定已儲存" }).WaitForAsync();
+        await page.GotoAsync(baseUrl + "/speed-tests/start");
+        await page.GetByLabel("我確認現在從中央位置進行測試", new() { Exact = false }).CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "開始測速" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "測速結果", Exact = true }).WaitForAsync();
+        Assert.Contains("等待執行", await page.Locator("main").InnerTextAsync());
+        await page.GetByLabel("我了解取消的影響").CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "取消這筆測試" }).ClickAsync();
+        await page.GetByText("已取消", new() { Exact = true }).WaitForAsync();
+        Assert.Contains("已觀測數值僅代表部分結果", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+    }, TestContext.CancellationToken);
+
     private static async Task AssertChartAsync(IPage page)
     {
         // The prerendered SVG can be disposed during hydration; inspect the current instance atomically.

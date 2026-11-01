@@ -17,7 +17,7 @@ public sealed class SpeedRun
     public SpeedTestState State { get; set; }
     public int MaxMiB { get; set; }
     public int TimeoutSeconds { get; set; }
-    public string Provider { get; set; } = "M-Lab NDT7 / ndt7-client-go 0.10.1";
+    public string Provider { get; set; } = "Speedtest.net";
     public string? Server { get; set; }
     public string? City { get; set; }
     public string? Country { get; set; }

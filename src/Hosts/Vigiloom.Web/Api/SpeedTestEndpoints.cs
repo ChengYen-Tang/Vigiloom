@@ -43,6 +43,6 @@ internal static class SpeedTestEndpoints
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.UpdateAsync(input, actor, token) is { } saved
                 ? Results.Ok(saved) : Results.Conflict(), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedSettingsSnapshot>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
-            .WithSummary("Update limits, automatic scheduling and informed M-Lab consent");
+            .WithSummary("Update limits, automatic scheduling and Speedtest.net activation");
     }
 }

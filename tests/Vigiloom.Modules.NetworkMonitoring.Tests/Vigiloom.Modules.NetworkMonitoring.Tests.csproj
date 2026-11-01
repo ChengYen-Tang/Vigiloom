@@ -4,7 +4,4 @@
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="../../artifacts/ndt7/vigiloom-ndt7*" Link="tools/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

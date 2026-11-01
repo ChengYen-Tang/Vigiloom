@@ -3,7 +3,7 @@ namespace Vigiloom.Contracts.SpeedTests;
 public enum SpeedTestState { Queued, Running, Success, Partial, BudgetExceeded, TimedOut, Failed, Cancelled, Interrupted, NoServer, Unavailable }
 public sealed record SpeedSettingsInput(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds, bool Consent, string? Version, string? ConsentPolicy = null);
 public sealed record SpeedSettingsSnapshot(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds, bool Consent,
-    string ConsentPolicy, string Version, DateTimeOffset? NextAutomaticAt, int ReservedToday, int AutomaticToday, DateTimeOffset? NextAllowedAt);
+    string ConsentPolicy, string Version, DateTimeOffset? NextAutomaticAt, int ReservedToday, int AutomaticToday);
 public sealed record StartSpeedTestRequest(Guid RequestId);
 public sealed record SpeedRunSummary(Guid Id, DateTimeOffset RequestedAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt,
     bool Automatic, SpeedTestState State, string Location, string? Server, double? DownloadMbps, double? UploadMbps, double? LatencyMilliseconds, long? Bytes, bool CancellationRequested);

@@ -6,8 +6,8 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public enum SpeedRequestStatus { Accepted, ConsentRequired, Busy, RateLimited, NotDue }
-public sealed record SpeedRequestResult(SpeedRequestStatus Status, Guid? RunId = null, DateTimeOffset? NextAllowedAt = null);
+public enum SpeedRequestStatus { Accepted, ConsentRequired, Busy, NotDue }
+public sealed record SpeedRequestResult(SpeedRequestStatus Status, Guid? RunId = null);
 public sealed record SpeedLease(Guid Id, Guid LeaseId, int MaxMiB, int TimeoutSeconds);
 public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
 {
@@ -25,20 +25,6 @@ public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
         if (!SpeedDatabase.HasConsent(settings)) return new(SpeedRequestStatus.ConsentRequired);
         if (automatic && (!settings.Automatic || settings.NextAutomaticAt is null || settings.NextAutomaticAt > now)) return new(SpeedRequestStatus.NotDue);
         if (await db.SpeedRuns.AnyAsync(x => x.State == SpeedTestState.Queued || x.State == SpeedTestState.Running, token)) return new(SpeedRequestStatus.Busy);
-        var recent = db.SpeedRuns.Where(x => (x.StartedAt ?? x.RequestedAt) > now.AddHours(-24));
-        DateTimeOffset? allowed = null;
-        if (await recent.CountAsync(token) >= 40) allowed = (await recent.MinAsync(x => x.StartedAt ?? x.RequestedAt, token)).AddHours(24);
-        if (automatic && await recent.CountAsync(x => x.Automatic, token) >= 4)
-        {
-            var next = (await recent.Where(x => x.Automatic).MinAsync(x => x.StartedAt ?? x.RequestedAt, token)).AddHours(24);
-            if (allowed is null || next > allowed) allowed = next;
-        }
-        if (allowed is not null)
-        {
-            if (automatic) { settings.NextAutomaticAt = allowed; await db.SaveChangesAsync(token); }
-            await transaction.CommitAsync(token);
-            return new(SpeedRequestStatus.RateLimited, NextAllowedAt: allowed);
-        }
         var run = new SpeedRun { RequestId = requestId, RequestedBy = actor, Automatic = automatic, RequestedAt = now,
             MaxMiB = settings.MaxMiB, TimeoutSeconds = settings.TimeoutSeconds, State = SpeedTestState.Queued };
         db.SpeedRuns.Add(run);
