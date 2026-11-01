@@ -9,6 +9,8 @@ namespace Vigiloom.Modules.IdentityAccess.Persistence;
 public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbContext> options)
     : IdentityDbContext<Account, Role, Guid>(options)
 {
+    public DbSet<AccountAuditEvent> AccountAuditEvents => Set<AccountAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -27,6 +29,12 @@ public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbCon
         role.Property(x => x.RowId).UseIdentityColumn().Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
         role.HasIndex(x => x.RowId).IsUnique().IsClustered();
         role.Property(x => x.Version).IsRowVersion();
+        var audit = modelBuilder.Entity<AccountAuditEvent>();
+        audit.ToTable("AccountAuditEvents");
+        audit.HasKey(x => x.RowId).IsClustered();
+        audit.Property(x => x.RowId).UseIdentityColumn();
+        audit.Property(x => x.Action).HasMaxLength(64).IsRequired();
+        audit.HasIndex(x => new { x.SubjectId, x.OccurredAt, x.RowId });
         // Identity owns the related claim, login, token and membership keys.
         modelBuilder.Entity<IdentityUserRole<Guid>>().HasKey(x => new { x.UserId, x.RoleId });
     }

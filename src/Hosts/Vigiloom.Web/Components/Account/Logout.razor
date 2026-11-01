@@ -11,6 +11,10 @@
 <section class="account-card" aria-labelledby="logout-title">
     <h1 id="logout-title">登出 Vigiloom</h1>
     <p class="account-description">確定要登出目前的帳號嗎？</p>
+    @if (error is not null)
+    {
+        <p class="account-error" role="alert">@error</p>
+    }
     <EditForm Model="this" FormName="logout" method="post" OnValidSubmit="LogoutAsync">
         <button class="account-primary" type="submit">登出</button>
     </EditForm>
@@ -18,8 +22,17 @@
 </section>
 
 @code {
+    private string? error;
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
     private async Task LogoutAsync()
     {
+        var user = await SignInManager.UserManager.GetUserAsync(HttpContext.User);
+        if (user is not null && !(await SignInManager.UserManager.UpdateSecurityStampAsync(user)).Succeeded)
+        {
+            error = "無法結束登入，請稍後重試。";
+            return;
+        }
         await SignInManager.SignOutAsync();
         Navigation.NavigateTo("/account/login", forceLoad: true);
     }
