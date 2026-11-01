@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.ServiceObservability/Vigiloom.Modules.ServiceObservability.csproj" />
+  </ItemGroup>
+</Project>

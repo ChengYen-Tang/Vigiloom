@@ -1,0 +1,11 @@
+@baseUrl = https://localhost:7043
+
+### Process liveness only; this does not assert database or collection readiness.
+GET {{baseUrl}}/health/live
+
+### OpenAPI is available only in Development.
+GET {{baseUrl}}/openapi/v1.json
+
+### Unimplemented API routes return 404 Problem Details.
+GET {{baseUrl}}/api/v1/not-implemented
+Accept: application/problem+json

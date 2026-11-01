@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
+  </ItemGroup>
+</Project>

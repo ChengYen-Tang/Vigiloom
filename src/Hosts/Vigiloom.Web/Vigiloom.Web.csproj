@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />
+    <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.AgentManagement/Vigiloom.Modules.AgentManagement.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.ServiceObservability/Vigiloom.Modules.ServiceObservability.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.SecurityAnalysis/Vigiloom.Modules.SecurityAnalysis.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.Publishing/Vigiloom.Modules.Publishing.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+</Project>

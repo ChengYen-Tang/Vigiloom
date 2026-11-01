@@ -1,0 +1,57 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Agent/">
+    <Project Path="src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
+    <Project Path="src/Agent/Vigiloom.Agent.Platforms.Linux/Vigiloom.Agent.Platforms.Linux.csproj" />
+    <Project Path="src/Agent/Vigiloom.Agent.Platforms.Windows/Vigiloom.Agent.Platforms.Windows.csproj" />
+    <Project Path="src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />
+    <Project Path="src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
+    <Project Path="src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Vigiloom.Modules.AgentManagement/Vigiloom.Modules.AgentManagement.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.Publishing/Vigiloom.Modules.Publishing.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.SecurityAnalysis/Vigiloom.Modules.SecurityAnalysis.csproj" />
+    <Project Path="src/Modules/Vigiloom.Modules.ServiceObservability/Vigiloom.Modules.ServiceObservability.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/Vigiloom.BuildingBlocks/Vigiloom.BuildingBlocks.csproj" />
+    <Project Path="src/Shared/Vigiloom.Contracts/Vigiloom.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Updater/">
+    <Project Path="src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
+    <Project Path="src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Vigiloom.Agent.Core.Tests/Vigiloom.Agent.Core.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Agent.Platforms.Linux.Tests/Vigiloom.Agent.Platforms.Linux.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Agent.Platforms.Windows.Tests/Vigiloom.Agent.Platforms.Windows.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Agent.Tests/Vigiloom.Agent.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Architecture.Tests/Vigiloom.Architecture.Tests.csproj" />
+    <Project Path="tests/Vigiloom.BuildingBlocks.Tests/Vigiloom.BuildingBlocks.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Contracts.Tests/Vigiloom.Contracts.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.AgentManagement.Tests/Vigiloom.Modules.AgentManagement.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.AlertingOperations.Tests/Vigiloom.Modules.AlertingOperations.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.IdentityAccess.Tests/Vigiloom.Modules.IdentityAccess.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.NetworkMonitoring.Tests/Vigiloom.Modules.NetworkMonitoring.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.Publishing.Tests/Vigiloom.Modules.Publishing.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.Resources.Tests/Vigiloom.Modules.Resources.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.SecurityAnalysis.Tests/Vigiloom.Modules.SecurityAnalysis.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Modules.ServiceObservability.Tests/Vigiloom.Modules.ServiceObservability.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Updater.Tests/Vigiloom.Updater.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Worker.Tests/Vigiloom.Worker.Tests.csproj" />
+  </Folder>
+</Solution>

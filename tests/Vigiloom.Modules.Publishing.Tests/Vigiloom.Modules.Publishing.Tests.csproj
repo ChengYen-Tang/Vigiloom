@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Publishing/Vigiloom.Modules.Publishing.csproj" />
+  </ItemGroup>
+</Project>

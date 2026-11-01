@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Shared/Vigiloom.Contracts/Vigiloom.Contracts.csproj" />
+  </ItemGroup>
+</Project>
