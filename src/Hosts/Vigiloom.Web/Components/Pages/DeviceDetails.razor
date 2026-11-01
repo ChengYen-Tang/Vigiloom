@@ -1,0 +1,73 @@
+@page "/devices/{Id:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Contracts.Devices
+@using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
+@using Vigiloom.Modules.IdentityAccess.Domain
+@using Vigiloom.Modules.Resources.Application
+@inject DeviceManagement DevicesService
+@inject NavigationManager Navigation
+@inject ILogger<DeviceDetails> Logger
+
+<PageTitle>設備詳情 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="/devices">← 返回設備清單</a>
+    @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後重試。</p> }
+    else if (device is null) { <section class="device-panel"><h1>找不到設備</h1><p>此設備不存在，請返回清單。</p></section> }
+    else
+    {
+        <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
+            <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a> }</Authorized></AuthorizeView>
+        </header>
+        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div></dl>
+            @if (device.DeepMonitoring) { <p>深入監控需要為這台設備註冊 Agent；未連線不影響 Ping。</p> }
+        </section>
+        <AuthorizeView Policy="Administrator"><Authorized Context="administrator">
+            <section class="device-panel"><h2>@(device.Archived ? "恢復設備" : "封存設備")</h2>
+                <p>@(device.Archived ? "恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。" : "封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。")</p>
+                @if (actionError is not null) { <p class="device-alert" role="alert">@actionError</p> }
+                <EditForm Model="Action" FormName="device-archive" method="post" OnValidSubmit="ChangeArchiveAsync">
+                    <InputHidden @bind-Value="Action.Version" />
+                    <label><InputCheckbox @bind-Value="Action.Confirm" /> 我了解以上影響</label>
+                    <button type="submit">@(device.Archived ? "確認恢復" : "確認封存")</button>
+                </EditForm>
+            </section>
+        </Authorized></AuthorizeView>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "device-archive")] private ArchiveInput Action { get; set; } = default!;
+    private DeviceDto? device;
+    private bool error;
+    private string? actionError;
+    protected override async Task OnInitializedAsync()
+    {
+        Action ??= new();
+        try
+        {
+            device = await DevicesService.GetAsync(Id, HttpContext.RequestAborted);
+            if (device is not null && HttpMethods.IsGet(HttpContext.Request.Method)) Action.Version = device.Version;
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not load a device: {ExceptionType}", exception.GetType().Name); error = true; }
+    }
+    private async Task ChangeArchiveAsync()
+    {
+        if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || device is null ||
+            !Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        if (!Action.Confirm) { actionError = "請先確認操作影響。"; return; }
+        var succeeded = false;
+        try
+        {
+            var result = await DevicesService.SetArchivedAsync(Id, !device.Archived, Action.Version, actor, HttpContext.RequestAborted);
+            if (result.Status == DeviceResultStatus.Success) succeeded = true;
+            else actionError = "設備狀態已變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not change device archival state: {ExceptionType}", exception.GetType().Name); actionError = "無法確認操作結果，請重新整理並檢查設備狀態。"; }
+        if (succeeded) Navigation.NavigateTo($"/devices/{Id:D}", forceLoad: true);
+    }
+    private sealed class ArchiveInput { public string? Version { get; set; } public bool Confirm { get; set; } }
+}

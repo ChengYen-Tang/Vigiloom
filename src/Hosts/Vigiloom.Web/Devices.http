@@ -1,0 +1,57 @@
+@baseUrl = https://localhost:7043
+@credential = replace-with-issued-api-credential
+@deviceId = replace-with-device-id
+@version = replace-with-latest-version
+
+### List devices (monitoring.read)
+GET {{baseUrl}}/api/v1/devices/?search=router&sort=name&page=1
+Authorization: Bearer {{credential}}
+
+### Read a device
+GET {{baseUrl}}/api/v1/devices/{{deviceId}}
+Authorization: Bearer {{credential}}
+
+### Check whether a target is in use (monitoring.write)
+GET {{baseUrl}}/api/v1/devices/address-matches?address=router.example.test
+Authorization: Bearer {{credential}}
+
+### Create a private device (monitoring.write)
+POST {{baseUrl}}/api/v1/devices/
+Authorization: Bearer {{credential}}
+Content-Type: application/json
+
+{
+  "name": "Office router",
+  "address": "router.example.test",
+  "additionalTargets": ["192.0.2.1"],
+  "deepMonitoring": false,
+  "enabled": true
+}
+
+### Update using the version from the latest read
+PUT {{baseUrl}}/api/v1/devices/{{deviceId}}
+Authorization: Bearer {{credential}}
+Content-Type: application/json
+
+{
+  "name": "Office router",
+  "address": "router.example.test",
+  "additionalTargets": [],
+  "deepMonitoring": true,
+  "enabled": true,
+  "version": "{{version}}"
+}
+
+### Archive; the device and its history are retained
+POST {{baseUrl}}/api/v1/devices/{{deviceId}}/archive
+Authorization: Bearer {{credential}}
+Content-Type: application/json
+
+{ "version": "{{version}}" }
+
+### Restore the same identity in the disabled state
+POST {{baseUrl}}/api/v1/devices/{{deviceId}}/restore
+Authorization: Bearer {{credential}}
+Content-Type: application/json
+
+{ "version": "{{version}}" }
