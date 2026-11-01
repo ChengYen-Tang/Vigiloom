@@ -19,6 +19,7 @@ internal static class IdentityRegistration
         services.AddScoped<TwoFactorManagement>();
         services.AddScoped<TwoFactorChallenge>();
         services.AddScoped<AccountLogout>();
+        services.AddScoped<ApiCredentials>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
@@ -26,10 +27,16 @@ internal static class IdentityRegistration
             options.DefaultScheme = IdentityConstants.ApplicationScheme;
             options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
         }).AddIdentityCookies();
+        services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiCredentialHandler>(
+            ApiCredentialHandler.SchemeName, _ => { });
         services.AddAuthorization(options =>
         {
             options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
             options.AddPolicy(AccessPolicies.MonitoringRead, policy => policy.RequireRole(BuiltInRoles.Administrator, BuiltInRoles.ReadOnly));
+            options.AddPolicy("ApiClientRead", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
+                .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.read"));
+            options.AddPolicy("ApiClientWrite", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
+                .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.write"));
         });
         services.AddIdentityCore<Account>(options =>
         {

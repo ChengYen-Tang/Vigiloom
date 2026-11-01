@@ -25,7 +25,18 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        await context.HttpContext.Response.WriteAsync("請求過於頻繁，請稍後再試。", cancellationToken);
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        if (context.HttpContext.Request.Path.StartsWithSegments("/api"))
+        {
+            context.HttpContext.Response.ContentType = "application/problem+json";
+            await context.HttpContext.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Too Many Requests",
+                Extensions = { ["code"] = "too_many_requests" }
+            }, options: null, contentType: "application/problem+json", cancellationToken: cancellationToken);
+        }
+        else await context.HttpContext.Response.WriteAsync("請求過於頻繁，請稍後再試。", cancellationToken);
     };
     options.AddPolicy("identity-setup", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
@@ -41,9 +52,24 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    options.AddPolicy("api-client", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
 });
-builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<ApiOpenApi>());
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+{
+    context.ProblemDetails.Extensions.TryAdd("code", context.ProblemDetails.Status switch
+    {
+        400 => "bad_request", 401 => "unauthorized", 403 => "forbidden", 404 => "not_found",
+        409 => "conflict", 410 => "expired", 413 => "payload_too_large", 429 => "too_many_requests",
+        503 => "service_unavailable", _ => "request_failed"
+    });
+});
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
@@ -51,6 +77,11 @@ var app = builder.Build();
 // API errors must not be rewritten as a Blazor HTML page.
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), api =>
 {
+    api.Use(async (context, next) =>
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        await next();
+    });
     api.UseExceptionHandler();
     api.UseStatusCodePages();
 });
@@ -77,6 +108,11 @@ app.UseAntiforgery();
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
+app.MapGet("/api/v1/access", (HttpContext context) => TypedResults.Ok(new ApiClientAccessResponse(
+    context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value,
+    context.User.FindAll("scope").Select(claim => claim.Value).ToArray())))
+    .RequireAuthorization("ApiClientRead").RequireRateLimiting("api-client")
+    .ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).WithSummary("Inspect the authenticated API client's scopes");
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

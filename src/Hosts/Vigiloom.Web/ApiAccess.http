@@ -1,0 +1,10 @@
+@baseUrl = https://localhost:7043
+@apiCredential = REPLACE_WITH_A_VALID_API_CREDENTIAL
+
+### Check the third-party client's identity and granted scopes.
+# Obtain the credential from the authenticated Administrator page and store it securely.
+GET {{baseUrl}}/api/v1/access
+Authorization: Bearer {{apiCredential}}
+
+### Missing or revoked credentials return 401.
+GET {{baseUrl}}/api/v1/access
