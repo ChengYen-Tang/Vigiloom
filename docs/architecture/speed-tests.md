@@ -1,5 +1,7 @@
 # REQ-11 Speed test execution
 
+> **Superseded work in progress, 2026-11-02:** Pingvalue used Speedtest.net. Selecting M-Lab as a replacement was an incorrect, unauthorized change. The M-Lab-specific design and code below are retained temporarily for traceability and must not be shipped or treated as the REQ-11 solution. The current source of truth is `monitoring-execution.md` and the corrected REQ-11 card. A Speedtest.net integration is subject to verification of current authorization, distribution and automated/commercial use conditions.
+
 This requirement uses the already delivered API, Blazor and scheduler foundations (PRs #11–#13, verified Server/WebAssembly and SQL tests). It is not waiting for those cards' unrelated downstream acceptance. T01 owns execution/settings/results; T02 owns history/detail/trend presentation. Default visibility is private.
 
 ## Provider and build
