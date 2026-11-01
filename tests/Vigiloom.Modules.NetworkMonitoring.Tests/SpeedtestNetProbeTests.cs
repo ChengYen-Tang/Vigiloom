@@ -9,6 +9,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 [TestClass]
 public sealed class SpeedtestNetProbeTests
 {
+    public TestContext TestContext { get; set; } = null!;
     private static SpeedLease Lease() => new(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 10);
     private static OoklaServer Server() => new() { Id = 18475, Url = "http://speedtest.example.com:8080/speedtest/upload.php", Location = "Taipei", Sponsor = "Example", Country = "Taiwan", Latitude = 25, Longitude = 121 };
     private static SpeedTestResult Measurement(long bytes, long ms, int success = 1, int failed = 0) =>
@@ -117,6 +118,54 @@ public sealed class SpeedtestNetProbeTests
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
         var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), source.Token);
         Assert.AreEqual(SpeedTestState.Cancelled, result.State);
+        Assert.IsNull(result.DownloadMbps);
+        Assert.IsNull(result.UploadMbps);
+    }
+
+    [TestMethod]
+    public async Task MeasureAsync_DeadlineProducesTimeoutWithoutZeroSpeeds()
+    {
+        var service = new SpeedTestMock { GetServersAsyncFunc = async token => { await Task.Delay(Timeout.InfiniteTimeSpan, token); return []; } };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 1), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.TimedOut, result.State);
+        Assert.AreEqual("timeout", result.DiagnosticCode);
+        Assert.IsNull(result.DownloadMbps);
+        Assert.IsNull(result.UploadMbps);
+    }
+
+    [TestMethod]
+    public async Task MeasureAsync_ProviderFailureDoesNotProduceZeroSpeeds()
+    {
+        var service = new SpeedTestMock { GetServersAsyncFunc = _ => Task.FromException<IServer[]>(new HttpRequestException()) };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Failed, result.State);
+        Assert.AreEqual("provider_error", result.DiagnosticCode);
+        Assert.IsNull(result.DownloadMbps);
+        Assert.IsNull(result.UploadMbps);
+    }
+
+    [TestMethod]
+    public async Task MeasureAsync_CancelDuringUploadPreservesCompletedDownload()
+    {
+        var server = Server();
+        var uploadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(2_000_000, 2000)),
+            GetUploadSpeedAsyncFunc = async (_, _, token) => { uploadStarted.SetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return Measurement(0, 0); }
+        };
+        using var source = new CancellationTokenSource();
+        var pending = new SpeedtestNetProbe(service).MeasureAsync(Lease(), source.Token);
+        await uploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
+        await source.CancelAsync();
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
+        Assert.AreEqual(SpeedTestState.Cancelled, result.State);
+        Assert.AreEqual(8d, result.DownloadMbps);
+        Assert.IsNull(result.UploadMbps);
+        Assert.AreEqual("cancelled", result.DiagnosticCode);
     }
 
     [TestMethod]
