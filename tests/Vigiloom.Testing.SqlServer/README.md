@@ -4,6 +4,8 @@
 
 An isolated SQL Server can be supplied explicitly with `VIGILOOM_TEST_SQL_CONNECTION` (initial catalog must be `master`) and `VIGILOOM_TEST_SQL_ALLOW_SOURCE` (the exact data source). Provision a dedicated test server and account; do not point either setting at a development or production database. Neither setting is read from product configuration or written to the manifest. Missing LocalDB or an invalid test configuration fails the database tests.
 
+The database test category has been exercised on Windows LocalDB and on Linux with SQL Server 2022 in GitHub Actions; the Linux run executes all 15 tests rather than skipping platform-incompatible cases.
+
 Each run has a `run.json`, a run lease and individual case manifests under the operating system temporary directory `VigiloomSqlTests`. The manifest is written before database creation. Normal cleanup checks the generated name and source; for LocalDB it also verifies the database's exact owned file paths before DROP and checks those files are removed.
 
 If a test host is forcibly terminated, after it has exited recover its exact run manifest:
