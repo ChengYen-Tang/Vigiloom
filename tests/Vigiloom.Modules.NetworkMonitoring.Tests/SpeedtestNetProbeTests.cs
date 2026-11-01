@@ -40,6 +40,42 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
+    public async Task MeasureAsync_PhaseBudgetIsNormalCompletionWhenSamplesAreLongEnough()
+    {
+        var server = Server();
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(100 * 1048576, 8000)),
+            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(72 * 1048576, 15000))
+        };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Success, result.State);
+        Assert.AreEqual(104.8576d, result.DownloadMbps!.Value, 0.000001d);
+        Assert.AreEqual(40.2653184d, result.UploadMbps!.Value, 0.000001d);
+        Assert.IsNull(result.DiagnosticCode);
+    }
+
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task MeasureAsync_RealClientCompletesWhenOnlyDownloadPhaseReachesItsBudget()
+    {
+        var handler = new ControlledPhaseHandler();
+        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler)).MeasureAsync(
+            new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
+        Assert.AreEqual(SpeedTestState.Success, result.State);
+        Assert.IsNotNull(result.DownloadMbps);
+        Assert.IsNotNull(result.UploadMbps);
+        Assert.IsNotNull(result.Bytes);
+        Assert.IsGreaterThan(170L * 1048576, result.Bytes.Value);
+        Assert.IsLessThan(200L * 1048576, result.Bytes.Value);
+        Assert.IsGreaterThan(0, handler.UploadRequests);
+        Assert.IsNull(result.DiagnosticCode);
+    }
+
+    [TestMethod]
     [DataRow(91d, 121d)]
     [DataRow(25d, -181d)]
     [DataRow(double.NaN, 0d)]
@@ -169,11 +205,11 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
-    public async Task MeasureAsync_StopsParallelUploadsAtSharedBudget()
+    public async Task MeasureAsync_StopsParallelUploadsAtPhaseBudget()
     {
         var factory = new FixtureHandlerFactory(smallDownloads: true);
         var result = await new SpeedtestNetProbe(factory).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 10), CancellationToken.None);
-        Assert.AreEqual(SpeedTestState.BudgetExceeded, result.State);
+        Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.IsGreaterThan(0, factory.Handler.UploadRequests);
         Assert.IsNotNull(result.Bytes);
         Assert.IsLessThanOrEqualTo(2L * 1024 * 1024, result.Bytes.Value);
@@ -183,6 +219,40 @@ public sealed class SpeedtestNetProbeTests
     {
         public FixtureHandler Handler { get; } = new(smallDownloads);
         public HttpMessageHandler CreateHandler(string name) => Handler;
+    }
+
+    private sealed class ControlledPhaseFactory(ControlledPhaseHandler handler) : IHttpMessageHandlerFactory
+    {
+        public HttpMessageHandler CreateHandler(string name) => handler;
+    }
+
+    private sealed class ControlledPhaseHandler : HttpMessageHandler
+    {
+        private static readonly byte[] Download = new byte[2 * 1048576];
+        private static readonly byte[] UploadResponse = new byte[65536];
+        private int uploadRequests;
+        public int UploadRequests => Volatile.Read(ref uploadRequests);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            HttpContent content;
+            if (path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal))
+                content = new StringContent("<settings><servers><server url=\"http://speedtest.example.com:8080/speedtest/upload.php\" lat=\"25\" lon=\"121\" name=\"Taipei\" country=\"Taiwan\" sponsor=\"Example\" id=\"1\" /></servers></settings>");
+            else if (path.EndsWith("latency.txt", StringComparison.Ordinal)) content = new StringContent("test=test");
+            else if (request.Method == HttpMethod.Post)
+            {
+                if (request.Content is not null) await request.Content.CopyToAsync(Stream.Null, token);
+                Interlocked.Increment(ref uploadRequests);
+                await Task.Delay(100, token);
+                content = new ByteArrayContent(UploadResponse);
+            }
+            else
+            {
+                await Task.Delay(200, token);
+                content = new ByteArrayContent(Download);
+            }
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content, RequestMessage = request };
+        }
     }
 
     private sealed class FixtureHandler(bool smallDownloads) : HttpMessageHandler
