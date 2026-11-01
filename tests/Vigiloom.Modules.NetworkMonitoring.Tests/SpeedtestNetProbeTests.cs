@@ -72,6 +72,10 @@ public sealed class SpeedtestNetProbeTests
         Assert.IsGreaterThan(170L * 1048576, result.Bytes.Value);
         Assert.IsLessThan(200L * 1048576, result.Bytes.Value);
         Assert.IsGreaterThan(0, handler.UploadRequests);
+        Assert.AreEqual(72L * 1048576, handler.UploadBytes);
+        var referenceMbps = handler.UploadBytes * 8d / handler.UploadElapsedSeconds / 1_000_000d;
+        Assert.IsLessThan(referenceMbps * 0.1, Math.Abs(result.UploadMbps.Value - referenceMbps),
+            "Upload response bytes must not be counted as uploaded payload.");
         Assert.IsNull(result.DiagnosticCode);
     }
 
@@ -229,9 +233,13 @@ public sealed class SpeedtestNetProbeTests
     private sealed class ControlledPhaseHandler : HttpMessageHandler
     {
         private static readonly byte[] Download = new byte[2 * 1048576];
-        private static readonly byte[] UploadResponse = new byte[65536];
+        private static readonly byte[] UploadResponse = new byte[131072];
+        private readonly object gate = new();
         private int uploadRequests;
+        private long uploadBytes, firstUpload, lastUpload;
         public int UploadRequests => Volatile.Read(ref uploadRequests);
+        public long UploadBytes { get { lock (gate) return uploadBytes; } }
+        public double UploadElapsedSeconds { get { lock (gate) return System.Diagnostics.Stopwatch.GetElapsedTime(firstUpload, lastUpload).TotalSeconds; } }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var path = request.RequestUri!.AbsolutePath;
@@ -241,9 +249,12 @@ public sealed class SpeedtestNetProbeTests
             else if (path.EndsWith("latency.txt", StringComparison.Ordinal)) content = new StringContent("test=test");
             else if (request.Method == HttpMethod.Post)
             {
+                var length = request.Content?.Headers.ContentLength ?? 0;
+                if (length > 0) lock (gate) { if (firstUpload == 0) firstUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
                 if (request.Content is not null) await request.Content.CopyToAsync(Stream.Null, token);
                 Interlocked.Increment(ref uploadRequests);
                 await Task.Delay(100, token);
+                if (length > 0) lock (gate) { uploadBytes += length; lastUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
                 content = new ByteArrayContent(UploadResponse);
             }
             else
