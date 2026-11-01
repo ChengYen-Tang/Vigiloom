@@ -1,0 +1,108 @@
+@page "/devices/new"
+@page "/devices/{Id:guid}/edit"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Devices
+@using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.Resources.Domain
+@inject DeviceManagement DevicesService
+@inject NavigationManager Navigation
+@inject ILogger<DeviceEdit> Logger
+
+<PageTitle>@(isNew ? "新增設備" : "編輯設備") - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">← 返回</a>
+    <header class="device-heading"><div><h1>@(isNew ? "新增設備" : "編輯設備")</h1><p>設定設備目標與監控模式；設備預設為私人。</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">無法載入設備，請確認設備存在且未封存。</p></section> }
+    else
+    {
+        <section class="device-panel">
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="device-edit" method="post" OnSubmit="SaveAsync">
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="device-name">設備名稱</label><InputText id="device-name" @bind-Value="Input.Name" maxlength="256" />
+                @if (errors.TryGetValue("name", out var nameErrors)) { <p class="device-field-error">@string.Join(" ", nameErrors)</p> }
+                <label for="device-address">主要 Ping 目標</label><InputText id="device-address" @bind-Value="Input.Address" maxlength="253" placeholder="IPv4、IPv6 或 DNS 名稱" />
+                @if (errors.TryGetValue("address", out var addressErrors)) { <p class="device-field-error">@string.Join(" ", addressErrors)</p> }
+                <label for="device-targets">額外 Ping 目標（選填，每行一個）</label><InputTextArea id="device-targets" @bind-Value="Input.AdditionalTargets" rows="4" />
+                @if (errors.TryGetValue("additionalTargets", out var targetErrors)) { <p class="device-field-error">@string.Join(" ", targetErrors)</p> }
+                <fieldset><legend>監控模式</legend><InputRadioGroup @bind-Value="Input.DeepMonitoring"><label><InputRadio Value="false" /> 僅 Ping</label><label><InputRadio Value="true" /> 深入監控</label></InputRadioGroup><p>兩種模式都會 Ping；深入監控需要另外註冊 Agent。</p></fieldset>
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用監控</label>
+                @if (duplicateNames.Count != 0)
+                {
+                    <div class="device-alert"><p>部分目標已被其他設備使用：@string.Join("、", duplicateNames)。設備不會自動合併。</p><label><InputCheckbox @bind-Value="Input.ConfirmDuplicates" /> 仍要使用這些目標</label></div>
+                }
+                @if (confirmAddress)
+                {
+                    <div class="device-alert"><p>目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。</p><label><InputCheckbox @bind-Value="Input.ConfirmAddress" /> 我了解目標變更的影響</label></div>
+                }
+                <div class="device-actions"><button type="submit">儲存設備</button><a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">取消</a></div>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "device-edit")] private DeviceForm Input { get; set; } = default!;
+    private bool isNew;
+    private bool loadError;
+    private bool confirmAddress;
+    private DeviceDto? current;
+    private string? message;
+    private Dictionary<string, string[]> errors = [];
+    private List<string> duplicateNames = [];
+    protected override async Task OnInitializedAsync()
+    {
+        isNew = Id == Guid.Empty;
+        Input ??= new();
+        if (isNew) return;
+        try
+        {
+            current = await DevicesService.GetAsync(Id, HttpContext.RequestAborted);
+            if (current is null || current.Archived) { loadError = true; return; }
+            if (HttpMethods.IsGet(HttpContext.Request.Method))
+                Input = new DeviceForm { Name = current.Name, Address = current.Address, AdditionalTargets = string.Join("\n", current.AdditionalTargets), DeepMonitoring = current.DeepMonitoring, Enabled = current.Enabled, Version = current.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not load a device for editing: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+    private async Task SaveAsync()
+    {
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty) return;
+        var targets = (Input.AdditionalTargets ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var request = new DeviceInput(Input.Name, Input.Address, targets, Input.DeepMonitoring, Input.Enabled, Input.Version);
+        Guid? savedId = null;
+        try
+        {
+            var matches = await DevicesService.FindAddressMatchesAsync(targets.Prepend(Input.Address ?? ""), isNew ? null : Id, HttpContext.RequestAborted);
+            duplicateNames = matches.Select(match => match.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            confirmAddress = current is not null && TargetAddress.TryNormalize(Input.Address, out var address) &&
+                (address != current.Address || !targets.Select(value => TargetAddress.TryNormalize(value, out var normalized) ? normalized : value)
+                    .Order(StringComparer.Ordinal).SequenceEqual(current.AdditionalTargets.Order(StringComparer.Ordinal), StringComparer.Ordinal));
+            if ((duplicateNames.Count != 0 && !Input.ConfirmDuplicates) || (confirmAddress && !Input.ConfirmAddress)) return;
+            var result = isNew ? await DevicesService.CreateAsync(request, actor, HttpContext.RequestAborted) : await DevicesService.UpdateAsync(Id, request, actor, HttpContext.RequestAborted);
+            if (result.Status == DeviceResultStatus.Success) savedId = result.Device!.Id;
+            else if (result.Status == DeviceResultStatus.Invalid)
+            {
+                errors = result.Errors!.ToDictionary(x => x.Key, x => x.Value);
+                if (errors.TryGetValue("version", out var versionErrors)) message = string.Join(" ", versionErrors);
+            }
+            else message = "設備已變更或不存在，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save a device: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請返回清單確認後再試。"; }
+        if (savedId is { } id) Navigation.NavigateTo($"/devices/{id:D}", forceLoad: true);
+    }
+    private sealed class DeviceForm
+    {
+        public string? Name { get; set; }
+        public string? Address { get; set; }
+        public string? AdditionalTargets { get; set; }
+        public bool DeepMonitoring { get; set; }
+        public bool Enabled { get; set; } = true;
+        public string? Version { get; set; }
+        public bool ConfirmDuplicates { get; set; }
+        public bool ConfirmAddress { get; set; }
+    }
+}

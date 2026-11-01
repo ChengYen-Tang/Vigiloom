@@ -1,0 +1,59 @@
+@page "/devices"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Devices
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Modules.Resources.Application
+@inject DeviceManagement DevicesService
+@inject NavigationManager Navigation
+@inject ILogger<Devices> Logger
+
+<PageTitle>設備 - Vigiloom</PageTitle>
+<main class="device-page">
+    <header class="device-heading">
+        <div><h1>設備</h1><p>管理網路設備與深入監控設備，查看各自的監測狀態。</p></div>
+        <AuthorizeView Policy="Administrator"><Authorized><a class="device-primary" href="/devices/new">新增設備</a></Authorized></AuthorizeView>
+    </header>
+    <section class="device-panel">
+        <form method="get" action="/devices" class="device-filters">
+            <label>搜尋名稱或目標 <input name="search" value="@Search" maxlength="256" placeholder="名稱、IP 或 DNS" /></label>
+            <label>排序 <select name="sort"><option value="name" selected="@(Sort is null or "name")">名稱</option><option value="address" selected="@(Sort == "address")">目標</option><option value="created" selected="@(Sort == "created")">建立時間</option></select></label>
+            <label><input type="checkbox" name="descending" value="true" checked="@Descending" /> 反向排序</label>
+            <label><input type="checkbox" name="archived" value="true" checked="@Archived" /> 顯示已封存</label>
+            <button type="submit">搜尋</button>
+        </form>
+        @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後重新整理。</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">@(Archived ? "沒有符合條件的封存設備。" : "沒有符合條件的設備。")</p> }
+        else if (result is not null)
+        {
+            <p class="device-count">共 @result.Total 台設備</p>
+            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>主要目標</th><th>監控模式</th><th>Ping 狀態</th><th>建立時間（UTC）</th><th></th></tr></thead><tbody>
+                @foreach (var device in result.Items)
+                {
+                    <tr @key="device.Id"><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td><td>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : "尚無量測資料")</td><td>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td><a href="@($"/devices/{device.Id:D}")">查看詳情</a></td></tr>
+                }
+            </tbody></table></div>
+            <nav class="device-pagination" aria-label="設備分頁">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
+                <span>第 @result.Page 頁</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            </nav>
+        }
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
+    [SupplyParameterFromQuery(Name = "descending")] public bool Descending { get; set; }
+    [SupplyParameterFromQuery(Name = "archived")] public bool Archived { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
+    private DevicePage? result;
+    private bool error;
+    protected override async Task OnInitializedAsync()
+    {
+        try { result = await DevicesService.ListAsync(Search is { Length: <= 256 } ? Search : null, Sort, Descending, Archived, Page, CancellationToken.None); }
+        catch (Exception exception) { Logger.LogWarning("Could not load devices: {ExceptionType}", exception.GetType().Name); error = true; }
+    }
+    private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/devices", new Dictionary<string, object?> { ["search"] = Search, ["sort"] = Sort, ["descending"] = Descending ? true : null, ["archived"] = Archived ? true : null, ["page"] = page });
+}
