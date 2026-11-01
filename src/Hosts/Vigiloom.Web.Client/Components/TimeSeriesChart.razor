@@ -30,7 +30,7 @@
     internal static ChartOptions CreateOptions(IReadOnlyList<TimeSeriesPoint> points) => new()
         {
             UseUTC = true,
-            XAxis = new() { Type = AxisType.Time },
+            XAxis = new() { Type = AxisType.Time, SplitNumber = 4, AxisLabel = new() { HideOverlap = true } },
             YAxis = new() { Type = AxisType.Value },
             Series = new() { new LineSeries { Data = points.Select(point => new object?[] { point.Time.ToUnixTimeMilliseconds(), point.Value }).ToArray(), ConnectNulls = false } }
         };
