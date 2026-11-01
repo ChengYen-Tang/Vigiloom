@@ -1,4 +1,4 @@
-namespace Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
+namespace Vigiloom.Testing.SpeedTests;
 
 internal sealed class ControlledPhaseFactory(ControlledPhaseHandler handler) : IHttpMessageHandlerFactory
 {

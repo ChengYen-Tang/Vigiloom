@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <Compile Include="../Fixtures/SpeedTests/ControlledPhaseTransport.cs" Link="Fixtures/ControlledPhaseTransport.cs" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" Aliases="WorkerHostAssembly" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
   <ItemGroup>
