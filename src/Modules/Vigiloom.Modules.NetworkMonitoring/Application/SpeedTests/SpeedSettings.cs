@@ -7,7 +7,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
 public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
 {
-    public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 6 and <= 168 && input.MaxMiB is >= 1 and <= 200 &&
+    public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 6 and <= 168 && input.MaxMiB is >= 2 and <= 200 &&
         input.TimeoutSeconds is >= 5 and <= 60 && (!input.Automatic || input.Consent) && (!input.Consent || input.ConsentPolicy == SpeedDatabase.ConsentPolicy);
     public async Task<SpeedSettingsSnapshot> GetAsync(CancellationToken token)
     {
@@ -63,9 +63,7 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
         var reservations = db.SpeedRuns.Where(x => (x.StartedAt ?? x.RequestedAt) > now.AddHours(-24));
         var total = await reservations.CountAsync(token);
         var automatic = await reservations.CountAsync(x => x.Automatic, token);
-        DateTimeOffset? next = null;
-        if (total >= 40) next = (await reservations.MinAsync(x => x.StartedAt ?? x.RequestedAt, token)).AddHours(24);
         return new(setting.Automatic, setting.IntervalHours, setting.MaxMiB, setting.TimeoutSeconds, SpeedDatabase.HasConsent(setting),
-            SpeedDatabase.ConsentPolicy, Convert.ToBase64String(setting.Version), setting.NextAutomaticAt, total, automatic, next);
+            SpeedDatabase.ConsentPolicy, Convert.ToBase64String(setting.Version), setting.NextAutomaticAt, total, automatic);
     }
 }

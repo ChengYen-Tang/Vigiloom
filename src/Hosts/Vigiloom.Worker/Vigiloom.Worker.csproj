@@ -18,7 +18,4 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="../../../artifacts/ndt7/vigiloom-ndt7*" Link="tools/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>

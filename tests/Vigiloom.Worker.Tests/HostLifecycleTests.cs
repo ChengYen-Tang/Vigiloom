@@ -11,12 +11,22 @@ using Vigiloom.Worker.Hosting;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
 namespace Vigiloom.Worker.Tests;
 
 [TestClass]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    public void SpeedtestHttpHandlers_ArePooledAcrossMeasurements()
+    {
+        using var host = WorkerHost.CreateBuilder([]).Build();
+        var factory = host.Services.GetRequiredService<IHttpMessageHandlerFactory>();
+        using var first = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        using var second = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        Assert.AreSame(first, second);
+    }
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task Host_WithoutDatabaseConfiguration_FailsInsteadOfSilentlyStarting()

@@ -9,7 +9,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
 internal static class SpeedDatabase
 {
-    public const string ConsentPolicy = "mlab-aup-2025-07-15/privacy-2025-02-17";
+    public const string ConsentPolicy = "speedtest-net-notice-v1";
     public static async Task EnsureAsync(IDbContextFactory<NetworkDbContext> contexts, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

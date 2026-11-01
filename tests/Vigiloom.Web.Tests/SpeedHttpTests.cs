@@ -29,19 +29,19 @@ public sealed class SpeedHttpTests
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
         var first = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
         Assert.IsNotNull(first); Assert.IsFalse(first.Consent); Assert.IsFalse(first.Automatic);
-        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 1, 5, true, first.Version, first.ConsentPolicy), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
+        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 5, true, first.Version, first.ConsentPolicy), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
         using var page = await admin.GetAsync("/settings/speed-tests", token);
         Assert.IsTrue(page.Headers.CacheControl?.NoStore);
         var form = await FormAsync(page, "speed-settings", token);
         var fields = Hidden(form);
-        fields["Input.Hours"] = "6"; fields["Input.MaxMiB"] = "1"; fields["Input.Timeout"] = "5";
+        fields["Input.Hours"] = "6"; fields["Input.MaxMiB"] = "2"; fields["Input.Timeout"] = "5";
         fields["Input.Consent"] = "true"; fields["Input.Automatic"] = "false";
         using (var save = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已儲存", await TextAsync(save, token));
         using (var stale = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
         var updated = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
-        Assert.IsNotNull(updated); Assert.IsTrue(updated.Consent); Assert.AreEqual(1, updated.MaxMiB);
+        Assert.IsNotNull(updated); Assert.IsTrue(updated.Consent); Assert.AreEqual(2, updated.MaxMiB);
         var json = System.Text.Json.JsonSerializer.Serialize(new StartSpeedTestRequest(Guid.CreateVersion7()), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
         using var start = new HttpRequestMessage(HttpMethod.Post, "/api/v1/speed-tests") { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
         start.Headers.Add("RequestVerificationToken", fields["__RequestVerificationToken"]);

@@ -11,22 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  detect-go:
-    name: Detect Go sources
-    runs-on: ubuntu-latest
-    outputs:
-      available: ${{ steps.detect.outputs.available }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: detect
-        shell: bash
-        run: |
-          if [[ -f tools/ndt7/go.mod ]]; then
-            echo 'available=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'available=false' >> "$GITHUB_OUTPUT"
-          fi
-
   csharp:
     name: CodeQL C#
     runs-on: ubuntu-latest
@@ -53,32 +37,3 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: /language:csharp
-
-  go:
-    name: CodeQL Go
-    needs: detect-go
-    if: needs.detect-go.outputs.available == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: tools/ndt7/go.mod
-          cache: false
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: go
-          build-mode: manual
-      - name: Build NDT7 adapter
-        working-directory: tools/ndt7
-        run: go build -a -mod=readonly ./...
-      - name: Analyze Go
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: /language:go
