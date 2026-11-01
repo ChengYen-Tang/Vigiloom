@@ -90,8 +90,11 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                 ? $"{server.Sponsor} (#{server.Id}) · {new Uri(selected.Url).Host}"
                 : new Uri(selected.Url).Host;
             if (display is { Length: > 253 }) display = display[..253];
+            var validCoordinates = server is not null && double.IsFinite(server.Latitude) && double.IsFinite(server.Longitude) &&
+                server.Latitude is >= -90 and <= 90 && server.Longitude is >= -180 and <= 180;
             return new(state, display, selected?.Location, server?.Country,
-                download, upload, latency, transport is not null ? budget.BytesTransferred : bytes, server?.Latitude, server?.Longitude, diagnostic);
+                download, upload, latency, transport is not null ? budget.BytesTransferred : bytes,
+                validCoordinates ? server!.Latitude : null, validCoordinates ? server!.Longitude : null, diagnostic);
         }
     }
 
