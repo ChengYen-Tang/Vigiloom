@@ -14,7 +14,7 @@
 
 ## 既有工作邊界
 
-使用者已於 2026-11-01 授權移除舊方案，建立全新 Solution、專案／測試骨架及相依關係。當前範圍是基礎架構骨架；其他產品功能依後續指定需求實作，不視為本次全部開工。
+使用者已於 2026-11-01 授權移除舊方案，建立全新 Solution、專案／測試骨架及相依關係。使用者已授權持續開發已討論且未明確擱置的產品需求，依看板前置條件安排，不必每完成一項需求就重新請求授權。
 既定方向為 .NET 10／Blazor／Web API／EF Core 10＋SQL Server；完整需求與 Task 以 [Vigiloom Project](https://github.com/users/ChengYen-Tang/projects/5) 為準。
 
 架構邊界先讀 [ADR-0002](docs/architecture/ADR-0002-modular-platform-and-hosts.md)：模組化中央平台、可分程序的 Web／Worker、獨立 Agent／Updater。Blazor 使用 Auto、按頁面啟用；瀏覽器元件在 Web.Client，只參考 Contracts，不引用後端模組或 EF。
