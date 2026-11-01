@@ -82,6 +82,10 @@ public sealed class SpeedHttpTests
         var html = await new HtmlParser().ParseDocumentAsync(await missingPage.Content.ReadAsStringAsync(token), token);
         var coordinate = html.QuerySelectorAll("dl div").Single(x => x.QuerySelector("dt")?.TextContent == "座標");
         Assert.AreEqual("供應商未提供", coordinate.QuerySelector("dd")?.TextContent);
+        Assert.Contains("此測試未完整完成", html.Body!.TextContent);
+        using var notFoundPage = await reader.GetAsync($"/speed-tests/{Guid.CreateVersion7():D}", token);
+        Assert.AreEqual(HttpStatusCode.OK, notFoundPage.StatusCode);
+        Assert.Contains("找不到測速結果", await TextAsync(notFoundPage, token));
     }, TestContext.CancellationToken);
     private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new("https://localhost") });
     private static Dictionary<string,string> Hidden(IElement form) => form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
