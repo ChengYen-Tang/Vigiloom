@@ -38,6 +38,7 @@ public sealed class SpeedBrowserTests
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1000 } });
         var page = await context.NewPageAsync(); var errors = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        await using var wasmGate = await AutoRenderGate.HoldAsync(page);
         page.PageError += (_, value) => errors.Enqueue(value);
         var browserHistoryRequests = 0;
         page.Request += (_, request) => { if (request.Url.Contains("/api/v1/speed-tests?", StringComparison.Ordinal)) Interlocked.Increment(ref browserHistoryRequests); };
@@ -47,6 +48,7 @@ public sealed class SpeedBrowserTests
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator("main[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await wasmGate.ReleaseAsync();
         Assert.DoesNotContain("日期範圍須", await page.Locator("main").InnerTextAsync());
         await page.Locator(".device-table-wrap tbody tr").First.WaitForAsync();
         Assert.AreEqual(3, await page.Locator(".device-table-wrap tbody tr").CountAsync());
