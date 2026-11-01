@@ -70,6 +70,31 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ArchiveHoldingDeviceLockPreventsConcurrentEnrollment(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var service = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await service.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        await using var archive = resources.CreateDbContext();
+        await using var transaction = await archive.Database.BeginTransactionAsync(token);
+        var current = await archive.Devices.SingleAsync(x => x.Id == device.Id, token);
+        current.Archive(clock.GetUtcNow());
+        await archive.SaveChangesAsync(token);
+        var redeem = service.RedeemAsync(issued.Secret, RandomNumberGenerator.GetBytes(32), token);
+        // Verify the competing operation is actually waiting for SQL, rather than merely scheduled.
+        await Task.Delay(250, token);
+        Assert.IsFalse(redeem.IsCompleted, "Enrollment must wait until the archive transaction commits.");
+        await transaction.CommitAsync(token);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await redeem).Status);
+        await using var check = agents.CreateDbContext();
+        Assert.AreEqual(0, await check.Agents.CountAsync(token));
+    }, snapshotReads);
+
+    [TestMethod]
     public Task RotationSurvivesRetriesAndDoesNotActivatePendingCredentialEarly() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
