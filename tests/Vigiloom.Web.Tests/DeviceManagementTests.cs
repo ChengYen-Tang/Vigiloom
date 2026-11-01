@@ -76,9 +76,17 @@ public sealed class DeviceManagementTests
         var form = await FormAsync(page, "device-edit", token);
         var fields = Hidden(form);
         fields["Input.Name"] = "Test router";
-        fields["Input.Address"] = "EXAMPLE.COM";
         fields["Input.DeepMonitoring"] = "false";
         fields["Input.Enabled"] = "true";
+        fields["Input.Address"] = "https://invalid.example";
+        using (var invalid = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token))
+        {
+            var invalidDocument = await new HtmlParser().ParseDocumentAsync(await invalid.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("請輸入有效的 IPv4、IPv6 或 DNS 名稱", invalidDocument.Body!.TextContent);
+            Assert.AreEqual("Test router", invalidDocument.QuerySelector("#device-name")!.GetAttribute("value"));
+            Assert.AreEqual("https://invalid.example", invalidDocument.QuerySelector("#device-address")!.GetAttribute("value"));
+        }
+        fields["Input.Address"] = "EXAMPLE.COM";
         using var create = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token);
         Assert.AreEqual(HttpStatusCode.Redirect, create.StatusCode, (await new HtmlParser().ParseDocumentAsync(await create.Content.ReadAsStringAsync(token), token)).Body?.TextContent);
         using var list = await admin.GetAsync("/api/v1/devices/", token);
