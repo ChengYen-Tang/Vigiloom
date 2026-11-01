@@ -67,6 +67,8 @@ func TestReferenceClientUsesTLSAndStopsAtBudget(t *testing.T) {
 		if r.URL.Path == "/ndt/v7/download" {
 			data := make([]byte, 32768)
 			for i := 0; i < 8; i++ {
+				// Simulate a measurable transfer, including on coarse CI clocks.
+				time.Sleep(5 * time.Millisecond)
 				if conn.WriteMessage(websocket.BinaryMessage, data) != nil {
 					return
 				}
@@ -103,7 +105,7 @@ func TestReferenceClientUsesTLSAndStopsAtBudget(t *testing.T) {
 			"wss:///ndt/v7/download": "wss://fixture.measurement-lab.org/ndt/v7/download",
 			"wss:///ndt/v7/upload":   "wss://fixture.measurement-lab.org/ndt/v7/upload"}}, nil
 	}
-	// Use fixture hostname for certificate verification; certificate has example.com.
+	// Verify the fixture hostname using its explicit local trust root.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	answer := run(ctx, request{MaxBytes: 1 << 20, TimeoutSeconds: 3}, find, func(ctx context.Context, network, address string) (net.Conn, error) {
