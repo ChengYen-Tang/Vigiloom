@@ -59,6 +59,24 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
+    public async Task MeasureAsync_ZeroElapsedTimeDoesNotProduceSpeed()
+    {
+        var server = Server();
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1024, 0)),
+            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1024, 0))
+        };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Failed, result.State);
+        Assert.IsNull(result.DownloadMbps);
+        Assert.IsNull(result.UploadMbps);
+    }
+
+    [TestMethod]
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task MeasureAsync_RealClientCompletesWhenOnlyDownloadPhaseReachesItsBudget()
     {
@@ -284,6 +302,8 @@ public sealed class SpeedtestNetProbeTests
                 if (request.Content is not null) await request.Content.CopyToAsync(Stream.Null, cancellationToken);
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("ok"), RequestMessage = request };
             }
+            if (smallDownloads && !path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal) && !path.EndsWith("latency.txt", StringComparison.Ordinal))
+                await Task.Delay(5, cancellationToken);
             HttpContent content = path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal)
                 ? new StringContent("<settings><servers><server url=\"http://speedtest.example.com:8080/speedtest/upload.php\" lat=\"25\" lon=\"121\" name=\"Taipei\" country=\"Taiwan\" sponsor=\"Example\" id=\"1\" /></servers></settings>")
                 : path.EndsWith("latency.txt", StringComparison.Ordinal) ? new StringContent("test=test") : new ByteArrayContent(smallDownloads ? SmallPayload : Payload);
