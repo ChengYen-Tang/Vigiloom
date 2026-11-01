@@ -8,39 +8,67 @@ internal sealed class SpeedTrafficBudget
     private readonly object gate = new();
     private readonly long maximum;
     private readonly Action onLimit;
+    private readonly CancellationToken stopping;
     private long remaining;
     private long transferred;
     private bool reached;
+    private TaskCompletionSource? changed;
 
-    public SpeedTrafficBudget(long maximum, Action onLimit) { this.maximum = maximum; this.onLimit = onLimit; remaining = maximum; }
+    public SpeedTrafficBudget(long maximum, Action onLimit, CancellationToken stopping)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximum);
+        this.maximum = maximum; this.onLimit = onLimit; this.stopping = stopping; remaining = maximum;
+    }
 
     public long BytesTransferred { get { lock (gate) return transferred; } }
     public bool Reached { get { lock (gate) return reached; } }
 
     public int Reserve(int requested)
     {
-        var exhausted = false;
-        var allowed = 0;
-        lock (gate)
+        var reservation = ReserveAsync(requested, stopping);
+        return reservation.IsCompletedSuccessfully ? reservation.Result : reservation.AsTask().GetAwaiter().GetResult();
+    }
+
+    public async ValueTask<int> ReserveAsync(int requested, CancellationToken cancellationToken)
+    {
+        if (requested == 0) return 0;
+        while (true)
         {
-            if (requested == 0) return 0;
-            if (remaining == 0) { reached = true; exhausted = true; }
-            else { allowed = (int)Math.Min(requested, remaining); remaining -= allowed; }
+            stopping.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
+            Task wait;
+            lock (gate)
+            {
+                if (reached) throw new IOException("Speed-test traffic budget exhausted.");
+                if (remaining > 0)
+                {
+                    var allowed = (int)Math.Min(requested, remaining);
+                    remaining -= allowed;
+                    return allowed;
+                }
+                // Other I/O owns the remaining budget but may use less than it reserved.
+                // Wait for its actual byte count instead of treating reservations as traffic.
+                changed ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+                wait = changed.Task;
+            }
+            await wait.WaitAsync(stopping).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        if (exhausted) { onLimit(); throw new IOException("Speed-test traffic budget exhausted."); }
-        return allowed;
     }
 
     public void Complete(int reserved, int actual)
     {
         var exhausted = false;
+        TaskCompletionSource? notify;
         lock (gate)
         {
             remaining += reserved - actual;
             transferred += actual;
             if (transferred >= maximum && !reached) { reached = true; exhausted = true; }
+            notify = changed;
+            changed = null;
         }
-        if (exhausted) onLimit();
+        try { if (exhausted) onLimit(); }
+        finally { notify?.TrySetResult(); }
     }
 }
 
@@ -99,7 +127,7 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
     {
-        var reserved = budget.Reserve(buffer.Length);
+        var reserved = await budget.ReserveAsync(buffer.Length, token).ConfigureAwait(false);
         var actual = 0;
         try { return actual = await inner.ReadAsync(buffer[..reserved], token); }
         finally { budget.Complete(reserved, actual); }
@@ -109,20 +137,27 @@ internal sealed class SpeedBudgetStream(Stream inner, SpeedTrafficBudget budget,
 
     public override void Write(byte[] buffer, int offset, int count)
     {
-        var reserved = budget.Reserve(count);
-        var actual = 0;
-        try { inner.Write(buffer, offset, reserved); actual = reserved; }
-        finally { budget.Complete(reserved, actual); }
-        if (reserved < count) throw new IOException("Speed-test traffic budget exhausted.");
+        while (count > 0)
+        {
+            var reserved = budget.Reserve(count);
+            var actual = 0;
+            try { inner.Write(buffer, offset, reserved); actual = reserved; }
+            finally { budget.Complete(reserved, actual); }
+            offset += reserved;
+            count -= reserved;
+        }
     }
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token = default)
     {
-        var reserved = budget.Reserve(buffer.Length);
-        var actual = 0;
-        try { await inner.WriteAsync(buffer[..reserved], token); actual = reserved; }
-        finally { budget.Complete(reserved, actual); }
-        if (reserved < buffer.Length) throw new IOException("Speed-test traffic budget exhausted.");
+        while (!buffer.IsEmpty)
+        {
+            var reserved = await budget.ReserveAsync(buffer.Length, token).ConfigureAwait(false);
+            var actual = 0;
+            try { await inner.WriteAsync(buffer[..reserved], token).ConfigureAwait(false); actual = reserved; }
+            finally { budget.Complete(reserved, actual); }
+            buffer = buffer[reserved..];
+        }
     }
 
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken token) => WriteAsync(buffer.AsMemory(offset, count), token).AsTask();

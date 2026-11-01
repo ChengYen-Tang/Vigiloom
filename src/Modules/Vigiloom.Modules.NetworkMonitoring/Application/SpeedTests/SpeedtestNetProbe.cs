@@ -35,7 +35,7 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         {
             try { deadline.Cancel(); }
             catch (ObjectDisposedException) { }
-        });
+        }, deadline.Token);
         EndpointGuard? guard = null;
         using var transport = testService is null ? CreateTransport(handlerFactory!, budget, out guard) : null;
         var service = testService ?? CreateService(lease, transport!);
