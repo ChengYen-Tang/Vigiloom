@@ -5,8 +5,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.IdentityAccess.Recovery;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
 
@@ -130,5 +133,46 @@ public sealed class AccountAdministrationTests
             var adminId = (await check.Roles.SingleAsync(role => role.NormalizedName == "ADMINISTRATOR", token)).Id;
             Assert.AreEqual(1, await check.UserRoles.CountAsync(role => role.RoleId == adminId, token));
             Assert.AreEqual(9, await check.AccountAuditEvents.CountAsync(token));
+            var remainingId = (await check.UserRoles.SingleAsync(role => role.RoleId == adminId, token)).UserId;
+            string remainingName;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var manager = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var remaining = await manager.FindByIdAsync(remainingId.ToString());
+                Assert.IsNotNull(remaining);
+                remainingName = remaining.UserName!;
+                Assert.IsTrue((await manager.SetTwoFactorEnabledAsync(remaining, true)).Succeeded);
+                Assert.IsTrue((await manager.SetLockoutEndDateAsync(remaining, DateTimeOffset.UtcNow.AddHours(1))).Succeeded);
+            }
+            // Use a separate service provider like the local command, not the Web host's provider.
+            var recoveryServices = new ServiceCollection();
+            recoveryServices.AddLogging();
+            recoveryServices.AddVigiloomDataProtection(new ConfigurationBuilder().Build());
+            recoveryServices.AddModuleSqlServer<IdentityAccessDbContext>(database.ConnectionString, "identity");
+            recoveryServices.AddIdentityCore<Account>().AddRoles<Role>().AddEntityFrameworkStores<IdentityAccessDbContext>().AddDefaultTokenProviders();
+            recoveryServices.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
+            string recoveryCode;
+            using (var recoveryProvider = recoveryServices.BuildServiceProvider())
+            await using (var scope = recoveryProvider.CreateAsyncScope())
+            {
+                var recovery = new AdministratorRecovery(scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>(),
+                    scope.ServiceProvider.GetRequiredService<UserManager<Account>>());
+                Assert.IsNull(await recovery.IssueCodeAsync("reader", token));
+                var issued = await recovery.IssueCodeAsync(remainingName, token);
+                Assert.IsNotNull(issued);
+                recoveryCode = issued;
+            }
+            Assert.IsTrue(await Redeem(remainingName, recoveryCode));
+            Assert.IsFalse(await Redeem(remainingName, recoveryCode));
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var manager = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var recovered = await manager.FindByIdAsync(remainingId.ToString());
+                Assert.IsNotNull(recovered);
+                Assert.IsFalse(await manager.IsLockedOutAsync(recovered));
+                Assert.IsFalse(await manager.GetTwoFactorEnabledAsync(recovered));
+                Assert.IsTrue(await manager.CheckPasswordAsync(recovered, "Strong-Password-123"));
+            }
+            Assert.AreEqual(11, await check.AccountAuditEvents.CountAsync(token));
         }, TestContext.CancellationToken);
 }

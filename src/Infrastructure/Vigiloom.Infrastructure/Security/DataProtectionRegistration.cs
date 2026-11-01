@@ -1,9 +1,11 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.DataProtection;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Infrastructure.Security;
 
-internal static class DataProtectionRegistration
+public static class DataProtectionRegistration
 {
     public static IServiceCollection AddVigiloomDataProtection(this IServiceCollection services, IConfiguration configuration)
     {
