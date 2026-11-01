@@ -1,3 +1,4 @@
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
@@ -37,6 +38,9 @@ builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
+builder.Services.AddScoped<SpeedSettings>();
+builder.Services.AddScoped<SpeedQueue>();
+builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
@@ -150,6 +154,7 @@ app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapPingEndpoints();
+app.MapSpeedTestEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
     .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)

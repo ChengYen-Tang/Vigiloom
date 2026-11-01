@@ -20,6 +20,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: tools/ndt7/go.sum
+      - name: Test NDT7 adapter
+        shell: pwsh
+        run: go -C tools/ndt7 test ./...
+      - name: Build bundled NDT7 adapter
+        shell: pwsh
+        run: ./build/build-ndt7.ps1
       - name: Restore solution
         run: dotnet restore Vigiloom.slnx
       - name: Build solution
@@ -49,6 +59,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: tools/ndt7/go.sum
+      - name: Test NDT7 adapter
+        shell: pwsh
+        run: go -C tools/ndt7 test ./...
+      - name: Build bundled NDT7 adapter
+        shell: pwsh
+        run: ./build/build-ndt7.ps1
       - name: Restore solution
         run: dotnet restore Vigiloom.slnx
       - name: Build solution

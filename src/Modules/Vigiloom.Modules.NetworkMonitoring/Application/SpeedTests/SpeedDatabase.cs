@@ -1,0 +1,34 @@
+using System.Data.Common;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
+
+namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+
+internal static class SpeedDatabase
+{
+    public const string ConsentPolicy = "mlab-aup-2025-07-15/privacy-2025-02-17";
+    public static async Task EnsureAsync(IDbContextFactory<NetworkDbContext> contexts, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        if (await db.SpeedSettings.AnyAsync(x => x.Name == "central", token)) return;
+        var now = DateTimeOffset.UtcNow;
+        db.SpeedSettings.Add(new SpeedSetting { CreatedAt = now, UpdatedAt = now });
+        try { await db.SaveChangesAsync(token); }
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { }
+    }
+    public static Task<SpeedSetting> LockAsync(NetworkDbContext db, CancellationToken token) =>
+        db.SpeedSettings.FromSqlRaw("SELECT * FROM network.SpeedSettings WITH (UPDLOCK,HOLDLOCK) WHERE Name=N'central'").SingleAsync(token);
+    public static async Task<DateTimeOffset> NowAsync(NetworkDbContext db, CancellationToken token)
+    {
+        await db.Database.OpenConnectionAsync(token);
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+        command.CommandText = "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')";
+        return (DateTimeOffset)(await command.ExecuteScalarAsync(token))!;
+    }
+    public static bool HasConsent(SpeedSetting setting) => setting.ConsentPolicy == ConsentPolicy && setting.ConsentedAt is not null;
+    public static DateTimeOffset NextAutomatic(DateTimeOffset now, int hours) => now.AddHours(hours * (0.8 + Random.Shared.NextDouble() * 0.4));
+}

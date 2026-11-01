@@ -1,3 +1,4 @@
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
@@ -31,6 +32,13 @@ public static class WorkerHost
         builder.Services.AddScoped<PingStore>();
         builder.Services.AddScoped<IPingProbe, SystemPingProbe>();
         builder.Services.AddScoped<PingRunner>();
+        builder.Services.AddScoped<SpeedSettings>();
+        builder.Services.AddScoped<SpeedQueue>();
+        builder.Services.AddScoped<SpeedRunner>();
+        builder.Services.AddScoped<ISpeedProbe, Ndt7ProcessProbe>();
+        builder.Services.AddScoped<AutomaticSpeedJob>();
+        builder.Services.AddHostedService<SpeedWorker>();
+        builder.Services.AddHostedService<SpeedSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<OutboxSchedule>();
         builder.Services.AddHangfireServer();
