@@ -1,5 +1,7 @@
 # REQ-11 UI plan
 
+> **Work in progress, 2026-11-02:** The M-Lab-specific consent and provider copy below was based on an incorrect provider selection. Redesign these areas for the authorized Speedtest.net integration and its actual terms before delivery.
+
 Extend the selected `Vigiloom-UI-Concept-2-Revision-2.png` and the existing device/settings controls with Product Design. White cards/light-blue shell, existing blue actions, MudBlazor semantic badges, shared Vizor.ECharts time-series component. No extra UI/chart packages.
 
 - Independent **Network speed** navigation: private history, date range/server filter, stable sort/page, latest state, downloadable-looking actions only when implemented (no placeholder controls).
