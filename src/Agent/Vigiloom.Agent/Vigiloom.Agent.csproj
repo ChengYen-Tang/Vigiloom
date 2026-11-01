@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
+    <ProjectReference Include="../Vigiloom.Agent.Platforms.Windows/Vigiloom.Agent.Platforms.Windows.csproj" />
+    <ProjectReference Include="../Vigiloom.Agent.Platforms.Linux/Vigiloom.Agent.Platforms.Linux.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" />
+  </ItemGroup>
+</Project>

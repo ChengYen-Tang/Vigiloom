@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

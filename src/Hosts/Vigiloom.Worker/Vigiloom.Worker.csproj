@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.AgentManagement/Vigiloom.Modules.AgentManagement.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.ServiceObservability/Vigiloom.Modules.ServiceObservability.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.SecurityAnalysis/Vigiloom.Modules.SecurityAnalysis.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.Publishing/Vigiloom.Modules.Publishing.csproj" />
+    <ProjectReference Include="../../Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" />
+  </ItemGroup>
+</Project>

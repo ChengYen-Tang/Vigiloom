@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" />
+  </ItemGroup>
+</Project>
