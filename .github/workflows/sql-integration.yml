@@ -53,6 +53,8 @@ jobs:
           printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
       - name: Test database lifecycle on Linux
         run: dotnet test tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj --configuration Release --filter 'TestCategory=Database' --logger trx --results-directory "$RUNNER_TEMP/sql-results"
+      - name: Test account setup on Linux SQL Server
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --filter 'TestCategory=Database' --logger trx --results-directory "$RUNNER_TEMP/web-sql-results"
       - name: Verify development sentinel and test cleanup
         run: |
           docker exec -e SQLCMDPASSWORD vigiloom-test-sql /opt/mssql-tools18/bin/sqlcmd \

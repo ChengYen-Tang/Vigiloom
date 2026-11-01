@@ -1,0 +1,17 @@
+# Identity and account access
+
+REQ-03 implements local accounts with ASP.NET Core Identity, the existing Guid resource keys and the `identity` SQL schema. Identity roles are `Administrator` and `Read only`. Read only users may read all enrolled monitoring information including Private resources, but never credentials or administrative controls. Server-side authorization is authoritative; client-side views only improve navigation.
+
+## Initial administrator
+
+Database migrations and role initialization run through the REQ-02 Migrator first. The operator supplies a unique, high-entropy setup secret through the Web host's `Vigiloom:SetupToken` configuration (for example the `Vigiloom__SetupToken` environment variable). There is no default secret. Setup is unavailable for secrets shorter than 32 characters. During initial setup the user supplies this secret, an account name and a password over HTTPS; the server compares a hash in constant time, never logs the secret, and serializes the empty-database check and administrator creation in one SQL transaction with an application lock. Once any account exists, setup cannot run again, even if all administrators are later removed. Administrators must remove the setup secret from deployment configuration after initialization.
+
+The setup secret is a bootstrap credential: restrict its distribution and Web host configuration, apply request-rate limits to the setup endpoint, avoid putting it in URLs, and protect every form with antiforgery. A lost setup secret before initialization is replaced by an operator controlling the host configuration; losing all administrators after initialization requires the separate local-privilege recovery procedure. REQ-03 must implement and test both before claiming completion.
+
+## Login and authorization
+
+Login, setup and account management forms use SSR and Identity's cookie-based authentication. All state-changing forms use antiforgery protection. The default policy requires passwords of at least 12 characters and Identity's character-complexity checks. Five failed logins lock an account for 15 minutes; the public failure message does not distinguish a missing account, incorrect password or lockout. Login accepts only local return destinations. Session cookies are HttpOnly, Secure, SameSite=Lax, expire after eight hours with sliding renewal, and revalidate the security stamp on HTTP requests. Interactive server circuits revalidate separately; all server operations still perform authorization and must not trust stale browser state. The WebAssembly handoff serializes only name and roles, not security stamps or other claims.
+
+Administrator changes and password resets invalidate existing sessions by updating the security stamp. The final active administrator must be protected by a transaction-safe check shared by all paths that remove, disable or change an administrator. User self-service password changes verify the current password. Administrative password reset is a short-lived, one-time action, never exposes the old password, requires a password change and invalidates existing sessions. Administrative changes are audited without credentials. Initial setup, recovery, login, logout, account and reset workflows need SQL-backed integration and browser tests, including concurrent setup and final-administrator protection.
+
+User creation and authorization changes belong to REQ-03; external API credentials belong to REQ-04. The earlier discussed AI Agent analysis remains separately deferred and does not block this requirement.

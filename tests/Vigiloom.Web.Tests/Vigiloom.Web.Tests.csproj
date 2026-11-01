@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../../src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
+    <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
