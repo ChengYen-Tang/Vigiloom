@@ -76,6 +76,61 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
+    public Task AutomaticSchedule_ClaimsOnceAndStopsWhenDisabled() => WithDatabase(async (factory, token) =>
+    {
+        var queue = new SpeedQueue(factory);
+        var settings = new SpeedSettings(factory);
+        var actor = Guid.CreateVersion7();
+        var initial = await settings.GetAsync(token);
+        Assert.IsFalse(initial.Automatic);
+        var enabled = await settings.UpdateAsync(new(true, 6, 100, 30, true, initial.Version, initial.ConsentPolicy), actor, token);
+        Assert.IsNotNull(enabled);
+        Assert.IsNotNull(enabled.NextAutomaticAt);
+        Assert.IsGreaterThan(DateTimeOffset.UtcNow.AddHours(4), enabled.NextAutomaticAt.Value);
+        Assert.IsLessThan(DateTimeOffset.UtcNow.AddHours(8), enabled.NextAutomaticAt.Value);
+        await SetAutomaticDueAsync(factory, token);
+        var requests = await Task.WhenAll(Enumerable.Range(0, 4)
+            .Select(_ => queue.RequestAsync(Guid.CreateVersion7(), null, true, token)));
+        var accepted = requests.Single(x => x.Status == SpeedRequestStatus.Accepted);
+        Assert.AreEqual(3, requests.Count(x => x.Status == SpeedRequestStatus.NotDue));
+        Assert.IsNotNull(accepted.RunId);
+        Assert.AreEqual(SpeedRequestStatus.Busy, (await queue.RequestAsync(Guid.CreateVersion7(), actor, false, token)).Status);
+        var queued = await new SpeedHistory(factory).GetAsync(accepted.RunId.Value, token);
+        Assert.IsNotNull(queued);
+        Assert.IsTrue(queued.Summary.Automatic);
+        Assert.AreEqual("central", queued.Summary.Location);
+        Assert.AreEqual(100, queued.MaxMiB);
+        Assert.AreEqual(30, queued.TimeoutSeconds);
+
+        var current = await settings.GetAsync(token);
+        var disabled = await settings.UpdateAsync(new(false, 6, 100, 30, true, current.Version, current.ConsentPolicy), actor, token);
+        Assert.IsNotNull(disabled);
+        Assert.IsNull(disabled.NextAutomaticAt);
+        Assert.AreEqual(SpeedTestState.Cancelled, (await new SpeedHistory(factory).GetAsync(accepted.RunId.Value, token))!.Summary.State);
+        Assert.IsNull(await queue.ClaimAsync(token));
+
+        var reenabled = await settings.UpdateAsync(new(true, 6, 100, 30, true, disabled.Version, disabled.ConsentPolicy), actor, token);
+        Assert.IsNotNull(reenabled);
+        await SetAutomaticDueAsync(factory, token);
+        var running = await queue.RequestAsync(Guid.CreateVersion7(), null, true, token);
+        Assert.AreEqual(SpeedRequestStatus.Accepted, running.Status);
+        var lease = await queue.ClaimAsync(token);
+        Assert.IsNotNull(lease);
+        Assert.IsTrue(await queue.MayContinueAsync(lease, token));
+        current = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new(false, 6, 100, 30, true, current.Version, current.ConsentPolicy), actor, token));
+        Assert.IsFalse(await queue.MayContinueAsync(lease, token));
+        Assert.IsTrue(await queue.CompleteAsync(lease, new(SpeedTestState.Success, DownloadMbps: 10, UploadMbps: 5), token));
+        Assert.AreEqual(SpeedTestState.Cancelled, (await new SpeedHistory(factory).GetAsync(lease.Id, token))!.Summary.State);
+    });
+
+    private static async Task SetAutomaticDueAsync(Factory factory, CancellationToken token)
+    {
+        await using var db = factory.CreateDbContext();
+        await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(minute,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE Name=N'central'", token);
+    }
+
+    [TestMethod]
     public Task HistoryKeepsPartialValuesAndMissingMeasurementsDistinct() => WithDatabase(async (factory, token) =>
     {
         var now = DateTimeOffset.UtcNow; Guid failed;
