@@ -60,11 +60,11 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
     }
     private static async Task<SpeedSettingsSnapshot> SnapshotAsync(NetworkDbContext db, SpeedSetting setting, DateTimeOffset now, CancellationToken token)
     {
-        var reservations = db.SpeedRuns.Where(x => x.RequestedAt > now.AddHours(-24));
+        var reservations = db.SpeedRuns.Where(x => (x.StartedAt ?? x.RequestedAt) > now.AddHours(-24));
         var total = await reservations.CountAsync(token);
         var automatic = await reservations.CountAsync(x => x.Automatic, token);
         DateTimeOffset? next = null;
-        if (total >= 40) next = (await reservations.MinAsync(x => x.RequestedAt, token)).AddHours(24);
+        if (total >= 40) next = (await reservations.MinAsync(x => x.StartedAt ?? x.RequestedAt, token)).AddHours(24);
         return new(setting.Automatic, setting.IntervalHours, setting.MaxMiB, setting.TimeoutSeconds, SpeedDatabase.HasConsent(setting),
             SpeedDatabase.ConsentPolicy, Convert.ToBase64String(setting.Version), setting.NextAutomaticAt, total, automatic, next);
     }

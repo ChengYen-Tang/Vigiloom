@@ -25,7 +25,7 @@
         <section class="device-panel"><h2>上下傳趨勢</h2><SpeedTrends Runs="result.Trend" Truncated="result.TrendTruncated" /></section>
         <section class="device-panel"><h2>測速紀錄</h2>
             @if (result.Items.Count == 0) { <p>這段時間沒有符合條件的測速紀錄。自動測速預設關閉，管理員可從設定啟用。</p> }
-            else { <SpeedTable Page="result" ReturnUrl="FilterUrl" Busy="@(loading || !RendererInfo.IsInteractive)" PageChanged="ChangePage" /> }
+            else { <SpeedTable Page="result" ReturnUrl="@FilterUrl" Busy="@(loading || !RendererInfo.IsInteractive)" PageChanged="ChangePage" /> }
             <p>非完成狀態的數值是已觀測的部分結果；缺資料顯示「—」，不代表 0 Mbps。</p>
             <p>目前最早可用紀錄（UTC）：@(result.EarliestAvailableAt?.ToString("u") ?? "尚無資料")</p>
         </section>

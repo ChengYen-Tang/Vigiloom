@@ -52,6 +52,8 @@ public sealed class SpeedBrowserTests
         Assert.AreEqual(3, await page.Locator(".device-table-wrap tbody tr").CountAsync());
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "手動測速", Exact = true }).CountAsync());
         await AssertChartAsync(page);
+        var returnHref = await page.Locator(".device-table-wrap a").First.GetAttributeAsync("href");
+        Assert.Contains("returnUrl=%2Fspeed-tests%3Ffrom%3D", returnHref!);
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
         await page.ReloadAsync();
@@ -59,7 +61,9 @@ public sealed class SpeedBrowserTests
         await AssertChartAsync(page);
         Assert.AreEqual(0, browserHistoryRequests, "Prerendered history must survive activation without a duplicate browser query.");
         await page.SetViewportSizeAsync(390, 844);
-        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.WaitForFunctionAsync("() => { const e = document.querySelector('.time-series-chart [role=img] > div'); const c = window.echarts?.getInstanceByDom(e); return c && c.getWidth() <= innerWidth && Math.abs(c.getWidth() - e.clientWidth) < 3; }", null, new() { Timeout = 10000 });
+        var overflows = await page.EvaluateAsync<string>("() => JSON.stringify([...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth + 2 && getComputedStyle(e).position !== 'absolute').slice(0,10).map(e => [e.tagName, e.className, Math.round(e.getBoundingClientRect().right)]))");
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"), overflows);
         await page.Locator("#speed-search").FillAsync("not-a-server");
         await page.GetByRole(AriaRole.Button, new() { Name = "套用篩選" }).ClickAsync();
         await page.GetByText("這段時間沒有符合條件的測速紀錄。", new() { Exact = false }).WaitForAsync();
@@ -86,13 +90,17 @@ public sealed class SpeedBrowserTests
     }, TestContext.CancellationToken);
     private static async Task AssertChartAsync(IPage page)
     {
-        await page.WaitForFunctionAsync("() => { const el = document.querySelector('.time-series-chart [role=img] > div'); return el && window.echarts?.getInstanceByDom(el); }", null, new() { Timeout = 60000 });
-        var values = await page.EvaluateAsync<System.Text.Json.JsonElement>("""
-            () => window.echarts.getInstanceByDom(document.querySelector('.time-series-chart [role=img] > div')).getOption().series[0].data
-            """);
-        Assert.AreEqual(3, values.GetArrayLength());
-        Assert.AreEqual(80d, values[0][1].GetDouble());
-        Assert.AreEqual(System.Text.Json.JsonValueKind.Null, values[1][1].ValueKind);
-        Assert.AreEqual(System.Text.Json.JsonValueKind.Null, values[2][1].ValueKind);
+        // The prerendered SVG can be disposed during hydration; inspect the current instance atomically.
+        await page.WaitForFunctionAsync("""
+            () => {
+                const el = document.querySelector('.time-series-chart [role=img] > div');
+                const chart = el && window.echarts?.getInstanceByDom(el);
+                if (!chart) return false;
+                const options = chart.getOption();
+                const data = options.series?.[0]?.data;
+                return chart.getWidth() >= el.clientWidth * 0.9 && chart.getWidth() > 200 && options.useUTC === true &&
+                    data?.length === 3 && data[0][1] === 80 && data[1][1] === null && data[2][1] === null;
+            }
+            """, null, new() { Timeout = 60000 });
     }
 }

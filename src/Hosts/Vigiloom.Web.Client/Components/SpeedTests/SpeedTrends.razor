@@ -3,7 +3,7 @@
     <TimeSeriesChart Title="下載趨勢" Unit="Mbps" Points="download" />
     <TimeSeriesChart Title="上傳趨勢" Unit="Mbps" Points="upload" />
 </div>
-<p>十進位 Mbps；只有完成的測試連入趨勢，失敗／取消／部分結果留空，不補成 0。</p>
+<p>時間為 UTC、速率為十進位 Mbps；只有完成的測試連入趨勢，失敗／取消／部分結果留空，不補成 0。</p>
 @if (Truncated) { <p role="status">目前顯示篩選範圍內最早 1,000 筆趨勢，請縮小日期範圍查看其餘資料。</p> }
 @code {
     [Parameter] public IReadOnlyList<SpeedRunSummary> Runs { get; set; } = [];
