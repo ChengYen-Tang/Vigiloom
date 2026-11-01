@@ -53,6 +53,10 @@ jobs:
           printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
       - name: Test database lifecycle on Linux
         run: dotnet test tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj --configuration Release --filter 'TestCategory=Database' --logger trx --results-directory "$RUNNER_TEMP/sql-results"
+      - name: Install browser test dependencies
+        run: |
+          dotnet build tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release
+          pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test Web identity and account flows on Linux
         run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --logger trx --results-directory "$RUNNER_TEMP/web-sql-results"
       - name: Verify recovery requires local administrator privileges

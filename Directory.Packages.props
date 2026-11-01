@@ -16,10 +16,13 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Playwright" Version="1.64.1" />
+    <PackageVersion Include="MudBlazor" Version="9.12.0" />
     <PackageVersion Include="Otp.NET" Version="1.4.1" />
     <PackageVersion Include="QRCoder" Version="1.8.1" />
     <PackageVersion Include="MSTest" Version="4.0.2" />
     <!-- SqlClient 6.1.7 requests 9.0.11; pin the patched 9.x release. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.22" />
+    <PackageVersion Include="Vizor.ECharts" Version="0.9.7" />
   </ItemGroup>
 </Project>

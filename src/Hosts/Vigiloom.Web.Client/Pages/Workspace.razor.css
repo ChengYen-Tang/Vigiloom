@@ -1,0 +1,4 @@
+.workspace { max-width: 1100px; margin: 0 auto; padding: 32px 24px; color: var(--vigiloom-ink); font-family: system-ui, sans-serif; }
+.workspace-card { margin: 20px 0; padding: 24px; background: var(--vigiloom-surface); border: 1px solid var(--vigiloom-border); border-radius: 8px; }
+.workspace-card button { min-height: 44px; padding: 10px 18px; border: 0; border-radius: 5px; color: #fff; background: var(--vigiloom-primary); font: inherit; cursor: pointer; }
+.workspace-card a { color: var(--vigiloom-primary); }

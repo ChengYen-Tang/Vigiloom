@@ -1,0 +1,6 @@
+.time-series-chart { margin: 0; color: var(--vigiloom-ink); }
+figcaption { font-weight: 600; margin-bottom: var(--vigiloom-space-2); }
+details { margin-top: var(--vigiloom-space-2); }
+summary { cursor: pointer; color: var(--vigiloom-primary); }
+table { width: 100%; border-collapse: collapse; text-align: left; }
+th, td { padding: var(--vigiloom-space-2); border-bottom: 1px solid var(--vigiloom-border); }

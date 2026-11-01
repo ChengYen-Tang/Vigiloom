@@ -28,6 +28,7 @@ internal sealed class IdentityRevalidatingAuthenticationStateProvider(
 
     private async Task<bool> ValidateSecurityStampAsync(UserManager<Account> userManager, ClaimsPrincipal principal)
     {
+        if (!SessionLifetime.IsCurrent(principal)) return false;
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
         {

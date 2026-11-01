@@ -1,0 +1,15 @@
+@using MudBlazor
+
+<MudChip T="string" Class="vigiloom-status" Size="Size.Small" Variant="Variant.Outlined" Color="BadgeColor" Label="true">@Text</MudChip>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public StatusTone Tone { get; set; } = StatusTone.Neutral;
+    private Color BadgeColor => Tone switch
+    {
+        StatusTone.Success => Color.Success,
+        StatusTone.Warning => Color.Warning,
+        StatusTone.Error => Color.Error,
+        _ => Color.Default
+    };
+}

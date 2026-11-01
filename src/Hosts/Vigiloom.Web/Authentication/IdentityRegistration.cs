@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -25,10 +26,17 @@ internal static class IdentityRegistration
         services.AddAuthentication(options =>
         {
             options.DefaultScheme = IdentityConstants.ApplicationScheme;
+            options.DefaultAuthenticateScheme = PublicAssetAuthentication.SelectorScheme;
             options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
         }).AddIdentityCookies();
-        services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiCredentialHandler>(
-            ApiCredentialHandler.SchemeName, _ => { });
+        services.AddAuthentication()
+            .AddPolicyScheme(PublicAssetAuthentication.SelectorScheme, null, options =>
+                options.ForwardDefaultSelector = context => PublicAssetAuthentication.IsPublicAsset(context.Request.Path)
+                    ? PublicAssetAuthentication.AssetScheme : IdentityConstants.ApplicationScheme)
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, PublicAssetAuthentication>(
+                PublicAssetAuthentication.AssetScheme, _ => { })
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiCredentialHandler>(
+                ApiCredentialHandler.SchemeName, _ => { });
         services.AddAuthorization(options =>
         {
             options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
@@ -74,6 +82,13 @@ internal static class IdentityRegistration
             options.AccessDeniedPath = "/account/access-denied";
             options.ExpireTimeSpan = TimeSpan.FromHours(8);
             options.SlidingExpiration = true;
+            options.Events.OnValidatePrincipal = async context =>
+            {
+                await SecurityStampValidator.ValidatePrincipalAsync(context);
+                if (context.Principal?.Identity is not ClaimsIdentity identity || context.Properties.ExpiresUtc is not { } expires) return;
+                foreach (var claim in identity.FindAll(SessionLifetime.ExpirationClaim).ToArray()) identity.RemoveClaim(claim);
+                identity.AddClaim(new Claim(SessionLifetime.ExpirationClaim, expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
+            };
             options.Events.OnRedirectToLogin = context =>
             {
                 if (context.Request.Path.StartsWithSegments("/api")) context.Response.StatusCode = StatusCodes.Status401Unauthorized;
