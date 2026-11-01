@@ -32,12 +32,15 @@ public sealed class ProjectBoundaryTests
         var projects = ReadProjects();
         var moduleNames = ModuleNames.Select(name => $"Vigiloom.Modules.{name}").ToArray();
 
-        foreach (var project in projects.Values.Where(project => !project.Name.EndsWith(".Tests", StringComparison.Ordinal)))
+        foreach (var project in projects.Values.Where(project => !project.Name.EndsWith(".Tests", StringComparison.Ordinal)
+            && project.Name != "Vigiloom.Testing.SqlServer"))
         {
             var allowed = AllowedReferences(project.Name, moduleNames);
             Assert.IsNotNull(allowed, $"Undocumented production project: {project.Name}");
             Assert.IsEmpty(project.References.Except(allowed),
                 $"Forbidden dependency in {project.Name}.");
+            Assert.DoesNotContain("Vigiloom.Testing.SqlServer", project.References,
+                $"Production project {project.Name} cannot reference test helpers.");
         }
 
         Assert.IsEmpty(moduleNames.Except(projects.Keys), "A planned module is missing.");

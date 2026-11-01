@@ -1,0 +1,51 @@
+name: SQL Server integration
+
+on:
+  push:
+    branches:
+      - codex/req-02-data-foundation
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.403
+      - name: Start isolated SQL Server
+        shell: bash
+        run: |
+          set -euo pipefail
+          password="Aa1!$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          export MSSQL_SA_PASSWORD="$password"
+          export SQLCMDPASSWORD="$password"
+          docker run -d --name vigiloom-test-sql -p 127.0.0.1:1433:1433 \
+            -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD mcr.microsoft.com/mssql/server:2022-latest > /dev/null
+          ready=false
+          for attempt in $(seq 1 90); do
+            if docker exec -e SQLCMDPASSWORD vigiloom-test-sql /opt/mssql-tools18/bin/sqlcmd \
+              -S localhost -U sa -C -Q 'SELECT 1' > /dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            echo 'The isolated SQL Server did not become ready.' >&2
+            exit 1
+          fi
+          echo 'VIGILOOM_TEST_SQL_ALLOW_SOURCE=localhost,1433' >> "$GITHUB_ENV"
+          printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
+      - name: Test database lifecycle on Linux
+        run: dotnet test tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj --configuration Release --filter 'TestCategory=Database' --logger trx --results-directory "$RUNNER_TEMP/sql-results"
+      - name: Remove isolated SQL Server
+        if: always()
+        run: docker rm -f vigiloom-test-sql > /dev/null 2>&1 || true

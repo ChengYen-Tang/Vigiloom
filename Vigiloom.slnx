@@ -49,6 +49,7 @@
     <Project Path="tests/Vigiloom.Modules.Resources.Tests/Vigiloom.Modules.Resources.Tests.csproj" />
     <Project Path="tests/Vigiloom.Modules.SecurityAnalysis.Tests/Vigiloom.Modules.SecurityAnalysis.Tests.csproj" />
     <Project Path="tests/Vigiloom.Modules.ServiceObservability.Tests/Vigiloom.Modules.ServiceObservability.Tests.csproj" />
+    <Project Path="tests/Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
     <Project Path="tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj" />
     <Project Path="tests/Vigiloom.Updater.Tests/Vigiloom.Updater.Tests.csproj" />
     <Project Path="tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj" />

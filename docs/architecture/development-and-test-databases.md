@@ -10,7 +10,7 @@
 | 資料庫整合測試 | 同一個 (localdb)\\MSSQLLocalDB；每個測試獨立資料庫：Vigiloom_Test_<RunId>_<CaseId> | 每次建立，結束刪除 | 僅限本次測試明確建立並登記的資料庫 |
 | 正式環境 | 專用 SQL Server，由部署配置決定 | 依正式保留／備份政策 | 測試程序不得連入或清理 |
 
-本機共用預設 instance (localdb)\\MSSQLLocalDB，不另建 VigiloomDev／VigiloomTests instance。開發與測試有各自的連線設定，Data Source 相同、Initial Catalog 不同；測試 fixture 明確指定臨時資料庫，不能只靠 ASPNETCORE_ENVIRONMENT 字串判斷可否刪除。目前尚未設定連線或建立資料庫。
+本機共用預設 instance (localdb)\\MSSQLLocalDB，不另建 VigiloomDev／VigiloomTests instance。開發與測試有各自的連線設定，Data Source 相同、Initial Catalog 不同；測試 fixture 明確指定臨時資料庫，不能只靠 ASPNETCORE_ENVIRONMENT 字串判斷可否刪除。Web／Worker Development 設定提供開發連線範例；fixture 為每個測試建立並清理臨時資料庫。
 
 LocalDB 屬 SQL Server Express 的本機開發引擎，適合 Windows 本機的 SQL Server 行為測試。Linux／未安裝 LocalDB 的 CI 可改用獨立 SQL Server 測試服務或容器，維持同樣的隔離與清理規則，不改用 EF InMemory／SQLite 取代 SQL schema 驗證。可選的 SQL 版本／相容層級必須明列；LocalDB 測試不能代替正式 edition／拓樸的效能與部署驗證。
 
@@ -40,7 +40,7 @@ LocalDB 屬 SQL Server Express 的本機開發引擎，適合 Windows 本機的 
 
 程序被強制終止或斷電時，程序內 Cleanup 無法保證執行。需由外層 runner／後續明確清理工具依 manifest 補清，確認擁有者 run 已結束且無其他 testhost 使用；只處理自身登記資源。不能在下次啟動時掃前綴就直接刪除所有舊資料庫。
 
-這項機制、權限防護與正常／失敗／並行／中止復原測試由 TSK-BASE-02／TSK-QA-02 交付。目前只有規範，尚未建立 LocalDB fixture 或清理工具，也尚未建立任何開發／測試資料庫。
+LocalDB fixture 與手動補清入口見 [SQL Server 測試輔助工具](../../tests/Vigiloom.Testing.SqlServer/README.md)。正常／失敗／並行／中止復原由 REQ-02-T03 驗證，模組 migration／schema 由 REQ-02-T02 驗證；Linux／獨立 SQL Server 路徑仍需實測。
 
 ## 需要驗收的情境
 
