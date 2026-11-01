@@ -47,6 +47,12 @@ public sealed class WorkspaceBrowserTests
             await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
             await using var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
+            var circuit = new TaskCompletionSource<IWebSocketRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await page.RouteWebSocketAsync("**/_blazor*", socket =>
+            {
+                socket.ConnectToServer();
+                circuit.TrySetResult(socket);
+            });
             var diagnostics = new System.Collections.Concurrent.ConcurrentQueue<string>();
             page.Console += (_, message) => diagnostics.Enqueue($"console {message.Type}: {message.Text}");
             page.PageError += (_, message) => diagnostics.Enqueue($"page error: {message}");
@@ -59,18 +65,10 @@ public sealed class WorkspaceBrowserTests
             await page.Locator("[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
             Assert.AreEqual("browser-reader", await page.Locator("#workspace-user").InnerTextAsync());
             Assert.Contains("Read only", await page.Locator("main.workspace").InnerTextAsync());
-            var resultsDirectory = TestContext.TestResultsDirectory ?? throw new InvalidOperationException("A test results directory is required.");
-            var desktopScreenshot = Path.Combine(resultsDirectory, "workspace-desktop.png");
-            await page.ScreenshotAsync(new() { Path = desktopScreenshot, FullPage = true });
-            TestContext.AddResultFile(desktopScreenshot);
-            await page.SetViewportSizeAsync(390, 844);
-            var mobileScreenshot = Path.Combine(resultsDirectory, "workspace-mobile.png");
-            await page.ScreenshotAsync(new() { Path = mobileScreenshot, FullPage = true });
-            TestContext.AddResultFile(mobileScreenshot);
-            await page.SetViewportSizeAsync(1280, 720);
             await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)",
                 null, new() { Timeout = 90000 });
             await context.SetOfflineAsync(true);
+            await (await circuit.Task.WaitAsync(TimeSpan.FromSeconds(30), token)).CloseAsync(new() { Code = 1001, Reason = "Simulated network interruption" });
             await page.Locator("#components-reconnect-modal[open]").WaitForAsync(new() { Timeout = 30000 });
             Assert.Contains("連線", await page.Locator("#components-reconnect-modal").InnerTextAsync());
             await context.SetOfflineAsync(false);
