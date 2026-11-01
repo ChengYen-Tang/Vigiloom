@@ -102,7 +102,12 @@ public sealed class AccountManagementHttpTests
                 Assert.DoesNotContain("setupCode", body, StringComparison.OrdinalIgnoreCase);
             }
             using (var renamed = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/name", new { userName = "api-renamed" }, token)) Assert.AreEqual(HttpStatusCode.NoContent, renamed.StatusCode);
-            using (var invalidRole = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Unknown" }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidRole.StatusCode);
+            using (var invalidRole = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Unknown" }, token))
+            {
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidRole.StatusCode);
+                using var json = JsonDocument.Parse(await invalidRole.Content.ReadAsStringAsync(token));
+                Assert.AreEqual("bad_request", json.RootElement.GetProperty("code").GetString());
+            }
             using (var role = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Administrator" }, token)) Assert.AreEqual(HttpStatusCode.NoContent, role.StatusCode);
             using (var reset = await admin.PostAsync($"/api/v1/accounts/{apiId}/password-reset", null, token)) Assert.AreEqual(HttpStatusCode.OK, reset.StatusCode);
             using (var deleted = await admin.DeleteAsync($"/api/v1/accounts/{apiId}", token)) Assert.AreEqual(HttpStatusCode.NoContent, deleted.StatusCode);
