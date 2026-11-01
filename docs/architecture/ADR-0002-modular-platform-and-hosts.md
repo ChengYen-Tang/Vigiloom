@@ -115,4 +115,4 @@ Agent.Core 保留跨平台採集／傳輸邊界，Windows／Linux 適配只依�
 
 ## 資料庫佈署程序（REQ-02）
 
-`Vigiloom.Migrator` 是獨立、按需執行的部署程序，參考 Infrastructure、IdentityAccess、Resources 與 NetworkMonitoring，依相依順序套用各模組 migration 並初始化內建角色；不承接 Web／Worker 的業務工作，也不在主機啟動時自動執行。操作與權限見 [SQL Server module migrations](sql-server-migrations.md)。
+`Vigiloom.Migrator` 是獨立、按需執行的部署程序，參考 Infrastructure、IdentityAccess、Resources、NetworkMonitoring 與 AgentManagement，依相依順序套用各模組 migration 並初始化內建角色；Resources 必須先於 AgentManagement，以建立設備外鍵。不承接 Web／Worker 的業務工作，也不在主機啟動時自動執行。操作與權限見 [SQL Server module migrations](sql-server-migrations.md)。
