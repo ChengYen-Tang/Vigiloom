@@ -7,6 +7,28 @@ namespace Vigiloom.Infrastructure.Tests;
 [TestClass]
 public sealed class SqlServerRegistrationTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task PooledFactory_ConcurrentLeasesKeepTrackingIndependent()
+    {
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<FactoryTestContext>("Server=localhost;Database=VigiloomTests;Integrated Security=true;TrustServerCertificate=true", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<FactoryTestContext>>();
+        using var first = factory.CreateDbContext();
+        using var second = factory.CreateDbContext();
+        Assert.AreNotSame(first, second);
+        await Task.WhenAll(
+            Task.Run(() => first.Add(new FactoryTestEntity { Id = 1 }), TestContext.CancellationToken),
+            Task.Run(() => second.Add(new FactoryTestEntity { Id = 2 }), TestContext.CancellationToken));
+        Assert.HasCount(1, first.ChangeTracker.Entries());
+        Assert.HasCount(1, second.ChangeTracker.Entries());
+        Assert.AreEqual(1, first.ChangeTracker.Entries<FactoryTestEntity>().Single().Entity.Id);
+        Assert.AreEqual(2, second.ChangeTracker.Entries<FactoryTestEntity>().Single().Entity.Id);
+        Assert.AreNotSame(first.Database.GetDbConnection(), second.Database.GetDbConnection());
+    }
+
     [TestMethod]
     public void PooledFactory_ReusesDisposedContextAndClearsTrackedEntities()
     {
