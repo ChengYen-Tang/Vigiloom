@@ -26,8 +26,8 @@ public static class RoleInitializer
                 IF @result < 0 THROW 50000, 'Could not acquire built-in role initialization lock.', 1;
                 """, cancellationToken);
             var existing = await db.Roles.Select(role => role.NormalizedName).ToListAsync(cancellationToken);
-            if (!existing.Contains("ADMINISTRATOR")) db.Roles.Add(new Role("Administrator", administratorId));
-            if (!existing.Contains("READ ONLY")) db.Roles.Add(new Role("Read only", readOnlyId));
+            if (!existing.Contains("ADMINISTRATOR")) db.Roles.Add(new Role(BuiltInRoles.Administrator, administratorId));
+            if (!existing.Contains("READ ONLY")) db.Roles.Add(new Role(BuiltInRoles.ReadOnly, readOnlyId));
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         });
