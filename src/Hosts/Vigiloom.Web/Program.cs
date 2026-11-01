@@ -1,3 +1,5 @@
+using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
@@ -41,6 +43,7 @@ builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<SpeedSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
+builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
@@ -129,7 +132,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices"))
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/speed-tests"))
         context.Response.Headers.CacheControl = "no-store";
     await next();
 });

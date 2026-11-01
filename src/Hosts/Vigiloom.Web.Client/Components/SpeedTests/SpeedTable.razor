@@ -1,0 +1,19 @@
+@using Vigiloom.Contracts.SpeedTests
+<p>共 @Page.Total 筆紀錄 · 第 @Page.Page 頁</p>
+<div class="device-table-wrap"><table><thead><tr><th>時間（UTC）</th><th>狀態</th><th>下載</th><th>上傳</th><th>延遲</th><th>服務端</th><th></th></tr></thead><tbody>
+@foreach (var run in Page.Items)
+{
+    <tr @key="run.Id"><td>@run.RequestedAt.ToString("yyyy-MM-dd HH:mm:ss")<br />@(run.Automatic ? "自動" : "手動") · @run.Location</td><td><SpeedStateBadge State="run.State" /></td><td>@SpeedPresentation.Value(run.DownloadMbps, "Mbps")</td><td>@SpeedPresentation.Value(run.UploadMbps, "Mbps")</td><td>@SpeedPresentation.Value(run.LatencyMilliseconds, "ms")</td><td>@(run.Server ?? "未選定")</td><td><a href="@($"/speed-tests/{run.Id:D}?returnUrl={Uri.EscapeDataString(ReturnUrl)}")">查看結果</a></td></tr>
+}
+</tbody></table></div>
+<nav class="device-pagination" aria-label="測速分頁">
+    <button type="button" disabled="@(Busy || Page.Page <= 1)" @onclick="() => PageChanged.InvokeAsync(Page.Page - 1)">上一頁</button>
+    <span>第 @Page.Page 頁</span>
+    <button type="button" disabled="@(Busy || (long)Page.Page * Page.PageSize >= Page.Total)" @onclick="() => PageChanged.InvokeAsync(Page.Page + 1)">下一頁</button>
+</nav>
+@code {
+    [Parameter, EditorRequired] public SpeedHistoryPage Page { get; set; } = default!;
+    [Parameter] public string ReturnUrl { get; set; } = "/speed-tests";
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+}

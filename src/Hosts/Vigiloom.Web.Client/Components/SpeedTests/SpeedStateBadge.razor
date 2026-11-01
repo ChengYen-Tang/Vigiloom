@@ -1,0 +1,12 @@
+@using Vigiloom.Contracts.SpeedTests
+<StatusBadge Text="@SpeedPresentation.State(State)" Tone="@Tone" />
+@code {
+    [Parameter] public SpeedTestState State { get; set; }
+    private StatusTone Tone => State switch
+    {
+        SpeedTestState.Success => StatusTone.Success,
+        SpeedTestState.Running or SpeedTestState.Partial or SpeedTestState.BudgetExceeded or SpeedTestState.TimedOut => StatusTone.Warning,
+        SpeedTestState.Failed or SpeedTestState.Interrupted or SpeedTestState.Unavailable or SpeedTestState.NoServer => StatusTone.Error,
+        _ => StatusTone.Neutral
+    };
+}
