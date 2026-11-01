@@ -4,12 +4,20 @@
     <a href="/" class="main-brand">Vigiloom</a>
     <Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
         <Authorized>
-            <nav class="main-account" aria-label="帳號">
-                <Microsoft.AspNetCore.Components.Authorization.AuthorizeView Policy="@Vigiloom.Web.Authentication.AccessPolicies.Administrator">
-                    <Authorized Context="adminState"><a href="/account/manage">帳號管理</a><a href="/account/api-credentials">API 憑證</a></Authorized>
-                </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
-                <a href="/account/two-factor-settings">雙重驗證</a><a href="/account/change-password">修改密碼</a><a href="/account/logout">登出</a>
+            <nav class="main-navigation" aria-label="主要導覽">
+                <a href="/workspace">總覽</a>
+                <span aria-disabled="true">設備</span><span aria-disabled="true">應用服務</span><span aria-disabled="true">群組</span>
+                <span aria-disabled="true">網路測速</span><span aria-disabled="true">事件</span>
             </nav>
+            <details class="main-settings">
+                <summary>設定與帳號</summary>
+                <nav aria-label="設定與帳號">
+                    <Microsoft.AspNetCore.Components.Authorization.AuthorizeView Policy="@Vigiloom.Web.Authentication.AccessPolicies.Administrator">
+                        <Authorized Context="adminState"><a href="/account/manage">帳號管理</a><a href="/account/api-credentials">API 憑證</a></Authorized>
+                    </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+                    <a href="/account/two-factor-settings">雙重驗證</a><a href="/account/change-password">修改密碼</a><a href="/account/logout">登出</a>
+                </nav>
+            </details>
         </Authorized>
         <NotAuthorized><a href="/account/login">登入</a></NotAuthorized>
     </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>

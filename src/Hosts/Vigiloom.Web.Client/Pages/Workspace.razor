@@ -1,0 +1,93 @@
+@page "/workspace"
+@rendermode InteractiveAuto
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = WorkspaceAccess.MonitoringRead)]
+@implements IAsyncDisposable
+@using Vigiloom.Contracts.Workspace
+@using Vigiloom.Web.Client.Components
+@inject IWorkspaceIdentityClient IdentityClient
+@inject ILogger<Workspace> Logger
+
+<PageTitle>監控工作區 - Vigiloom</PageTitle>
+<main class="workspace" data-runtime="@RendererInfo.Name">
+    <h1>監控工作區</h1>
+    @if (loading)
+    {
+        <p role="status">正在確認登入狀態…</p>
+    }
+    else if (unavailable)
+    {
+        <section class="workspace-card" role="alert">
+            <h2>暫時無法確認登入狀態</h2>
+            <p>請確認連線，再重新嘗試。</p>
+            <button type="button" @onclick="RefreshAsync">重新嘗試</button>
+        </section>
+    }
+    else if (identity is null)
+    {
+        <section class="workspace-card" role="alert">
+            <h2>登入已過期或權限已變更</h2>
+            <p>請重新登入後繼續。</p>
+            <a href="/account/login?returnUrl=%2Fworkspace">前往登入</a>
+        </section>
+    }
+    else
+    {
+        <section class="workspace-card" aria-labelledby="workspace-user">
+            <StatusBadge Text="已登入" Tone="StatusTone.Success" />
+            <h2 id="workspace-user">@identity.UserName</h2>
+            <p>角色：@string.Join("、", identity.Roles)</p>
+            <p>設備與應用服務的監控資料會在各自功能完成後顯示。</p>
+            <button type="button" @onclick="RefreshAsync">重新確認登入狀態</button>
+        </section>
+    }
+</main>
+
+@code {
+    private readonly CancellationTokenSource lifetime = new();
+    private WorkspaceIdentity? identity;
+    private Task? refreshLoop;
+    private bool loading = true;
+    private bool unavailable;
+    private bool refreshing;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && RendererInfo.IsInteractive) refreshLoop = RefreshPeriodicallyAsync(lifetime.Token);
+        return Task.CompletedTask;
+    }
+    private async Task RefreshAsync()
+    {
+        if (refreshing) return;
+        refreshing = true;
+        try
+        {
+            identity = await IdentityClient.GetAsync(lifetime.Token);
+            unavailable = false;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not refresh workspace identity.");
+            identity = null;
+            unavailable = true;
+        }
+        finally { loading = false; refreshing = false; }
+    }
+    private async Task RefreshPeriodicallyAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+                await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        if (refreshLoop is not null) await refreshLoop;
+        lifetime.Dispose();
+    }
+}
