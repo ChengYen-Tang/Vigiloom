@@ -1,66 +1,79 @@
 # Vigiloom
 
-以 .NET 10 重寫的集中監控平台。架構採模組化中央平台，Blazor Web App（Interactive Auto）＋Web API，Web／Worker 可分開執行；資料存取方向為 EF Core 10＋SQL Server。端點 Agent 與 Updater 各自獨立。
+**從同一個介面掌握設備、伺服器與應用服務的監控平台。**
 
-目前完成 Solution／專案相依與測試骨架；登入、設備／Ping、服務觀測、公開頁、通知、Agent 採集與自動更新功能尚待需求實作。舊 Pingvalue／NSpeedTest 原始碼及截圖已由本次重寫移除，歷史版本仍在 Git 紀錄中。
+Vigiloom 正以 .NET 建立一個集中式監控平台，讓管理者透過網頁管理監控對象、檢視狀態，並以 API 與其他系統整合。設備與應用服務是不同的監控對象：設備可以只監控 Ping，也可以進一步透過 Agent 蒐集主機資訊；應用服務不必綁定特定主機。
 
-## 開發環境
+[![CI](https://github.com/ChengYen-Tang/Vigiloom/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ChengYen-Tang/Vigiloom/actions/workflows/ci.yml) · [需求看板](https://github.com/users/ChengYen-Tang/projects/5)
 
-安裝 global.json 指定的 .NET SDK 10.0.403（或同 feature band 的更新 patch）。開啟根目錄 `Vigiloom.slnx`；使用支援 .NET 10／slnx 的 IDE，或使用 CLI。
+> **開發中**：目前已具備登入、設備資料管理、API 和背景工作基礎。Ping 實際量測、Agent 採集、應用服務觀測與公開狀態頁等功能仍在開發，尚不適合當作完整監控產品部署。
+
+## 目前可以使用
+
+- **帳號與權限**：使用內建帳號密碼登入，提供 Administrator 和 Read only 角色，可啟用驗證器雙重驗證。
+- **設備管理**：新增及編輯 IPv4、IPv6 或 DNS 目標，選擇「僅 Ping」或「深入監控」模式，管理多個目標、啟停與封存。模式選擇目前不會啟動 Ping 或 Agent 採集。
+- **Web API**：管理員可建立具有讀取或寫入權限的 API 憑證，供外部系統存取目前已實作的設備 API。
+- **背景工作**：Worker 使用 Hangfire 與 SQL Server 執行背景工作；管理員可在登入後查看工作狀態及進階管理介面。
+
+## 接下來的方向
+
+Vigiloom 的目標是將下列功能整合到同一個操作介面，實際進度以[需求看板](https://github.com/users/ChengYen-Tang/projects/5)為準：
+
+- 對設備執行 Ping，呈現延遲、歷史紀錄與狀態變化。
+- 以 Windows／Linux Agent 蒐集伺服器資訊，支援安裝、版本管理與更新。
+- 接收應用服務的觀測與健康資訊，提供服務狀態及歷史檢視。
+- 依公開／私人設定呈現資訊，並提供適合外部使用者的公開狀態頁。
+- 提供設備與服務群組、網路測速，以及包含 LINE 在內的通知方式。
+
+這些項目目前是規劃中的產品能力，不代表已完成或已支援正式部署。
+
+## 開發者快速開始
+
+目前提供的是開發環境啟動方式，尚未提供完整的一鍵安裝流程。以下範例使用 Windows LocalDB；其他 SQL Server 環境請參考[資料庫 Migration 說明](docs/architecture/sql-server-migrations.md)。
+
+1. 安裝 [global.json](global.json) 指定的 .NET SDK、SQL Server LocalDB，以及用來建立資料庫的 `sqlcmd`。資料庫相容層級須為 150 以上。
+2. 建立獨立的開發資料庫，並執行 Migration：
+
+   ```powershell
+   sqlcmd -S "(localdb)\MSSQLLocalDB" -E -b -C -Q "IF DB_ID('Vigiloom_Development') IS NULL CREATE DATABASE [Vigiloom_Development]"
+   $env:VIGILOOM_MIGRATION_SQL_CONNECTION = 'Server=(localdb)\MSSQLLocalDB;Database=Vigiloom_Development;Integrated Security=true;Encrypt=false'
+   dotnet run --project src/Hosts/Vigiloom.Migrator --configuration Release
+   ```
+
+3. 設定首次啟用密鑰，啟動 Web：
+
+   ```powershell
+   # 換成至少 32 個字元的隨機密鑰，請勿提交至版本控制。
+   $env:Vigiloom__SetupToken = '<你的首次啟用密鑰>'
+   dotnet run --project src/Hosts/Vigiloom.Web
+   ```
+
+   開啟 [首次設定頁面](https://localhost:7043/account/setup)，輸入密鑰並建立管理員。完成後請從執行環境移除啟用密鑰，並重新啟動 Web。若瀏覽器尚未信任本機開發憑證，可先執行 `dotnet dev-certs https --trust`。
+
+4. 在另一個終端機啟動背景 Worker：
+
+   ```powershell
+   $env:DOTNET_ENVIRONMENT = 'Development'
+   dotnet run --project src/Hosts/Vigiloom.Worker
+   ```
+
+登入後即可開啟設備管理頁面；開發環境的 API 文件位於 [OpenAPI 文件](https://localhost:7043/openapi/v1.json)。正式環境的連線、憑證與部署設定請參考[帳號與存取說明](docs/architecture/identity-and-access.md)。
+
+## 建置與測試
 
 ```powershell
 dotnet restore Vigiloom.slnx
 dotnet build Vigiloom.slnx --configuration Release --no-restore
-dotnet test Vigiloom.slnx --configuration Release --no-build
+dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
 ```
 
-全部測試專案使用 MSTest 4.0.2／VSTest。尚無業務實作的對應測試專案保留為空，測試執行顯示無可用測試；不放空方法或假成功案例。現有有效測試檢查架構、Web prerender／HTTP、SQL provider 註冊與背景 Host 生命週期。
+測試使用 MSTest。Windows 資料庫測試使用獨立的 LocalDB 臨時資料庫，不使用開發資料庫；Linux 需要明確設定隔離的 SQL Server 測試環境。環境設定與清理方式見 [SQL Server 測試說明](tests/Vigiloom.Testing.SqlServer/README.md)。
 
-## 啟動
+## 技術與文件
 
-```powershell
-dotnet dev-certs https --trust
-dotnet run --project src/Hosts/Vigiloom.Web
-```
+中央平台採模組化架構，使用 .NET 10、Blazor Web App、ASP.NET Core Web API、EF Core 與 SQL Server；Web 和 Worker 可以分開執行。Agent 與 Updater 為獨立程式，目前仍在開發中。
 
-預設開發網址：[https://localhost:7043](https://localhost:7043)，純程序存活檢查 `/health/live`；Development 提供 `/openapi/v1.json`。這些不代表 SQL、採集或業務服務健康。正式環境不公開 OpenAPI。
-
-三個背景 Host 可各自執行；目前只啟動 Generic Host，沒有採集／排程／更新工作，也不會安裝 Windows Service／systemd：
-
-```powershell
-dotnet run --project src/Hosts/Vigiloom.Worker
-dotnet run --project src/Agent/Vigiloom.Agent
-dotnet run --project src/Updater/Vigiloom.Updater
-```
-
-目前啟動不需要 SQL Server。後續模組建立自己的 DbContext、schema 與 migration，再以 `AddModuleSqlServer<TContext>` 註冊每次操作使用的 factory；連線與機密由部署配置或 user-secrets 管理，不提交到 repo。不在 Host 啟動時自動執行 migration。
-
-Windows 本機開發與測試都用 LocalDB，共用同一個 instance（預設 MSSQLLocalDB），使用不同資料庫：開發資料保留，測試的唯一臨時資料庫每次結束清除。測試不得使用或清理開發／正式資料庫，也不能停止／刪除共用 instance。詳細規則見 [開發／測試資料庫隔離](docs/architecture/development-and-test-databases.md)，fixture 與清理工具留待資料存取需求實作。
-
-## 專案分工
-
-| 位置 | 責任 |
-|---|---|
-| src/Hosts | Web（SSR／Server＋API）、Web.Client（Auto／WebAssembly 元件）、Worker |
-| src/Modules | IdentityAccess、Resources、NetworkMonitoring、AgentManagement、ServiceObservability、SecurityAnalysis、Publishing、AlertingOperations |
-| src/Shared | BuildingBlocks 與瀏覽器／端點可共用的 Contracts |
-| src/Infrastructure | 共用 EF Core／SQL Server 技術支援 |
-| src/Agent | Agent Host、Core、Windows／Linux 適配邊界 |
-| src/Updater | 獨立 Updater Host 與 Core |
-| tests | 每個後端專案的 MSTest 專案，加上架構檢查；Web.Client 由 Web 測試參考鏈涵蓋建置 |
-
-共 20 個產品專案、20 個 MSTest 專案。模組一個專案起步，不預先拆四層。跨模組只能依明確公開契約協作，Client 不引用 EF／中央模組。
-
-## Blazor 模式
-
-使用 Auto、按頁面啟用互動。首次可由 Server 互動，WebAssembly 快取後的後續造訪可在瀏覽器互動；不會在下載完成時切換已開啟的 Server 元件。公開／簡單頁面可保留 SSR，互動元件放在 Web.Client。
-
-瀏覽器互動透過授權 API 取得 DTO，資料庫／機密留在後端。30～500 個 Agent 的接收負載，與人員瀏覽器的 Server circuit 數量分開規劃。Auto 不代表零伺服器負擔。
-
-## 開發規範與需求
-
-- 先閱讀 [AGENTS.md](AGENTS.md)。
-- [ADR-0001：識別碼／主鍵／SQL 索引政策](docs/architecture/ADR-0001-identifiers-and-keys.md) 已採用，新增模型或訊息前必讀。
-- [ADR-0002：專案與程序邊界、Blazor Auto](docs/architecture/ADR-0002-modular-platform-and-hosts.md) 列出相依方向、模組責任與驗證限制。
-- [Vigiloom Project](https://github.com/users/ChengYen-Tang/projects/5) 為完整需求與 Task 來源；UI 依已選風格逐需求透過 Product Design 設計，再以 Blazor 實作。
-- 不強制將應用服務綁主機；主選單需含網路測速；LINE 在登入後由 Administrator 設定；AI Agent 分析維持擱置。
+- [CI 與測試環境](docs/architecture/continuous-integration.md)
+- [資料庫與 Migration](docs/architecture/sql-server-migrations.md)
+- [帳號、授權與首次設定](docs/architecture/identity-and-access.md)
+- [平台架構](docs/architecture/ADR-0002-modular-platform-and-hosts.md)
