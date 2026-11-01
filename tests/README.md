@@ -6,7 +6,7 @@
 
 目前有效測試：
 - Architecture：Solution 成員、專案相依／循環、Client 邊界與 MSTest 規範。
-- Infrastructure：SQL Server DbContextFactory 註冊與輸入檢查；不連真實 SQL，不驗證 schema。
+- Infrastructure：SQL Server DbContextFactory 註冊，以及真實 LocalDB 的測試資料庫隔離與清理；正式模組 schema／migration 驗證仍在 REQ-02-T02。
 - Web：prerender、liveness、Development OpenAPI、Production 隱藏 OpenAPI、API 404 Problem Details。
 - Worker／Agent／Updater：一般 Host 程序的啟動／停止；不安裝服務，不蒐集或更新。
 
@@ -24,4 +24,4 @@ dotnet test Vigiloom.slnx --configuration Release --no-build
 
 使用 MSTest 非同步 Cleanup／finally 釋放 context、連線與交易，再刪除 DB 並驗證不存在；失敗必須回報。取消時採獨立清理 token；testhost 強制中止的殘留需依擁有權 manifest 補清。標記 Integration／Database 的資料庫測試與純單元測試區分。
 
-目前尚無 LocalDB fixture、清理工具或測試資料庫；具體實作與清理故障測試列於 TSK-BASE-02／TSK-QA-02。Linux／CI 可用獨立 SQL Server，遵守相同隔離規則。
+測試 fixture 與 `recover`／`recover-run` 指令見 [SQL Server 測試輔助工具](Vigiloom.Testing.SqlServer/README.md)；模組 migration／SQL 驗證在 REQ-02-T02。Linux／CI 的獨立 SQL Server 路徑仍需驗證。
