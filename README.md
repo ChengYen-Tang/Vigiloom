@@ -64,10 +64,11 @@ Vigiloom 的目標是將下列功能整合到同一個操作介面，實際進�
 ```powershell
 dotnet restore Vigiloom.slnx
 dotnet build Vigiloom.slnx --configuration Release --no-restore
+pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install chromium
 dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
 ```
 
-測試使用 MSTest。Windows 資料庫測試使用獨立的 LocalDB 臨時資料庫，不使用開發資料庫；Linux 需要明確設定隔離的 SQL Server 測試環境。環境設定與清理方式見 [SQL Server 測試說明](tests/Vigiloom.Testing.SqlServer/README.md)。
+瀏覽器測試需要 PowerShell 7 和 Playwright Chromium；Linux 的 Chromium 相依套件請參考[瀏覽器測試說明](docs/design/browser-testing.md)。測試使用 MSTest。Windows 資料庫測試使用獨立的 LocalDB 臨時資料庫，不使用開發資料庫；Linux 需要明確設定隔離的 SQL Server 測試環境。環境設定與清理方式見 [SQL Server 測試說明](tests/Vigiloom.Testing.SqlServer/README.md)。
 
 ## 技術與文件
 
