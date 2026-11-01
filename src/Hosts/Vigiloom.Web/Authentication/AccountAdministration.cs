@@ -65,7 +65,7 @@ public sealed class AccountAdministration(
         db.AccountAuditEvents.Add(new AccountAuditEvent(actorId, account.Id, "AccountCreated", DateTimeOffset.UtcNow));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(AccountOperationResult.Success, code);
+        return new(AccountOperationResult.Success, code, account.Id);
     }
 
     public async Task<AccountOperationResult> RenameAsync(ClaimsPrincipal actor, Guid accountId, string userName,
@@ -215,7 +215,7 @@ public sealed class AccountAdministration(
     private static bool IsSupportedRole(string role) => role is BuiltInRoles.Administrator or BuiltInRoles.ReadOnly;
 }
 
-public sealed record ResetCodeResult(AccountOperationResult Result, string? Code);
+public sealed record ResetCodeResult(AccountOperationResult Result, string? Code, Guid? AccountId = null);
 public sealed record AccountSummary(Guid Id, string UserName, IReadOnlyList<string> Roles);
 public sealed record AccountPage(IReadOnlyList<AccountSummary> Accounts, int TotalCount, int Page, int PageSize);
 public enum AccountOperationStatus { Success, NotFound, InvalidRole, LastAdministrator, SelfDeletion, SelfTwoFactorReset, InvalidCredentials, ValidationFailed }

@@ -6,6 +6,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Web.Components;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -75,6 +76,7 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
+app.MapAccountEndpoints();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

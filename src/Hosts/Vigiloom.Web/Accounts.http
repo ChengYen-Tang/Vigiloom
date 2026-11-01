@@ -1,0 +1,48 @@
+@baseUrl = https://localhost:5001
+@accountId = 00000000-0000-0000-0000-000000000000
+@antiforgery = REPLACE_WITH_TOKEN_FROM_SESSION_ENDPOINT
+
+### Authenticate through the browser and use its session and antiforgery cookies.
+GET {{baseUrl}}/api/v1/session/antiforgery
+
+### List accounts (Administrator)
+GET {{baseUrl}}/api/v1/accounts/?page=1
+
+### Get an account (Administrator)
+GET {{baseUrl}}/api/v1/accounts/{{accountId}}
+
+### Create an account; the response contains a confidential one-time setup code.
+POST {{baseUrl}}/api/v1/accounts/
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "userName": "example", "role": "Read only" }
+
+### Rename an account
+PUT {{baseUrl}}/api/v1/accounts/{{accountId}}/name
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "userName": "example-renamed" }
+
+### Change a role
+PUT {{baseUrl}}/api/v1/accounts/{{accountId}}/role
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "role": "Read only" }
+
+### Issue a confidential one-time reset code
+POST {{baseUrl}}/api/v1/accounts/{{accountId}}/password-reset
+RequestVerificationToken: {{antiforgery}}
+
+### Change the authenticated user's password
+PUT {{baseUrl}}/api/v1/session/password
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "currentPassword": "REPLACE", "newPassword": "REPLACE" }
+
+### Delete an account
+DELETE {{baseUrl}}/api/v1/accounts/{{accountId}}
+RequestVerificationToken: {{antiforgery}}
