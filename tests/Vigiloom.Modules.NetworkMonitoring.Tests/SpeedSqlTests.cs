@@ -8,7 +8,7 @@ using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
-using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
+using Vigiloom.Testing.SpeedTests;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 

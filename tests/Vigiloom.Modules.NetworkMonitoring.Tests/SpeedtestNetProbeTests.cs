@@ -3,7 +3,7 @@ using NetPace.Core.Clients.Ookla;
 using NetPace.Core.Clients.Testing;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
-using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
+using Vigiloom.Testing.SpeedTests;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 
