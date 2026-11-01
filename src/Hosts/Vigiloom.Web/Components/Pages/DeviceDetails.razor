@@ -6,7 +6,11 @@
 @using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Web.Client.Components
+@using Vigiloom.Contracts.Network
+@using Vigiloom.Modules.NetworkMonitoring.Application
 @inject DeviceManagement DevicesService
+@inject PingStore Ping
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
 
@@ -20,8 +24,23 @@
         <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
             <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a> }</Authorized></AuthorizeView>
         </header>
-        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div></dl>
+        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div></dl>
             @if (device.DeepMonitoring) { <p>深入監控需要為這台設備註冊 Agent；未連線不影響 Ping。</p> }
+        </section>
+        <section class="device-panel"><h2>Ping 量測</h2>
+            <p>每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。</p>
+            @if (pingStatus?.Policy is { } policy) { <p>目前每 @policy.IntervalSeconds 秒一次，逾時 @policy.TimeoutSeconds 秒；連續 @policy.FailureThreshold 次失敗判不可達、@policy.SuccessThreshold 次成功恢復。</p> }
+            @if (pingError) { <p role="alert">無法讀取 Ping 資料，請稍後再試。</p> }
+            else if (device.Archived || !device.Enabled) { <p>設備@(device.Archived ? "已封存" : "已停用")，不排入新量測。</p> }
+            else if (pingStatus is not null)
+            {
+                <div class="device-table-wrap"><table><thead><tr><th>目標</th><th>實際位址</th><th>目前狀態</th><th>最近結果</th><th>成功延遲</th><th>量測時間（UTC）</th><th>位置</th></tr></thead><tbody>
+                @foreach (var result in pingStatus.Targets)
+                {
+                    <tr><td>@result.Target</td><td>@(result.ResolvedAddress ?? "—")</td><td><PingStatusBadge Status="result" /></td><td>@Outcome(result.LastOutcome)</td><td>@(result.LatencyMilliseconds is { } latency ? $"{latency:0.###} ms" : "—")</td><td>@(result.MeasuredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</td><td>@result.Location</td></tr>
+                }
+                </tbody></table></div>
+            }
         </section>
         <AuthorizeView Policy="Administrator"><Authorized Context="administrator">
             <section class="device-panel"><h2>@(device.Archived ? "恢復設備" : "封存設備")</h2>
@@ -43,6 +62,8 @@
     [SupplyParameterFromForm(FormName = "device-archive")] private ArchiveInput Action { get; set; } = default!;
     private DeviceDto? device;
     private bool error;
+    private DevicePingStatus? pingStatus;
+    private bool pingError;
     private string? actionError;
     protected override async Task OnInitializedAsync()
     {
@@ -51,6 +72,11 @@
         {
             device = await DevicesService.GetAsync(Id, HttpContext.RequestAborted);
             if (device is not null && HttpMethods.IsGet(HttpContext.Request.Method)) Action.Version = device.Version;
+            if (device is { Archived: false, Enabled: true })
+            {
+                try { pingStatus = await Ping.GetStatusAsync(Id, device.AdditionalTargets.Prepend(device.Address).ToArray(), device.Version, HttpContext.RequestAborted); }
+                catch (Exception exception) { Logger.LogWarning("Could not load Ping status: {ExceptionType}", exception.GetType().Name); pingError = true; }
+            }
         }
         catch (Exception exception) { Logger.LogWarning("Could not load a device: {ExceptionType}", exception.GetType().Name); error = true; }
     }
@@ -70,4 +96,9 @@
         if (succeeded) Navigation.NavigateTo($"/devices/{Id:D}", forceLoad: true);
     }
     private sealed class ArchiveInput { public string? Version { get; set; } public bool Confirm { get; set; } }
+    private static string Outcome(PingOutcome? outcome) => outcome switch
+    {
+        PingOutcome.Success => "成功", PingOutcome.Timeout => "逾時", PingOutcome.Unreachable => "無法到達", PingOutcome.DnsError => "DNS 失敗",
+        PingOutcome.PermissionDenied => "權限不足", PingOutcome.MonitorError => "監測器錯誤", _ => "尚無資料"
+    };
 }

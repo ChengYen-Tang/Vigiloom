@@ -8,6 +8,9 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Worker.Hosting;
+using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -36,6 +39,17 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var options = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(options)) await db.Database.MigrateAsync(token);
+        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+        await using (var db = new ResourcesDbContext(resources))
+        {
+            await db.Database.MigrateAsync(token);
+            db.Devices.Add(new Device("Worker loopback", "127.0.0.1", false, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstBuilder = CreateBuilder(database.ConnectionString, completed);
         using var first = firstBuilder.Build();
@@ -63,6 +77,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using (var scope = second.Services.CreateScope())
                 Assert.AreEqual(10, scope.ServiceProvider.GetRequiredService<OutboxScheduleManager>().GetSnapshot().Minutes);
             await completed.Task.WaitAsync(TimeSpan.FromSeconds(60), token);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(45));
+            while (true)
+            {
+                await using var db = new NetworkDbContext(network);
+                if (await db.PingSamples.AnyAsync(x => x.Succeeded && x.Target == "127.0.0.1", deadline.Token)) break;
+                await Task.Delay(100, deadline.Token);
+            }
             await second.StopAsync(token);
         }
         await using var connection = new SqlConnection(database.ConnectionString);

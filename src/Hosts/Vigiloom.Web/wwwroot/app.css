@@ -98,3 +98,5 @@ h1:focus {
 .device-form-page { max-width: 760px; }.device-form-page form { display: grid; gap: 10px; }.device-form-page fieldset { border: 1px solid var(--vigiloom-border); border-radius: 6px; margin-top: 10px; }.device-form-page fieldset label { margin-right: 20px; }
 .device-checkbox { margin: 10px 0; }.device-alert { border-left: 4px solid #b97000; background: #fff9ec; padding: 12px; margin: 12px 0; }.device-field-error { color: #a11717 !important; margin: 0; }
 @media (max-width: 700px) { .device-page { margin-top: 24px; padding: 0 16px 36px; }.device-heading { align-items: flex-start; flex-direction: column; }.device-page table { min-width: 760px; } }
+
+body:has(main.device-page) { background: var(--vigiloom-background); }

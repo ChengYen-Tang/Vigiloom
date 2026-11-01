@@ -4,7 +4,12 @@
 @using Vigiloom.Contracts.Devices
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Web.Client.Components
+@using Vigiloom.Contracts.Network
+@using Vigiloom.Contracts.Resources
+@using Vigiloom.Modules.NetworkMonitoring.Application
 @inject DeviceManagement DevicesService
+@inject PingStore Ping
 @inject NavigationManager Navigation
 @inject ILogger<Devices> Logger
 
@@ -27,10 +32,10 @@
         else if (result is not null)
         {
             <p class="device-count">共 @result.Total 台設備</p>
-            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>主要目標</th><th>監控模式</th><th>Ping 狀態</th><th>建立時間（UTC）</th><th></th></tr></thead><tbody>
+            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>主要目標</th><th>監控模式</th><th>主要目標 Ping</th><th>建立時間（UTC）</th><th></th></tr></thead><tbody>
                 @foreach (var device in result.Items)
                 {
-                    <tr @key="device.Id"><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td><td>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : "尚無量測資料")</td><td>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td><a href="@($"/devices/{device.Id:D}")">查看詳情</a></td></tr>
+                    <tr @key="device.Id"><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td><td>@if (device.Archived || !device.Enabled) { @(device.Archived ? "已封存" : "已停用") } else { <PingStatusBadge Status="PingResult(device.Id)" ReadError="pingError" /> }</td><td>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td><a href="@($"/devices/{device.Id:D}")">查看詳情</a></td></tr>
                 }
             </tbody></table></div>
             <nav class="device-pagination" aria-label="設備分頁">
@@ -50,10 +55,22 @@
     [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
     private DevicePage? result;
     private bool error;
+    private bool pingError;
+    private IReadOnlyDictionary<Guid, DevicePingStatus> pingStates = new Dictionary<Guid, DevicePingStatus>();
     protected override async Task OnInitializedAsync()
     {
-        try { result = await DevicesService.ListAsync(Search is { Length: <= 256 } ? Search : null, Sort, Descending, Archived, Page, CancellationToken.None); }
+        try
+        {
+            result = await DevicesService.ListAsync(Search is { Length: <= 256 } ? Search : null, Sort, Descending, Archived, Page, CancellationToken.None);
+            var devices = result.Items.Where(x => x.Enabled && !x.Archived).Select(x => new PingDeviceSnapshot(x.Id, Convert.FromBase64String(x.Version), [x.Address])).ToArray();
+            if (devices.Length != 0)
+            {
+                try { pingStates = await Ping.GetStatusesAsync(devices, CancellationToken.None); }
+                catch (Exception exception) { Logger.LogWarning("Could not load Ping states: {ExceptionType}", exception.GetType().Name); pingError = true; }
+            }
+        }
         catch (Exception exception) { Logger.LogWarning("Could not load devices: {ExceptionType}", exception.GetType().Name); error = true; }
     }
     private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/devices", new Dictionary<string, object?> { ["search"] = Search, ["sort"] = Sort, ["descending"] = Descending ? true : null, ["archived"] = Archived ? true : null, ["page"] = page });
+    private PingTargetStatus? PingResult(Guid id) => pingStates.TryGetValue(id, out var value) ? value.Targets[0] : null;
 }

@@ -1,0 +1,15 @@
+@using Vigiloom.Contracts.Network
+
+<StatusBadge Text="@(ReadError ? "無法讀取" : Status?.DisplayState ?? "尚無量測資料")" Tone="Tone" />
+
+@code {
+    [Parameter] public PingTargetStatus? Status { get; set; }
+    [Parameter] public bool ReadError { get; set; }
+    private StatusTone Tone => ReadError || Status?.Stale == true || Status?.LastOutcome is PingOutcome.DnsError or PingOutcome.PermissionDenied or PingOutcome.MonitorError
+        ? StatusTone.Warning : Status?.State switch
+        {
+            Reachability.Reachable => StatusTone.Success,
+            Reachability.Unreachable => StatusTone.Error,
+            _ => StatusTone.Neutral
+        };
+}

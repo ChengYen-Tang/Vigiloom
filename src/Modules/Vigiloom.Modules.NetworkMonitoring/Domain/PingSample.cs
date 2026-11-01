@@ -1,3 +1,5 @@
+using Vigiloom.Contracts.Network;
+
 namespace Vigiloom.Modules.NetworkMonitoring.Domain;
 
 public sealed class PingSample
@@ -23,4 +25,19 @@ public sealed class PingSample
     public DateTimeOffset ReceivedAt { get; private set; }
     public bool Succeeded { get; private set; }
     public double? LatencyMilliseconds { get; private set; }
+    public string? Target { get; private set; }
+    public string? ResolvedAddress { get; private set; }
+    public long? Generation { get; private set; }
+    public PingOutcome? Outcome { get; private set; }
+
+    public PingSample(Guid deviceId, string target, string? resolvedAddress, string location, long generation,
+        DateTimeOffset occurredAt, DateTimeOffset receivedAt, PingOutcome outcome, double? latencyMilliseconds)
+        : this(deviceId, location, occurredAt, receivedAt, outcome == PingOutcome.Success, latencyMilliseconds)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        Target = target;
+        ResolvedAddress = resolvedAddress;
+        Generation = generation;
+        Outcome = outcome;
+    }
 }
