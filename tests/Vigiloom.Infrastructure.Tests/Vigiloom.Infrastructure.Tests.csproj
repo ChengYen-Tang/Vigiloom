@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Migrator/Vigiloom.Migrator.csproj" />
     <ProjectReference Include="../../src/Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
+    <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
 </Project>
