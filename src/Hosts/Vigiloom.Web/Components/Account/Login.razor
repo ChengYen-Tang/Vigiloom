@@ -14,9 +14,9 @@
 <section class="account-card" aria-labelledby="login-title">
     <h1 id="login-title">登入 Vigiloom</h1>
     <p class="account-description">使用你的帳號查看監控資訊。</p>
-    @if (Setup == "complete" && error is null)
+    @if ((Setup == "complete" || Password == "changed") && error is null)
     {
-        <p class="account-success" role="status">管理員已建立，請登入。</p>
+        <p class="account-success" role="status">設定已完成，請登入。</p>
     }
     @if (error is not null)
     {
@@ -37,7 +37,7 @@
         <label class="account-checkbox"><InputCheckbox @bind-Value="Input.RememberMe" /> 記住登入</label>
         <button class="account-primary" type="submit">登入</button>
     </EditForm>
-    <p class="account-footer"><a href="/account/setup">首次設定</a></p>
+    <p class="account-footer"><a href="/account/reset-password">使用代碼設定密碼</a> · <a href="/account/setup">首次設定</a></p>
 </section>
 
 @code {
@@ -45,6 +45,7 @@
     [SupplyParameterFromForm] private LoginInput Input { get; set; } = default!;
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery] private string? Setup { get; set; }
+    [SupplyParameterFromQuery] private string? Password { get; set; }
 
     protected override void OnInitialized() => Input ??= new();
 

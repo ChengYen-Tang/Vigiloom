@@ -1,0 +1,106 @@
+@page "/account/manage/{Id:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Vigiloom.Modules.IdentityAccess.Domain
+@using Vigiloom.Web.Authentication
+@inject AccountAdministration Administration
+@inject NavigationManager Navigation
+
+<PageTitle>管理帳號 - Vigiloom</PageTitle>
+<main class="management-page">
+    <p><a href="/account/manage">← 返回帳號列表</a></p>
+    @if (account is null)
+    {
+        <h1>找不到此帳號</h1>
+    }
+    else
+    {
+        <h1>管理帳號</h1><p class="management-intro">@account.UserName</p>
+        @if (message is not null) { <p class="@(isError ? "account-error" : "account-success")" role="status">@message</p> }
+        @if (code is not null)
+        {
+            <section class="management-notice"><h2>一次性密碼設定代碼</h2><p>請透過安全方式交給帳號持有人，在 15 分鐘內使用；離開此頁後無法再次查看。</p><textarea readonly rows="4" aria-label="一次性設定密碼代碼">@(code)</textarea><p><a href="/account/reset-password">設定密碼頁面</a></p></section>
+        }
+        <section class="management-panel"><h2>帳號名稱</h2>
+            <EditForm Model="NameInput" FormName="rename-account" method="post" OnValidSubmit="RenameAsync">
+                <DataAnnotationsValidator />
+                <div class="account-field"><label for="account-name">帳號</label><InputText id="account-name" @bind-Value="NameInput.UserName" maxlength="256" required /><ValidationMessage For="() => NameInput.UserName" /></div>
+                <button class="management-button" type="submit">儲存帳號</button>
+            </EditForm>
+        </section>
+        <section class="management-panel"><h2>角色</h2>
+            <EditForm Model="RoleInput" FormName="change-role" method="post" OnValidSubmit="ChangeRoleAsync">
+                <label for="account-role">角色</label>
+                <InputSelect id="account-role" @bind-Value="RoleInput.Role"><option value="@BuiltInRoles.ReadOnly">Read only</option><option value="@BuiltInRoles.Administrator">Administrator</option></InputSelect>
+                <button class="management-button" type="submit">儲存角色</button>
+            </EditForm>
+        </section>
+        <section class="management-panel"><h2>重設密碼</h2><p>建立一次性代碼，讓帳號持有人自行設定新密碼。舊密碼及工作階段會立即失效。</p>
+            <EditForm Model="this" FormName="reset-code" method="post" OnValidSubmit="ResetAsync"><button class="management-button" type="submit">產生重設代碼</button></EditForm>
+        </section>
+        <section class="management-panel"><h2>刪除帳號</h2><p>刪除後此帳號將無法登入。</p>
+            <EditForm Model="DeleteInput" FormName="delete-account" method="post" OnValidSubmit="DeleteAsync">
+                <label class="account-checkbox"><InputCheckbox @bind-Value="DeleteInput.Confirmed" /> 我確認要刪除此帳號</label>
+                <button class="management-danger" type="submit">刪除帳號</button>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "rename-account")] private NameModel NameInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "change-role")] private RoleModel RoleInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "delete-account")] private DeleteModel DeleteInput { get; set; } = default!;
+    private AccountSummary? account;
+    private string? message;
+    private string? code;
+    private bool isError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NameInput ??= new(); RoleInput ??= new(); DeleteInput ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        account = await Administration.GetAsync(HttpContext.User, Id);
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            NameInput.UserName = account?.UserName ?? "";
+            RoleInput.Role = account?.Roles.FirstOrDefault() ?? BuiltInRoles.ReadOnly;
+        }
+    }
+    private async Task RenameAsync()
+    {
+        var result = await Administration.RenameAsync(HttpContext.User, Id, NameInput.UserName);
+        if (result.Status == AccountOperationStatus.Success && account is not null)
+            account = account with { UserName = NameInput.UserName };
+        SetMessage(result, "帳號名稱已更新；該帳號需重新登入。");
+    }
+    private async Task ChangeRoleAsync()
+    {
+        var result = await Administration.SetRoleAsync(HttpContext.User, Id, RoleInput.Role);
+        SetMessage(result, "角色已更新。");
+    }
+    private async Task ResetAsync()
+    {
+        var result = await Administration.IssuePasswordResetAsync(HttpContext.User, Id);
+        if (result.Result.Status == AccountOperationStatus.Success) { code = result.Code; message = null; }
+        else SetMessage(result.Result, "");
+    }
+    private async Task DeleteAsync()
+    {
+        if (!DeleteInput.Confirmed) { isError = true; message = "請先確認刪除。"; return; }
+        var result = await Administration.DeleteAsync(HttpContext.User, Id);
+        if (result.Status == AccountOperationStatus.Success) { Navigation.NavigateTo("/account/manage", forceLoad: true); return; }
+        SetMessage(result, "");
+    }
+    private void SetMessage(AccountOperationResult result, string success)
+    {
+        isError = result.Status != AccountOperationStatus.Success;
+        message = isError ? AccountOperationMessages.Describe(result) : success;
+    }
+    private sealed class NameModel { [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = ""; }
+    private sealed class RoleModel { [Required] public string Role { get; set; } = BuiltInRoles.ReadOnly; }
+    private sealed class DeleteModel { public bool Confirmed { get; set; } }
+}

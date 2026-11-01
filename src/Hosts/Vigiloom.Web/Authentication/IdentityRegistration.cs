@@ -11,6 +11,8 @@ internal static class IdentityRegistration
     {
         services.AddScoped<InitialAdministrator>();
         services.AddScoped<AccountAdministration>();
+        services.AddScoped<AccountPasswordReset>();
+        services.AddScoped<SelfPasswordChange>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
@@ -43,6 +45,7 @@ internal static class IdentityRegistration
             options.ExpireTimeSpan = TimeSpan.FromHours(8);
             options.SlidingExpiration = true;
         });
+        services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
         services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.Zero);
         return services;
     }
