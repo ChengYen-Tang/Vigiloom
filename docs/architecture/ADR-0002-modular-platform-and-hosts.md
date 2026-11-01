@@ -112,3 +112,7 @@ Agent.Core 保留跨平台採集／傳輸邊界，Windows／Linux 適配只依�
 - 本輪沒有 SQL schema／索引／吞吐或 Linux 實機驗證。可編譯和 provider 註冊不代表完整產品或 OS 支援。
 
 依據：[Microsoft 架構說明](https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/common-web-application-architectures)、[Blazor render modes](https://learn.microsoft.com/en-us/aspnet/core/blazor/components/render-modes?view=aspnetcore-10.0)、[Pkcs 安全公告](https://github.com/advisories/GHSA-846f-f764-76mx)。
+
+## 資料庫佈署程序（REQ-02）
+
+`Vigiloom.Migrator` 是獨立、按需執行的部署程序，參考 Infrastructure、IdentityAccess、Resources 與 NetworkMonitoring，依相依順序套用各模組 migration 並初始化內建角色；不承接 Web／Worker 的業務工作，也不在主機啟動時自動執行。操作與權限見 [SQL Server module migrations](sql-server-migrations.md)。
