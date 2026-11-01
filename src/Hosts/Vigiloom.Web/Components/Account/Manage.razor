@@ -1,0 +1,78 @@
+@page "/account/manage"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Vigiloom.Modules.IdentityAccess.Domain
+@using Vigiloom.Web.Authentication
+@inject AccountAdministration Administration
+
+<PageTitle>帳號管理 - Vigiloom</PageTitle>
+<main class="management-page">
+    <h1>帳號管理</h1>
+    <p class="management-intro">管理帳號和可使用的角色。</p>
+    @if (error is not null) { <p class="account-error" role="alert">@error</p> }
+    @if (code is not null)
+    {
+        <section class="management-notice" aria-labelledby="code-title">
+            <h2 id="code-title">帳號已建立</h2>
+            <p>請透過安全方式將下列一次性代碼交給帳號持有人，在 15 分鐘內至「設定密碼」頁面使用。離開此頁後無法再次查看。</p>
+            <textarea readonly rows="4" aria-label="一次性設定密碼代碼">@(code)</textarea>
+            <p><a href="/account/reset-password">設定密碼頁面</a></p>
+        </section>
+    }
+    <section class="management-panel" aria-labelledby="create-title">
+        <h2 id="create-title">新增帳號</h2>
+        <EditForm Model="Input" FormName="create-account" method="post" OnValidSubmit="CreateAsync">
+            <DataAnnotationsValidator />
+            <div class="management-form">
+                <div class="account-field"><label for="new-name">帳號</label><InputText id="new-name" @bind-Value="Input.UserName" maxlength="256" required /><ValidationMessage For="() => Input.UserName" /></div>
+                <div class="account-field"><label for="new-role">角色</label><InputSelect id="new-role" @bind-Value="Input.Role"><option value="@BuiltInRoles.ReadOnly">Read only</option><option value="@BuiltInRoles.Administrator">Administrator</option></InputSelect></div>
+                <button class="management-button" type="submit">建立帳號</button>
+            </div>
+        </EditForm>
+    </section>
+    <section class="management-panel" aria-labelledby="accounts-title">
+        <h2 id="accounts-title">帳號列表</h2>
+        <div class="management-table-wrap"><table><thead><tr><th scope="col">帳號</th><th scope="col">角色</th><th scope="col"><span class="visually-hidden">操作</span></th></tr></thead><tbody>
+            @foreach (var account in accounts.Accounts)
+            {
+                <tr><td>@account.UserName</td><td>@string.Join("、", account.Roles)</td><td><a href="@($"/account/manage/{account.Id}")">管理</a></td></tr>
+            }
+        </tbody></table></div>
+        <nav class="management-pagination" aria-label="帳號列表分頁">
+            <span>共 @accounts.TotalCount 個帳號</span>
+            @if (accounts.Page > 1) { <a href="@($"/account/manage?page={accounts.Page - 1}")">上一頁</a> }
+            @if ((long)accounts.Page * accounts.PageSize < accounts.TotalCount) { <a href="@($"/account/manage?page={accounts.Page + 1}")">下一頁</a> }
+        </nav>
+    </section>
+</main>
+
+@code {
+    private string? error;
+    private string? code;
+    private AccountPage accounts = new([], 0, 1, 50);
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "create-account")] private CreateInput Input { get; set; } = default!;
+    [SupplyParameterFromQuery] private int? Page { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        await LoadAsync();
+    }
+    private async Task LoadAsync() => accounts = await Administration.ListAsync(HttpContext.User, Math.Clamp(Page ?? 1, 1, int.MaxValue / 50));
+    private async Task CreateAsync()
+    {
+        var result = await Administration.CreateAsync(HttpContext.User, Input.UserName, Input.Role);
+        if (result.Result.Status != AccountOperationStatus.Success) { error = AccountOperationMessages.Describe(result.Result); return; }
+        code = result.Code;
+        Input.UserName = "";
+        await LoadAsync();
+    }
+    private sealed class CreateInput
+    {
+        [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = "";
+        [Required] public string Role { get; set; } = BuiltInRoles.ReadOnly;
+    }
+}
