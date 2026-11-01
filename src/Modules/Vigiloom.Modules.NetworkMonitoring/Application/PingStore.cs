@@ -31,7 +31,8 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         var ids = batch.Select(x => x.Id).ToArray();
-        var existing = await db.PingTargets.Where(x => ids.Contains(x.DeviceId)).ToListAsync(token);
+        var targets = batch.SelectMany(x => x.Targets).Distinct(StringComparer.Ordinal).ToArray();
+        var existing = await db.PingTargets.Where(x => ids.Contains(x.DeviceId) && (x.Enabled || targets.Contains(x.Target))).ToListAsync(token);
         var lookup = existing.ToDictionary(x => (x.DeviceId, x.Target));
         var byDevice = existing.ToLookup(x => x.DeviceId);
         var now = clock.GetUtcNow();
@@ -113,6 +114,11 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         if (state is null) return false;
         if (!await devices.IsCurrentAsync(lease.DeviceId, lease.DeviceVersion, lease.Target, db.Database.GetDbConnection(), tx.GetDbTransaction(), token)) return false;
         var previous = state.State;
+        if (IsStale(state.MeasuredAt, measuredAt, settings.IntervalSeconds))
+        {
+            state.State = Reachability.Unknown;
+            state.Successes = state.Failures = 0;
+        }
         PingStateMachine.Apply(state, measurement, settings);
         state.MeasuredAt = measuredAt.ToUniversalTime(); state.Location = location;
         var receivedAt = await DatabaseNowAsync(db, token);
@@ -141,7 +147,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     public async Task<DevicePingStatus> GetStatusAsync(Guid id, IReadOnlyList<string> targets, string deviceVersion, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
-        var rows = await db.PingTargets.AsNoTracking().Where(x => x.DeviceId == id).ToListAsync(token);
+        var rows = await db.PingTargets.AsNoTracking().Where(x => x.DeviceId == id && x.Enabled && targets.Contains(x.Target)).ToListAsync(token);
         var settings = await db.PingSettings.AsNoTracking().SingleOrDefaultAsync(x => x.Name == "central", token);
         return MapStatus(id, targets, deviceVersion, rows, settings, clock.GetUtcNow());
     }
@@ -151,7 +157,8 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         if (devicesToRead.Count > 250) throw new ArgumentOutOfRangeException(nameof(devicesToRead));
         await using var db = await contexts.CreateDbContextAsync(token);
         var ids = devicesToRead.Select(x => x.Id).ToArray();
-        var rows = await db.PingTargets.AsNoTracking().Where(x => ids.Contains(x.DeviceId)).ToListAsync(token);
+        var targets = devicesToRead.SelectMany(x => x.Targets).Distinct(StringComparer.Ordinal).ToArray();
+        var rows = await db.PingTargets.AsNoTracking().Where(x => ids.Contains(x.DeviceId) && x.Enabled && targets.Contains(x.Target)).ToListAsync(token);
         var settings = await db.PingSettings.AsNoTracking().SingleOrDefaultAsync(x => x.Name == "central", token);
         var lookup = rows.ToLookup(x => x.DeviceId);
         var now = clock.GetUtcNow();
@@ -170,7 +177,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                 result.Add(new(target, null, "central", Reachability.Unknown, "尚無量測資料", null, null, null, false));
                 continue;
             }
-            var stale = state.MeasuredAt is { } time && now - time > TimeSpan.FromSeconds(Math.Max(90, 2 * (settings?.IntervalSeconds ?? 30)));
+            var stale = IsStale(state.MeasuredAt, now, settings?.IntervalSeconds ?? 30);
             var display = state.MeasuredAt is null ? "尚無量測資料" : stale ? "資料過期" : state.Outcome switch
             {
                 PingOutcome.DnsError => "DNS 解析失敗",
@@ -183,6 +190,9 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         }
         return new(id, result, new(settings?.IntervalSeconds ?? 30, settings?.TimeoutSeconds ?? 2, settings?.FailureThreshold ?? 3, settings?.SuccessThreshold ?? 2));
     }
+
+    private static bool IsStale(DateTimeOffset? measuredAt, DateTimeOffset now, int intervalSeconds) =>
+        measuredAt is { } time && now - time > TimeSpan.FromSeconds(Math.Max(90, 2 * intervalSeconds));
 
     private static int Spread(Guid id, string target, int interval)
     {

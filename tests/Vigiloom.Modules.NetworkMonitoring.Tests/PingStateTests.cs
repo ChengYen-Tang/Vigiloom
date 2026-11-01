@@ -44,6 +44,16 @@ public sealed class PingStateTests
     }
 
     [TestMethod]
+    [DataRow("0.0.0.0")]
+    [DataRow("::")]
+    public async Task UnspecifiedAddressProducesAMonitorResult(string target)
+    {
+        var measurement = await new SystemPingProbe().MeasureAsync(target, 1, CancellationToken.None);
+        Assert.AreEqual(PingOutcome.MonitorError, measurement.Outcome);
+        Assert.IsNull(measurement.LatencyMilliseconds);
+    }
+
+    [TestMethod]
     [TestCategory("Integration")]
     public async Task NativeProbeMeasuresLoopbackAndRejectsInvalidDns()
     {

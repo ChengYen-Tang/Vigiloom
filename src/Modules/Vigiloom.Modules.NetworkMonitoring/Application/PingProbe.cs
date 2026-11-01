@@ -34,6 +34,8 @@ public sealed class SystemPingProbe : IPingProbe
             catch (ArgumentException) { return new(PingOutcome.DnsError, null, null); }
             if (address is null) return new(PingOutcome.DnsError, null, null);
         }
+        if (address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+            return new(PingOutcome.MonitorError, address.ToString(), null);
         try
         {
             using var ping = new Ping();

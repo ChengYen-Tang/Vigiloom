@@ -189,6 +189,63 @@ public sealed class PingSqlTests
         Assert.AreEqual(Reachability.Unknown, (await check.PingTargets.SingleAsync(x => x.DeviceId == device.Id, token)).State);
     });
 
+    [TestMethod]
+    public Task NativeUnspecifiedTargetDoesNotAbortOtherDevices() => WithDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        await using (var db = resources.CreateDbContext())
+        {
+            var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
+            current.Update(current.Name, "0.0.0.0", false, true, clock.Now);
+            await db.SaveChangesAsync(token);
+        }
+        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(await settings.GetAsync(token), token); await DueAsync(network, token);
+        await new PingRunner(settings, store, new SystemPingProbe(), clock).RunOnceAsync(token);
+        await using var check = network.CreateDbContext();
+        Assert.AreEqual(3, await check.PingSamples.CountAsync(token));
+        Assert.AreEqual(2, await check.PingSamples.CountAsync(x => x.Succeeded, token));
+        Assert.AreEqual(PingOutcome.MonitorError, (await check.PingSamples.SingleAsync(x => x.DeviceId == device.Id, token)).Outcome);
+    });
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public Task StaleGapBreaksReachabilityAndConsecutiveSuccess(bool wasReachable) => WithDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(policy, token);
+        for (var i = 0; i < (wasReachable ? 2 : 1); i++)
+        {
+            await DueAsync(network, token);
+            var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+            Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.Success, "127.0.0.1", 1), clock.Now, "central", token));
+        }
+        clock.Now = clock.Now.AddSeconds(91);
+        var stale = await store.GetStatusAsync(device.Id, [device.Address], Convert.ToBase64String(device.Version), token);
+        Assert.IsTrue(stale.Targets[0].Stale);
+        await DueAsync(network, token);
+        var fresh = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+        var outcome = wasReachable ? PingOutcome.Timeout : PingOutcome.Success;
+        Assert.IsTrue(await store.CommitAsync(fresh, policy, new(outcome, "127.0.0.1", wasReachable ? null : 1), clock.Now, "central", token));
+        var status = await store.GetStatusAsync(device.Id, [device.Address], Convert.ToBase64String(device.Version), token);
+        Assert.IsFalse(status.Targets[0].Stale);
+        Assert.AreEqual(Reachability.Unknown, status.Targets[0].State, "Old evidence must not bridge a stale gap.");
+        if (!wasReachable)
+        {
+            await DueAsync(network, token);
+            var next = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+            Assert.IsTrue(await store.CommitAsync(next, policy, new(PingOutcome.Success, "127.0.0.1", 1), clock.Now, "central", token));
+            Assert.AreEqual(Reachability.Reachable, (await store.GetStatusAsync(device.Id, [device.Address], Convert.ToBase64String(device.Version), token)).Targets[0].State);
+        }
+    });
+
     private sealed class MixedProbe : IPingProbe
     {
         public Task<PingMeasurement> MeasureAsync(string target, int timeoutSeconds, CancellationToken token) =>
