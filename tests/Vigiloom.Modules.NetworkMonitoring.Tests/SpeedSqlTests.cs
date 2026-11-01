@@ -70,6 +70,30 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
+    [DataRow(false, 40)]
+    [DataRow(true, 4)]
+    public Task RateWindowUsesActualStartWhenQueueWasDelayed(bool automatic, int limit) => WithDatabase(async (factory, token) =>
+    {
+        var actor = Guid.CreateVersion7(); var settings = new SpeedSettings(factory);
+        var initial = await settings.GetAsync(token);
+        await settings.UpdateAsync(new(automatic, 6, 1, 5, true, initial.Version, initial.ConsentPolicy), actor, token);
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = factory.CreateDbContext())
+        {
+            db.SpeedRuns.AddRange(Enumerable.Range(0, limit).Select(i => new SpeedRun { RequestId = Guid.CreateVersion7(),
+                RequestedBy = automatic ? null : actor, RequestedAt = now.AddHours(-24).AddMinutes(-1), StartedAt = now.AddHours(-24).AddMinutes(2),
+                State = SpeedTestState.Failed, CompletedAt = now.AddHours(-24).AddMinutes(3), Automatic = automatic, MaxMiB = 1, TimeoutSeconds = 5 }));
+            await db.SaveChangesAsync(token);
+            if (automatic) await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+        }
+        var result = await new SpeedQueue(factory).RequestAsync(Guid.CreateVersion7(), automatic ? null : actor, automatic, token);
+        Assert.AreEqual(SpeedRequestStatus.RateLimited, result.Status);
+        Assert.IsGreaterThan(now, result.NextAllowedAt!.Value);
+        var snapshot = await settings.GetAsync(token);
+        Assert.AreEqual(limit, snapshot.ReservedToday);
+    });
+
+    [TestMethod]
     public Task HistoryKeepsPartialValuesAndMissingMeasurementsDistinct() => WithDatabase(async (factory, token) =>
     {
         var now = DateTimeOffset.UtcNow; Guid failed;

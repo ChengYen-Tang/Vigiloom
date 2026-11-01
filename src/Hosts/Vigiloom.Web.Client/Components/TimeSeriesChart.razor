@@ -8,7 +8,7 @@
     }
     else
     {
-        <div role="img" aria-label="@Title"><EChart @key="options" Options="options" Width="100%" Height="280px" /></div>
+        <div role="img" aria-label="@Title"><EChart @key="options" Options="options" Width="auto" Height="280px" /></div>
         <details>
             <summary>以表格查看資料</summary>
             <table><thead><tr><th scope="col">時間（UTC）</th><th scope="col">數值 @Unit</th></tr></thead><tbody>
@@ -29,6 +29,7 @@
     protected override void OnParametersSet() => options = CreateOptions(Points);
     internal static ChartOptions CreateOptions(IReadOnlyList<TimeSeriesPoint> points) => new()
         {
+            UseUTC = true,
             XAxis = new() { Type = AxisType.Time },
             YAxis = new() { Type = AxisType.Value },
             Series = new() { new LineSeries { Data = points.Select(point => new object?[] { point.Time.ToUnixTimeMilliseconds(), point.Value }).ToArray(), ConnectNulls = false } }
