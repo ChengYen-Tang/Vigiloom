@@ -1,0 +1,34 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@page "/speed-tests"
+@rendermode InteractiveAuto
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = WorkspaceAccess.MonitoringRead)]
+@implements IAsyncDisposable
+@using Vigiloom.Contracts.SpeedTests
+@using Vigiloom.Contracts.Workspace
+@using Vigiloom.Web.Client.Components.SpeedTests
+@inject ISpeedHistoryClient History
+@inject IWorkspaceIdentityClient Identity
+@inject NavigationManager Navigation
+@inject ILogger<SpeedTests> Logger
+<PageTitle>網路測速 - Vigiloom</PageTitle>
+<main class="device-page" data-runtime="@RendererInfo.Name">
+    <header class="device-heading"><div><h1>網路測速</h1><p>中央位置的對外路徑品質，與單台設備 Ping／應用服務健康分開。</p></div>
+        <AuthorizeView Roles="Administrator"><Authorized><div class="device-actions"><a href="/settings/speed-tests">測速設定</a><a class="device-primary" href="/speed-tests/start">手動測速</a></div></Authorized></AuthorizeView>
+    </header>
+    <section class="device-panel"><SpeedFilters Query="query" Changed="ChangeQuery" Busy="@(loading || !RendererInfo.IsInteractive)" /><p><a href="@FilterUrl">開啟目前篩選的連結</a></p></section>
+    @if (invalid) { <p class="device-alert" role="alert">日期範圍須在 31 天內，頁碼與排序須有效。</p> }
+    else if (unauthorized) { <section class="device-panel" role="alert"><h2>登入已過期或權限已變更</h2><p>請重新登入後繼續。</p><a href="/account/login?returnUrl=%2Fspeed-tests">前往登入</a></section> }
+    else if (error) { <section class="device-panel" role="alert"><h2>暫時無法載入測速紀錄</h2><p>請確認連線後重新嘗試。</p><button type="button" @onclick="LoadAsync">重新嘗試</button></section> }
+    else if (Result is { } result)
+    {
+        @if (loading) { <p role="status">正在更新…</p> }
+        <section class="device-panel"><h2>上下傳趨勢</h2><SpeedTrends Runs="result.Trend" Truncated="result.TrendTruncated" /></section>
+        <section class="device-panel"><h2>測速紀錄</h2>
+            @if (result.Items.Count == 0) { <p>這段時間沒有符合條件的測速紀錄。自動測速預設關閉，管理員可從設定啟用。</p> }
+            else { <SpeedTable Page="result" ReturnUrl="FilterUrl" Busy="@(loading || !RendererInfo.IsInteractive)" PageChanged="ChangePage" /> }
+            <p>非完成狀態的數值是已觀測的部分結果；缺資料顯示「—」，不代表 0 Mbps。</p>
+            <p>目前最早可用紀錄（UTC）：@(result.EarliestAvailableAt?.ToString("u") ?? "尚無資料")</p>
+        </section>
+    }
+    else { <p role="status">正在載入測速紀錄…</p> }
+</main>
