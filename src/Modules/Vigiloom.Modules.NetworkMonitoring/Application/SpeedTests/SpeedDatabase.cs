@@ -1,7 +1,5 @@
-using System.Data.Common;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
@@ -23,11 +21,7 @@ internal static class SpeedDatabase
         db.SpeedSettings.FromSqlRaw("SELECT * FROM network.SpeedSettings WITH (UPDLOCK,HOLDLOCK) WHERE Name=N'central'").SingleAsync(token);
     public static async Task<DateTimeOffset> NowAsync(NetworkDbContext db, CancellationToken token)
     {
-        await db.Database.OpenConnectionAsync(token);
-        await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
-        command.CommandText = "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')";
-        return (DateTimeOffset)(await command.ExecuteScalarAsync(token))!;
+        return await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
     }
     public static bool HasConsent(SpeedSetting setting) => setting.ConsentPolicy == ConsentPolicy && setting.ConsentedAt is not null;
     public static DateTimeOffset NextAutomatic(DateTimeOffset now, int hours) => now.AddHours(hours * (0.8 + Random.Shared.NextDouble() * 0.4));
