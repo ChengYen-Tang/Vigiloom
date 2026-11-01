@@ -7,6 +7,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Web.Components;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Api;
+using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,7 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configurati
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentity();
+builder.Services.AddMudServices();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

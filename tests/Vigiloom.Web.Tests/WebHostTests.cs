@@ -10,6 +10,18 @@ namespace Vigiloom.Web.Tests;
 public sealed class WebHostTests(TestContext testContext)
 {
     [TestMethod]
+    [DataRow("/_content/MudBlazor/MudBlazor.min.css")]
+    [DataRow("/_content/MudBlazor/MudBlazor.min.js")]
+    [DataRow("/_content/Vizor.ECharts/js/vizor-echarts-bundle-min.js")]
+    public async Task SharedComponentAssets_AreAvailable(string path)
+    {
+        using var factory = CreateFactory("Development");
+        using var client = CreateClient(factory);
+        using var response = await client.GetAsync(path, testContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task ApiRateLimit_ReturnsProblemDetailsAndRetryAfter()
     {
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>

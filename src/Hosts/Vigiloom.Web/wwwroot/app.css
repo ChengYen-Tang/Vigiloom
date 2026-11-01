@@ -1,4 +1,20 @@
+:root {
+    --vigiloom-ink: #142344;
+    --vigiloom-muted: #667a99;
+    --vigiloom-surface: #fff;
+    --vigiloom-background: #f4f8fb;
+    --vigiloom-border: #e3eaf3;
+    --vigiloom-primary: #075ff0;
+    --vigiloom-space-1: 4px;
+    --vigiloom-space-2: 8px;
+    --vigiloom-space-3: 16px;
+    --vigiloom-space-4: 24px;
+}
 html, body { margin: 0; }
+:where(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid #075ff0; outline-offset: 3px; }
+.vigiloom-status.mud-chip-color-success { color: #09643a; }
+.vigiloom-status.mud-chip-color-warning { color: #874a00; }
+.vigiloom-status.mud-chip-color-error { color: #a11717; }
 
 h1:focus {
     outline: none;
