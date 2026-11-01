@@ -98,7 +98,7 @@ public sealed class SpeedBrowserTests
                 if (!chart) return false;
                 const options = chart.getOption();
                 const data = options.series?.[0]?.data;
-                return chart.getWidth() >= el.clientWidth * 0.9 && chart.getWidth() > 200 && options.useUTC === true &&
+                return chart.getWidth() >= el.clientWidth * 0.9 && chart.getWidth() > 200 && options.useUTC === true && options.xAxis?.[0]?.axisLabel?.hideOverlap === true &&
                     data?.length === 3 && data[0][1] === 80 && data[1][1] === null && data[2][1] === null;
             }
             """, null, new() { Timeout = 60000 });
