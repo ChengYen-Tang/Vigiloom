@@ -8,6 +8,8 @@ internal static class AccountOperationMessages
         AccountOperationStatus.NotFound => "找不到此帳號。",
         AccountOperationStatus.LastAdministrator => "至少必須保留一位可使用的管理員。",
         AccountOperationStatus.SelfDeletion => "無法刪除目前登入的帳號。",
+        AccountOperationStatus.SelfTwoFactorReset => "請至自己的雙重驗證設定頁停用。",
+        AccountOperationStatus.InvalidCredentials => "管理員密碼不正確。",
         AccountOperationStatus.ValidationFailed => string.Join(" ", result.Errors),
         _ => "無法完成操作，請稍後重試。"
     };

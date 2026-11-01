@@ -13,7 +13,12 @@ public sealed class AdministratorRecovery(IdentityAccessDbContext db, UserManage
         var account = await users.FindByNameAsync(userName);
         if (account is null || !await users.IsInRoleAsync(account, BuiltInRoles.Administrator)) return null;
         if (await users.HasPasswordAsync(account)) EnsureSuccess(await users.RemovePasswordAsync(account));
-        if (await users.GetTwoFactorEnabledAsync(account)) EnsureSuccess(await users.SetTwoFactorEnabledAsync(account, false));
+        if (await users.GetTwoFactorEnabledAsync(account))
+        {
+            EnsureSuccess(await users.SetTwoFactorEnabledAsync(account, false));
+            EnsureSuccess(await users.RemoveAuthenticationTokenAsync(account, ProtectedUserStore.InternalProvider, ProtectedUserStore.AuthenticatorKeyName));
+            _ = await users.GenerateNewTwoFactorRecoveryCodesAsync(account, 0);
+        }
         if (await users.IsLockedOutAsync(account)) EnsureSuccess(await users.SetLockoutEndDateAsync(account, null));
         EnsureSuccess(await users.UpdateSecurityStampAsync(account));
         var code = await users.GeneratePasswordResetTokenAsync(account);

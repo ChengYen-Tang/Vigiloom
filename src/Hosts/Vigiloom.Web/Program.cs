@@ -21,6 +21,11 @@ builder.Services.AddVigiloomIdentity();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsync("請求過於頻繁，請稍後再試。", cancellationToken);
+    };
     options.AddPolicy("identity-setup", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         {
@@ -31,7 +36,7 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("identity-login", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 30,
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:RequestsPerMinute", 30), 1, 1000),
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

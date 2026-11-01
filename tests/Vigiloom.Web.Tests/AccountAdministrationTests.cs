@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OtpNet;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.IdentityAccess.Domain;
@@ -95,7 +96,24 @@ public sealed class AccountAdministrationTests
             var bobCreation = await Create(alice.Principal, "bob", BuiltInRoles.Administrator);
             Assert.AreEqual(AccountOperationStatus.Success, bobCreation.Result.Status);
             Assert.IsNotNull(bobCreation.Code);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var admin = scope.ServiceProvider.GetRequiredService<AccountAdministration>();
+                Assert.AreEqual(AccountOperationStatus.LastAdministrator,
+                    (await admin.SetRoleAsync(alice.Principal, alice.Id, BuiltInRoles.ReadOnly, token)).Status);
+            }
             Assert.IsTrue(await Redeem("bob", bobCreation.Code));
+            var bobBeforeReset = await Actor("bob");
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var admin = scope.ServiceProvider.GetRequiredService<AccountAdministration>();
+                var reset = await admin.IssuePasswordResetAsync(alice.Principal, bobBeforeReset.Id, token);
+                Assert.AreEqual(AccountOperationStatus.Success, reset.Result.Status);
+                Assert.IsNotNull(reset.Code);
+                Assert.AreEqual(AccountOperationStatus.LastAdministrator,
+                    (await admin.SetRoleAsync(alice.Principal, alice.Id, BuiltInRoles.ReadOnly, token)).Status);
+                Assert.IsTrue(await Redeem("bob", reset.Code));
+            }
             reader = await Actor("reader");
             await using (var scope = factory.Services.CreateAsyncScope())
             {
@@ -108,6 +126,50 @@ public sealed class AccountAdministrationTests
             await using (var scope = factory.Services.CreateAsyncScope())
                 await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await scope.ServiceProvider.GetRequiredService<SelfPasswordChange>()
                     .ChangeAsync(reader.Principal, "Different-Password-456", "Third-Password-789", token));
+            reader = await Actor("reader");
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var manager = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var account = await manager.FindByIdAsync(reader.Id.ToString());
+                Assert.IsNotNull(account);
+                var createdAt = account.CreatedAt;
+                var updatedAt = account.UpdatedAt;
+                Assert.IsTrue((await manager.SetUserNameAsync(account, "reader-renamed")).Succeeded);
+                Assert.AreEqual(createdAt, account.CreatedAt);
+                Assert.IsGreaterThan(updatedAt, account.UpdatedAt);
+                Assert.IsTrue((await manager.SetUserNameAsync(account, "reader")).Succeeded);
+                var currentPrincipal = await scope.ServiceProvider.GetRequiredService<IUserClaimsPrincipalFactory<Account>>().CreateAsync(account);
+                var before = await manager.GetSecurityStampAsync(account);
+                Assert.IsTrue((await manager.SetLockoutEndDateAsync(account, DateTimeOffset.UtcNow.AddMinutes(15))).Succeeded);
+                Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<AccountLogout>().RevokeSessionsAsync(currentPrincipal, token));
+                await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(account).ReloadAsync(token);
+                Assert.AreNotEqual(before, await manager.GetSecurityStampAsync(account));
+                Assert.IsTrue((await manager.SetLockoutEndDateAsync(account, null)).Succeeded);
+            }
+            reader = await Actor("reader");
+            string readerKey;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var started = await scope.ServiceProvider.GetRequiredService<TwoFactorManagement>()
+                    .BeginAsync(reader.Principal, "Different-Password-456", token);
+                Assert.AreEqual(TwoFactorStatus.Success, started.Status);
+                Assert.IsNotNull(started.Key);
+                readerKey = started.Key;
+            }
+            reader = await Actor("reader");
+            await using (var scope = factory.Services.CreateAsyncScope())
+                Assert.AreEqual(TwoFactorStatus.Success, (await scope.ServiceProvider.GetRequiredService<TwoFactorManagement>()
+                    .EnableAsync(reader.Principal, new Totp(Base32Encoding.ToBytes(readerKey)).ComputeTotp(), token)).Status);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var admin = scope.ServiceProvider.GetRequiredService<AccountAdministration>();
+                Assert.AreEqual(AccountOperationStatus.SelfTwoFactorReset,
+                    (await admin.ResetTwoFactorAsync(alice.Principal, alice.Id, "Strong-Password-123", token)).Status);
+                Assert.AreEqual(AccountOperationStatus.InvalidCredentials,
+                    (await admin.ResetTwoFactorAsync(alice.Principal, reader.Id, "wrong", token)).Status);
+                Assert.AreEqual(AccountOperationStatus.Success,
+                    (await admin.ResetTwoFactorAsync(alice.Principal, reader.Id, "Strong-Password-123", token)).Status);
+            }
             reader = await Actor("reader");
             var bob = await Actor("bob");
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -126,13 +188,28 @@ public sealed class AccountAdministrationTests
                 }
                 catch (UnauthorizedAccessException) { return null; }
             }
+            await using (var staleScope = factory.Services.CreateAsyncScope())
+            {
+                var staleManager = staleScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                Assert.IsNotNull(await staleManager.FindByIdAsync(alice.Id.ToString()));
+                await using (var revokeScope = factory.Services.CreateAsyncScope())
+                {
+                    var revokeManager = revokeScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                    var current = await revokeManager.FindByIdAsync(alice.Id.ToString());
+                    Assert.IsNotNull(current);
+                    Assert.IsTrue((await revokeManager.UpdateSecurityStampAsync(current)).Succeeded);
+                }
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await staleScope.ServiceProvider
+                    .GetRequiredService<AccountAdministration>().SetRoleAsync(alice.Principal, bob.Id, BuiltInRoles.ReadOnly, token));
+            }
+            alice = await Actor("alice");
             var race = await Task.WhenAll(Demote(alice.Principal, bob.Id), Demote(bob.Principal, alice.Id));
             Assert.HasCount(1, race.Where(status => status == AccountOperationStatus.Success));
             Assert.HasCount(1, race.Where(status => status is null or AccountOperationStatus.LastAdministrator));
             await using var check = await contexts.CreateDbContextAsync(token);
             var adminId = (await check.Roles.SingleAsync(role => role.NormalizedName == "ADMINISTRATOR", token)).Id;
             Assert.AreEqual(1, await check.UserRoles.CountAsync(role => role.RoleId == adminId, token));
-            Assert.AreEqual(9, await check.AccountAuditEvents.CountAsync(token));
+            Assert.AreEqual(14, await check.AccountAuditEvents.CountAsync(token));
             var remainingId = (await check.UserRoles.SingleAsync(role => role.RoleId == adminId, token)).UserId;
             string remainingName;
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -150,6 +227,7 @@ public sealed class AccountAdministrationTests
             recoveryServices.AddVigiloomDataProtection(new ConfigurationBuilder().Build());
             recoveryServices.AddModuleSqlServer<IdentityAccessDbContext>(database.ConnectionString, "identity");
             recoveryServices.AddIdentityCore<Account>().AddRoles<Role>().AddEntityFrameworkStores<IdentityAccessDbContext>().AddDefaultTokenProviders();
+            recoveryServices.AddScoped<IUserStore<Account>, ProtectedUserStore>();
             recoveryServices.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
             string recoveryCode;
             using (var recoveryProvider = recoveryServices.BuildServiceProvider())
@@ -173,6 +251,6 @@ public sealed class AccountAdministrationTests
                 Assert.IsFalse(await manager.GetTwoFactorEnabledAsync(recovered));
                 Assert.IsTrue(await manager.CheckPasswordAsync(recovered, "Strong-Password-123"));
             }
-            Assert.AreEqual(11, await check.AccountAuditEvents.CountAsync(token));
+            Assert.AreEqual(16, await check.AccountAuditEvents.CountAsync(token));
         }, TestContext.CancellationToken);
 }

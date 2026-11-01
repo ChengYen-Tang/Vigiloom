@@ -53,6 +53,12 @@
     {
         var result = await SignInManager.PasswordSignInAsync(Input.UserName, Input.Password, Input.RememberMe, lockoutOnFailure: true);
         Input.Password = string.Empty;
+        if (result.RequiresTwoFactor)
+        {
+            var destination = RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/";
+            Navigation.NavigateTo($"/account/two-factor?returnUrl={Uri.EscapeDataString(destination)}&remember={Input.RememberMe}", forceLoad: true);
+            return;
+        }
         if (result.Succeeded)
         {
             var destination = RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/";

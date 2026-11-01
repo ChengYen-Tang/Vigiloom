@@ -5,12 +5,13 @@
 @using Microsoft.AspNetCore.Identity
 @using Vigiloom.Modules.IdentityAccess.Domain
 @inject SignInManager<Account> SignInManager
+@inject Vigiloom.Web.Authentication.AccountLogout AccountLogout
 @inject NavigationManager Navigation
 
 <PageTitle>登出 - Vigiloom</PageTitle>
 <section class="account-card" aria-labelledby="logout-title">
     <h1 id="logout-title">登出 Vigiloom</h1>
-    <p class="account-description">確定要登出目前的帳號嗎？</p>
+    <p class="account-description">登出會結束此帳號在所有裝置上的登入。</p>
     @if (error is not null)
     {
         <p class="account-error" role="alert">@error</p>
@@ -27,8 +28,7 @@
 
     private async Task LogoutAsync()
     {
-        var user = await SignInManager.UserManager.GetUserAsync(HttpContext.User);
-        if (user is not null && !(await SignInManager.UserManager.UpdateSecurityStampAsync(user)).Succeeded)
+        if (!await AccountLogout.RevokeSessionsAsync(HttpContext.User, HttpContext.RequestAborted))
         {
             error = "無法結束登入，請稍後重試。";
             return;
