@@ -47,6 +47,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Description = string.IsNullOrWhiteSpace(operation.Description) ? authorization : $"{operation.Description}\n\n{authorization}";
             }
             else if (path.StartsWith("/api/v1/accounts", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/settings", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/session", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/workspace", StringComparison.OrdinalIgnoreCase))
             {

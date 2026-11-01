@@ -1,0 +1,74 @@
+@page "/settings/ping"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Network
+@using Vigiloom.Modules.NetworkMonitoring.Application
+@inject PingSettings Settings
+@inject ILogger<PingSettingsPage> Logger
+
+<PageTitle>Ping 監測設定 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <header class="device-heading"><div><h1>Ping 監測</h1><p>從中央位置持續量測所有已啟用設備的主要與額外目標。</p></div></header>
+    <section class="device-panel">
+        <p>每輪每目標發送一次。未達門檻時維持先前狀態；DNS、權限或監測器錯誤顯示未知，不算設備失敗。Ping 不通不代表 Agent 或應用服務故障。</p>
+        @if (loadError) { <p class="device-alert" role="alert">無法讀取設定，請稍後重新整理。</p> }
+        else
+        {
+            @if (message is not null) { <p role="status">@message</p> }
+            <EditForm Model="Input" FormName="ping-settings" method="post" OnSubmit="SaveAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="ping-interval">量測間隔（10～3600 秒）</label><InputNumber id="ping-interval" @bind-Value="Input.Interval" min="10" max="3600" />
+                <label for="ping-timeout">逾時（1～10 秒，須小於間隔）</label><InputNumber id="ping-timeout" @bind-Value="Input.Timeout" min="1" max="10" />
+                <label for="ping-failures">連續失敗門檻（1～10 次）</label><InputNumber id="ping-failures" @bind-Value="Input.Failures" min="1" max="10" />
+                <label for="ping-successes">連續成功門檻（1～10 次）</label><InputNumber id="ping-successes" @bind-Value="Input.Successes" min="1" max="10" />
+                <label for="ping-concurrency">每個 Worker 最大並行數（1～256）</label><InputNumber id="ping-concurrency" @bind-Value="Input.Concurrency" min="1" max="256" />
+                <p>超過兩個量測間隔且至少 90 秒沒有資料，會標記資料過期。Worker 重新啟動會恢復排程，停機期間的取樣不會補造。</p>
+                <div class="device-actions"><button type="submit">儲存 Ping 設定</button></div>
+            </EditForm>
+        }
+    </section>
+</main>
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "ping-settings")] private PingForm Input { get; set; } = default!;
+    private bool loadError;
+    private string? message;
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        try
+        {
+            var current = await Settings.GetAsync(HttpContext.RequestAborted);
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { Interval = current.IntervalSeconds, Timeout = current.TimeoutSeconds,
+                Failures = current.FailureThreshold, Successes = current.SuccessThreshold, Concurrency = current.MaxConcurrency, Version = current.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read Ping settings: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+    private async Task SaveAsync(EditContext editContext)
+    {
+        if (!editContext.Validate()) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var settings = new PingSettingsInput(Input.Interval, Input.Timeout, Input.Failures, Input.Successes, Input.Concurrency, Input.Version);
+        if (!PingSettings.Valid(settings)) { message = "請檢查設定範圍，逾時須小於量測間隔。"; return; }
+        try
+        {
+            if (await Settings.UpdateAsync(settings, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                Input.Version = saved.Version;
+                message = "設定已儲存，Worker 會在下一輪使用新設定。";
+            }
+            else message = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save Ping settings: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請重新整理並檢查。"; }
+    }
+    private sealed class PingForm
+    {
+        public int Interval { get; set; } = 30;
+        public int Timeout { get; set; } = 2;
+        public int Failures { get; set; } = 3;
+        public int Successes { get; set; } = 2;
+        public int Concurrency { get; set; } = 64;
+        public string? Version { get; set; }
+    }
+}

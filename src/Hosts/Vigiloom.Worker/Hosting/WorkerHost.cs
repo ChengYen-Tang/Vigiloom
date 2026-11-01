@@ -6,6 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Hangfire;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.NetworkMonitoring.Application;
 
 namespace Vigiloom.Worker.Hosting;
 
@@ -22,6 +25,13 @@ public static class WorkerHost
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
         builder.Services.AddVigiloomScheduling(builder.Configuration);
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
+        builder.Services.AddScoped<PingSettings>();
+        builder.Services.AddScoped<PingStore>();
+        builder.Services.AddScoped<IPingProbe, SystemPingProbe>();
+        builder.Services.AddScoped<PingRunner>();
+        builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<OutboxSchedule>();
         builder.Services.AddHangfireServer();
         return builder;
