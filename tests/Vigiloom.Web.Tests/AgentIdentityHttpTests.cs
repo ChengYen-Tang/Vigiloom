@@ -116,6 +116,17 @@ public sealed class AgentIdentityHttpTests
             using (var api = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, api.StatusCode);
             using (var management = await agent.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, management.StatusCode);
+            var nextSecret = RandomNumberGenerator.GetBytes(32);
+            var nextCredential = $"vla_{result.AgentId:D}.{Convert.ToBase64String(nextSecret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
+            using (var startRotation = await agent.PostAsJsonAsync("/api/v1/agent/rotation/start", new RotationRequest(SHA256.HashData(nextSecret)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, startRotation.StatusCode);
+            using (var oldCannotFinish = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, oldCannotFinish.StatusCode);
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nextCredential);
+            using (var pending = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, pending.StatusCode);
+            using (var finish = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, finish.StatusCode);
+            using (var retry = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, retry.StatusCode);
+            using (var rotated = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.OK, rotated.StatusCode);
             using (var revoke = await admin.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             using (var revoked = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
