@@ -69,9 +69,14 @@ public sealed class SpeedBrowserTests
         await page.Locator("#speed-search").FillAsync("not-a-server");
         await page.GetByRole(AriaRole.Button, new() { Name = "套用篩選" }).ClickAsync();
         await page.GetByText("這段時間沒有符合條件的測速紀錄。", new() { Exact = false }).WaitForAsync();
-        await page.Locator("#speed-search").FillAsync("");
+        await page.Locator("#speed-search").FillAsync("speedtest");
+        await page.Locator("#speed-sort").SelectOptionAsync("download");
         await page.GetByRole(AriaRole.Button, new() { Name = "套用篩選" }).ClickAsync();
-        await page.Locator(".device-table-wrap tbody tr").First.WaitForAsync();
+        await page.WaitForFunctionAsync("() => { const r = document.querySelectorAll('.device-table-wrap tbody tr'); return r.length === 2 && r[0].innerText.includes('80') && r[1].innerText.includes('40'); }");
+        await page.Locator("#speed-search").FillAsync("");
+        await page.Locator("#speed-sort").SelectOptionAsync("time");
+        await page.GetByRole(AriaRole.Button, new() { Name = "套用篩選" }).ClickAsync();
+        await page.WaitForFunctionAsync("() => { const r = document.querySelectorAll('.device-table-wrap tbody tr'); return r.length === 3 && r[0].innerText.includes('未選定'); }");
         await page.Locator(".device-table-wrap a").First.ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "測速結果", Exact = true }).WaitForAsync();
         Assert.Contains("未完整完成", await page.Locator("main").InnerTextAsync());
