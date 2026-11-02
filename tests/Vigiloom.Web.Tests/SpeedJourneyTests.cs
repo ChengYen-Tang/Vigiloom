@@ -28,7 +28,7 @@ public sealed class SpeedJourneyTests
 
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
-    public Task AdministratorRunsMeasurementAndReadsHistory() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task ScheduledMeasurementAppearsInHistory() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         GlobalConfiguration.Configuration.UseNoOpLogProvider();
         await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
@@ -56,29 +56,28 @@ public sealed class SpeedJourneyTests
             await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
             await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
             await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
-            await page.GetByLabel("我了解測試將連線至第三方服務", new() { Exact = false }).CheckAsync();
-            await page.GetByRole(AriaRole.Button, new() { Name = "儲存測速設定" }).ClickAsync();
-            await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "設定已儲存" }).WaitForAsync();
-            await page.GotoAsync(baseUrl + "/speed-tests/start");
-            await page.GetByLabel("我確認現在從中央位置進行測試", new() { Exact = false }).CheckAsync();
-            await page.GetByRole(AriaRole.Button, new() { Name = "開始測速" }).ClickAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = "測速結果", Exact = true }).WaitForAsync();
-            var id = Guid.Parse(new Uri(page.Url).Segments.Last());
+            await page.GetByRole(AriaRole.Heading, new() { Name = "網路測速設定", Exact = true }).WaitForAsync();
             var contexts = web.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+            await using (var db = await contexts.CreateDbContextAsync(token))
+                await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(minute,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE Name=N'central'", token);
+            await using var scope = worker.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<SpeedQueue>().RequestAsync(Guid.CreateVersion7(), token);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(90));
+            Guid id;
             while (true)
             {
                 await using var db = await contexts.CreateDbContextAsync(deadline.Token);
-                var run = await db.SpeedRuns.AsNoTracking().SingleAsync(x => x.Id == id, deadline.Token);
+                var run = await db.SpeedRuns.AsNoTracking().SingleAsync(deadline.Token);
                 if (run.State is not (SpeedTestState.Queued or SpeedTestState.Running))
                 {
                     Assert.AreEqual(SpeedTestState.Success, run.State, $"Diagnostic: {run.DiagnosticCode}");
+                    id = run.Id;
                     break;
                 }
                 await Task.Delay(250, deadline.Token);
             }
-            await page.ReloadAsync();
+            await page.GotoAsync(baseUrl + "/speed-tests/" + id.ToString("D"));
             await page.GetByText("完成", new() { Exact = true }).WaitForAsync();
             Assert.Contains("Example (#1) · speedtest.example.com", await page.Locator("main").InnerTextAsync());
             await page.GotoAsync(baseUrl + "/speed-tests");

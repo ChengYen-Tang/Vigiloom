@@ -21,7 +21,7 @@ public sealed class SpeedHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
-    public Task AdminConsentSettingsAndQueueAreProtected() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task ScheduleSettingsAreProtectedAndManualStartIsUnavailable() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         await PingTestSite.InitializeAsync(factory, token);
@@ -29,32 +29,25 @@ public sealed class SpeedHttpTests
         using (var denied = await anonymous.GetAsync("/api/v1/speed-tests?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
         using (var denied = await reader.GetAsync("/api/v1/settings/speed-tests", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
-        using (var denied = await reader.PostAsJsonAsync("/api/v1/speed-tests", new StartSpeedTestRequest(Guid.CreateVersion7()), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.PostAsJsonAsync("/api/v1/speed-tests", new { }, token)) Assert.AreEqual(HttpStatusCode.MethodNotAllowed, denied.StatusCode);
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
         var first = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
-        Assert.IsNotNull(first); Assert.IsFalse(first.Consent); Assert.IsFalse(first.Automatic);
-        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 5, true, first.Version, first.ConsentPolicy), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
+        Assert.IsNotNull(first); Assert.IsTrue(first.Automatic); Assert.IsNotNull(first.NextAutomaticAt);
+        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 5, first.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
         using var page = await admin.GetAsync("/settings/speed-tests", token);
         Assert.IsTrue(page.Headers.CacheControl?.NoStore);
         var form = await FormAsync(page, "speed-settings", token);
         var fields = Hidden(form);
         fields["Input.Hours"] = "6"; fields["Input.MaxMiB"] = "2"; fields["Input.Timeout"] = "5";
-        fields["Input.Consent"] = "true"; fields["Input.Automatic"] = "false";
+        fields["Input.Automatic"] = "false";
         using (var save = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已儲存", await TextAsync(save, token));
         using (var stale = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
         var updated = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
-        Assert.IsNotNull(updated); Assert.IsTrue(updated.Consent); Assert.AreEqual(2, updated.MaxMiB);
-        var json = System.Text.Json.JsonSerializer.Serialize(new StartSpeedTestRequest(Guid.CreateVersion7()), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        using var start = new HttpRequestMessage(HttpMethod.Post, "/api/v1/speed-tests") { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
-        start.Headers.Add("RequestVerificationToken", fields["__RequestVerificationToken"]);
-        using var response = await admin.SendAsync(start, token);
-        Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode);
-        var queued = await response.Content.ReadFromJsonAsync<SpeedRequestResult>(cancellationToken: token);
-        Assert.IsNotNull(queued); Assert.IsNotNull(queued.RunId);
-        var detail = await reader.GetFromJsonAsync<SpeedRunDetails>($"/api/v1/speed-tests/{queued.RunId:D}", token);
-        Assert.IsNotNull(detail); Assert.AreEqual(SpeedTestState.Queued, detail.Summary.State); Assert.IsNull(detail.Summary.DownloadMbps);
+        Assert.IsNotNull(updated); Assert.IsFalse(updated.Automatic); Assert.AreEqual(2, updated.MaxMiB);
+        using var response = await admin.PostAsJsonAsync("/api/v1/speed-tests", new { }, token);
+        Assert.AreEqual(HttpStatusCode.MethodNotAllowed, response.StatusCode);
         using var invalidRange = await reader.GetAsync("/api/v1/speed-tests?from=2026-01-01T00:00:00Z&to=2026-11-01T00:00:00Z", token);
         Assert.AreEqual(HttpStatusCode.BadRequest, invalidRange.StatusCode);
     }, TestContext.CancellationToken);
