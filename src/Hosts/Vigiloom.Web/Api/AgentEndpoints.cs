@@ -46,6 +46,13 @@ internal static class AgentEndpoints
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
             .Produces<EnrollmentResponse>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(413).ProducesProblem(429)
             .WithSummary("Enroll an Agent using a device-bound enrollment secret");
+        machine.MapPost("/recover", async (EnrollmentRecoveryRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
+        {
+            var result = await agents.RecoverAsync(input.EnrollmentSecret, Bearer(context), token);
+            return result.Status == AgentIdentityStatus.Success ? Results.Ok(new EnrollmentResponse(result.AgentId!.Value)) : Results.Unauthorized();
+        }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
+            .Produces<EnrollmentResponse>().ProducesProblem(401).ProducesProblem(413).ProducesProblem(429)
+            .WithSummary("Recover an existing Agent ID using enrollment and machine secret proof");
         machine.MapGet("/identity", (HttpContext context) => Results.Ok(new AgentIdentityResponse(
             Guid.Parse(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!),
             Guid.Parse(context.User.FindFirstValue("vigiloom:device-id")!))))
@@ -73,6 +80,8 @@ internal static class AgentEndpoints
 
 /// <summary>One-time Agent enrollment data. The verifier is the SHA-256 digest of a locally generated 256-bit secret.</summary>
 public sealed record EnrollmentRequest(string? EnrollmentSecret, byte[]? MachineVerifier);
+/// <summary>Enrollment secret associated with the missing registration response.</summary>
+public sealed record EnrollmentRecoveryRequest(string? EnrollmentSecret);
 /// <summary>SHA-256 verifier of a new 256-bit machine-generated secret.</summary>
 public sealed record RotationRequest(byte[]? MachineVerifier);
 /// <summary>Enrollment secret visible only at issuance.</summary>

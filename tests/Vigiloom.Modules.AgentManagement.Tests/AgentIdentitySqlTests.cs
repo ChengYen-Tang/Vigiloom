@@ -18,6 +18,34 @@ public sealed class AgentIdentitySqlTests
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
     [TestMethod]
+    public Task SchemaUsesResourceKeysClusteredRowsAndDeviceForeignKeys() => WithDatabase(async (_, agents, token) =>
+    {
+        await using var db = agents.CreateDbContext();
+        await db.Database.OpenConnectionAsync(token);
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.indexes i
+            JOIN sys.tables t ON i.object_id = t.object_id JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = 'agent' AND t.name IN ('Agents', 'Enrollments')
+              AND ((i.is_primary_key = 1 AND i.type_desc = 'NONCLUSTERED') OR (i.is_unique = 1 AND i.type_desc = 'CLUSTERED'))
+            """;
+        Assert.AreEqual(4, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.foreign_keys f
+            JOIN sys.tables t ON f.parent_object_id = t.object_id JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = 'agent' AND f.delete_referential_action_desc = 'NO_ACTION'
+              AND f.name IN ('FK_Agents_Devices_DeviceId', 'FK_Enrollments_Devices_DeviceId', 'FK_Enrollments_Agents_AgentId',
+                             'FK_AgentAudits_Devices_DeviceId', 'FK_AgentAudits_Agents_AgentId')
+            """;
+        Assert.AreEqual(5, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON i.object_id = t.object_id JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = 'agent' AND t.name = 'Agents' AND i.name = 'IX_Agents_DeviceId' AND i.is_unique = 1 AND i.has_filter = 1
+            """;
+        Assert.AreEqual(1, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+    });
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task EnrollmentRetriesAndArchiveNeverRevivesCredential(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
@@ -93,6 +121,32 @@ public sealed class AgentIdentitySqlTests
         await using var check = agents.CreateDbContext();
         Assert.AreEqual(0, await check.Agents.CountAsync(token));
     }, snapshotReads);
+
+    [TestMethod]
+    public Task RecoveryRequiresBothSecretsAndNeverCreatesARegistration() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var service = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await service.IssueAsync(device.Id, actor, token);
+        var machine = RandomNumberGenerator.GetBytes(32);
+        var proof = $"vlr_{issued.Secret!.Substring(4, 36)}.{Convert.ToBase64String(machine).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await service.RecoverAsync(issued.Secret, proof, token)).Status);
+        var enrolled = await service.RedeemAsync(issued.Secret, SHA256.HashData(machine), token);
+        clock.Now = clock.Now.AddMinutes(16);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await service.RedeemAsync(issued.Secret, SHA256.HashData(machine), token)).Status);
+        Assert.AreEqual(enrolled.AgentId, (await service.RecoverAsync(issued.Secret, proof, token)).AgentId);
+        var wrong = RandomNumberGenerator.GetBytes(32);
+        var wrongProof = $"vlr_{issued.Secret.Substring(4, 36)}.{Convert.ToBase64String(wrong).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await service.RecoverAsync(issued.Secret, wrongProof, token)).Status);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await service.RecoverAsync(null, proof, token)).Status);
+        await service.RevokeAsync(enrolled.AgentId!.Value, actor, token);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, (await service.RecoverAsync(issued.Secret, proof, token)).Status);
+        await using var check = agents.CreateDbContext();
+        Assert.AreEqual(1, await check.Agents.CountAsync(token));
+    });
 
     [TestMethod]
     public Task RotationSurvivesRetriesAndDoesNotActivatePendingCredentialEarly() => WithDatabase(async (resources, agents, token) =>

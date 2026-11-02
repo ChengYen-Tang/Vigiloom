@@ -46,6 +46,11 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/agent/rotation/", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
+            else if (path.Equals("/api/v1/agent/recover", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
+                operation.Description = "Use a vlr_<enrollment ID>.<machine secret> bearer proof and the enrollment secret in the body. This only recovers an existing binding.";
+            }
             else if (path.Equals("/api/v1/agent/enroll", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [];
             else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))

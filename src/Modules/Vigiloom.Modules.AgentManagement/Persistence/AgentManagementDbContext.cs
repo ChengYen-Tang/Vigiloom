@@ -38,5 +38,6 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         audit.Property(x => x.RowId).UseIdentityColumn();
         audit.Property(x => x.Action).HasMaxLength(32).IsRequired();
         audit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        audit.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
     }
 }
