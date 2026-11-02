@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -8,6 +10,14 @@ internal static class AgentEndpoints
 {
     public static void MapAgentEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-status", async (Guid deviceId, HttpContext context, AgentMonitoring monitoring, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await monitoring.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
+        })
+            .RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<AgentConnectionStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
+            .WithSummary("Get Agent connectivity independently of device Ping");
         var admin = app.MapGroup("/api/v1/agent-management").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, AgentIdentity agents, CancellationToken token) =>
             await agents.GetDeviceAgentsAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound())
@@ -58,6 +68,27 @@ internal static class AgentEndpoints
             Guid.Parse(context.User.FindFirstValue("vigiloom:device-id")!))))
             .RequireAuthorization("Agent").Produces<AgentIdentityResponse>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Inspect the current Agent identity");
+        machine.MapPost("/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
+            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes))
+            .Accepts<AgentHeartbeatReport>(true, "application/json")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
+            .WithSummary("Record an authenticated Agent heartbeat");
+        machine.MapGet("/queue-session", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
+            await agents.GetQueueSessionAsync(Bearer(context), token) is { } session ? Results.Ok(session) : Results.Unauthorized())
+            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
+            .Produces<AgentQueueSession>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+            .WithSummary("Inspect the current Agent queue-report session");
+        machine.MapPost("/queue-session", async (AgentQueueSessionRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
+            (await agents.BeginQueueSessionAsync(Bearer(context), input, token)) switch
+            {
+                AgentIdentityStatus.Success => Results.NoContent(),
+                AgentIdentityStatus.Conflict => Results.Conflict(),
+                _ => Results.Unauthorized()
+            }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024))
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429)
+            .WithSummary("Atomically establish an idempotent Agent queue-report session");
         machine.MapPost("/rotation/start", async (RotationRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
         {
             var result = await agents.BeginRotationAsync(Bearer(context), input.MachineVerifier, token);
@@ -71,7 +102,7 @@ internal static class AgentEndpoints
             .WithSummary("Confirm a pending rotation using the replacement Agent credential");
     }
 
-    private static string? Bearer(HttpContext context)
+    internal static string? Bearer(HttpContext context)
     {
         var header = context.Request.Headers.Authorization.ToString();
         return context.Request.IsHttps && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..] : null;

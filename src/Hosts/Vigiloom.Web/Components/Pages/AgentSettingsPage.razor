@@ -1,0 +1,96 @@
+@page "/settings/agents"
+@page "/devices/{Id:guid}/agent-settings"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.Resources.Application
+@inject AgentConfiguration Settings
+@inject DeviceManagement Devices
+@inject ILogger<AgentSettingsPage> Logger
+
+<PageTitle>Agent 設定 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    @if (Id is { } id) { <a href="@($"/devices/{id:D}")">← 返回設備詳情</a> }
+    <header class="device-heading">
+        <div><h1>@(Id is null ? "Agent 平台設定" : "此設備的 Agent 設定")</h1>
+            <p>@(Id is null ? "設定 Agent 同步、心跳與資料傳送的預設週期。" : $"{deviceName ?? "設備"} · 覆寫此設備的週期；未覆寫的項目會跟隨平台設定。")</p></div>
+    </header>
+    <section class="device-panel">
+        @if (loadError) { <p class="device-alert" role="alert">無法讀取設定，請稍後重新整理。</p> }
+        else if (current is null) { <p role="alert">找不到此設備。</p> }
+        else
+        {
+            <h2>傳送與同步</h2>
+            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。設定儲存後，Agent 會定期同步；離線的 Agent 會在重新連線後更新。</p>
+            @if (message is not null) { <p role="status">@message</p> }
+            <EditForm Model="Input" FormName="agent-settings" method="post" OnSubmit="SaveAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="agent-heartbeat">心跳間隔（10～300 秒）</label>
+                <InputNumber id="agent-heartbeat" @bind-Value="Input.HeartbeatSeconds" min="10" max="300" placeholder="@($"沿用 {current.Inherited.Settings.HeartbeatSeconds} 秒")" />
+                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.HeartbeatSeconds 秒</small>
+                <label for="agent-poll">設定同步間隔（60～3600 秒）</label>
+                <InputNumber id="agent-poll" @bind-Value="Input.SettingsPollSeconds" min="60" max="3600" placeholder="@($"沿用 {current.Inherited.Settings.SettingsPollSeconds} 秒")" />
+                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.SettingsPollSeconds 秒；同步時間會略作分散。</small>
+                <label for="agent-batch">資料傳送間隔（1～300 秒）</label>
+                <InputNumber id="agent-batch" @bind-Value="Input.BatchIntervalSeconds" min="1" max="300" placeholder="@($"沿用 {current.Inherited.Settings.BatchIntervalSeconds} 秒")" />
+                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.BatchIntervalSeconds 秒；網路失敗時會退避重試。</small>
+                <p>設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。</p>
+                <div class="device-actions"><button type="submit">儲存 Agent 設定</button></div>
+            </EditForm>
+        }
+    </section>
+</main>
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-settings")] private SettingsForm Input { get; set; } = default!;
+    private AgentSettingsView? current;
+    private string? deviceName;
+    private bool loadError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        try
+        {
+            if (Id is { } deviceId) deviceName = (await Devices.GetAsync(deviceId, HttpContext.RequestAborted))?.Name;
+            current = await Settings.GetAsync(Id, HttpContext.RequestAborted);
+            if (current is not null && HttpMethods.IsGet(HttpContext.Request.Method))
+                Input = new() { HeartbeatSeconds = current.Overrides.HeartbeatSeconds, SettingsPollSeconds = current.Overrides.SettingsPollSeconds,
+                    BatchIntervalSeconds = current.Overrides.BatchIntervalSeconds, Version = current.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read Agent settings: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+
+    private async Task SaveAsync(EditContext context)
+    {
+        if (!context.Validate() || current is null) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new AgentSettingsUpdate(new(Input.HeartbeatSeconds, Input.SettingsPollSeconds, Input.BatchIntervalSeconds), Input.Version ?? "");
+        if (!AgentConfiguration.Valid(input.Overrides)) { message = "請檢查各項設定的允許範圍。"; return; }
+        try
+        {
+            if (await Settings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                current = saved;
+                Input.Version = saved.Version;
+                message = "設定已儲存；Agent 會在下一次同步時更新。";
+            }
+            else message = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent settings: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請重新整理並檢查。"; }
+    }
+
+    private sealed class SettingsForm
+    {
+        [Range(10, 300)] public int? HeartbeatSeconds { get; set; }
+        [Range(60, 3600)] public int? SettingsPollSeconds { get; set; }
+        [Range(1, 300)] public int? BatchIntervalSeconds { get; set; }
+        public string? Version { get; set; }
+    }
+}

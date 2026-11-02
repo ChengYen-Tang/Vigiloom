@@ -3,6 +3,9 @@
     <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Vigiloom.Agent.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
     <ProjectReference Include="../Vigiloom.Agent.Platforms.Windows/Vigiloom.Agent.Platforms.Windows.csproj" />
     <ProjectReference Include="../Vigiloom.Agent.Platforms.Linux/Vigiloom.Agent.Platforms.Linux.csproj" />
