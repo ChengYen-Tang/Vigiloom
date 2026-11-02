@@ -118,6 +118,32 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
 
+    /// <summary>Recover an already-created Agent ID using both the enrollment secret and its machine secret.</summary>
+    public async Task<EnrollmentResult> RecoverAsync(string? enrollmentSecret, string? machineProof, CancellationToken token)
+    {
+        if (!TryDecode(enrollmentSecret, "vle", out var enrollmentId, out var enrollmentBytes)) return new(AgentIdentityStatus.Invalid);
+        try
+        {
+            if (!TryDecode(machineProof, "vlr", out var proofId, out var machineBytes)) return new(AgentIdentityStatus.Invalid);
+            try
+            {
+                if (enrollmentId != proofId) return new(AgentIdentityStatus.Invalid);
+                await using var db = await contexts.CreateDbContextAsync(token);
+                var enrollment = await db.Enrollments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == enrollmentId, token);
+                if (enrollment is null || enrollment.RevokedAt is not null || enrollment.AgentId is null ||
+                    !CryptographicOperations.FixedTimeEquals(enrollment.Verifier, SHA256.HashData(enrollmentBytes))) return new(AgentIdentityStatus.Invalid);
+                var agent = await db.Agents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == enrollment.AgentId.Value, token);
+                if (agent is null || agent.RevokedAt is not null || !CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(machineBytes)))
+                    return new(AgentIdentityStatus.Invalid);
+                var device = await devices.GetAsync(agent.DeviceId, token);
+                return device is { Eligible: true } && device.Generation == agent.DeviceGeneration
+                    ? new(AgentIdentityStatus.Success, agent.Id) : new(AgentIdentityStatus.Invalid);
+            }
+            finally { CryptographicOperations.ZeroMemory(machineBytes); }
+        }
+        finally { CryptographicOperations.ZeroMemory(enrollmentBytes); }
+    }
+
     public async Task<AgentIdentityStatus> BeginRotationAsync(string? credential, byte[]? newVerifier, CancellationToken token)
     {
         if (!TryDecode(credential, "vla", out var id, out var secret)) return AgentIdentityStatus.Invalid;

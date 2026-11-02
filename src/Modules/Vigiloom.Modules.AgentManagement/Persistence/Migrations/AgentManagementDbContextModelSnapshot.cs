@@ -104,6 +104,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("AgentId");
+
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("AgentAudits", "agent");
@@ -159,6 +161,14 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_Enrollments_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>
