@@ -344,7 +344,7 @@ public sealed class AgentIdentityHttpTests
                 var adminAccount = await users.FindByNameAsync("admin");
                 Assert.IsNotNull(adminAccount);
                 var bytes = RandomNumberGenerator.GetBytes(32);
-                var credential = new ApiCredential("test", SHA256.HashData(bytes), true, DateTimeOffset.UtcNow.AddDays(1), adminAccount.Id);
+                var credential = new ApiCredential("test", SHA256.HashData(bytes), false, DateTimeOffset.UtcNow.AddDays(1), adminAccount.Id);
                 var db = scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>();
                 db.ApiCredentials.Add(credential); await db.SaveChangesAsync(token);
                 apiCredential = $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(bytes)}";
@@ -357,6 +357,14 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status" };
+            foreach (var path in monitoringPaths)
+            {
+                using var anonymousRead = await agent.GetAsync(path, token);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousRead.StatusCode, path);
+                using var apiRead = await api.GetAsync(path, token);
+                Assert.AreEqual(HttpStatusCode.OK, apiRead.StatusCode, path);
+            }
             using (var anonymousStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousStatus.StatusCode);
             using (var apiStatus = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
@@ -380,6 +388,11 @@ public sealed class AgentIdentityHttpTests
                 fields["Input.UserName"] = "admin"; fields["Input.Password"] = "Strong-Password-123";
                 using var login = await admin.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+            }
+            foreach (var path in monitoringPaths)
+            {
+                using var adminRead = await admin.GetAsync(path, token);
+                Assert.AreEqual(HttpStatusCode.OK, adminRead.StatusCode, path);
             }
             using (var reader = factory.CreateClient(options))
             {
@@ -480,6 +493,11 @@ public sealed class AgentIdentityHttpTests
             using (var oneTimeNotMachine = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oneTimeNotMachine.StatusCode);
             var machineSecret = Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
+            foreach (var path in monitoringPaths)
+            {
+                using var machineRead = await agent.GetAsync(path, token);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, machineRead.StatusCode, path);
+            }
             using (var valid = await agent.GetAsync("/api/v1/agent/identity", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);

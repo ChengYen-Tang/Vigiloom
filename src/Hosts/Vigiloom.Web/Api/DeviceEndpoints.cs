@@ -14,11 +14,11 @@ internal static class DeviceEndpoints
         {
             if (search?.Length > 256 || page is < 1 or > 42949672 || sort is not (null or "name" or "address" or "created")) return Results.BadRequest();
             return Results.Ok(await service.ListAsync(search, sort, descending ?? false, archived ?? false, page ?? 1, token));
-        }).RequireAuthorization("DeviceRead").Produces<DevicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+        }).RequireAuthorization("MonitoringApiRead").Produces<DevicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List monitored devices");
         devices.MapGet("/{id:guid}", async (Guid id, DeviceManagement service, CancellationToken token) =>
             await service.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound())
-            .RequireAuthorization("DeviceRead").Produces<DeviceDetails>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .RequireAuthorization("MonitoringApiRead").Produces<DeviceDetails>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithName("GetDevice").WithSummary("Get a device");
         devices.MapGet("/address-matches", async (string address, Guid? excludeId, DeviceManagement service, CancellationToken token) =>
             address.Length > 253 ? Results.BadRequest() : Results.Ok(await service.FindAddressMatchesAsync(address, excludeId, token)))

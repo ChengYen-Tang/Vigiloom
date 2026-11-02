@@ -49,7 +49,7 @@ internal static class IdentityRegistration
                 .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.write"));
             options.AddPolicy("Agent", policy => policy.AddAuthenticationSchemes(AgentCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireClaim("vigiloom:principal-type", "agent"));
-            options.AddPolicy("DeviceRead", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
+            options.AddPolicy("MonitoringApiRead", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
                     context.User.IsInRole(BuiltInRoles.ReadOnly) || context.User.HasClaim("scope", "monitoring.read")));
             options.AddPolicy("DeviceWrite", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)

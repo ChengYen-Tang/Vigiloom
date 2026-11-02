@@ -11,12 +11,24 @@ using Vigiloom.Worker.Hosting;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Contracts.SpeedTests;
 
 namespace Vigiloom.Worker.Tests;
 
 [TestClass]
+[DoNotParallelize]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    public void SpeedtestHttpHandlers_ArePooledAcrossMeasurements()
+    {
+        using var host = WorkerHost.CreateBuilder([]).Build();
+        var factory = host.Services.GetRequiredService<IHttpMessageHandlerFactory>();
+        using var first = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        using var second = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        Assert.AreSame(first, second);
+    }
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task Host_WithoutDatabaseConfiguration_FailsInsteadOfSilentlyStarting()
@@ -106,6 +118,80 @@ public sealed class HostLifecycleTests(TestContext testContext)
             """;
         Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
     }, testContext.CancellationToken);
+
+    [TestMethod]
+    [TestCategory("Integration")]
+    [TestCategory("Database")]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task AutomaticSpeedJob_QueuesAndWorkerPersistsOneResult() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        GlobalConfiguration.Configuration.UseNoOpLogProvider();
+        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+        await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+        await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
+        var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
+
+        var builder = WorkerHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+        var probe = new FixtureSpeedProbe();
+        builder.Services.AddSingleton<ISpeedProbe>(probe);
+        using var host = builder.Build();
+        await host.StartAsync(token);
+        try
+        {
+            using var scope = host.Services.CreateScope();
+            var settings = scope.ServiceProvider.GetRequiredService<SpeedSettings>();
+            var initial = await settings.GetAsync(token);
+            Assert.IsNotNull(await settings.UpdateAsync(new(true, 6, 100, 40, initial.Version), Guid.CreateVersion7(), token));
+            await using (var db = new NetworkDbContext(network))
+                await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(minute,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE Name=N'central'", token);
+            var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+            var jobIds = Enumerable.Range(0, 3).Select(_ => jobs.Enqueue<AutomaticSpeedJob>(job => job.RunAsync(CancellationToken.None))).ToArray();
+            using var jobConnection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(60));
+            while (true)
+            {
+                await using var db = new NetworkDbContext(network);
+                var states = jobIds.Select(id => jobConnection.GetStateData(id)?.Name).ToArray();
+                Assert.DoesNotContain("Failed", states);
+                if (states.All(state => state == "Succeeded") && await db.SpeedRuns.AnyAsync(x => x.State == SpeedTestState.Success, deadline.Token)) break;
+                await Task.Delay(100, deadline.Token);
+            }
+            Assert.AreEqual(1, probe.Calls);
+            await using var check = new NetworkDbContext(network);
+            var result = await check.SpeedRuns.SingleAsync(token);
+            Assert.IsTrue(result.Automatic);
+            Assert.AreEqual("central", result.Location);
+            Assert.AreEqual("fixture", result.Server);
+            Assert.AreEqual(10d, result.DownloadMbps);
+            Assert.AreEqual(5d, result.UploadMbps);
+            Assert.IsNotNull(result.CompletedAt);
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-speed-test'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        }
+        finally { await host.StopAsync(CancellationToken.None); }
+    }, testContext.CancellationToken);
+
+    private sealed class FixtureSpeedProbe : ISpeedProbe
+    {
+        private int calls;
+        public int Calls => Volatile.Read(ref calls);
+        public Task<SpeedMeasurement> MeasureAsync(SpeedLease lease, CancellationToken token)
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult(new SpeedMeasurement(SpeedTestState.Success, "fixture", DownloadMbps: 10, UploadMbps: 5, LatencyMilliseconds: 3));
+        }
+    }
 
     private static HostApplicationBuilder CreateBuilder(string connectionString, TaskCompletionSource completed)
     {

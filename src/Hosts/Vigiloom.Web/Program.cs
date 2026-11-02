@@ -1,3 +1,6 @@
+using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Web.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
@@ -29,7 +32,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "identity");
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
-builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network");
+builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
 builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -47,6 +50,10 @@ builder.Services.AddScoped<AgentBatchReceiver>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
+builder.Services.AddScoped<SpeedSettings>();
+builder.Services.AddScoped<SpeedQueue>();
+builder.Services.AddScoped<SpeedHistory>();
+builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
@@ -144,7 +151,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices"))
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/speed-tests"))
         context.Response.Headers.CacheControl = "no-store";
     await next();
 });
@@ -172,6 +179,7 @@ app.MapAgentEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapPingEndpoints();
+app.MapSpeedTestEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
     .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)

@@ -72,7 +72,7 @@ public sealed class ModuleMigrationTests
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
         Assert.AreEqual(4, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
-        Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
     });
 
     [TestMethod]

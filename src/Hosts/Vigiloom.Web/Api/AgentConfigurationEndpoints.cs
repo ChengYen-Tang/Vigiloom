@@ -24,7 +24,7 @@ internal static class AgentConfigurationEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view.Effective) : Results.NotFound();
-        }).RequireAuthorization("DeviceRead").RequireRateLimiting("api-client")
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read effective Agent scheduling settings for a device");
 
@@ -32,7 +32,7 @@ internal static class AgentConfigurationEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return await monitoring.GetAsync(deviceId, token) is { } status ? Results.Ok(status) : Results.NotFound();
-        }).RequireAuthorization("DeviceRead").RequireRateLimiting("api-client")
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentSettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read the Agent's observed scheduling configuration status");
 

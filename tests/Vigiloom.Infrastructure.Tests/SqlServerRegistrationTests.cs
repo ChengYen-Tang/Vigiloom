@@ -7,6 +7,47 @@ namespace Vigiloom.Infrastructure.Tests;
 [TestClass]
 public sealed class SqlServerRegistrationTests
 {
+    public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task PooledFactory_ConcurrentLeasesKeepTrackingIndependent()
+    {
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<FactoryTestContext>("Server=localhost;Database=VigiloomTests;Integrated Security=true;TrustServerCertificate=true", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<FactoryTestContext>>();
+        using var first = factory.CreateDbContext();
+        using var second = factory.CreateDbContext();
+        Assert.AreNotSame(first, second);
+        await Task.WhenAll(
+            Task.Run(() => first.Add(new FactoryTestEntity { Id = 1 }), TestContext.CancellationToken),
+            Task.Run(() => second.Add(new FactoryTestEntity { Id = 2 }), TestContext.CancellationToken));
+        Assert.HasCount(1, first.ChangeTracker.Entries());
+        Assert.HasCount(1, second.ChangeTracker.Entries());
+        Assert.AreEqual(1, first.ChangeTracker.Entries<FactoryTestEntity>().Single().Entity.Id);
+        Assert.AreEqual(2, second.ChangeTracker.Entries<FactoryTestEntity>().Single().Entity.Id);
+        Assert.AreNotSame(first.Database.GetDbConnection(), second.Database.GetDbConnection());
+    }
+
+    [TestMethod]
+    public void PooledFactory_ReusesDisposedContextAndClearsTrackedEntities()
+    {
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<FactoryTestContext>("Server=localhost;Database=VigiloomTests;Integrated Security=true;TrustServerCertificate=true", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<FactoryTestContext>>();
+        FactoryTestContext original;
+        using (var first = factory.CreateDbContext())
+        {
+            original = first;
+            first.Add(new FactoryTestEntity { Id = 1 });
+            Assert.HasCount(1, first.ChangeTracker.Entries());
+        }
+        using var second = factory.CreateDbContext();
+        Assert.AreSame(original, second);
+        Assert.IsEmpty(second.ChangeTracker.Entries());
+        Assert.AreEqual("VigiloomTests", second.Database.GetDbConnection().Database);
+    }
     [TestMethod]
     public void AddModuleSqlServer_FactoryCreatesIndependentContexts_WithSqlServerProvider()
     {
@@ -40,5 +81,9 @@ public sealed class SqlServerRegistrationTests
     }
 
     // This context has no product model and never opens a database connection.
-    public sealed class FactoryTestContext(DbContextOptions<FactoryTestContext> options) : DbContext(options);
+    public sealed class FactoryTestContext(DbContextOptions<FactoryTestContext> options) : DbContext(options)
+    {
+        public DbSet<FactoryTestEntity> Entities => Set<FactoryTestEntity>();
+    }
+    public sealed class FactoryTestEntity { public int Id { get; set; } }
 }
