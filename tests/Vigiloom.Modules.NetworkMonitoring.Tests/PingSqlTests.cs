@@ -300,19 +300,20 @@ public sealed class PingSqlTests
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
             var network = new Factory<NetworkDbContext>(() => new NetworkDbContext(new DbContextOptionsBuilder<NetworkDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options));
-            await using (var db = resources.CreateDbContext()) await db.Database.MigrateAsync(token);
-            await using (var db = network.CreateDbContext()) await db.Database.MigrateAsync(token);
             if (snapshotReads)
             {
                 var server = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(database.ConnectionString);
                 var name = server.InitialCatalog;
                 server.InitialCatalog = "master";
+                server.Pooling = false;
                 await using var connection = new Microsoft.Data.SqlClient.SqlConnection(server.ConnectionString);
                 await connection.OpenAsync(token);
                 await using var command = connection.CreateCommand();
                 command.CommandText = $"ALTER DATABASE [{name}] SET READ_COMMITTED_SNAPSHOT ON";
                 await command.ExecuteNonQueryAsync(token);
             }
+            await using (var db = resources.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = network.CreateDbContext()) await db.Database.MigrateAsync(token);
             await test(resources, network, token);
         }, TestContext.CancellationToken);
 
