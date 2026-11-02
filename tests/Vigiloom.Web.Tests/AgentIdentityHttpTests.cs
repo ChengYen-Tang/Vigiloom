@@ -316,6 +316,7 @@ public sealed class AgentIdentityHttpTests
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
+            var clock = new TestClock();
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
@@ -324,6 +325,7 @@ public sealed class AgentIdentityHttpTests
                     ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
                     ["Vigiloom:SetupToken"] = setupSecret
                 }));
+                builder.ConfigureServices(services => services.AddSingleton<TimeProvider>(clock));
             });
             var identities = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
             await using (var db = await identities.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
@@ -609,6 +611,15 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("等待傳送", page.Body!.TextContent);
                 Assert.Contains("3 批", page.Body.TextContent);
+            }
+            clock.Now += TimeSpan.FromMinutes(4);
+            using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("佇列回報已過時或時間異常", page.Body!.TextContent);
+                Assert.Contains("已連線", page.Body.TextContent);
             }
             using (var full = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = queueReport.Queue! with { TotalBatches = 10 } }, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, full.StatusCode);
