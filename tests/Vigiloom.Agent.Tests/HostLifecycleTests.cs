@@ -96,6 +96,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await heartbeatHandler.Second.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 builder.Configuration["Vigiloom:Agent:StateDirectory"] = secondPath;
                 clock.Advance(TimeSpan.FromSeconds(61));
+                heartbeatHandler.ReleaseSecond.TrySetResult();
                 var switched = await heartbeatHandler.Third.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 Assert.StartsWith($"vla_{secondId:D}.", switched.Credential);
                 Assert.IsNull(switched.Report.Configuration?.Applied);
@@ -626,6 +627,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         private int count;
         public TaskCompletionSource First { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Second { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseSecond { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<(string Credential, AgentHeartbeatReport Report)> Third { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -636,7 +638,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
             var report = (await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: cancellationToken))!;
             var number = Interlocked.Increment(ref count);
             if (number == 1) First.TrySetResult();
-            if (number == 2) Second.TrySetResult();
+            if (number == 2)
+            {
+                Second.TrySetResult();
+                await ReleaseSecond.Task.WaitAsync(cancellationToken);
+            }
             if (number == 3) Third.TrySetResult((request.Headers.Authorization!.Parameter!, report));
             return new HttpResponseMessage(HttpStatusCode.NoContent);
         }
