@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -37,6 +38,14 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentityHttpTests
 {
+    [TestMethod]
+    public void WebRuntimeConfiguration_RejectsTruncatedCompressedStreams()
+    {
+        using var runtime = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Vigiloom.Web.runtimeconfig.json")));
+        Assert.IsTrue(runtime.RootElement.GetProperty("runtimeOptions").GetProperty("configProperties")
+            .GetProperty("System.IO.Compression.UseStrictValidation").GetBoolean());
+    }
+
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
@@ -206,7 +215,8 @@ public sealed class AgentIdentityHttpTests
                 var bytes = AgentBatchCodec.Serialize(batch);
                 var queue = new DurableBatchQueue(vault, recoveredId);
                 Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, bytes, token));
-                using (var batchHttp = new HttpClient(new DropFirstBatchResponse(factory.Server.CreateHandler())))
+                var batchHandler = new DropFirstBatchResponse(factory.Server.CreateHandler());
+                using (var batchHttp = new HttpClient(batchHandler))
                 {
                     var sender = new AgentBatchClient(batchHttp, TimeProvider.System);
                     await Assert.ThrowsAsync<HttpRequestException>(() => sender.SendNextAsync(vault, server, token));
@@ -221,6 +231,15 @@ public sealed class AgentIdentityHttpTests
                     await using var dbAfter = await agents.CreateDbContextAsync(token);
                     Assert.AreEqual(1, await dbAfter.ReceivedBatches.CountAsync(token));
                     Assert.AreEqual(1, await dbAfter.RuntimeObservations.CountAsync(token));
+                    var more = Enumerable.Range(0, 12).Select(_ => report with { MessageId = Guid.CreateVersion7(), OperatingSystem = new string('A', 200) }).ToArray();
+                    var compressedBatch = new AgentBatch(1, Guid.CreateVersion7(), reportAt, more);
+                    Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(compressedBatch.BatchId, reportAt, more.Length, AgentBatchCodec.Serialize(compressedBatch), token));
+                    await Assert.ThrowsAsync<HttpRequestException>(() => sender.SendNextAsync(vault, server, token));
+                    Assert.AreEqual(compressedBatch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    Assert.IsTrue(batchHandler.SawGzip);
+                    Assert.AreEqual(2, await dbAfter.ReceivedBatches.CountAsync(token));
+                    Assert.AreEqual(13, await dbAfter.RuntimeObservations.CountAsync(token));
                     var conflicting = AgentBatchCodec.Serialize(batch with { Items = [report with { RuntimeVersion = "different" }] });
                     Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, conflicting, token));
                     Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
@@ -508,16 +527,44 @@ public sealed class AgentIdentityHttpTests
             var batchBytes = AgentBatchCodec.Serialize(batch);
             using (var batchResponse = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchResponse.StatusCode);
             using (var batchRetry = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchRetry.StatusCode);
+            using (var compressedRetry = await agent.PostAsync("/api/v1/agent/batches", GzipBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, compressedRetry.StatusCode);
             using (var changedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(batch with { Items = [observation with { RuntimeVersion = "changed" }] })), token))
                 Assert.AreEqual(HttpStatusCode.Conflict, changedBatch.StatusCode);
             using (var invalidBatch = await agent.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
             using (var unsupported = JsonBytes(batchBytes))
             {
-                unsupported.Headers.ContentEncoding.Add("gzip");
+                unsupported.Headers.ContentEncoding.Add("br");
                 using var rejected = await agent.PostAsync("/api/v1/agent/batches", unsupported, token);
                 Assert.AreEqual(HttpStatusCode.UnsupportedMediaType, rejected.StatusCode);
             }
+            using (var invalidGzip = JsonBytes(batchBytes))
+            {
+                invalidGzip.Headers.ContentEncoding.Add("gzip");
+                using var rejected = await agent.PostAsync("/api/v1/agent/batches", invalidGzip, token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+            }
+            using (var complete = GzipBytes(batchBytes))
+            {
+                var encoded = await complete.ReadAsByteArrayAsync(token);
+                using var truncated = JsonBytes(encoded[..^6]);
+                truncated.Headers.ContentEncoding.Add("gzip");
+                using var rejected = await agent.PostAsync("/api/v1/agent/batches", truncated, token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+                encoded[^8] ^= 1;
+                using var badChecksum = JsonBytes(encoded);
+                badChecksum.Headers.ContentEncoding.Add("gzip");
+                using var corrupt = await agent.PostAsync("/api/v1/agent/batches", badChecksum, token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, corrupt.StatusCode);
+            }
+            using (var compound = GzipBytes(batchBytes))
+            {
+                compound.Headers.ContentEncoding.Add("br");
+                using var rejected = await agent.PostAsync("/api/v1/agent/batches", compound, token);
+                Assert.AreEqual(HttpStatusCode.UnsupportedMediaType, rejected.StatusCode);
+            }
+            using (var oversizedGzip = await agent.PostAsync("/api/v1/agent/batches", GzipBytes(new byte[AgentBatchCodec.MaximumBytes + 1]), token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversizedGzip.StatusCode);
             using (var machineStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineStatus.StatusCode);
             using (var connected = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
@@ -559,6 +606,15 @@ public sealed class AgentIdentityHttpTests
     {
         public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private static ByteArrayContent GzipBytes(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(bytes);
+        var content = JsonBytes(output.ToArray());
+        content.Headers.ContentEncoding.Add("gzip");
+        return content;
     }
 
     private static ByteArrayContent JsonBytes(byte[] bytes)
@@ -610,14 +666,25 @@ public sealed class AgentIdentityHttpTests
     private sealed class DropFirstBatchResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
     {
         private bool dropped;
+        private bool droppedGzip;
+        public bool SawGzip { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.RequestUri?.AbsolutePath == "/api/v1/agent/batches" && request.Content?.Headers.ContentEncoding.Contains("gzip") == true)
+                SawGzip = true;
             var response = await base.SendAsync(request, token);
             if (!dropped && request.RequestUri?.AbsolutePath == "/api/v1/agent/batches")
             {
                 dropped = true;
                 response.Dispose();
                 throw new HttpRequestException("Simulated connection loss after the batch commit.");
+            }
+            if (!droppedGzip && request.RequestUri?.AbsolutePath == "/api/v1/agent/batches" &&
+                request.Content?.Headers.ContentEncoding.Contains("gzip") == true)
+            {
+                droppedGzip = true;
+                response.Dispose();
+                throw new HttpRequestException("Simulated connection loss after the compressed batch commit.");
             }
             return response;
         }
