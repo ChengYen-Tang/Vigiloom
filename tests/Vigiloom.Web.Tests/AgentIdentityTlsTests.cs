@@ -60,12 +60,13 @@ public sealed class AgentIdentityTlsTests
             CryptographicOperations.ZeroMemory(pfx);
 
             var rejectedStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var knownLengthStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
                 builder.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(tlsCertificate)));
-                builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new CaptureRejectedStatus(rejectedStatus)));
+                builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new CaptureRejectedStatus(rejectedStatus, knownLengthStatus)));
             });
             factory.UseKestrel(0); factory.StartServer();
             var addresses = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses;
@@ -187,8 +188,9 @@ public sealed class AgentIdentityTlsTests
                 using (var tooLarge = new ByteArrayContent(new byte[AgentBatchCodec.MaximumBytes + 1]))
                 {
                     tooLarge.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-                    using var rejected = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), tooLarge, token);
-                    Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                    using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = tooLarge };
+                    request.Headers.Add("X-Test-Capture-Status", "known");
+                    await AssertRejectedAsync(http, request, knownLengthStatus, token);
                 }
                 var otherBatch = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [message with { MessageId = Guid.CreateVersion7() }] });
                 using var compressed = new MemoryStream();
@@ -199,19 +201,8 @@ public sealed class AgentIdentityTlsTests
                 {
                     trailing.Headers.ContentEncoding.Add("gzip");
                     using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = trailing };
-                    request.Headers.Add("X-Test-Capture-Status", "1");
-                    try
-                    {
-                        using var rejected = await http.SendAsync(request, token);
-                        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
-                    }
-                    catch (HttpRequestException exception) when (exception.InnerException is IOException)
-                    {
-                        // The server can send 413 and close the connection while the client
-                        // is still writing an unknown-length request. Verify the server's
-                        // response below instead of treating an arbitrary socket error as success.
-                    }
-                    Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await rejectedStatus.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+                    request.Headers.Add("X-Test-Capture-Status", "chunked");
+                    await AssertRejectedAsync(http, request, rejectedStatus, token);
                 }
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
@@ -228,13 +219,34 @@ public sealed class AgentIdentityTlsTests
             }
         }, TestContext.CancellationToken);
 
-    private sealed class CaptureRejectedStatus(TaskCompletionSource<int> result) : IStartupFilter
+    private static async Task AssertRejectedAsync(HttpClient http, HttpRequestMessage request, TaskCompletionSource<int> result, CancellationToken token)
+    {
+        try
+        {
+            using var rejected = await http.SendAsync(request, token);
+            Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+        }
+        catch (HttpRequestException exception) when (exception.InnerException is IOException)
+        {
+            // Kestrel may reject and close while the client is still sending the body.
+            // A connection error alone is never treated as proof of rejection.
+        }
+        Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await result.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+    }
+
+    private sealed class CaptureRejectedStatus(TaskCompletionSource<int> chunked, TaskCompletionSource<int> known) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
             app.Use(async (context, following) =>
             {
-                if (context.Request.Headers.ContainsKey("X-Test-Capture-Status"))
+                var result = context.Request.Headers["X-Test-Capture-Status"].ToString() switch
+                {
+                    "chunked" => chunked,
+                    "known" => known,
+                    _ => null
+                };
+                if (result is not null)
                     context.Response.OnStarting(() => { result.TrySetResult(context.Response.StatusCode); return Task.CompletedTask; });
                 await following(context);
             });
