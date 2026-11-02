@@ -37,7 +37,9 @@ public sealed class IdentityProcessTests(TestContext testContext)
             try { Assert.Throws<IOException>(() => contender = vault.Acquire()); }
             finally { if (contender is not null) await contender.DisposeAsync(); }
             process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(token);
+            // Wait on the OS process object before reopening its exclusive file. The async
+            // exit check can observe an exit code before Windows signals the process handle.
+            Assert.IsTrue(process.WaitForExit(TimeSpan.FromSeconds(10)), "The Agent did not terminate in time.");
             await using var session = vault.Acquire();
             var state = await session.ReadAsync(token);
             Assert.IsNotNull(state); Assert.IsNull(state.AgentId); Assert.AreEqual(enrollment, state.EnrollmentSecret);
@@ -51,7 +53,8 @@ public sealed class IdentityProcessTests(TestContext testContext)
         {
             try
             {
-                if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(TimeSpan.FromSeconds(10))) throw new TimeoutException("The Agent did not terminate during cleanup.");
                 var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomIdentityProcessTests")) + Path.DirectorySeparatorChar;
                 if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                     throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
