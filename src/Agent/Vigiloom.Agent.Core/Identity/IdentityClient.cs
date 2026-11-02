@@ -137,7 +137,7 @@ public sealed class IdentityClient(HttpClient http)
     internal static async Task<(IdentityState? State, bool ServerMismatch)> ReadRegisteredAsync(IdentityVault vault, Uri expected, CancellationToken token)
     {
         IdentityState? state;
-        await using (var session = vault.Acquire()) state = await session.ReadAsync(token);
+        await using (var session = await vault.AcquireForTransportAsync(token)) state = await session.ReadAsync(token);
         if (state?.AgentId is not { Version: 7 }) return (null, false);
         if (!string.Equals(state.Server, expected.AbsoluteUri, StringComparison.Ordinal)) return (null, true);
         var decoded = Decode(state.MachineSecret);
