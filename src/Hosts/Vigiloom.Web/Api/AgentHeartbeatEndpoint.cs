@@ -20,17 +20,21 @@ internal static class AgentHeartbeatEndpoint
     public static async Task<IResult> ReceiveAsync(HttpContext context, AgentIdentity agents, CancellationToken token)
     {
         if (context.Request.Headers.ContainsKey("Content-Encoding")) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
-        if (context.Request.ContentLength > MaximumBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         var buffer = ArrayPool<byte>.Shared.Rent(MaximumBytes + 1);
         try
         {
             var count = 0;
-            while (count <= MaximumBytes)
+            try
             {
-                var read = await context.Request.Body.ReadAsync(buffer.AsMemory(count, MaximumBytes + 1 - count), token);
-                if (read == 0) break;
-                count += read;
+                while (count <= MaximumBytes)
+                {
+                    var read = await context.Request.Body.ReadAsync(buffer.AsMemory(count, MaximumBytes + 1 - count), token);
+                    if (read == 0) break;
+                    count += read;
+                }
             }
+            catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            { return Results.StatusCode(StatusCodes.Status413PayloadTooLarge); }
             if (count > MaximumBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
             AgentHeartbeatReport? report = null;
             if (count > 0)

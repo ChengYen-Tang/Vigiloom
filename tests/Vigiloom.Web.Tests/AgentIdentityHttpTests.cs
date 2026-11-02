@@ -542,6 +542,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.StatusCode);
             using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes(new byte[2049]), token))
                 Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", new UnknownLengthJsonContent(2049), token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
             var now = DateTimeOffset.UtcNow;
             var observation = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test operating system", "X64", ".NET 10");
             var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [observation]);
@@ -667,6 +669,12 @@ public sealed class AgentIdentityHttpTests
     {
         public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private sealed class UnknownLengthJsonContent(int length) : HttpContent
+    {
+        protected override bool TryComputeLength(out long value) { value = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(new byte[length]).AsTask();
     }
 
     private static ByteArrayContent GzipBytes(byte[] bytes)
