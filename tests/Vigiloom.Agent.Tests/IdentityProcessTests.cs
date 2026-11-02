@@ -15,17 +15,14 @@ public sealed class IdentityProcessTests(TestContext testContext)
     {
         var token = testContext.CancellationToken;
         var root = Path.Combine(Path.GetTempPath(), "VigiloomIdentityProcessTests", Path.GetRandomFileName());
-        var repo = new DirectoryInfo(AppContext.BaseDirectory);
-        while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "Vigiloom.slnx"))) repo = repo.Parent;
-        Assert.IsNotNull(repo);
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        var project = Path.Combine(repo.FullName, "src", "Agent", "Vigiloom.Agent", "Vigiloom.Agent.csproj");
+        var agentAssembly = Path.Combine(AppContext.BaseDirectory, "Vigiloom.Agent.dll");
         var enrollment = $"vle_{Guid.CreateVersion7():D}.{Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-        foreach (var argument in new[] { "run", "--no-build", "--configuration", configuration, "--project", project, "--", "enroll" }) start.ArgumentList.Add(argument);
+        // Start the Agent itself, rather than a dotnet-run parent whose child can outlive WaitForExitAsync.
+        foreach (var argument in new[] { agentAssembly, "enroll" }) start.ArgumentList.Add(argument);
         start.Environment["Vigiloom__Agent__Server"] = $"https://127.0.0.1:{port}/";
         start.Environment["Vigiloom__Agent__StateDirectory"] = root;
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start test Agent.");
