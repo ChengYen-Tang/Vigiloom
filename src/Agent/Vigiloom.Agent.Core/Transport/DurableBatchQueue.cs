@@ -9,7 +9,9 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
 {
     public const int MaximumBatchBytes = 1024 * 1024;
     public const int MaximumBatchRecords = 1000;
-    public const int MaximumQueuedBatches = 8192;
+    // Leave headroom for a 24-hour backlog at one batch per second. The byte
+    // limit remains authoritative and bursts can still reach either bound sooner.
+    public const int MaximumQueuedBatches = 100_000;
     public const long DefaultCapacityBytes = 256L * 1024 * 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
 
