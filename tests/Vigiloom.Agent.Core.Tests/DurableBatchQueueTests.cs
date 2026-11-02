@@ -122,6 +122,124 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
+    public async Task Queue_QuarantinedBatchSurvivesReopenAndStillCountsAgainstCapacity()
+    {
+        var root = NewRoot();
+        try
+        {
+            var owner = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var token = TestContext.CancellationToken;
+            var queue = new DurableBatchQueue(vault, owner, 4);
+            var first = Guid.CreateVersion7();
+            var second = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            await queue.EnqueueAsync(first, now, 1, new byte[] { 1, 2 }, token);
+            await queue.EnqueueAsync(second, now, 1, new byte[] { 3, 4 }, token);
+            Assert.IsTrue(await queue.QuarantineAsync(first, QueueRejection.Conflict, token));
+            Assert.IsFalse(await queue.QuarantineAsync(first, QueueRejection.InvalidLocalBatch, token));
+            var reopened = new DurableBatchQueue(vault, owner, 4);
+            Assert.AreEqual(second, (await reopened.PeekAsync(token))!.BatchId);
+            Assert.AreEqual(new QueueStatus(4, 2, 1), await reopened.GetStatusAsync(token));
+            Assert.AreEqual(EnqueueResult.Full, await reopened.EnqueueAsync(Guid.CreateVersion7(), now, 1, new byte[] { 5 }, token));
+            using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "SELECT rejection, payload FROM batches WHERE batch_id = $id";
+            command.Parameters.AddWithValue("$id", first.ToString("D"));
+            using var reader = command.ExecuteReader();
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual((int)QueueRejection.Conflict, reader.GetInt32(0));
+            CollectionAssert.AreEqual(new byte[] { 1, 2 }, (byte[])reader[1]);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task Queue_ConcurrentAcknowledgmentAndQuarantinePreserveCounters()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var queue = new DurableBatchQueue(new IdentityVault(root), Guid.CreateVersion7());
+            var id = Guid.CreateVersion7();
+            await queue.EnqueueAsync(id, DateTimeOffset.UtcNow, 1, new byte[] { 1, 2 }, token);
+            var quarantine = Task.Run(() => queue.QuarantineAsync(id, QueueRejection.Conflict, token), token);
+            var acknowledgement = Task.Run(() => queue.AcknowledgeAsync(id, token), token);
+            await Task.WhenAll(quarantine, acknowledgement);
+            Assert.IsTrue(acknowledgement.Result, "A confirmed server receipt must remove its batch exactly once.");
+            Assert.AreEqual(new QueueStatus(0, 0, 0), await queue.GetStatusAsync(token));
+            Assert.IsNull(await queue.PeekAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task Queue_UpgradesVersionOneWithoutChangingPendingPayload()
+    {
+        var root = NewRoot();
+        try
+        {
+            var owner = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            await new DurableBatchQueue(vault, owner).EnqueueAsync(id, DateTimeOffset.UtcNow, 1, new byte[] { 9, 8 }, token);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand(); command.CommandText = "ALTER TABLE batches DROP COLUMN rejection; PRAGMA user_version = 1"; command.ExecuteNonQuery();
+            }
+            var wrongOwner = new DurableBatchQueue(vault, Guid.CreateVersion7());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => wrongOwner.PeekAsync(token));
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+                Assert.AreEqual(1L, (long)command.ExecuteScalar()!);
+            }
+            var reopened = new DurableBatchQueue(vault, owner);
+            var pending = await reopened.PeekAsync(token);
+            Assert.AreEqual(id, pending!.BatchId);
+            CollectionAssert.AreEqual(new byte[] { 9, 8 }, pending.Payload);
+            Assert.AreEqual(new QueueStatus(2, 1, 0), await reopened.GetStatusAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task Queue_FailedUpgradeDoesNotChangeVersionOrDiscardBatch()
+    {
+        var root = NewRoot();
+        try
+        {
+            var owner = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var queue = new DurableBatchQueue(vault, owner);
+            await queue.EnqueueAsync(id, DateTimeOffset.UtcNow, 1, new byte[] { 42 }, token);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 1"; command.ExecuteNonQuery();
+            }
+            await Assert.ThrowsAsync<SqliteException>(() => queue.PeekAsync(token));
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+                Assert.AreEqual(1L, (long)command.ExecuteScalar()!);
+                command.CommandText = "SELECT payload FROM batches WHERE batch_id = $id";
+                command.Parameters.AddWithValue("$id", id.ToString("D"));
+                CollectionAssert.AreEqual(new byte[] { 42 }, (byte[])command.ExecuteScalar()!);
+            }
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task Queue_UnknownDatabaseVersionFailsWithoutOverwritingData()
     {
         var root = NewRoot();
@@ -133,13 +251,13 @@ public sealed class DurableBatchQueueTests
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
             {
                 db.Open();
-                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 2"; command.ExecuteNonQuery();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 3"; command.ExecuteNonQuery();
             }
             await Assert.ThrowsAsync<InvalidDataException>(() => queue.PeekAsync(TestContext.CancellationToken));
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
             {
                 db.Open();
-                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 1"; command.ExecuteNonQuery();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 2"; command.ExecuteNonQuery();
             }
             Assert.AreEqual(id, (await queue.PeekAsync(TestContext.CancellationToken))!.BatchId);
         }
