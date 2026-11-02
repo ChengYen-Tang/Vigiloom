@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
+using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
@@ -11,6 +12,55 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentBatchClientTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task Sender_QuarantinesExpiredBatchWithoutLosingBytesAndContinues()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = secret }, token);
+            var now = DateTimeOffset.UtcNow;
+            var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [item]);
+            var bytes = AgentBatchCodec.Serialize(batch);
+            var queue = new DurableBatchQueue(vault, id);
+            await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token);
+            var next = new AgentBatch(1, Guid.CreateVersion7(), now, [item with { MessageId = Guid.CreateVersion7() }]);
+            var nextBytes = AgentBatchCodec.Serialize(next);
+            await queue.EnqueueAsync(next.BatchId, now, 1, nextBytes, token);
+            using var http = new HttpClient(new GoneHandler());
+            var client = new AgentBatchClient(http, TimeProvider.System);
+            Assert.AreEqual(BatchSendResult.Rejected, (await client.SendNextAsync(vault, server, token)).Status);
+            var reopened = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(next.BatchId, (await reopened.PeekAsync(token))!.BatchId);
+            Assert.AreEqual(BatchSendResult.Delivered, (await client.SendNextAsync(vault, server, token)).Status);
+            Assert.IsNull(await reopened.PeekAsync(token));
+            Assert.AreEqual(new QueueStatus(bytes.Length, 1, 1), await reopened.GetStatusAsync(token));
+            using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "SELECT rejection, payload FROM batches WHERE batch_id = $id";
+            command.Parameters.AddWithValue("$id", batch.BatchId.ToString("D"));
+            using var reader = command.ExecuteReader();
+            Assert.IsTrue(reader.Read());
+            Assert.AreEqual((int)QueueRejection.Expired, reader.GetInt32(0));
+            CollectionAssert.AreEqual(bytes, (byte[])reader[1]);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 
     [TestMethod]
     [DataRow(false, false)]
@@ -176,6 +226,17 @@ public sealed class AgentBatchClientTests
             if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class GoneHandler : HttpMessageHandler
+    {
+        private bool first = true;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var status = first ? HttpStatusCode.Gone : HttpStatusCode.NoContent;
+            first = false;
+            return Task.FromResult(new HttpResponseMessage(status));
         }
     }
 

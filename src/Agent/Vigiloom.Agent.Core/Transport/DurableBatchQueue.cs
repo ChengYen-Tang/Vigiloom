@@ -207,6 +207,6 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
 }
 
 public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full }
-public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5 }
+public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5, Expired = 6 }
 public sealed record QueuedBatch(Guid BatchId, DateTimeOffset EnqueuedAt, int RecordCount, byte[] Payload);
 public readonly record struct QueueStatus(long TotalBytes, long TotalBatches, long QuarantinedBatches);
