@@ -1,0 +1,139 @@
+@page "/devices/{Id:guid}/agent"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("identity-login")]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Devices
+@using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.Resources.Application
+@inject DeviceManagement Devices
+@inject AgentIdentity Agents
+@inject ILogger<DeviceAgent> Logger
+
+<PageTitle>Agent 身分 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="@($"/devices/{Id:D}")">返回設備詳情</a>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (device is null) { <section class="device-panel"><h1>無法載入設備</h1><p>設備可能不存在或暫時無法讀取。</p></section> }
+    else
+    {
+        <header class="device-heading"><div><h1>管理 Agent 身分</h1><p>@device.Name · Agent 身分與 Ping 狀態分開</p></div></header>
+        @if (secret is not null)
+        {
+            <section class="device-panel" aria-labelledby="enrollment-secret-title">
+                <h2 id="enrollment-secret-title">立即保存加入資料</h2>
+                <p>只顯示這一次，有效至 @expiresAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")。請安全交給此設備的安裝程序，不要貼在網址或公開紀錄。</p>
+                <textarea readonly rows="3" aria-label="Agent 加入資料">@secret</textarea>
+            </section>
+        }
+        <section class="device-panel"><h2>加入這台設備</h2>
+            <p>建立短效加入資料後，在這台設備執行 Agent 註冊。重新建立會撤銷先前的加入資料；每台設備一次只能有一個有效 Agent 身分。</p>
+            <p>Agent 安裝程式及安裝步驟尚在開發中；目前無法從此頁完成安裝。</p>
+            @if (!device.DeepMonitoring || !device.Enabled || device.Archived) { <p>請先將設備設定為已啟用的深入監控模式。</p> }
+            else
+            {
+                <EditForm Model="Issue" FormName="agent-issue" method="post" OnValidSubmit="IssueAsync">
+                    <label><InputCheckbox @bind-Value="Issue.Confirm" /> 我了解加入資料會授權註冊此設備</label>
+                    <button type="submit">建立加入資料</button>
+                </EditForm>
+            }
+        </section>
+        <section class="device-panel"><h2>Agent 身分</h2>
+            <p>撤銷會立即拒絕該身分；設備封存後恢復，也不會重新啟用舊身分。最多顯示最近 50 筆。</p>
+            @if (state?.Agents.Count == 0) { <p>尚無 Agent 身分。</p> }
+            @foreach (var agent in state?.Agents ?? [])
+            {
+                <div class="management-notice" @key="agent.Id"><p>建立：@agent.CreatedAt.ToString("yyyy-MM-dd HH:mm 'UTC'") · @AgentStatus(agent)</p><p>識別碼：@agent.Id</p>
+                    @if (agent.RevokedAt is null && agent.DeviceGeneration == state?.CurrentGeneration)
+                    {
+                        <EditForm Model="RevokeAgent" FormName="agent-revoke" method="post" OnValidSubmit="RevokeAgentAsync">
+                            <label><InputCheckbox @bind-Value="RevokeAgent.Confirm" /> 我了解這會立即中斷該 Agent 的授權</label>
+                            <button type="submit" name="RevokeAgent.Id" value="@agent.Id">撤銷此 Agent</button>
+                        </EditForm>
+                    }
+                </div>
+            }
+        </section>
+        <section class="device-panel"><h2>最近加入資料</h2>
+            <p>不會再次顯示完整加入資料。若遺失或外洩，請撤銷後重新建立。</p>
+            @if (state?.Enrollments.Count == 0) { <p>尚無加入資料。</p> }
+            @foreach (var item in state?.Enrollments ?? [])
+            {
+                <div class="management-notice" @key="item.Id"><p>建立：@item.CreatedAt.ToString("yyyy-MM-dd HH:mm 'UTC'") · 到期：@item.ExpiresAt.ToString("yyyy-MM-dd HH:mm 'UTC'") · @EnrollmentStatus(item)</p>
+                    @if (item.RevokedAt is null && item.DeviceGeneration == state?.CurrentGeneration && item.ExpiresAt > DateTimeOffset.UtcNow)
+                    {
+                        <EditForm Model="RevokeEnrollment" FormName="enrollment-revoke" method="post" OnValidSubmit="RevokeEnrollmentAsync">
+                            <label><InputCheckbox @bind-Value="RevokeEnrollment.Confirm" /> 我了解此加入資料將無法再使用</label>
+                            <button type="submit" name="RevokeEnrollment.Id" value="@item.Id">撤銷加入資料</button>
+                        </EditForm>
+                    }
+                </div>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-issue")] private IssueModel Issue { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-revoke")] private RevokeModel RevokeAgent { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "enrollment-revoke")] private RevokeModel RevokeEnrollment { get; set; } = default!;
+    private DeviceDto? device;
+    private DeviceAgents? state;
+    private string? secret;
+    private DateTimeOffset? expiresAt;
+    private string? error;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Issue ??= new(); RevokeAgent ??= new(); RevokeEnrollment ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try { device = await Devices.GetAsync(Id, HttpContext.RequestAborted); state = await Agents.GetDeviceAgentsAsync(Id, HttpContext.RequestAborted); }
+        catch (Exception ex) { Logger.LogWarning("Unable to load Agent management: {ExceptionType}", ex.GetType().Name); error = "無法載入 Agent 身分，請稍後重試。"; }
+    }
+
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ? actor : null;
+
+    private async Task IssueAsync()
+    {
+        if (!Issue.Confirm || Actor() is not { } actor) { error = "請先確認加入資料的影響。"; return; }
+        try
+        {
+            var result = await Agents.IssueAsync(Id, actor, HttpContext.RequestAborted);
+            if (result.Status != AgentIdentityStatus.Success) { error = "無法建立加入資料，請確認設備狀態與現有 Agent 身分。"; return; }
+            secret = result.Secret; expiresAt = result.ExpiresAt; Issue.Confirm = false; await LoadAsync();
+        }
+        catch (Exception ex) { Logger.LogWarning("Unable to issue enrollment: {ExceptionType}", ex.GetType().Name); error = "無法確認建立結果，請重新整理後檢查。"; }
+    }
+
+    private async Task RevokeAgentAsync() => await RevokeAsync(RevokeAgent, false);
+    private async Task RevokeEnrollmentAsync() => await RevokeAsync(RevokeEnrollment, true);
+    private async Task RevokeAsync(RevokeModel input, bool enrollment)
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        input.Id = form[enrollment ? "RevokeEnrollment.Id" : "RevokeAgent.Id"].ToString();
+        if (!input.Confirm || !Guid.TryParse(input.Id, out var target) || Actor() is not { } actor) { error = "請先確認撤銷影響。"; return; }
+        // Confirm the submitted item belongs to the device currently shown.
+        if (enrollment ? state?.Enrollments.Any(x => x.Id == target) != true : state?.Agents.Any(x => x.Id == target) != true) { error = "找不到該筆資料，請重新整理。"; return; }
+        try
+        {
+            var result = enrollment ? await Agents.RevokeEnrollmentAsync(target, actor, HttpContext.RequestAborted) : await Agents.RevokeAsync(target, actor, HttpContext.RequestAborted);
+            if (result != AgentIdentityStatus.Success) { error = "無法撤銷，請重新整理後再試。"; return; }
+            input.Confirm = false; message = "已撤銷。"; await LoadAsync();
+        }
+        catch (Exception ex) { Logger.LogWarning("Unable to revoke Agent identity: {ExceptionType}", ex.GetType().Name); error = "無法確認撤銷結果，請重新整理後檢查。"; }
+    }
+    private string AgentStatus(AgentSummary agent) => agent.RevokedAt is not null ? "已撤銷" : agent.DeviceGeneration != state?.CurrentGeneration ? "因設備封存而失效" : "已註冊";
+    private string EnrollmentStatus(EnrollmentSummary item) => item.RevokedAt is not null ? "已撤銷" : item.DeviceGeneration != state?.CurrentGeneration ? "因設備封存而失效" : item.ExpiresAt <= DateTimeOffset.UtcNow ? "已到期" : item.Consumed ? "已使用，可安全重試" : "等待加入";
+    private sealed class IssueModel { public bool Confirm { get; set; } }
+    private sealed class RevokeModel { public string? Id { get; set; } public bool Confirm { get; set; } }
+}

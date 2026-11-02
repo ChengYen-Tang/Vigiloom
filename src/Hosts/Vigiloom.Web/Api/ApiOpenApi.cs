@@ -17,6 +17,11 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom opaque credential",
             Description = "A third-party API credential. The access endpoint requires monitoring.read."
         };
+        document.Components.SecuritySchemes["AgentBearer"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom Agent credential",
+            Description = "A registered Agent credential, distinct from third-party API and human credentials."
+        };
         document.Components.SecuritySchemes["BrowserSession"] = new OpenApiSecurityScheme
         {
             Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Cookie,
@@ -31,7 +36,24 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
         foreach (var (path, item) in document.Paths)
         foreach (var (method, operation) in item.Operations ?? [])
         {
-            if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
+            if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase))
+            {
+                var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
+                if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
+                    session[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
+                operation.Security = [session];
+            }
+            else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/agent/rotation/", StringComparison.OrdinalIgnoreCase))
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
+            else if (path.Equals("/api/v1/agent/recover", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
+                operation.Description = "Use a vlr_<enrollment ID>.<machine secret> bearer proof and the enrollment secret in the body. This only recovers an existing binding.";
+            }
+            else if (path.Equals("/api/v1/agent/enroll", StringComparison.OrdinalIgnoreCase))
+                operation.Security = [];
+            else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
             else if (path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase))
