@@ -134,6 +134,17 @@ public sealed class IdentityClient(HttpClient http)
         return new Uri(server.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
 
+    internal static async Task<(IdentityState? State, bool ServerMismatch)> ReadRegisteredAsync(IdentityVault vault, Uri expected, CancellationToken token)
+    {
+        IdentityState? state;
+        await using (var session = vault.Acquire()) state = await session.ReadAsync(token);
+        if (state?.AgentId is not { Version: 7 }) return (null, false);
+        if (!string.Equals(state.Server, expected.AbsoluteUri, StringComparison.Ordinal)) return (null, true);
+        var decoded = Decode(state.MachineSecret);
+        CryptographicOperations.ZeroMemory(decoded);
+        return (state, false);
+    }
+
     private static bool TryEnrollmentId(string? value, out Guid id)
     {
         id = default;

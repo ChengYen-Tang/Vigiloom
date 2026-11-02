@@ -41,6 +41,8 @@ builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddScoped<AgentMonitoring>();
+builder.Services.AddScoped<AgentBatchReceiver>();
+builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
@@ -82,6 +84,13 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddPolicy("agent-transport", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "unverified", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Agent:Transport:RequestsPerMinute", 120), 1, 10000),
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
@@ -127,6 +136,8 @@ else
 app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs"), web =>
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
+app.UseRouting();
+app.UseMiddleware<AgentTransportGuard>();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
@@ -156,6 +167,7 @@ app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapAgentEndpoints();
+app.MapAgentBatchEndpoints();
 app.MapPingEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())

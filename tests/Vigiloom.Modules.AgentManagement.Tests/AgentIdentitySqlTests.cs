@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
@@ -18,6 +19,131 @@ public sealed class AgentIdentitySqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Batches_AreAtomicIdempotentAndRejectChangedMessages(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("batch server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Windows test", "X64", ".NET 10");
+        var other = item with { MessageId = Guid.CreateVersion7(), OperatingSystem = "Linux test" };
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item, other]);
+        var payload = AgentBatchCodec.Serialize(batch);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
+        Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { Items = [item with { RuntimeVersion = "different" }, other] }), token));
+        var anotherBatch = batch with { BatchId = Guid.CreateVersion7(), Items = [item] };
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(anotherBatch), token));
+        var newMessage = other with { MessageId = Guid.CreateVersion7() };
+        var conflictingMessage = anotherBatch with { BatchId = Guid.CreateVersion7(), Items = [newMessage, item with { RuntimeVersion = "different" }] };
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(conflictingMessage), token));
+        Assert.AreEqual(BatchReceiptStatus.Invalid, await receiver.ReceiveAsync(credential, "{"u8.ToArray(), token));
+        Assert.AreEqual(BatchReceiptStatus.Unauthorized, await receiver.ReceiveAsync("invalid", payload, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(2, await verify.ReceivedBatches.CountAsync(token));
+        var observations = await verify.RuntimeObservations.OrderBy(x => x.Ordinal).ToArrayAsync(token);
+        Assert.HasCount(2, observations);
+        Assert.AreEqual(item.MessageId, observations[0].MessageId);
+        Assert.AreEqual(other.MessageId, observations[1].MessageId);
+        Assert.AreEqual(".NET 10", observations[0].RuntimeVersion);
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task Batches_AcknowledgmentRetrySucceedsEvenWhenCapacityIsFull() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("batch server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Example OS", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item]);
+        var payload = AgentBatchCodec.Serialize(batch);
+        var receiver = new AgentBatchReceiver(agents, identity, clock, capacityBytes: payload.Length, maximumBatches: 1);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Batches_ConcurrentNewBatchesCannotExceedCapacity(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("capacity server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Example OS", "X64", ".NET 10");
+        var first = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item]));
+        var second = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item with { MessageId = Guid.CreateVersion7() }]));
+        var receiver = new AgentBatchReceiver(agents, identity, clock, maximumBatches: 1);
+        var results = await Task.WhenAll(receiver.ReceiveAsync(credential, first, token), receiver.ReceiveAsync(credential, second, token));
+        Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
+        Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.CapacityExceeded));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, results[0] == BatchReceiptStatus.Accepted ? first : second, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Batches_RejectCredentialRevokedDuringTransaction(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("revoked batch server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Example OS", "X64", ".NET 10");
+        var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item]));
+        await using var revoke = agents.CreateDbContext();
+        await using var transaction = await revoke.Database.BeginTransactionAsync(token);
+        await using (var command = revoke.Database.GetDbConnection().CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = $"vigiloom.agent.device.{device.Id:D}"; command.Parameters.Add(parameter);
+            Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        }
+        (await revoke.Agents.SingleAsync(x => x.Id == registration.AgentId, token)).Revoke(clock.Now);
+        await revoke.SaveChangesAsync(token);
+        var waiting = new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(credential, payload, token);
+        await Task.Delay(250, token);
+        Assert.IsFalse(waiting.IsCompleted, "The batch must wait for the revocation transaction.");
+        await transaction.CommitAsync(token);
+        Assert.AreEqual(BatchReceiptStatus.Unauthorized, await waiting);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(0, await verify.RuntimeObservations.CountAsync(token));
+    }, snapshotReads);
 
     [TestMethod]
     public Task AgentMonitoring_DistinguishesRegistrationHeartbeatAndOfflineFromPing() => WithDatabase(async (resources, agents, token) =>

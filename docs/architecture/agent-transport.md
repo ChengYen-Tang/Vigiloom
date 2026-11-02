@@ -1,6 +1,6 @@
 # Agent transport: implementation notes
 
-REQ-19 is in progress. This document describes the local queue slice and lists the remaining work; it does not claim the end-to-end transport is complete.
+REQ-19 is in progress. The queue, authenticated receipt endpoint and a test-driven client primitive exist; the Agent host does not yet produce or automatically transmit these batches. This document does not claim the end-to-end transport is complete.
 
 ## Local durable queue
 
@@ -12,8 +12,9 @@ The initial capacity is 256 MiB of serialized payload and at most 8,192 queued b
 
 ## Required integration
 
-- Persist individual message IDs and their order inside a versioned immutable batch format. Do not repackage expired batches with new IDs to bypass the replay window. Retries send identical bytes and acknowledge locally only after the central transaction succeeds.
-- The central receiver must authenticate and revalidate the Agent binding in its commit transaction, so a revocation or device archive cannot race a data commit. Unique `(AgentId, BatchId)` plus a payload digest must distinguish a genuine retry from the same ID with different content. A lost acknowledgement followed by a retry must return the committed result without duplicate effects.
+- Version 1 batches currently accept only validated `agent.runtime.v1` observations, with stable message IDs, order, and bounded strings; they are not a general telemetry protocol. The central transaction revalidates the machine credential and device binding, stores structured observations and a SHA-256 receipt for the exact payload bytes, and acknowledges only after commit. Identical retries are acknowledged; a batch ID or message ID reused with different content is rejected. The original wire payload is not stored centrally. A test-driven client preserves local bytes after a lost acknowledgement and removes them only on HTTP 204; it is not yet registered in the Agent host's HTTP factory or scheduled.
+- The receipt store temporarily caps each Agent at 8,192 receipts and 256 MiB of summed original payload lengths, not actual database disk usage. There is no receipt cleanup yet; reaching the cap blocks new batches while still permitting a retry of a previously accepted batch. This is a temporary safety bound, not the required retention policy. Do not repackage expired batches with new IDs to bypass the replay window.
+- Heartbeat and batch requests use a process-local bounded pre-authentication concurrency gate and a per-verified-Agent rate limit. Invalid credentials do not create attacker-chosen rate-limit partitions. These are safeguards, not evidence of 500-Agent capacity, cross-instance coordination, or fairness under slow requests; measure and adjust against actual deployment load.
 - Define and implement the 24-hour accepted replay window, seven-day inbox retention, clock-skew handling and grace period together. An Agent-supplied timestamp alone cannot prove when a batch was created; inbox cleanup must not allow an expired or previously committed batch to be accepted as new. Configuration changes must preserve old-generation guarantees.
 - Apply bounded batching, retries, cancellation, compression and payload size checks on both endpoints. Monitor and expose missing data, loss counts, queue pressure and last successful send without storing credentials in the queue.
 - Heartbeats send immediately at host startup and on 30-second timer ticks without overlapping requests. The receiver stores server receipt time only after checking the current credential and device generation within the commit transaction. The fixed interval is an initial value, not yet the user-adjustable effective setting. A pending credential rotation still needs explicit recovery; automatic rotation reconciliation is not implemented.
