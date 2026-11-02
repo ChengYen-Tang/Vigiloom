@@ -26,7 +26,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         {
             token.ThrowIfCancellationRequested();
             var snapshot = payload.ToArray();
-            await using var session = vault.Acquire();
+            await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var transaction = connection.BeginTransaction();
@@ -75,7 +75,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         await gate.WaitAsync(token);
         try
         {
-            await using var session = vault.Acquire();
+            await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
@@ -94,7 +94,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         await gate.WaitAsync(token);
         try
         {
-            await using var session = vault.Acquire();
+            await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
@@ -112,7 +112,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         await gate.WaitAsync(token);
         try
         {
-            await using var session = vault.Acquire();
+            await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
@@ -130,7 +130,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         await gate.WaitAsync(token);
         try
         {
-            await using var session = vault.Acquire();
+            await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var transaction = connection.BeginTransaction();

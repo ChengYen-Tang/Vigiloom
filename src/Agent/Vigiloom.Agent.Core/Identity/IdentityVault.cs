@@ -35,6 +35,22 @@ public sealed class IdentityVault(string directory)
         catch { directoryGuard?.Dispose(); throw; }
     }
 
+    // Host transport operations are short, but heartbeat and batch I/O can briefly
+    // contend for the same cross-process identity lease. Never hold this lease
+    // while waiting for an HTTP response.
+    internal async ValueTask<Session> AcquireForTransportAsync(CancellationToken token)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            try { return Acquire(); }
+            catch (IOException) when (attempt < 6)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25 * (attempt + 1)), token);
+            }
+        }
+    }
+
     private static SafeFileHandle? PrepareDirectory(string path)
     {
         if (OperatingSystem.IsWindows()) return PrepareWindowsDirectory(path);

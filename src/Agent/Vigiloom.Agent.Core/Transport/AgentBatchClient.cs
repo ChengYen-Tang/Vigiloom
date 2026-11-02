@@ -16,7 +16,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         var id = identity.AgentId!.Value;
         var queue = new DurableBatchQueue(vault, id);
         var pending = await queue.PeekAsync(token);
-        if (pending is null) return new(BatchSendResult.Empty);
+        if (pending is null) return new(BatchSendResult.NoPendingBatch);
         if (!AgentBatchCodec.TryRead(pending.Payload, out var batch) || batch!.BatchId != pending.BatchId ||
             batch.EnqueuedAt != pending.EnqueuedAt || batch.Items.Count != pending.RecordCount)
         {
@@ -58,5 +58,5 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
     }
 }
 
-public enum BatchSendResult { Empty, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch }
+public enum BatchSendResult { NoPendingBatch, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch }
 public readonly record struct BatchSendOutcome(BatchSendResult Status, TimeSpan? RetryAfter = null);

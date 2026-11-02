@@ -99,6 +99,30 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
+    public async Task Queue_TemporaryIdentityLeaseContentionRetriesWithoutDiscardingBatch()
+    {
+        var root = NewRoot();
+        try
+        {
+            var vault = new IdentityVault(root);
+            var queue = new DurableBatchQueue(vault, Guid.CreateVersion7());
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var session = vault.Acquire();
+            Task<EnqueueResult> pending;
+            try
+            {
+                pending = queue.EnqueueAsync(id, DateTimeOffset.UtcNow, 1, new byte[] { 42 }, token);
+                Assert.IsFalse(pending.IsCompleted, "Queue operation must wait for a briefly held identity lease.");
+            }
+            finally { await session.DisposeAsync(); }
+            Assert.AreEqual(EnqueueResult.Queued, await pending);
+            Assert.AreEqual(id, (await queue.PeekAsync(token))!.BatchId);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task Queue_ConcurrentProducersAreSerializedAndCapacityIsNotExceeded()
     {
         var root = NewRoot();
