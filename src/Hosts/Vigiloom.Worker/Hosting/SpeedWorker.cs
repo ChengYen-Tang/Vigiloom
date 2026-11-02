@@ -8,7 +8,7 @@ namespace Vigiloom.Worker.Hosting;
 public sealed class AutomaticSpeedJob(SpeedQueue queue)
 {
     [AutomaticRetry(Attempts = 0)]
-    public async Task RunAsync(CancellationToken token) => await queue.RequestAsync(ResourceIds.Create(), null, true, token);
+    public async Task RunAsync(CancellationToken token) => await queue.RequestAsync(ResourceIds.Create(), token);
 }
 internal sealed class SpeedWorker(IServiceScopeFactory scopes, ILogger<SpeedWorker> logger) : BackgroundService
 {

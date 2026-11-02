@@ -7,8 +7,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
 public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
 {
-    public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 6 and <= 168 && input.MaxMiB is >= 2 and <= 200 &&
-        input.TimeoutSeconds is >= 5 and <= 60 && (!input.Automatic || input.Consent) && (!input.Consent || input.ConsentPolicy == SpeedDatabase.ConsentPolicy);
+    public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 1 and <= 168 && input.MaxMiB is >= 2 and <= 2048 &&
+        input.TimeoutSeconds is >= 5 and <= 60;
     public async Task<SpeedSettingsSnapshot> GetAsync(CancellationToken token)
     {
         await SpeedDatabase.EnsureAsync(contexts, token);
@@ -28,19 +28,6 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
         var changedSchedule = setting.Automatic != input.Automatic || setting.IntervalHours != input.IntervalHours;
         setting.Automatic = input.Automatic;
         setting.IntervalHours = input.IntervalHours; setting.MaxMiB = input.MaxMiB; setting.TimeoutSeconds = input.TimeoutSeconds;
-        if (input.Consent && !SpeedDatabase.HasConsent(setting))
-        {
-            setting.ConsentPolicy = SpeedDatabase.ConsentPolicy; setting.ConsentedAt = now; setting.ConsentedBy = actor;
-        }
-        if (!input.Consent)
-        {
-            setting.ConsentPolicy = null; setting.ConsentedAt = null; setting.ConsentedBy = null;
-            await db.SpeedRuns.Where(x => x.State == SpeedTestState.Queued).ExecuteUpdateAsync(update => update
-                .SetProperty(x => x.State, SpeedTestState.Cancelled).SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.CancellationRequested, true).SetProperty(x => x.DiagnosticCode, "consent_revoked"), token);
-            await db.SpeedRuns.Where(x => x.State == SpeedTestState.Running)
-                .ExecuteUpdateAsync(update => update.SetProperty(x => x.CancellationRequested, true), token);
-        }
         if (!input.Automatic)
         {
             await db.SpeedRuns.Where(x => x.Automatic && x.State == SpeedTestState.Queued).ExecuteUpdateAsync(update => update
@@ -62,8 +49,7 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
     {
         var reservations = db.SpeedRuns.Where(x => (x.StartedAt ?? x.RequestedAt) > now.AddHours(-24));
         var total = await reservations.CountAsync(token);
-        var automatic = await reservations.CountAsync(x => x.Automatic, token);
-        return new(setting.Automatic, setting.IntervalHours, setting.MaxMiB, setting.TimeoutSeconds, SpeedDatabase.HasConsent(setting),
-            SpeedDatabase.ConsentPolicy, Convert.ToBase64String(setting.Version), setting.NextAutomaticAt, total, automatic);
+        return new(setting.Automatic, setting.IntervalHours, setting.MaxMiB, setting.TimeoutSeconds,
+            Convert.ToBase64String(setting.Version), setting.NextAutomaticAt, total);
     }
 }

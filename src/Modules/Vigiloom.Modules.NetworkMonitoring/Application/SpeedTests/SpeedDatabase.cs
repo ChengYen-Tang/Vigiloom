@@ -7,13 +7,14 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
 internal static class SpeedDatabase
 {
-    public const string ConsentPolicy = "speedtest-net-notice-v1";
     public static async Task EnsureAsync(IDbContextFactory<NetworkDbContext> contexts, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         if (await db.SpeedSettings.AnyAsync(x => x.Name == "central", token)) return;
-        var now = DateTimeOffset.UtcNow;
-        db.SpeedSettings.Add(new SpeedSetting { CreatedAt = now, UpdatedAt = now });
+        var now = await NowAsync(db, token);
+        var setting = new SpeedSetting { CreatedAt = now, UpdatedAt = now };
+        setting.NextAutomaticAt = NextAutomatic(now, setting.IntervalHours);
+        db.SpeedSettings.Add(setting);
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { }
     }
@@ -23,6 +24,5 @@ internal static class SpeedDatabase
     {
         return await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
     }
-    public static bool HasConsent(SpeedSetting setting) => setting.ConsentPolicy == ConsentPolicy && setting.ConsentedAt is not null;
-    public static DateTimeOffset NextAutomatic(DateTimeOffset now, int hours) => now.AddHours(hours * (0.8 + Random.Shared.NextDouble() * 0.4));
+    public static DateTimeOffset NextAutomatic(DateTimeOffset now, int hours) => now.AddHours(hours);
 }
