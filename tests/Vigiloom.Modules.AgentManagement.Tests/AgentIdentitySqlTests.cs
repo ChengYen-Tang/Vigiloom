@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
@@ -17,6 +18,45 @@ public sealed class AgentIdentitySqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    public Task AgentMonitoring_DistinguishesRegistrationHeartbeatAndOfflineFromPing() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("monitored server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var monitoring = new AgentMonitoring(agents, source, clock);
+        Assert.IsNull(await monitoring.GetAsync(Guid.CreateVersion7(), token));
+        Assert.AreEqual(AgentConnectionState.NotRegistered, (await monitoring.GetAsync(device.Id, token))!.State);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        Assert.AreEqual(AgentConnectionState.AwaitingFirstHeartbeat, (await monitoring.GetAsync(device.Id, token))!.State);
+        clock.Now = clock.Now.AddSeconds(90);
+        Assert.AreEqual(AgentConnectionState.Offline, (await monitoring.GetAsync(device.Id, token))!.State);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
+        var receivedAt = clock.Now;
+        Assert.AreEqual(AgentConnectionState.Online, (await monitoring.GetAsync(device.Id, token))!.State);
+        clock.Now = clock.Now.AddSeconds(89);
+        Assert.AreEqual(AgentConnectionState.Online, (await monitoring.GetAsync(device.Id, token))!.State);
+        clock.Now = clock.Now.AddSeconds(1);
+        var offline = await monitoring.GetAsync(device.Id, token);
+        Assert.AreEqual(AgentConnectionState.Offline, offline!.State);
+        Assert.AreEqual(receivedAt, offline.LastHeartbeatAt);
+        clock.Now = receivedAt.AddSeconds(-1);
+        Assert.AreEqual(AgentConnectionState.ClockUncertain, (await monitoring.GetAsync(device.Id, token))!.State);
+        clock.Now = receivedAt.AddMinutes(-6);
+        Assert.AreEqual(AgentConnectionState.ClockUncertain, (await monitoring.GetAsync(device.Id, token))!.State);
+        await using (var db = resources.CreateDbContext())
+        {
+            var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
+            current.Update(current.Name, current.Address, true, false, clock.Now); await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(AgentConnectionState.Disabled, (await monitoring.GetAsync(device.Id, token))!.State);
+    });
 
     [TestMethod]
     [DataRow(false)]

@@ -26,3 +26,12 @@
 - Disposable preview and test databases use the ownership fixture and verified cleanup; no development database is used.
 
 final result: passed
+
+# REQ-19 preliminary design QA
+
+- Source: `docs/design/Vigiloom-UI-Concept-2-Revision-2.png` (1484 × 1060), an overview concept used as a shared style reference rather than a device-detail mockup.
+- Implementation: the actual device detail page, inspected in the in-app browser on an isolated LocalDB/Kestrel test site at a 1440 × 1000 desktop viewport and at 390 × 844 CSS px. Online and, after elapsed time and refresh, offline Agent states were observed separately from Ping. At 390 px the document width did not exceed the viewport; browser error and warning logs were empty.
+- Source and implementation were opened separately. A saved, normalized joint comparison input, exact screenshot pixel/density metadata and focused comparison have not yet been produced. Keyboard/accessibility testing also remains outstanding. The overview reference and the device-detail implementation show different screens, so any eventual comparison must evaluate their shared design language, not pretend they have identical content or layout.
+- No P0/P1/P2 visual finding was established from this preliminary inspection. This does not constitute the required comparative QA; typography, spacing, colors, assets and copy still require a recorded comparison.
+
+final result: blocked

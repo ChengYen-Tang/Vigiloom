@@ -1,0 +1,9 @@
+# REQ-19 Agent connectivity on the device page
+
+Extend the existing device detail screen using the [selected visual system](visual-system.md), rather than adding a separate management screen. Show Agent state and its last server receipt time as two labelled values alongside, but distinct from, Ping. The explanatory text identifies the current 90-second threshold and says the page must be refreshed for updated status. Do not infer the device is unreachable from an Agent timeout.
+
+The display distinguishes disabled monitoring, no current registration, waiting for the first heartbeat, online, offline, and an uncertain server clock. Only deep-monitoring devices show the Agent fields. Read only can see the non-secret status but not the Administrator's Agent identity management link. Anonymous users and Agent machine credentials cannot read the monitoring API; authorized monitoring API credentials can. Status responses and the detail page are marked `no-store`.
+
+The existing overview image is the agreed style reference, not a same-screen mockup. An isolated LocalDB and test-only accounts were used to inspect the actual rendered device page in the in-app browser at desktop and 390 × 844 CSS pixels. The test showed Ping without samples alongside an online Agent; after 90 seconds and a page reload the Agent changed to offline without changing Ping. At the narrow width the document did not overflow horizontally and no browser warning or error was observed. The test process completed and cleaned up its database.
+
+This is preliminary visual verification. A saved, normalized side-by-side comparison against the selected reference and a full keyboard/accessibility pass remain open; it is not a completed design QA or full REQ-19 acceptance. User-adjustable thresholds, real-time updates, configuration and reliable data delivery are not implemented here.

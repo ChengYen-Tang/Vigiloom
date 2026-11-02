@@ -18,6 +18,8 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Api;
 using Vigiloom.Web.Authentication;
@@ -123,6 +125,7 @@ public sealed class AgentIdentityHttpTests
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(identities, token);
             string apiCredential;
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -149,6 +152,13 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
+            using (var anonymousStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousStatus.StatusCode);
+            using (var apiStatus = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, apiStatus.StatusCode);
+                Assert.IsTrue(apiStatus.Headers.CacheControl?.NoStore);
+                Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
+            }
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
             using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
@@ -173,6 +183,14 @@ public sealed class AgentIdentityHttpTests
                 fields["Input.UserName"] = "reader"; fields["Input.Password"] = "Strong-Password-123";
                 using var login = await reader.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+                using var status = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token);
+                Assert.AreEqual(HttpStatusCode.OK, status.StatusCode);
+                Assert.AreEqual(AgentConnectionState.NotRegistered, (await status.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
+                using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
+                var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
+                Assert.Contains("未註冊或已撤銷", detailsDoc.Body.TextContent);
+                Assert.IsNull(detailsDoc.QuerySelector($"a[href='/devices/{device.Id:D}/agent']"));
                 using var denied = await reader.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             }
@@ -233,6 +251,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var machineStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineStatus.StatusCode);
+            using (var connected = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, connected.StatusCode);
+                var status = await connected.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
+                Assert.AreEqual(AgentConnectionState.Online, status!.State);
+                Assert.IsNotNull(status.LastHeartbeatAt);
+            }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
             using (var apiAccess = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiAccess.StatusCode);
