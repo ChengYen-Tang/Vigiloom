@@ -289,6 +289,11 @@ public sealed class SqlTestDatabase : IAsyncDisposable
     private static async Task DropOwnedAsync(TestDatabaseServer server, DatabaseManifest manifest, string manifestPath, CancellationToken cancellationToken)
     {
         ValidateManifest(server, manifest, manifestPath);
+        // Only clear this test database's pool; administrative connections remain unpooled.
+        using (var pooledConnection = new SqlConnection(server.ForDatabase(manifest.DatabaseName)))
+        {
+            SqlConnection.ClearPool(pooledConnection);
+        }
         await using var connection = new SqlConnection(server.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
