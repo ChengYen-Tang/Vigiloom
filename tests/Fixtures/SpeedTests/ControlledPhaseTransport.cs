@@ -5,7 +5,7 @@ internal sealed class ControlledPhaseFactory(ControlledPhaseHandler handler) : I
     public HttpMessageHandler CreateHandler(string name) => handler;
 }
 
-internal sealed class ControlledPhaseHandler : HttpMessageHandler
+internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uploadDelayMs = 100) : HttpMessageHandler
 {
     private static readonly byte[] Download = new byte[2 * 1048576];
     private static readonly byte[] UploadResponse = new byte[131072];
@@ -28,13 +28,13 @@ internal sealed class ControlledPhaseHandler : HttpMessageHandler
             if (length > 0) lock (gate) { if (firstUpload == 0) firstUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
             if (request.Content is not null) await request.Content.CopyToAsync(Stream.Null, token);
             Interlocked.Increment(ref uploadRequests);
-            await Task.Delay(100, token);
+            await Task.Delay(uploadDelayMs, token);
             if (length > 0) lock (gate) { uploadBytes += length; lastUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
             content = new ByteArrayContent(UploadResponse);
         }
         else
         {
-            await Task.Delay(200, token);
+            await Task.Delay(downloadDelayMs, token);
             content = new ByteArrayContent(Download);
         }
         return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content, RequestMessage = request };

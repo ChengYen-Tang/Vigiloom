@@ -378,16 +378,6 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                     b.Property<bool>("Automatic")
                         .HasColumnType("bit");
 
-                    b.Property<string>("ConsentPolicy")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTimeOffset?>("ConsentedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("ConsentedBy")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 

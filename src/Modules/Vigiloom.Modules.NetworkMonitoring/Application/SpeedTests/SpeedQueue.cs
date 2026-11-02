@@ -6,29 +6,28 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public enum SpeedRequestStatus { Accepted, ConsentRequired, Busy, NotDue }
+public enum SpeedRequestStatus { Accepted, Busy, NotDue }
 public sealed record SpeedRequestResult(SpeedRequestStatus Status, Guid? RunId = null);
 public sealed record SpeedLease(Guid Id, Guid LeaseId, int MaxMiB, int TimeoutSeconds);
 public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
 {
-    public async Task<SpeedRequestResult> RequestAsync(Guid requestId, Guid? actor, bool automatic, CancellationToken token)
+    public async Task<SpeedRequestResult> RequestAsync(Guid requestId, CancellationToken token)
     {
-        if (requestId == Guid.Empty || (!automatic && (actor is null || actor == Guid.Empty))) throw new ArgumentException("A request identifier and authenticated actor are required.");
+        if (requestId == Guid.Empty) throw new ArgumentException("A request identifier is required.");
         await SpeedDatabase.EnsureAsync(contexts, token);
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var settings = await SpeedDatabase.LockAsync(db, token);
-        var existing = await db.SpeedRuns.AsNoTracking().SingleOrDefaultAsync(x => x.RequestedBy == actor && x.RequestId == requestId, token);
+        var existing = await db.SpeedRuns.AsNoTracking().SingleOrDefaultAsync(x => x.RequestedBy == null && x.RequestId == requestId, token);
         if (existing is not null) return new(SpeedRequestStatus.Accepted, existing.Id);
         var now = await SpeedDatabase.NowAsync(db, token);
         await RecoverAsync(db, now, token);
-        if (!SpeedDatabase.HasConsent(settings)) return new(SpeedRequestStatus.ConsentRequired);
-        if (automatic && (!settings.Automatic || settings.NextAutomaticAt is null || settings.NextAutomaticAt > now)) return new(SpeedRequestStatus.NotDue);
+        if (!settings.Automatic || settings.NextAutomaticAt is null || settings.NextAutomaticAt > now) return new(SpeedRequestStatus.NotDue);
         if (await db.SpeedRuns.AnyAsync(x => x.State == SpeedTestState.Queued || x.State == SpeedTestState.Running, token)) return new(SpeedRequestStatus.Busy);
-        var run = new SpeedRun { RequestId = requestId, RequestedBy = actor, Automatic = automatic, RequestedAt = now,
+        var run = new SpeedRun { RequestId = requestId, Automatic = true, RequestedAt = now,
             MaxMiB = settings.MaxMiB, TimeoutSeconds = settings.TimeoutSeconds, State = SpeedTestState.Queued };
         db.SpeedRuns.Add(run);
-        if (automatic) settings.NextAutomaticAt = SpeedDatabase.NextAutomatic(now, settings.IntervalHours);
+        settings.NextAutomaticAt = SpeedDatabase.NextAutomatic(now, settings.IntervalHours);
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return new(SpeedRequestStatus.Accepted, run.Id);
@@ -41,7 +40,7 @@ public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
         var settings = await SpeedDatabase.LockAsync(db, token);
         var now = await SpeedDatabase.NowAsync(db, token);
         await RecoverAsync(db, now, token);
-        if (!SpeedDatabase.HasConsent(settings)) { await transaction.CommitAsync(token); return null; }
+        if (!settings.Automatic) { await transaction.CommitAsync(token); return null; }
         var run = await db.SpeedRuns.SingleOrDefaultAsync(x => x.State == SpeedTestState.Queued, token);
         if (run is null) { await transaction.CommitAsync(token); return null; }
         run.State = SpeedTestState.Running; run.StartedAt = now; run.LeaseId = ResourceIds.Create();
@@ -53,7 +52,7 @@ public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         var now = await SpeedDatabase.NowAsync(db, token);
-        return await db.SpeedSettings.AnyAsync(x => x.Name == "central" && x.ConsentPolicy == SpeedDatabase.ConsentPolicy && x.ConsentedAt != null, token) &&
+        return await db.SpeedSettings.AnyAsync(x => x.Name == "central" && x.Automatic, token) &&
             await db.SpeedRuns.AnyAsync(x => x.Id == lease.Id && x.LeaseId == lease.LeaseId && x.State == SpeedTestState.Running && !x.CancellationRequested && x.LeaseUntil > now, token);
     }
     public async Task<bool> CancelAsync(Guid id, CancellationToken token)
@@ -83,7 +82,7 @@ public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
         var now = await SpeedDatabase.NowAsync(db, token);
         var run = await db.SpeedRuns.SingleOrDefaultAsync(x => x.Id == lease.Id && x.LeaseId == lease.LeaseId && x.State == SpeedTestState.Running && x.LeaseUntil > now, token);
         if (run is null) return false;
-        run.State = run.CancellationRequested || !SpeedDatabase.HasConsent(settings) ? SpeedTestState.Cancelled : measurement.State;
+        run.State = run.CancellationRequested || !settings.Automatic ? SpeedTestState.Cancelled : measurement.State;
         run.Server = measurement.Server; run.City = measurement.City; run.Country = measurement.Country;
         run.Latitude = measurement.Latitude; run.Longitude = measurement.Longitude;
         run.DownloadMbps = measurement.DownloadMbps; run.UploadMbps = measurement.UploadMbps;

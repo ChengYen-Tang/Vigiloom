@@ -23,7 +23,6 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
         speedSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
         speedSettings.Property(x => x.Name).HasMaxLength(32);
         speedSettings.HasIndex(x => x.Name).IsUnique();
-        speedSettings.Property(x => x.ConsentPolicy).HasMaxLength(128);
         speedSettings.Property(x => x.Version).IsRowVersion();
         var run = modelBuilder.Entity<SpeedRun>();
         run.ToTable("SpeedRuns", t => t.HasCheckConstraint("CK_SpeedRuns_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
