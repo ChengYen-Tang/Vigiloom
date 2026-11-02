@@ -228,6 +228,19 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(1L, quarantined.TotalBatches, "A permanent rejection must retain the batch.");
                     Assert.AreEqual(1L, quarantined.QuarantinedBatches);
                 }
+                using (var heartbeatHttp = new HttpClient(new DropFirstQueueSessionResponse(factory.Server.CreateHandler())))
+                {
+                    var heartbeatClient = new AgentHeartbeatClient(heartbeatHttp);
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, token));
+                    await using var scope = factory.Services.CreateAsyncScope();
+                    var monitoring = scope.ServiceProvider.GetRequiredService<AgentMonitoring>();
+                    Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue, "Lost session response still allows an empty heartbeat.");
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, token));
+                    var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
+                    Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
+                    Assert.AreEqual(1L, queueStatus.Snapshot!.TotalBatches);
+                    Assert.AreEqual(1L, queueStatus.Snapshot.QuarantinedBatches);
+                }
                 using (var rotationHttp = new HttpClient(new DropFirstRotationResponse(factory.Server.CreateHandler())))
                 {
                     var rotation = new IdentityClient(rotationHttp);
@@ -405,6 +418,20 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            var queueEpoch = Guid.CreateVersion7();
+            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, queueEpoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10));
+            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Queue = queueReport.Queue! with { QuarantinedBatches = 6 } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var wrongVersion = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Version = 2 }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
+            using (var duplicate = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes("{\"version\":1,\"version\":1,\"queue\":null}"u8.ToArray()), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.StatusCode);
+            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes(new byte[2049]), token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
             var now = DateTimeOffset.UtcNow;
             var observation = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test operating system", "X64", ".NET 10");
             var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [observation]);
@@ -427,6 +454,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, connected.StatusCode);
                 var status = await connected.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
                 Assert.AreEqual(AgentConnectionState.Online, status!.State);
+                Assert.AreEqual(queueReport.Queue, status.Queue!.Snapshot);
                 Assert.IsNotNull(status.LastHeartbeatAt);
             }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
@@ -519,6 +547,22 @@ public sealed class AgentIdentityHttpTests
                 dropped = true;
                 response.Dispose();
                 throw new HttpRequestException("Simulated connection loss after the batch commit.");
+            }
+            return response;
+        }
+    }
+
+    private sealed class DropFirstQueueSessionResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        private bool dropped;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var response = await base.SendAsync(request, token);
+            if (!dropped && request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/agent/queue-session" && response.IsSuccessStatusCode)
+            {
+                dropped = true;
+                response.Dispose();
+                throw new HttpRequestException("Simulated connection loss after the queue session committed.");
             }
             return response;
         }

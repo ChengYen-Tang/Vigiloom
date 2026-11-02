@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
@@ -119,13 +120,45 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
     }
 
     /// <summary>Record receipt using the current credential and device generation under the same transaction as the write.</summary>
-    public async Task<AgentIdentityStatus> RecordHeartbeatAsync(string? credential, CancellationToken token)
+    public Task<AgentIdentityStatus> RecordHeartbeatAsync(string? credential, CancellationToken token) =>
+        RecordHeartbeatAsync(credential, null, token);
+
+    public async Task<AgentIdentityStatus> RecordHeartbeatAsync(string? credential, AgentHeartbeatReport? report, CancellationToken token)
     {
+        if (report is not null && (report.Version != 1 || report.Epoch.Version != 7 || report.Sequence < 1 || report.Queue is { } snapshot && !snapshot.IsValid()))
+            throw new ArgumentException("Invalid Agent heartbeat report.", nameof(report));
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var agent = await AuthenticateForWriteAsync(db, credential, token);
         if (agent is null) return AgentIdentityStatus.Invalid;
-        agent.RecordHeartbeat(clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        agent.RecordHeartbeat(now);
+        var staleSession = report is not null && agent.QueueReportEpoch != report.Epoch;
+        if (report is not null && !staleSession) agent.RecordQueueStatus(report.Sequence, report.Queue, now);
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return staleSession ? AgentIdentityStatus.Conflict : AgentIdentityStatus.Success;
+    }
+
+    public async Task<AgentQueueSession?> GetQueueSessionAsync(string? credential, CancellationToken token)
+    {
+        var principal = await AuthenticateAsync(credential, token);
+        if (principal is null) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await db.Agents.AsNoTracking().Where(x => x.Id == principal.AgentId)
+            .Select(x => new AgentQueueSession(x.QueueReportEpoch)).SingleOrDefaultAsync(token);
+    }
+
+    public async Task<AgentIdentityStatus> BeginQueueSessionAsync(string? credential, AgentQueueSessionRequest request, CancellationToken token)
+    {
+        if (request.Epoch.Version != 7 || request.ExpectedEpoch == request.Epoch) return AgentIdentityStatus.Invalid;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var agent = await AuthenticateForWriteAsync(db, credential, token);
+        if (agent is null) return AgentIdentityStatus.Invalid;
+        if (agent.QueueReportEpoch == request.Epoch) return AgentIdentityStatus.Success;
+        if (agent.QueueReportEpoch != request.ExpectedEpoch) return AgentIdentityStatus.Conflict;
+        agent.BeginQueueSession(request.Epoch);
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return AgentIdentityStatus.Success;

@@ -1,4 +1,5 @@
 using Vigiloom.BuildingBlocks.Identifiers;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Modules.AgentManagement.Domain;
 
@@ -25,12 +26,42 @@ public sealed class Agent
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
+    public DateTimeOffset? QueueReportedAt { get; private set; }
+    public Guid? QueueReportEpoch { get; private set; }
+    public long? QueueReportSequence { get; private set; }
+    public long? QueueTotalBytes { get; private set; }
+    public long? QueueTotalBatches { get; private set; }
+    public long? QueueQuarantinedBatches { get; private set; }
+    public long? QueueCapacityBytes { get; private set; }
+    public int? QueueCapacityBatches { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void RecordHeartbeat(DateTimeOffset now)
     {
         var utc = now.ToUniversalTime();
         if (LastHeartbeatAt is null || utc > LastHeartbeatAt) LastHeartbeatAt = utc;
+    }
+    public void RecordQueueStatus(long sequence, AgentQueueSnapshot? snapshot, DateTimeOffset now)
+    {
+        if (QueueReportSequence >= sequence) return;
+        QueueReportSequence = sequence;
+        QueueReportedAt = now.ToUniversalTime();
+        QueueTotalBytes = snapshot?.TotalBytes;
+        QueueTotalBatches = snapshot?.TotalBatches;
+        QueueQuarantinedBatches = snapshot?.QuarantinedBatches;
+        QueueCapacityBytes = snapshot?.CapacityBytes;
+        QueueCapacityBatches = snapshot?.CapacityBatches;
+    }
+    public void BeginQueueSession(Guid epoch)
+    {
+        QueueReportEpoch = epoch;
+        QueueReportSequence = null;
+        QueueReportedAt = null;
+        QueueTotalBytes = null;
+        QueueTotalBatches = null;
+        QueueQuarantinedBatches = null;
+        QueueCapacityBytes = null;
+        QueueCapacityBatches = null;
     }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }

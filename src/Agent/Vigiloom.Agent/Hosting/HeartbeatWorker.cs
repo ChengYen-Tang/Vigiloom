@@ -22,7 +22,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, IConfiguratio
                     : (await client.SendAsync(new IdentityVault(directory), uri, stoppingToken)).ToString();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) when (ex is IOException or HttpRequestException or InvalidOperationException or ArgumentException or UnauthorizedAccessException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OperationCanceledException)
+            catch (Exception ex) when (ex is IOException or InvalidDataException or HttpRequestException or InvalidOperationException or ArgumentException or UnauthorizedAccessException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OperationCanceledException)
             {
                 status = ex.GetType().Name;
             }

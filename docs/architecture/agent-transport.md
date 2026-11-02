@@ -1,6 +1,6 @@
 # Agent transport: implementation notes
 
-REQ-19 is in progress. The queue, authenticated receipt endpoint and a test-driven client primitive exist; the Agent host does not yet produce or automatically transmit these batches. This document does not claim the end-to-end transport is complete.
+REQ-19 is in progress. The queue, authenticated receipt endpoint and scheduled Agent sender exist; no production collector produces batches yet. This document does not claim the end-to-end transport is complete.
 
 ## Local durable queue
 
@@ -11,6 +11,12 @@ The queue uses Microsoft.Data.Sqlite 10.0.14 and the bundled SQLite native libra
 The initial capacity is 256 MiB of serialized payload and at most 8,192 queued batches. This is a **logical payload limit**, not a hard filesystem quota: SQLite pages, metadata and a rollback journal add disk use. A full queue rejects the new batch so the caller can apply backpressure; rejection is not yet a durable loss count and no policy for discarding or expiry is implemented in this slice. The host must expose available capacity, persist and report any actual loss, distinguish classes of data, and handle disk-full and filesystem errors without reporting success. User-adjustable limits and explicit retention/expiry behavior remain to be integrated.
 
 Queue format 2 atomically upgrades format 1 and adds persistent quarantine markers. Invalid local batches and batches rejected with permanent HTTP client errors remain in the database with their bytes and reason, still consume capacity, and are skipped when reading the next pending batch. Queue status exposes counts locally; reporting and recovery through the central UI are not yet implemented. Older format-1 binaries reject the format-2 database: the future updater must check compatibility and must not start an incompatible downgrade. Quarantine is not deletion, expiry, or a durable loss counter.
+
+## Queue status reports
+
+An Agent process obtains a fresh report epoch using an authenticated compare-and-swap against the central epoch. A lost session response is retried with the same expected and proposed epochs. Each process serializes snapshots and assigns an increasing sequence. The central transaction accepts only the current epoch and a newer sequence; old or duplicate reports do not replace the snapshot. If another process replaces the session, the old process keeps sending empty heartbeats and does not automatically take the session back. A failed or timed-out session negotiation likewise does not stop heartbeat delivery. A null queue snapshot means the local queue could not be read, not that it was empty. A report timestamp must be considered when presenting queue status; current connectivity does not make an old snapshot fresh.
+
+This is not a complete restore protocol. Restoring the central database can roll an epoch and its watermark back. REQ-40 must fence existing report sessions and clear their snapshots before accepting traffic after a restore, then establish a safe way for Agents to resume queue reporting, and verify the full restore flow. A fenced running process currently continues only empty heartbeats until restarted. The current implementation does not yet provide or validate the restore operation. Queue UI, lost-data accounting, and configurable limits remain incomplete under REQ-19.
 
 ## Required integration
 

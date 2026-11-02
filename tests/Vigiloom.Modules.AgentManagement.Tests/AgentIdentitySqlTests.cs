@@ -146,6 +146,36 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task QueueSession_ConcurrentReplacementAllowsOnlyOneWinner(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("queue session server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var original = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(null, original), token));
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        var results = await Task.WhenAll(
+            identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(original, first), token),
+            identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(original, second), token));
+        Assert.AreEqual(1, results.Count(x => x == AgentIdentityStatus.Success));
+        Assert.AreEqual(1, results.Count(x => x == AgentIdentityStatus.Conflict));
+        var winner = results[0] == AgentIdentityStatus.Success ? first : second;
+        var queue = new AgentQueueSnapshot(10, 1, 0, 1024, 10);
+        Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, original, 1, queue), token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, winner, 1, queue), token));
+        Assert.AreEqual(queue, (await new AgentMonitoring(agents, source, clock).GetAsync(device.Id, token))!.Queue!.Snapshot);
+    }, snapshotReads);
+
+    [TestMethod]
     public Task AgentMonitoring_DistinguishesRegistrationHeartbeatAndOfflineFromPing() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
@@ -166,15 +196,43 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
         var receivedAt = clock.Now;
         Assert.AreEqual(AgentConnectionState.Online, (await monitoring.GetAsync(device.Id, token))!.State);
-        clock.Now = clock.Now.AddSeconds(89);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue);
+        var epoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(null, epoch), token));
+        var queue = new AgentQueueSnapshot(1024, 3, 1, 4096, 10);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 2, queue), token));
+        var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
+        Assert.AreEqual(receivedAt, queueStatus!.ReportedAt);
+        Assert.AreEqual(queue, queueStatus.Snapshot);
+        clock.Now = receivedAt.AddSeconds(1);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 1, null), token));
+        Assert.AreEqual(queue, (await monitoring.GetAsync(device.Id, token))!.Queue!.Snapshot, "A late older sequence must not replace newer queue status.");
+        clock.Now = receivedAt.AddSeconds(-1);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 3, null), token));
+        queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
+        Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
+        Assert.IsNull(queueStatus.Snapshot, "Unavailable must differ from an empty queue.");
+        await Assert.ThrowsAsync<ArgumentException>(() => identity.RecordHeartbeatAsync(credential,
+            new AgentHeartbeatReport(1, epoch, 4, queue with { QuarantinedBatches = 4 }), token));
+        var replacementEpoch = Guid.CreateVersion7();
+        var replacement = new AgentQueueSessionRequest(epoch, replacementEpoch);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, replacement, token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, replacement, token), "A lost session response can be retried.");
+        Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(epoch, Guid.CreateVersion7()), token));
+        Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 4, queue), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue, "An old session cannot restore stale queue status.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, replacementEpoch, 1, queue), token));
+        Assert.AreEqual(queue, (await monitoring.GetAsync(device.Id, token))!.Queue!.Snapshot);
+        var latestHeartbeat = receivedAt.AddSeconds(1);
+        clock.Now = latestHeartbeat.AddSeconds(89);
         Assert.AreEqual(AgentConnectionState.Online, (await monitoring.GetAsync(device.Id, token))!.State);
         clock.Now = clock.Now.AddSeconds(1);
         var offline = await monitoring.GetAsync(device.Id, token);
         Assert.AreEqual(AgentConnectionState.Offline, offline!.State);
-        Assert.AreEqual(receivedAt, offline.LastHeartbeatAt);
-        clock.Now = receivedAt.AddSeconds(-1);
+        Assert.AreEqual(latestHeartbeat, offline.LastHeartbeatAt);
+        clock.Now = latestHeartbeat.AddSeconds(-1);
         Assert.AreEqual(AgentConnectionState.ClockUncertain, (await monitoring.GetAsync(device.Id, token))!.State);
-        clock.Now = receivedAt.AddMinutes(-6);
+        clock.Now = latestHeartbeat.AddMinutes(-6);
         Assert.AreEqual(AgentConnectionState.ClockUncertain, (await monitoring.GetAsync(device.Id, token))!.State);
         await using (var db = resources.CreateDbContext())
         {
