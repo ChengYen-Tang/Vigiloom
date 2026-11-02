@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -20,6 +21,10 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.Resources.Application;
+using System.Data.Common;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Api;
 using Vigiloom.Web.Authentication;
@@ -32,6 +37,121 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentIdentityHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task AgentTransport_PreAuthenticationConcurrencyIsBoundedAndReleased() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var gate = new TestDeviceGate();
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                    ["Vigiloom:Agent:Transport:MaxConcurrentRequests"] = "1",
+                    ["Vigiloom:Agent:Transport:MaxQueuedRequests"] = "0"
+                }));
+                builder.ConfigureServices(services => services.AddScoped<IDeviceAgentSource>(provider =>
+                    new BlockingDeviceSource(new DeviceAgentSource(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>()), gate)));
+            });
+            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var device = new Device("Agent", "127.0.0.1", true, DateTimeOffset.UtcNow);
+            await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            string credential;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                credential = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+            }
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var first = factory.CreateClient(options);
+            using var second = factory.CreateClient(options);
+            first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            gate.Enabled = true;
+            var pending = first.PostAsync("/api/v1/agent/heartbeat", null, token);
+            HttpStatusCode? firstStatus = null;
+            try
+            {
+                await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                using var limited = await second.PostAsync("/api/v1/agent/heartbeat", null, token);
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+                Assert.IsNotNull(limited.Headers.RetryAfter);
+            }
+            finally
+            {
+                gate.Release.TrySetResult();
+                using var completed = await pending;
+                firstStatus = completed.StatusCode;
+            }
+            Assert.AreEqual(HttpStatusCode.NoContent, firstStatus);
+            using (var resumed = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, resumed.StatusCode);
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task AgentTransport_RateLimitsVerifiedAgentsIndependentlyBehindOneAddress() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                    ["Vigiloom:Authentication:ApiRequestsPerMinute"] = "1",
+                    ["Vigiloom:Agent:Transport:RequestsPerMinute"] = "2"
+                }));
+            });
+            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var credentials = new List<string>();
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                for (var i = 0; i < 2; i++)
+                {
+                    var device = new Device($"Agent {i}", "127.0.0.1", true, DateTimeOffset.UtcNow);
+                    await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+                    var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                    var secret = RandomNumberGenerator.GetBytes(32);
+                    var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                    credentials.Add($"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
+                }
+            }
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var invalid = factory.CreateClient(options);
+            for (var i = 0; i < 5; i++)
+            {
+                invalid.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{Guid.CreateVersion7():D}.{WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32))}");
+                using var denied = await invalid.PostAsync("/api/v1/agent/heartbeat", null, token);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            }
+            using var first = factory.CreateClient(options);
+            using var second = factory.CreateClient(options);
+            first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[0]);
+            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[1]);
+            using (var heartbeat = await first.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            var now = DateTimeOffset.UtcNow;
+            var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Test OS", "X64", ".NET 10");
+            using (var batch = await first.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), now, [message]))), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, batch.StatusCode);
+            using (var limited = await first.PostAsync("/api/v1/agent/heartbeat", null, token))
+            {
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+                Assert.IsNotNull(limited.Headers.RetryAfter);
+            }
+            using (var heartbeat = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var heartbeat = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task AgentRecoversAfterCommittedEnrollmentResponseIsLostAndExpires() =>
@@ -75,6 +195,35 @@ public sealed class AgentIdentityHttpTests
                 }
                 Assert.AreEqual(recoveredId, await coordinator.EnrollAsync(vault, server, null, token));
                 await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.EnrollAsync(vault, new Uri("https://other.example/"), null, token));
+                var reportAt = DateTimeOffset.UtcNow;
+                var report = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, reportAt,
+                    System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+                    System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+                    System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), reportAt, [report]);
+                var bytes = AgentBatchCodec.Serialize(batch);
+                var queue = new DurableBatchQueue(vault, recoveredId);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, bytes, token));
+                using (var batchHttp = new HttpClient(new DropFirstBatchResponse(factory.Server.CreateHandler())))
+                {
+                    var sender = new AgentBatchClient(batchHttp, TimeProvider.System);
+                    await Assert.ThrowsAsync<HttpRequestException>(() => sender.SendNextAsync(vault, server, token));
+                    Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+                    await using (var db = await agents.CreateDbContextAsync(token))
+                    {
+                        Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
+                        Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
+                    }
+                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    Assert.IsNull(await queue.PeekAsync(token));
+                    await using var dbAfter = await agents.CreateDbContextAsync(token);
+                    Assert.AreEqual(1, await dbAfter.ReceivedBatches.CountAsync(token));
+                    Assert.AreEqual(1, await dbAfter.RuntimeObservations.CountAsync(token));
+                    var conflicting = AgentBatchCodec.Serialize(batch with { Items = [report with { RuntimeVersion = "different" }] });
+                    Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, conflicting, token));
+                    Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
+                    Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId, "A permanent rejection must not silently delete the batch.");
+                }
                 using (var rotationHttp = new HttpClient(new DropFirstRotationResponse(factory.Server.CreateHandler())))
                 {
                     var rotation = new IdentityClient(rotationHttp);
@@ -161,6 +310,7 @@ public sealed class AgentIdentityHttpTests
             }
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
+            using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
             using (var apiCannotManage = await api.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotManage.StatusCode);
             using (var unauthenticated = await agent.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
@@ -251,6 +401,22 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            var now = DateTimeOffset.UtcNow;
+            var observation = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test operating system", "X64", ".NET 10");
+            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [observation]);
+            var batchBytes = AgentBatchCodec.Serialize(batch);
+            using (var batchResponse = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchResponse.StatusCode);
+            using (var batchRetry = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchRetry.StatusCode);
+            using (var changedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(batch with { Items = [observation with { RuntimeVersion = "changed" }] })), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, changedBatch.StatusCode);
+            using (var invalidBatch = await agent.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
+            using (var unsupported = JsonBytes(batchBytes))
+            {
+                unsupported.Headers.ContentEncoding.Add("gzip");
+                using var rejected = await agent.PostAsync("/api/v1/agent/batches", unsupported, token);
+                Assert.AreEqual(HttpStatusCode.UnsupportedMediaType, rejected.StatusCode);
+            }
             using (var machineStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineStatus.StatusCode);
             using (var connected = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
@@ -283,12 +449,43 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             using (var revoked = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
             using (var revokedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedHeartbeat.StatusCode);
+            using (var revokedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedBatch.StatusCode);
         }, TestContext.CancellationToken);
 
     private sealed class TestClock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private static ByteArrayContent JsonBytes(byte[] bytes)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return content;
+    }
+
+    private sealed class TestDeviceGate
+    {
+        public volatile bool Enabled;
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingDeviceSource(IDeviceAgentSource inner, TestDeviceGate gate) : IDeviceAgentSource
+    {
+        public async Task<DeviceAgentState?> GetAsync(Guid deviceId, CancellationToken token)
+        {
+            if (gate.Enabled)
+            {
+                gate.Entered.TrySetResult();
+                await gate.Release.Task.WaitAsync(token);
+            }
+            return await inner.GetAsync(deviceId, token);
+        }
+
+        public Task<bool> IsCurrentAsync(Guid deviceId, long generation, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
+            inner.IsCurrentAsync(deviceId, generation, connection, transaction, token);
     }
 
     private sealed class DropFirstEnrollmentResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
@@ -302,6 +499,22 @@ public sealed class AgentIdentityHttpTests
                 dropped = true;
                 response.Dispose();
                 throw new HttpRequestException("Simulated connection loss after the server committed.");
+            }
+            return response;
+        }
+    }
+
+    private sealed class DropFirstBatchResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        private bool dropped;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var response = await base.SendAsync(request, token);
+            if (!dropped && request.RequestUri?.AbsolutePath == "/api/v1/agent/batches")
+            {
+                dropped = true;
+                response.Dispose();
+                throw new HttpRequestException("Simulated connection loss after the batch commit.");
             }
             return response;
         }

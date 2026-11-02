@@ -69,7 +69,8 @@ internal static class AgentEndpoints
             .WithSummary("Inspect the current Agent identity");
         machine.MapPost("/heartbeat", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
             await agents.RecordHeartbeatAsync(Bearer(context), token) == AgentIdentityStatus.Success ? Results.NoContent() : Results.Unauthorized())
-            .RequireAuthorization("Agent").WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(0))
+            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(0))
             .Produces(204).ProducesProblem(401).ProducesProblem(403).ProducesProblem(413).ProducesProblem(429)
             .WithSummary("Record an authenticated Agent heartbeat");
         machine.MapPost("/rotation/start", async (RotationRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
@@ -85,7 +86,7 @@ internal static class AgentEndpoints
             .WithSummary("Confirm a pending rotation using the replacement Agent credential");
     }
 
-    private static string? Bearer(HttpContext context)
+    internal static string? Bearer(HttpContext context)
     {
         var header = context.Request.Headers.Authorization.ToString();
         return context.Request.IsHttps && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..] : null;

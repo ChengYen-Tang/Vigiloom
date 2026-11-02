@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -107,10 +108,27 @@ public sealed class AgentIdentityTlsTests
                 Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
+                var now = DateTimeOffset.UtcNow;
+                var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test system", "X64", ".NET 10");
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
+                using (var content = new ByteArrayContent(AgentBatchCodec.Serialize(batch)))
+                {
+                    content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    using var accepted = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), content, token);
+                    Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+                }
+                await using (var db = await agents.CreateDbContextAsync(token))
+                    Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
                 using (var oversized = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new StringContent(new string('x', 4096), System.Text.Encoding.UTF8, "application/json"), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
                 using (var oversizedChunked = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new UnknownLengthContent(4096), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversizedChunked.StatusCode);
+                using (var tooLarge = new ByteArrayContent(new byte[AgentBatchCodec.MaximumBytes + 1]))
+                {
+                    tooLarge.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    using var rejected = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), tooLarge, token);
+                    Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                }
             }
             finally
             {
