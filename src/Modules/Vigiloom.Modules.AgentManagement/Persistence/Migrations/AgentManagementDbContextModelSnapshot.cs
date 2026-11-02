@@ -46,6 +46,30 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<byte[]>("PendingVerifier")
                         .HasColumnType("binary(32)");
 
+                    b.Property<int?>("QueueCapacityBatches")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("QueueCapacityBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QueueQuarantinedBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("QueueReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QueueReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("QueueTotalBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QueueTotalBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
 

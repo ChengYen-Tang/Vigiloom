@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -67,12 +68,27 @@ internal static class AgentEndpoints
             Guid.Parse(context.User.FindFirstValue("vigiloom:device-id")!))))
             .RequireAuthorization("Agent").Produces<AgentIdentityResponse>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Inspect the current Agent identity");
-        machine.MapPost("/heartbeat", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
-            await agents.RecordHeartbeatAsync(Bearer(context), token) == AgentIdentityStatus.Success ? Results.NoContent() : Results.Unauthorized())
+        machine.MapPost("/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
-            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(0))
-            .Produces(204).ProducesProblem(401).ProducesProblem(403).ProducesProblem(413).ProducesProblem(429)
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes))
+            .Accepts<AgentHeartbeatReport>(true, "application/json")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
             .WithSummary("Record an authenticated Agent heartbeat");
+        machine.MapGet("/queue-session", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
+            await agents.GetQueueSessionAsync(Bearer(context), token) is { } session ? Results.Ok(session) : Results.Unauthorized())
+            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
+            .Produces<AgentQueueSession>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+            .WithSummary("Inspect the current Agent queue-report session");
+        machine.MapPost("/queue-session", async (AgentQueueSessionRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
+            (await agents.BeginQueueSessionAsync(Bearer(context), input, token)) switch
+            {
+                AgentIdentityStatus.Success => Results.NoContent(),
+                AgentIdentityStatus.Conflict => Results.Conflict(),
+                _ => Results.Unauthorized()
+            }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024))
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429)
+            .WithSummary("Atomically establish an idempotent Agent queue-report session");
         machine.MapPost("/rotation/start", async (RotationRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
         {
             var result = await agents.BeginRotationAsync(Bearer(context), input.MachineVerifier, token);

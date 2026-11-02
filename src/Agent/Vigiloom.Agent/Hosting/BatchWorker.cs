@@ -27,7 +27,7 @@ internal sealed class BatchWorker(AgentBatchClient client, IConfiguration config
                     : await client.SendNextAsync(new IdentityVault(directory), uri, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) when (ex is IOException or HttpRequestException or InvalidOperationException or ArgumentException or UnauthorizedAccessException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OperationCanceledException or System.Data.Common.DbException)
+            catch (Exception ex) when (ex is IOException or InvalidDataException or HttpRequestException or InvalidOperationException or ArgumentException or UnauthorizedAccessException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OperationCanceledException or System.Data.Common.DbException)
             {
                 outcome = new(BatchSendResult.Retry);
                 failureType = ex.GetType().Name;

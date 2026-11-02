@@ -4,12 +4,13 @@ using Vigiloom.Agent.Core.Identity;
 namespace Vigiloom.Agent.Core.Transport;
 
 /// <summary>A persistent, bounded queue of immutable wire payloads belonging to one Agent identity.</summary>
-public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long capacityBytes = 256L * 1024 * 1024,
+public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long capacityBytes = DurableBatchQueue.DefaultCapacityBytes,
     int maximumBatches = DurableBatchQueue.MaximumQueuedBatches)
 {
     public const int MaximumBatchBytes = 1024 * 1024;
     public const int MaximumBatchRecords = 1000;
     public const int MaximumQueuedBatches = 8192;
+    public const long DefaultCapacityBytes = 256L * 1024 * 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
 
     /// <summary>Persist a batch before sending it. Keep payload unchanged until the call completes. A full queue rejects the batch for backpressure.</summary>
@@ -114,14 +115,21 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         {
             await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
-            using var connection = Open(session.DirectoryPath);
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT queued_bytes, queued_count, (SELECT count(*) FROM batches WHERE rejection IS NOT NULL) FROM queue_state WHERE singleton = 1";
-            using var reader = command.ExecuteReader();
-            if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
-            return new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+            return ReadStatusLocked(session);
         }
         finally { gate.Release(); }
+    }
+
+    // The caller must hold the identity lease. This permits a heartbeat to obtain
+    // its sequence and queue snapshot under the same cross-process lock.
+    internal QueueStatus ReadStatusLocked(IdentityVault.Session session)
+    {
+        using var connection = Open(session.DirectoryPath);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT queued_bytes, queued_count, (SELECT count(*) FROM batches WHERE rejection IS NOT NULL) FROM queue_state WHERE singleton = 1";
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
+        return new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
     }
 
     /// <summary>Remove only a batch whose successful central commit has been acknowledged.</summary>

@@ -1,28 +1,141 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Transport;
 
-/// <summary>Sends a heartbeat using only a registered identity bound to the configured HTTPS server.</summary>
+/// <summary>Sends authenticated heartbeats and ordered queue status for one Agent process.</summary>
 public sealed class AgentHeartbeatClient(HttpClient http)
 {
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private Guid? agentId;
+    private Uri? serverUri;
+    private AgentQueueSessionRequest? sessionRequest;
+    private bool sessionEstablished;
+    private bool sessionReplaced;
+    private long sequence;
+
     public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, CancellationToken token)
     {
-        var expected = IdentityClient.NormalizeServer(server);
-        var (state, mismatch) = await IdentityClient.ReadRegisteredAsync(vault, expected, token);
-        if (state is null) return mismatch ? HeartbeatResult.ServerMismatch : HeartbeatResult.NotRegistered;
-        var id = state.AgentId!.Value;
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(expected, "api/v1/agent/heartbeat"));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{id:D}.{state.MachineSecret}");
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-        return response.StatusCode switch
+        await gate.WaitAsync(token);
+        try
         {
-            HttpStatusCode.NoContent => HeartbeatResult.Accepted,
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => HeartbeatResult.Unauthorized,
-            _ => HeartbeatResult.Unavailable
-        };
+            var expected = IdentityClient.NormalizeServer(server);
+            var (state, mismatch) = await IdentityClient.ReadRegisteredAsync(vault, expected, token);
+            if (state is null) return mismatch ? HeartbeatResult.ServerMismatch : HeartbeatResult.NotRegistered;
+            var id = state.AgentId!.Value;
+            if (agentId != id || serverUri != expected)
+            {
+                agentId = id;
+                serverUri = expected;
+                sessionRequest = null;
+                sessionEstablished = false;
+                sessionReplaced = false;
+                sequence = 0;
+            }
+            var credential = $"vla_{id:D}.{state.MachineSecret}";
+            if (!sessionEstablished && !sessionReplaced)
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                try { await EstablishSessionAsync(expected, credential, timeout.Token); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException) { }
+                // Session discovery is optional: its failure must not suppress connectivity.
+            }
+
+            AgentHeartbeatReport? report = null;
+            if (sessionEstablished)
+            {
+                try
+                {
+                    await using var lease = await vault.AcquireForTransportAsync(token);
+                    var current = await lease.ReadAsync(token);
+                    if (current?.AgentId != id || !string.Equals(current.Server, expected.AbsoluteUri, StringComparison.Ordinal))
+                        throw new InvalidOperationException("Agent identity changed during heartbeat preparation.");
+                    AgentQueueSnapshot? snapshot = null;
+                    try
+                    {
+                        var status = new DurableBatchQueue(vault, id).ReadStatusLocked(lease);
+                        snapshot = new(status.TotalBytes, status.TotalBatches, status.QuarantinedBatches,
+                            DurableBatchQueue.DefaultCapacityBytes, DurableBatchQueue.MaximumQueuedBatches);
+                    }
+                    catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
+                    {
+                        // Unavailable differs from an empty queue.
+                    }
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
+                {
+                    // Connectivity is still reported when local state cannot be read.
+                }
+            }
+            using var response = await PostHeartbeatAsync(expected, credential, report, token);
+            if (report is not null && response.StatusCode == HttpStatusCode.Conflict)
+            {
+                sessionEstablished = false;
+                sessionReplaced = true;
+                using var fallback = await PostHeartbeatAsync(expected, credential, null, token);
+                return fallback.StatusCode == HttpStatusCode.NoContent ? HeartbeatResult.SessionReplaced : Classify(fallback.StatusCode);
+            }
+            if (report is not null && response.StatusCode == HttpStatusCode.RequestEntityTooLarge)
+            {
+                using var fallback = await PostHeartbeatAsync(expected, credential, null, token);
+                return Classify(fallback.StatusCode);
+            }
+            return sessionReplaced && response.StatusCode == HttpStatusCode.NoContent ? HeartbeatResult.SessionReplaced : Classify(response.StatusCode);
+        }
+        finally { gate.Release(); }
     }
+
+    private async Task EstablishSessionAsync(Uri server, string credential, CancellationToken token)
+    {
+        if (sessionRequest is null)
+        {
+            using var request = CreateRequest(HttpMethod.Get, new Uri(server, "api/v1/agent/queue-session"), credential);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            if (!response.IsSuccessStatusCode) return;
+            await response.Content.LoadIntoBufferAsync(1024, token);
+            var current = await response.Content.ReadFromJsonAsync<AgentQueueSession>(cancellationToken: token);
+            if (current is null) return;
+            sessionRequest = new AgentQueueSessionRequest(current.Epoch, Guid.CreateVersion7());
+        }
+        using var begin = CreateRequest(HttpMethod.Post, new Uri(server, "api/v1/agent/queue-session"), credential);
+        begin.Content = JsonContent.Create(sessionRequest);
+        using var result = await http.SendAsync(begin, HttpCompletionOption.ResponseHeadersRead, token);
+        if (result.StatusCode == HttpStatusCode.NoContent) sessionEstablished = true;
+        else if (result.StatusCode == HttpStatusCode.Conflict) sessionReplaced = true;
+    }
+
+    private Task<HttpResponseMessage> PostHeartbeatAsync(Uri server, string credential, AgentHeartbeatReport? report, CancellationToken token)
+    {
+        // SendAsync completes once headers arrive, so the request can be disposed by the caller below.
+        return SendAsync();
+        async Task<HttpResponseMessage> SendAsync()
+        {
+            using var request = CreateRequest(HttpMethod.Post, new Uri(server, "api/v1/agent/heartbeat"), credential);
+            if (report is not null) request.Content = JsonContent.Create(report);
+            return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        }
+    }
+
+    private static HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, string credential)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        return request;
+    }
+
+    private static HeartbeatResult Classify(HttpStatusCode status) => status switch
+    {
+        HttpStatusCode.NoContent => HeartbeatResult.Accepted,
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => HeartbeatResult.Unauthorized,
+        _ => HeartbeatResult.Unavailable
+    };
 }
 
-public enum HeartbeatResult { Accepted, NotRegistered, ServerMismatch, Unauthorized, Unavailable }
+public enum HeartbeatResult { Accepted, NotRegistered, ServerMismatch, Unauthorized, Unavailable, SessionReplaced }

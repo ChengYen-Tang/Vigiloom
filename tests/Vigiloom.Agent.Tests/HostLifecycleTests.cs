@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Time.Testing;
 using System.Net;
+using System.Net.Http.Json;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
@@ -322,6 +323,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
         private int count;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return Task.FromResult(request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent));
             Received.TrySetResult((request.RequestUri, request.Headers.Authorization?.Parameter));
             var number = Interlocked.Increment(ref count);
             if (number == 2) SecondReceived.TrySetResult();
