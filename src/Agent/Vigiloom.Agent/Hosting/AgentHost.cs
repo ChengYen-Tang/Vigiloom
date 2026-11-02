@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Agent.Core.Identity;
 
 namespace Vigiloom.Agent.Hosting;
 
@@ -10,6 +12,17 @@ public static class AgentHost
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Agent");
         builder.Services.AddSystemd();
+        builder.Services.AddHttpClient<IdentityClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.MaxResponseContentBufferSize = 64 * 1024;
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            ConnectTimeout = TimeSpan.FromSeconds(10)
+        });
         return builder;
     }
 }

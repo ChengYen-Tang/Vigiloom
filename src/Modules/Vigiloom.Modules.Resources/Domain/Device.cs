@@ -25,6 +25,8 @@ public sealed class Device
     public bool DeepMonitoring { get; private set; }
     public bool IsEnabled { get; private set; }
     public bool IsArchived { get; private set; }
+    /// <summary>Changes on archive so restored devices cannot reactivate previous Agent credentials.</summary>
+    public long AgentAuthorizationGeneration { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public byte[] Version { get; private set; } = [];
@@ -51,6 +53,7 @@ public sealed class Device
     public void Archive(DateTimeOffset now)
     {
         if (IsArchived) return;
+        AgentAuthorizationGeneration = checked(AgentAuthorizationGeneration + 1);
         IsArchived = true;
         IsEnabled = false;
         UpdatedAt = now.ToUniversalTime();
