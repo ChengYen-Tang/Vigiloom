@@ -126,7 +126,7 @@ public sealed class IdentityClient(HttpClient http)
         return id;
     }
 
-    private static Uri NormalizeServer(Uri server)
+    internal static Uri NormalizeServer(Uri server)
     {
         if (!server.IsAbsoluteUri || server.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(server.UserInfo) ||
             !string.IsNullOrEmpty(server.Query) || !string.IsNullOrEmpty(server.Fragment))
@@ -142,8 +142,9 @@ public sealed class IdentityClient(HttpClient http)
     }
 
     private static string Encode(byte[] data) => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    private static byte[] Decode(string data)
+    internal static byte[] Decode(string data)
     {
+        if (string.IsNullOrEmpty(data)) throw new InvalidDataException("Invalid machine credential.");
         try
         {
             var bytes = Convert.FromBase64String(data.Replace('-', '+').Replace('_', '/') + "=");

@@ -118,6 +118,31 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
 
+    /// <summary>Record receipt using the current credential and device generation under the same transaction as the write.</summary>
+    public async Task<AgentIdentityStatus> RecordHeartbeatAsync(string? credential, CancellationToken token)
+    {
+        if (!TryDecode(credential, "vla", out var id, out var secret)) return AgentIdentityStatus.Invalid;
+        try
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            var binding = await db.Agents.AsNoTracking().Where(x => x.Id == id)
+                .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
+            if (binding is null) return AgentIdentityStatus.Invalid;
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            await LockDeviceAsync(db, binding.DeviceId, token);
+            var agent = await db.Agents.SingleOrDefaultAsync(x => x.Id == id, token);
+            if (agent is null || agent.RevokedAt is not null ||
+                !CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(secret)) ||
+                !await IsCurrentAsync(db, new(binding.DeviceId, binding.DeviceGeneration, true), token))
+                return AgentIdentityStatus.Invalid;
+            agent.RecordHeartbeat(clock.GetUtcNow());
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return AgentIdentityStatus.Success;
+        }
+        finally { CryptographicOperations.ZeroMemory(secret); }
+    }
+
     /// <summary>Recover an already-created Agent ID using both the enrollment secret and its machine secret.</summary>
     public async Task<EnrollmentResult> RecoverAsync(string? enrollmentSecret, string? machineProof, CancellationToken token)
     {

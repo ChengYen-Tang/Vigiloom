@@ -24,8 +24,14 @@ public sealed class Agent
     public DateTimeOffset? PendingUntil { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
+    public DateTimeOffset? LastHeartbeatAt { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
+    public void RecordHeartbeat(DateTimeOffset now)
+    {
+        var utc = now.ToUniversalTime();
+        if (LastHeartbeatAt is null || utc > LastHeartbeatAt) LastHeartbeatAt = utc;
+    }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }
 }

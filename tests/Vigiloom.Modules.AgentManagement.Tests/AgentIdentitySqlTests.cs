@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
@@ -16,6 +17,105 @@ public sealed class AgentIdentitySqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Heartbeat_RevalidatesCredentialWhenConcurrentRevocationCommits(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("heartbeat server", "127.0.0.1", true, clock.GetUtcNow());
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        Assert.AreEqual(AgentIdentityStatus.Success, registration.Status);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
+        var first = clock.Now;
+        clock.Now = clock.Now.AddMinutes(1);
+        await using var revoke = agents.CreateDbContext();
+        await using var transaction = await revoke.Database.BeginTransactionAsync(token);
+        await using (var command = revoke.Database.GetDbConnection().CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = $"vigiloom.agent.device.{device.Id:D}"; command.Parameters.Add(parameter);
+            Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        }
+        var entity = await revoke.Agents.SingleAsync(x => x.Id == registration.AgentId, token);
+        entity.Revoke(clock.GetUtcNow());
+        await revoke.SaveChangesAsync(token);
+        var waiting = identity.RecordHeartbeatAsync(credential, token);
+        await Task.Delay(250, token);
+        Assert.IsFalse(waiting.IsCompleted, "The heartbeat must wait for the revocation transaction.");
+        await transaction.CommitAsync(token);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, await waiting);
+        await using var check = agents.CreateDbContext();
+        Assert.AreEqual(first, (await check.Agents.SingleAsync(x => x.Id == registration.AgentId, token)).LastHeartbeatAt);
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Heartbeat_RejectsConcurrentDeviceArchive(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("heartbeat server", "127.0.0.1", true, clock.GetUtcNow());
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        await using var archive = resources.CreateDbContext();
+        await using var transaction = await archive.Database.BeginTransactionAsync(token);
+        var current = await archive.Devices.SingleAsync(x => x.Id == device.Id, token);
+        current.Archive(clock.GetUtcNow()); await archive.SaveChangesAsync(token);
+        var waiting = identity.RecordHeartbeatAsync(credential, token);
+        await Task.Delay(250, token);
+        Assert.IsFalse(waiting.IsCompleted, "The heartbeat must wait for the archive transaction.");
+        await transaction.CommitAsync(token);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, await waiting);
+        await using var check = agents.CreateDbContext();
+        Assert.IsNull((await check.Agents.SingleAsync(x => x.Id == registration.AgentId, token)).LastHeartbeatAt);
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Heartbeat_RejectsOldCredentialAfterConcurrentRotation(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("heartbeat server", "127.0.0.1", true, clock.GetUtcNow());
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var oldSecret = RandomNumberGenerator.GetBytes(32);
+        var nextSecret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(oldSecret), token);
+        var oldCredential = Credential(registration.AgentId!.Value, oldSecret);
+        var nextCredential = Credential(registration.AgentId.Value, nextSecret);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginRotationAsync(oldCredential, SHA256.HashData(nextSecret), token));
+        await using var rotation = agents.CreateDbContext();
+        await using var transaction = await rotation.Database.BeginTransactionAsync(token);
+        await using (var command = rotation.Database.GetDbConnection().CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = $"vigiloom.agent.device.{device.Id:D}"; command.Parameters.Add(parameter);
+            Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        }
+        var current = await rotation.Agents.SingleAsync(x => x.Id == registration.AgentId, token);
+        current.FinishRotation(); await rotation.SaveChangesAsync(token);
+        var waiting = identity.RecordHeartbeatAsync(oldCredential, token);
+        await Task.Delay(250, token);
+        Assert.IsFalse(waiting.IsCompleted, "The heartbeat must wait for the rotation transaction.");
+        await transaction.CommitAsync(token);
+        Assert.AreEqual(AgentIdentityStatus.Invalid, await waiting);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(nextCredential, token));
+    }, snapshotReads);
 
     [TestMethod]
     public Task SchemaUsesResourceKeysClusteredRowsAndDeviceForeignKeys() => WithDatabase(async (_, agents, token) =>
@@ -41,6 +141,13 @@ public sealed class AgentIdentitySqlTests
         command.CommandText = """
             SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON i.object_id = t.object_id JOIN sys.schemas s ON t.schema_id = s.schema_id
             WHERE s.name = 'agent' AND t.name = 'Agents' AND i.name = 'IX_Agents_DeviceId' AND i.is_unique = 1 AND i.has_filter = 1
+            """;
+        Assert.AreEqual(1, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON c.object_id = t.object_id
+            JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = 'agent' AND t.name = 'Agents' AND c.name = 'LastHeartbeatAt'
+              AND c.system_type_id = TYPE_ID('datetimeoffset') AND c.scale = 7 AND c.is_nullable = 1
             """;
         Assert.AreEqual(1, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
     });

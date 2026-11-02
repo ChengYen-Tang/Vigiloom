@@ -44,6 +44,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [session];
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/heartbeat", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/agent/rotation/", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
             else if (path.Equals("/api/v1/agent/recover", StringComparison.OrdinalIgnoreCase))

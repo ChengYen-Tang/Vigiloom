@@ -37,6 +37,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("LastHeartbeatAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("PendingUntil")
                         .HasColumnType("datetimeoffset");
 
