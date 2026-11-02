@@ -12,6 +12,44 @@ public sealed class AgentBatchClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task Sender_CancellationDuringSuccessfulResponseRetainsBatchForRetry()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var now = DateTimeOffset.UtcNow;
+            var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [item]);
+            var bytes = AgentBatchCodec.Serialize(batch);
+            var queue = new DurableBatchQueue(vault, id);
+            await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token);
+            using var cancelled = new CancellationTokenSource();
+            var handler = new CancelAfterAckHandler(cancelled);
+            using var http = new HttpClient(handler);
+            var client = new AgentBatchClient(http, TimeProvider.System);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => client.SendNextAsync(vault, new Uri("https://example.test/"), cancelled.Token));
+            var retained = await queue.PeekAsync(token);
+            Assert.AreEqual(batch.BatchId, retained!.BatchId);
+            CollectionAssert.AreEqual(bytes, retained.Payload);
+            Assert.AreEqual(BatchSendResult.Delivered, (await client.SendNextAsync(vault, new Uri("https://example.test/"), token)).Status);
+            Assert.IsNull(await queue.PeekAsync(token));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Sender_QuarantinesInvalidLocalBatchAndContinuesWithNextBatch()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests", Path.GetRandomFileName());
@@ -104,6 +142,16 @@ public sealed class AgentBatchClientTests
                 return limited;
             }
             return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+    }
+
+    private sealed class CancelAfterAckHandler(CancellationTokenSource cancelled) : HttpMessageHandler
+    {
+        private bool first = true;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (first) { first = false; cancelled.Cancel(); }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
         }
     }
 }
