@@ -59,8 +59,8 @@ public sealed class AgentIdentityTlsTests
             using var tlsCertificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
             CryptographicOperations.ZeroMemory(pfx);
 
-            var rejectedStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var knownLengthStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var rejectedStatus = new RejectionCapture();
+            var knownLengthStatus = new RejectionCapture();
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
@@ -87,18 +87,22 @@ public sealed class AgentIdentityTlsTests
             {
                 using var untrusted = new HttpClient();
                 await Assert.ThrowsAsync<HttpRequestException>(() => untrusted.GetAsync(new Uri(url, "/health/live"), token));
-                using var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
-                handler.ServerCertificateCustomValidationCallback = (_, certificate, _, errors) =>
+                HttpClient CreateClient()
                 {
-                    if (certificate is null || (errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
-                    using var chain = new X509Chain();
-                    chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-                    chain.ChainPolicy.CustomTrustStore.Add(root);
-                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                    chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
-                    return chain.Build(certificate);
-                };
-                using var http = new HttpClient(handler) { MaxResponseContentBufferSize = 65536 };
+                    var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false };
+                    handler.ServerCertificateCustomValidationCallback = (_, certificate, _, errors) =>
+                    {
+                        if (certificate is null || (errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
+                        using var chain = new X509Chain();
+                        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                        chain.ChainPolicy.CustomTrustStore.Add(root);
+                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+                        return chain.Build(certificate);
+                    };
+                    return new HttpClient(handler) { MaxResponseContentBufferSize = 65536 };
+                }
+                using var http = CreateClient();
                 await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync(new Uri(listenUrl, "/health/live"), token));
                 var vault = new IdentityVault(statePath);
                 var id = await new IdentityClient(http).EnrollAsync(vault, url, issued.Secret, token);
@@ -187,10 +191,12 @@ public sealed class AgentIdentityTlsTests
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversizedChunked.StatusCode);
                 using (var tooLarge = new ByteArrayContent(new byte[AgentBatchCodec.MaximumBytes + 1]))
                 {
+                    using var probe = CreateClient();
+                    probe.DefaultRequestHeaders.Authorization = http.DefaultRequestHeaders.Authorization;
                     tooLarge.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                     using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = tooLarge };
                     request.Headers.Add("X-Test-Capture-Status", "known");
-                    await AssertRejectedAsync(http, request, knownLengthStatus, token);
+                    await AssertRejectedAsync(probe, request, knownLengthStatus, token);
                 }
                 var otherBatch = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [message with { MessageId = Guid.CreateVersion7() }] });
                 using var compressed = new MemoryStream();
@@ -199,10 +205,12 @@ public sealed class AgentIdentityTlsTests
                 compressed.GetBuffer().AsSpan(0, checked((int)compressed.Length)).CopyTo(oversizedEncoded);
                 using (var trailing = new UnknownLengthBytesContent(oversizedEncoded))
                 {
+                    using var probe = CreateClient();
+                    probe.DefaultRequestHeaders.Authorization = http.DefaultRequestHeaders.Authorization;
                     trailing.Headers.ContentEncoding.Add("gzip");
                     using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = trailing };
                     request.Headers.Add("X-Test-Capture-Status", "chunked");
-                    await AssertRejectedAsync(http, request, rejectedStatus, token);
+                    await AssertRejectedAsync(probe, request, rejectedStatus, token);
                 }
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
@@ -219,8 +227,9 @@ public sealed class AgentIdentityTlsTests
             }
         }, TestContext.CancellationToken);
 
-    private static async Task AssertRejectedAsync(HttpClient http, HttpRequestMessage request, TaskCompletionSource<int> result, CancellationToken token)
+    private static async Task AssertRejectedAsync(HttpClient http, HttpRequestMessage request, RejectionCapture result, CancellationToken token)
     {
+        HttpRequestException? transportError = null;
         try
         {
             using var rejected = await http.SendAsync(request, token);
@@ -230,11 +239,25 @@ public sealed class AgentIdentityTlsTests
         {
             // Kestrel may reject and close while the client is still sending the body.
             // A connection error alone is never treated as proof of rejection.
+            transportError = exception;
         }
-        Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await result.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+        try
+        {
+            Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await result.Status.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+        }
+        catch (TimeoutException exception)
+        {
+            throw new AssertFailedException($"No server 413 was observed. Request entered pipeline: {result.Entered.Task.IsCompletedSuccessfully}; transport error: {transportError}", exception);
+        }
     }
 
-    private sealed class CaptureRejectedStatus(TaskCompletionSource<int> chunked, TaskCompletionSource<int> known) : IStartupFilter
+    private sealed class RejectionCapture
+    {
+        public TaskCompletionSource<bool> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<int> Status { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class CaptureRejectedStatus(RejectionCapture chunked, RejectionCapture known) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
@@ -247,7 +270,10 @@ public sealed class AgentIdentityTlsTests
                     _ => null
                 };
                 if (result is not null)
-                    context.Response.OnStarting(() => { result.TrySetResult(context.Response.StatusCode); return Task.CompletedTask; });
+                {
+                    result.Entered.TrySetResult(true);
+                    context.Response.OnStarting(() => { result.Status.TrySetResult(context.Response.StatusCode); return Task.CompletedTask; });
+                }
                 await following(context);
             });
             next(app);
