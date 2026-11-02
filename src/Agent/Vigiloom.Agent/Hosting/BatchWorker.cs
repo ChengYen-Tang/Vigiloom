@@ -8,12 +8,16 @@ namespace Vigiloom.Agent.Hosting;
 /// <summary>Drains durable batches without overlapping requests, retaining all unconfirmed data.</summary>
 internal sealed class BatchWorker(AgentBatchClient client, AgentSettingsRuntime settings, IConfiguration configuration, TimeProvider clock, ILogger<BatchWorker> logger) : BackgroundService
 {
+    private const int MaximumCatchUpBurst = 4;
+    private static readonly TimeSpan CatchUpDelay = TimeSpan.FromMilliseconds(250);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         TimeSpan delay;
         try { delay = await NormalDelayAsync(stoppingToken); }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         var failures = 0;
+        var consecutiveDelivered = 0;
         string? previous = null;
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -47,6 +51,7 @@ internal sealed class BatchWorker(AgentBatchClient client, AgentSettingsRuntime 
             }
             if (outcome.Status is BatchSendResult.Retry)
             {
+                consecutiveDelivered = 0;
                 failures = Math.Min(failures + 1, 7);
                 var seconds = Math.Min(300, 5 * (1 << (failures - 1)));
                 delay = TimeSpan.FromSeconds(Math.Min(300, seconds * (1 + Random.Shared.NextDouble() * 0.2)));
@@ -55,6 +60,14 @@ internal sealed class BatchWorker(AgentBatchClient client, AgentSettingsRuntime 
             else
             {
                 failures = 0;
+                if (outcome.Status == BatchSendResult.Delivered && ++consecutiveDelivered < MaximumCatchUpBurst)
+                {
+                    // Probe the next persisted batch promptly, but periodically yield to
+                    // the normal interval so a backlog cannot monopolize the receiver.
+                    delay = CatchUpDelay;
+                    continue;
+                }
+                consecutiveDelivered = 0;
                 try
                 {
                     delay = outcome.Status is BatchSendResult.NotRegistered or BatchSendResult.ServerMismatch or BatchSendResult.Unauthorized

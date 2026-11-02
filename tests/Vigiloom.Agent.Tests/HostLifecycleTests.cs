@@ -434,9 +434,140 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.AreEqual(1, handler.Count);
                 clock.Advance(TimeSpan.FromSeconds(1));
                 await handler.Acknowledged.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await clock.BurstScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromMilliseconds(250));
                 await clock.NormalScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 Assert.IsNull(await queue.PeekAsync(token));
                 Assert.AreEqual(2, handler.Count);
+            }
+            finally { await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomBatchHostTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(20000, CooperativeCancellation = true)]
+    public async Task Host_BatchSenderCatchesUpInBoundedBursts()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchHostTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var queue = new DurableBatchQueue(vault, id);
+            for (var i = 0; i < 5; i++)
+            {
+                var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [item]);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, AgentBatchCodec.Serialize(batch), token));
+            }
+            var clock = new ObservedTimeProvider();
+            var handler = new BatchBurstHandler();
+            using var http = new HttpClient(handler);
+            var builder = AgentHost.CreateBuilder([]);
+            DisableSettingsWorker(builder);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root,
+                ["Vigiloom:Agent:Server"] = "https://example.test/"
+            });
+            builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "HeartbeatWorker"));
+            builder.Services.AddSingleton(new AgentBatchClient(http, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await host.StartAsync(token);
+                await clock.FirstScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromSeconds(6));
+                for (var i = 0; i < 3; i++)
+                {
+                    Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
+                    clock.Advance(TimeSpan.FromMilliseconds(250));
+                }
+                await clock.BurstPauseScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(4, handler.Count);
+                Assert.IsNotNull(await queue.PeekAsync(token));
+                clock.Advance(TimeSpan.FromSeconds(6));
+                await handler.Fifth.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
+                Assert.IsNull(await queue.PeekAsync(token));
+            }
+            finally { await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomBatchHostTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(20000, CooperativeCancellation = true)]
+    public async Task Host_BatchSenderHonorsRetryAfterDuringCatchUp()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchHostTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var queue = new DurableBatchQueue(vault, id);
+            for (var i = 0; i < 2; i++)
+            {
+                var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [item]);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, AgentBatchCodec.Serialize(batch), token));
+            }
+            var clock = new ObservedTimeProvider();
+            var handler = new CatchUpRateLimitHandler();
+            using var http = new HttpClient(handler);
+            var builder = AgentHost.CreateBuilder([]);
+            DisableSettingsWorker(builder);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root,
+                ["Vigiloom:Agent:Server"] = "https://example.test/"
+            });
+            builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "HeartbeatWorker"));
+            builder.Services.AddSingleton(new AgentBatchClient(http, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await host.StartAsync(token);
+                await clock.FirstScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromSeconds(6));
+                Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
+                clock.Advance(TimeSpan.FromMilliseconds(250));
+                await clock.RetryScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(2, handler.Count);
+                var pending = await queue.PeekAsync(token);
+                Assert.IsNotNull(pending);
+                clock.Advance(TimeSpan.FromSeconds(59));
+                Assert.AreEqual(2, handler.Count);
+                clock.Advance(TimeSpan.FromSeconds(1));
+                await handler.Retried.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
+                Assert.IsNull(await queue.PeekAsync(token));
+                Assert.AreEqual(3, handler.Count);
             }
             finally { await host.StopAsync(CancellationToken.None); }
         }
@@ -659,6 +790,37 @@ public sealed class HostLifecycleTests(TestContext testContext)
         }
     }
 
+    private sealed class BatchBurstHandler : HttpMessageHandler
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public TaskCompletionSource Fifth { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref count) == 5) Fifth.TrySetResult();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        }
+    }
+
+    private sealed class CatchUpRateLimitHandler : HttpMessageHandler
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public TaskCompletionSource Retried { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var number = Interlocked.Increment(ref count);
+            if (number == 2)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(60));
+                return Task.FromResult(response);
+            }
+            if (number == 3) Retried.TrySetResult();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        }
+    }
+
     private sealed class SettingsHostHandler(AgentSettingsSnapshot next) : HttpMessageHandler
     {
         private int count;
@@ -720,6 +882,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
         private readonly FakeTimeProvider inner = new();
         public TaskCompletionSource RetryScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource NormalScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource BurstScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource BurstPauseScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public SemaphoreSlim BurstTimers { get; } = new(0);
         public TaskCompletionSource FirstScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource FirstDailyScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SecondDailyScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -728,6 +893,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public TaskCompletionSource ConfiguredBatchScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int dailyCount;
         private int settingsCount;
+        private int burstCount;
         public void Advance(TimeSpan amount) => inner.Advance(amount);
         public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
         public override long GetTimestamp() => inner.GetTimestamp();
@@ -735,6 +901,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             var timer = inner.CreateTimer(callback, state, dueTime, period);
+            if (dueTime == TimeSpan.FromMilliseconds(250))
+            {
+                Interlocked.Increment(ref burstCount);
+                BurstScheduled.TrySetResult();
+                BurstTimers.Release();
+            }
+            if (dueTime >= TimeSpan.FromSeconds(5) && dueTime <= TimeSpan.FromSeconds(6) && Volatile.Read(ref burstCount) >= 3)
+                BurstPauseScheduled.TrySetResult();
             if (dueTime >= TimeSpan.FromSeconds(10) && dueTime <= TimeSpan.FromSeconds(12)) ConfiguredBatchScheduled.TrySetResult();
             if (dueTime >= TimeSpan.FromSeconds(240) && dueTime <= TimeSpan.FromSeconds(360))
             {
