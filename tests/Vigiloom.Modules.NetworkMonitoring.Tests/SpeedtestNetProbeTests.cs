@@ -46,6 +46,82 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
+    public async Task MeasureAsync_EmptyLaterDownloadDoesNotTurnShortSampleIntoSuccess()
+    {
+        var server = Server();
+        var downloads = new Queue<SpeedTestResult>([Measurement(1_000_000, 100), Measurement(0, 2000)]);
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
+            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
+        };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Partial, result.State);
+        Assert.IsNotNull(result.DownloadMbps);
+        Assert.IsNotNull(result.UploadMbps);
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task MeasureAsync_SlowUploadProbeCannotCountAsTransferTime()
+    {
+        var handler = new ControlledPhaseHandler(uploadDelayMs: 100, probeDelayMs: 2200);
+        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 12), TestContext.CancellationToken);
+        Assert.AreNotEqual(SpeedTestState.Success, result.State);
+        Assert.IsGreaterThan(0, handler.UploadRequests);
+        Assert.IsGreaterThan(1, handler.UploadProbes);
+        Assert.IsNotNull(result.UploadMbps);
+        var completedMbps = handler.UploadBytes * 8d / handler.UploadElapsedSeconds / 1_000_000d;
+        Assert.IsGreaterThan(completedMbps * 0.4, result.UploadMbps.Value,
+            "A later empty probe must not make an earlier completed upload appear near zero.");
+    }
+
+    [TestMethod]
+    public async Task MeasureAsync_UploadTimeoutRetainsLastCompletedSpeed()
+    {
+        var server = Server();
+        var uploadCalls = 0;
+        var service = new SpeedTestMock
+        {
+            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
+            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
+            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
+            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000)),
+            GetUploadSpeedAsyncFunc = async (_, _, token) =>
+            {
+                if (Interlocked.Increment(ref uploadCalls) == 1) return Measurement(1_000_000, 100);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return Measurement(0, 0);
+            }
+        };
+        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 9), CancellationToken.None);
+        Assert.AreEqual(SpeedTestState.Partial, result.State);
+        Assert.AreEqual("phase_timeout", result.DiagnosticCode);
+        Assert.AreEqual(80d, result.UploadMbps);
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task MeasureAsync_FirstUploadTimesOutWithoutInventingASpeed()
+    {
+        var handler = new ControlledPhaseHandler(slowUploads: true);
+        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 12), TestContext.CancellationToken);
+        Assert.AreEqual(SpeedTestState.Partial, result.State);
+        Assert.AreEqual("phase_timeout", result.DiagnosticCode);
+        Assert.IsNull(result.UploadMbps);
+        Assert.IsGreaterThan(0L, handler.SlowUploadBytes);
+        Assert.IsNotNull(result.Bytes);
+        Assert.IsGreaterThanOrEqualTo(handler.DownloadBytes + handler.SlowUploadBytes, result.Bytes.Value);
+    }
+
+    [TestMethod]
     public async Task MeasureAsync_SlowDownloadLeavesTimeForUpload()
     {
         var server = Server();
