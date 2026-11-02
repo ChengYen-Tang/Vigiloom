@@ -219,6 +219,8 @@ public sealed class ModuleMigrationTests
         }
         await using var db = Resources(connectionString);
         Assert.IsFalse((await db.Database.GetPendingMigrationsAsync(token)).Any());
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'operations.AuditEvents', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID(N'operations.AuditEvents') AND name = N'IX_AuditEvents_OccurredAt_RowId'").SingleAsync(token));
         await using var identity = new IdentityAccessDbContext(new DbContextOptionsBuilder<IdentityAccessDbContext>()
             .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "identity")).Options);
         Assert.AreEqual(2, await identity.Roles.CountAsync(token));

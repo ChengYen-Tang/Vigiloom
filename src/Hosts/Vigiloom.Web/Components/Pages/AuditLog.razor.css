@@ -1,0 +1,21 @@
+.audit-page { max-width: 1200px; margin: 36px auto; padding: 0 24px 48px; color: #142344; font-family: system-ui, -apple-system, "Microsoft JhengHei", sans-serif; }
+.audit-heading { margin-bottom: 24px; }
+.audit-heading h1 { margin: 0 0 8px; font-size: 1.8rem; }
+.audit-heading p, .audit-panel p { color: #586b87; margin: 0 0 16px; }
+.audit-panel, .audit-notice { background: white; border: 1px solid #e3eaf3; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.audit-notice { border-left: 4px solid #b97000; }
+.audit-panel h2 { font-size: 1.2rem; margin: 0 0 12px; }
+form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+input { border: 1px solid #9aabc3; border-radius: 6px; padding: 8px; }
+button { color: white; background: #075ff0; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
+.audit-table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; text-align: left; }
+th, td { padding: 12px; border-bottom: 1px solid #e3eaf3; vertical-align: top; }
+th { color: #586b87; font-weight: 600; }
+td > div { margin-bottom: 4px; }
+details { margin-top: 8px; }
+summary { color: #075ff0; cursor: pointer; }
+.audit-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 20px; }
+a { color: #075ff0; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible, .audit-table-wrap:focus-visible { outline: 3px solid #075ff0; outline-offset: 3px; }
+@media (max-width: 700px) { .audit-page { padding: 0 16px 36px; margin-top: 24px; } table { min-width: 800px; } }

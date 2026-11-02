@@ -44,7 +44,7 @@ public sealed class PingSqlTests
             Assert.AreSame(original, db);
             Assert.AreEqual(ConnectionState.Closed, db.Database.GetDbConnection().State);
         }
-        await new SpeedSettings(pooled).GetAsync(token);
+        await new SpeedSettings(pooled, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()).GetAsync(token);
         await using (var db = await pooled.CreateDbContextAsync(token))
         {
             Assert.AreSame(original, db);
