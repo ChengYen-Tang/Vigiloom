@@ -126,12 +126,23 @@ public sealed class IdentityClient(HttpClient http)
         return id;
     }
 
-    private static Uri NormalizeServer(Uri server)
+    internal static Uri NormalizeServer(Uri server)
     {
         if (!server.IsAbsoluteUri || server.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(server.UserInfo) ||
             !string.IsNullOrEmpty(server.Query) || !string.IsNullOrEmpty(server.Fragment))
             throw new ArgumentException("Agent server must be an absolute HTTPS URL without credentials, query or fragment.", nameof(server));
         return new Uri(server.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
+    }
+
+    internal static async Task<(IdentityState? State, bool ServerMismatch)> ReadRegisteredAsync(IdentityVault vault, Uri expected, CancellationToken token)
+    {
+        IdentityState? state;
+        await using (var session = await vault.AcquireForTransportAsync(token)) state = await session.ReadAsync(token);
+        if (state?.AgentId is not { Version: 7 }) return (null, false);
+        if (!string.Equals(state.Server, expected.AbsoluteUri, StringComparison.Ordinal)) return (null, true);
+        var decoded = Decode(state.MachineSecret);
+        CryptographicOperations.ZeroMemory(decoded);
+        return (state, false);
     }
 
     private static bool TryEnrollmentId(string? value, out Guid id)
@@ -142,8 +153,9 @@ public sealed class IdentityClient(HttpClient http)
     }
 
     private static string Encode(byte[] data) => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    private static byte[] Decode(string data)
+    internal static byte[] Decode(string data)
     {
+        if (string.IsNullOrEmpty(data)) throw new InvalidDataException("Invalid machine credential.");
         try
         {
             var bytes = Convert.FromBase64String(data.Replace('-', '+').Replace('_', '/') + "=");

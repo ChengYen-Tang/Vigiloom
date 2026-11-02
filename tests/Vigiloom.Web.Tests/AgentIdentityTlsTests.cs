@@ -1,9 +1,11 @@
 using System.Net;
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -11,7 +13,13 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Time.Testing;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Hosting;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -51,11 +59,14 @@ public sealed class AgentIdentityTlsTests
             using var tlsCertificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
             CryptographicOperations.ZeroMemory(pfx);
 
+            var rejectedStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var knownLengthStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
                 builder.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(tlsCertificate)));
+                builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new CaptureRejectedStatus(rejectedStatus, knownLengthStatus)));
             });
             factory.UseKestrel(0); factory.StartServer();
             var addresses = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses;
@@ -102,10 +113,102 @@ public sealed class AgentIdentityTlsTests
                     Assert.AreEqual(HttpStatusCode.OK, identity.StatusCode);
                     Assert.AreEqual(device.Id, (await identity.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
                 }
+                Assert.AreEqual(HeartbeatResult.ServerMismatch, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://different.example/"), token));
+                Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
+                await using (var db = await agents.CreateDbContextAsync(token))
+                    Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
+
+                // Exercise the actual host workers against the real TLS listener and SQL database.
+                AgentSettingsView configured;
+                await using (var scope = factory.Services.CreateAsyncScope())
+                {
+                    var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
+                    var current = await configuration.GetAsync(device.Id, token);
+                    Assert.IsNotNull(current);
+                    configured = (await configuration.UpdateAsync(device.Id, new(new(10, 60, 3), current.Version), Guid.CreateVersion7(), token))!;
+                    Assert.IsNotNull(configured);
+                }
+                var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+                var agentBuilder = AgentHost.CreateBuilder([]);
+                agentBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Vigiloom:Agent:StateDirectory"] = statePath,
+                    ["Vigiloom:Agent:Server"] = url.AbsoluteUri
+                });
+                agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
+                agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, agentClock));
+                agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
+                agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
+                using (var agentHost = agentBuilder.Build())
+                {
+                    try
+                    {
+                        await agentHost.StartAsync(token);
+                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+                        var store = new AgentSettingsStore(vault, url, id);
+                        AgentAppliedSettings? saved = null;
+                        while (saved?.Snapshot != configured.Effective)
+                        {
+                            try { saved = await store.ReadAsync(deadline.Token); }
+                            catch (IOException) { /* The running host may briefly hold the identity lease. */ }
+                            if (saved?.Snapshot != configured.Effective) await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                        }
+                        AgentSettingsStatus? observed = null;
+                        while (observed?.State != AgentSettingsApplyState.Applied)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await using var scope = factory.Services.CreateAsyncScope();
+                            observed = await scope.ServiceProvider.GetRequiredService<AgentSettingsMonitoring>().GetAsync(device.Id, deadline.Token);
+                        }
+                        Assert.AreEqual(configured.Effective, observed.Applied);
+                        Assert.AreEqual(configured.Effective, saved.Snapshot);
+                    }
+                    finally { await agentHost.StopAsync(CancellationToken.None); }
+                }
+                var now = DateTimeOffset.UtcNow;
+                var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test system", "X64", ".NET 10");
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
+                using (var content = new ByteArrayContent(AgentBatchCodec.Serialize(batch)))
+                {
+                    content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    using var accepted = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), content, token);
+                    Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+                }
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
+                }
                 using (var oversized = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new StringContent(new string('x', 4096), System.Text.Encoding.UTF8, "application/json"), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
                 using (var oversizedChunked = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new UnknownLengthContent(4096), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversizedChunked.StatusCode);
+                using (var tooLarge = new ByteArrayContent(new byte[AgentBatchCodec.MaximumBytes + 1]))
+                {
+                    tooLarge.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = tooLarge };
+                    request.Headers.Add("X-Test-Capture-Status", "known");
+                    await AssertRejectedAsync(http, request, knownLengthStatus, token);
+                }
+                var otherBatch = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [message with { MessageId = Guid.CreateVersion7() }] });
+                using var compressed = new MemoryStream();
+                using (var gzip = new GZipStream(compressed, CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(otherBatch);
+                var oversizedEncoded = new byte[compressed.Length + AgentBatchCodec.MaximumBytes + 1];
+                compressed.GetBuffer().AsSpan(0, checked((int)compressed.Length)).CopyTo(oversizedEncoded);
+                using (var trailing = new UnknownLengthBytesContent(oversizedEncoded))
+                {
+                    trailing.Headers.ContentEncoding.Add("gzip");
+                    using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = trailing };
+                    request.Headers.Add("X-Test-Capture-Status", "chunked");
+                    await AssertRejectedAsync(http, request, rejectedStatus, token);
+                }
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
+                }
             }
             finally
             {
@@ -116,11 +219,54 @@ public sealed class AgentIdentityTlsTests
             }
         }, TestContext.CancellationToken);
 
+    private static async Task AssertRejectedAsync(HttpClient http, HttpRequestMessage request, TaskCompletionSource<int> result, CancellationToken token)
+    {
+        try
+        {
+            using var rejected = await http.SendAsync(request, token);
+            Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+        }
+        catch (HttpRequestException exception) when (exception.InnerException is IOException)
+        {
+            // Kestrel may reject and close while the client is still sending the body.
+            // A connection error alone is never treated as proof of rejection.
+        }
+        Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await result.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+    }
+
+    private sealed class CaptureRejectedStatus(TaskCompletionSource<int> chunked, TaskCompletionSource<int> known) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, following) =>
+            {
+                var result = context.Request.Headers["X-Test-Capture-Status"].ToString() switch
+                {
+                    "chunked" => chunked,
+                    "known" => known,
+                    _ => null
+                };
+                if (result is not null)
+                    context.Response.OnStarting(() => { result.TrySetResult(context.Response.StatusCode); return Task.CompletedTask; });
+                await following(context);
+            });
+            next(app);
+        };
+    }
+
     private sealed class UnknownLengthContent : HttpContent
     {
         private readonly int length;
         public UnknownLengthContent(int length) { this.length = length; Headers.ContentType = new MediaTypeHeaderValue("application/json"); }
         protected override bool TryComputeLength(out long value) { value = 0; return false; }
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(new byte[length]).AsTask();
+    }
+
+    private sealed class UnknownLengthBytesContent : HttpContent
+    {
+        private readonly byte[] bytes;
+        public UnknownLengthBytesContent(byte[] bytes) { this.bytes = bytes; Headers.ContentType = new MediaTypeHeaderValue("application/json"); }
+        protected override bool TryComputeLength(out long value) { value = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(bytes).AsTask();
     }
 }

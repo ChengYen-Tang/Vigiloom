@@ -3,6 +3,10 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Reject truncated compressed request bodies before acknowledging batches. -->
+    <RuntimeHostConfigurationOption Include="System.IO.Compression.UseStrictValidation" Value="true" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />
     <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
     <ProjectReference Include="../../Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />

@@ -10,3 +10,6 @@ public sealed class IdentityState
     public string MachineSecret { get; set; } = "";
     public string? PendingSecret { get; set; }
 }
+
+/// <summary>Last valid configuration saved with the identity that owns it.</summary>
+public sealed record AgentAppliedSettings(Vigiloom.Contracts.Agent.AgentSettingsSnapshot Snapshot, DateTimeOffset AppliedAt, Guid SaveToken, Guid AgentId, string Server);
