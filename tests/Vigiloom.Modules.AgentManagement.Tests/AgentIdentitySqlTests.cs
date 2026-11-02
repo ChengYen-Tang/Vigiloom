@@ -5,6 +5,7 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -19,6 +20,217 @@ public sealed class AgentIdentitySqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    public Task Configuration_ReportsPendingAppliedFailureAndOfflineWithoutAcceptingStaleStatus() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("settings status server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var configuration = new AgentConfiguration(agents, source, identity, clock);
+        var monitoring = new AgentSettingsMonitoring(agents, source, clock);
+        Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await monitoring.GetAsync(device.Id, token))!.State);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, (await monitoring.GetAsync(device.Id, token))!.State);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
+        Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, (await monitoring.GetAsync(device.Id, token))!.State);
+        var epoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(null, epoch), token));
+        var initial = AgentSettingsSnapshot.Create(AgentSettings.Default);
+        var applied = new AgentConfigurationReport(initial, clock.Now, null);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 2, null, applied), token));
+        Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitoring.GetAsync(device.Id, token))!.State);
+        await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(60, null, null), ""), actor, token);
+        Assert.AreEqual(AgentSettingsApplyState.Pending, (await monitoring.GetAsync(device.Id, token))!.State);
+        var failed = applied with { Failure = AgentConfigurationFailure.Invalid };
+        clock.Now = clock.Now.AddSeconds(1);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 3, null, failed), token));
+        var status = (await monitoring.GetAsync(device.Id, token))!;
+        Assert.AreEqual(AgentSettingsApplyState.Failed, status.State);
+        Assert.AreEqual(AgentConfigurationFailure.Invalid, status.Failure);
+        var reportedAt = status.ReportedAt;
+        clock.Now = clock.Now.AddSeconds(1);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 1, null, applied), token));
+        status = (await monitoring.GetAsync(device.Id, token))!;
+        Assert.AreEqual(AgentSettingsApplyState.Failed, status.State);
+        Assert.AreEqual(reportedAt, status.ReportedAt, "An older report must not refresh or replace configuration status.");
+        clock.Now = clock.Now.AddSeconds(89);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
+        Assert.AreEqual(AgentSettingsApplyState.ReportStale, (await monitoring.GetAsync(device.Id, token))!.State,
+            "An empty heartbeat must not make an old settings report appear current.");
+        clock.Now = clock.Now.AddSeconds(90);
+        Assert.AreEqual(AgentSettingsApplyState.Offline, (await monitoring.GetAsync(device.Id, token))!.State);
+    });
+
+    [TestMethod]
+    public Task Configuration_SqlEnforcesResourceKeysAndAuditReferences() => WithDatabase(async (resources, agents, token) =>
+    {
+        var actor = Guid.CreateVersion7();
+        var missingDevice = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Settings.Add(new AgentSetting { DeviceId = missingDevice, UpdatedBy = actor, UpdatedAt = DateTimeOffset.UtcNow });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(token));
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Settings.Add(new AgentSetting { UpdatedBy = actor, UpdatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Settings.Add(new AgentSetting { UpdatedBy = actor, UpdatedAt = DateTimeOffset.UtcNow });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(token));
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            db.SettingAudits.Add(new AgentSettingAudit
+            {
+                SettingId = Guid.CreateVersion7(), ActorId = actor, OccurredAt = DateTimeOffset.UtcNow,
+                EffectiveRevision = new string('a', 64), ChangeVersion = new byte[8]
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(token));
+        }
+        await using var verify = agents.CreateDbContext();
+        var setting = await verify.Settings.SingleAsync(token);
+        Assert.AreEqual(7, setting.Id.Version);
+        Assert.IsGreaterThan(0, setting.RowId);
+        Assert.HasCount(8, setting.Version);
+    });
+
+    [TestMethod]
+    public Task Configuration_AuditFailureRollsBackTheSetting() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var source = new DeviceAgentSource(resources);
+        var config = new AgentConfiguration(agents, source, new AgentIdentity(agents, source, clock), clock);
+        var actor = Guid.CreateVersion7();
+        var saved = (await config.UpdateAsync(null, new AgentSettingsUpdate(new(60, null, null), ""), actor, token))!;
+        var rejectedActor = Guid.Parse("018f0000-0000-7000-8000-000000000001");
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[SettingAudits] ADD CONSTRAINT [CK_TestActor] CHECK ([ActorId] <> '018f0000-0000-7000-8000-000000000001')", token);
+        await Assert.ThrowsAsync<DbUpdateException>(() => config.UpdateAsync(null,
+            new AgentSettingsUpdate(new(120, null, null), saved.Version), rejectedActor, token));
+        Assert.AreEqual(saved, await config.GetAsync(null, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.SettingAudits.CountAsync(token));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Configuration_ResolvesLayersAndAuditsConcurrentEdits(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("configuration server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var config = new AgentConfiguration(agents, source, identity, clock);
+        var actor = Guid.CreateVersion7();
+        var initial = (await config.GetAsync(device.Id, token))!;
+        Assert.AreEqual(AgentSettings.Default, initial.Effective.Settings);
+        Assert.AreEqual("", initial.Version);
+        var platform = (await config.UpdateAsync(null, new AgentSettingsUpdate(new(60, null, null), ""), actor, token))!;
+        Assert.AreEqual(60, platform.Effective.Settings.HeartbeatSeconds);
+        var specific = (await config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(null, null, 10), ""), actor, token))!;
+        Assert.AreEqual(new AgentSettings(60, 300, 10), specific.Effective.Settings);
+        Assert.AreEqual(platform.Effective.Settings.HeartbeatSeconds, (await config.GetAsync(device.Id, token))!.Effective.Settings.HeartbeatSeconds);
+        Assert.IsNull(await config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, null), ""), actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(1, null, null), specific.Version), actor, token));
+        var candidates = await Task.WhenAll(
+            config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), specific.Version), actor, token),
+            config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(120, null, 10), specific.Version), actor, token));
+        Assert.AreEqual(1, candidates.Count(x => x is not null));
+        var winner = candidates.Single(x => x is not null)!;
+        var reset = (await config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(null, null, null), winner.Version), actor, token))!;
+        Assert.AreEqual(platform.Effective.Settings, reset.Effective.Settings);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(2, await verify.Settings.CountAsync(token));
+        var audits = await verify.SettingAudits.OrderBy(x => x.RowId).ToListAsync(token);
+        Assert.HasCount(4, audits);
+        Assert.IsTrue(audits.All(x => x.ActorId == actor && x.ChangeVersion.Length == 8));
+        Assert.AreEqual(reset.Effective.Revision, audits[^1].EffectiveRevision);
+        Assert.AreEqual(reset.Effective.Settings.HeartbeatSeconds, audits[^1].EffectiveHeartbeatSeconds);
+        Assert.AreEqual(reset.Version, Convert.ToBase64String(audits[^1].ChangeVersion));
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Configuration_ConcurrentRevocationPreventsDelivery(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("revoked configuration", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var config = new AgentConfiguration(agents, source, identity, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        await using var revoke = agents.CreateDbContext();
+        await using var transaction = await revoke.Database.BeginTransactionAsync(token);
+        await using (var command = revoke.Database.GetDbConnection().CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+            command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = $"vigiloom.agent.device.{device.Id:D}"; command.Parameters.Add(parameter);
+            Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+        }
+        (await revoke.Agents.SingleAsync(x => x.Id == registration.AgentId, token)).Revoke(clock.Now);
+        await revoke.SaveChangesAsync(token);
+        var waiting = config.GetForAgentAsync(credential, token);
+        await Task.Delay(250, token);
+        Assert.IsFalse(waiting.IsCompleted, "Configuration delivery must wait for the revocation transaction.");
+        await transaction.CommitAsync(token);
+        Assert.IsNull(await waiting);
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task Configuration_AgentReadsOnlyItsCurrentDeviceAndRevocationTakesEffect() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("configured machine", "127.0.0.1", true, clock.Now);
+        var otherDevice = new Device("other configured machine", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(device, otherDevice); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var config = new AgentConfiguration(agents, source, identity, clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var otherIssued = await identity.IssueAsync(otherDevice.Id, actor, token);
+        var otherSecret = RandomNumberGenerator.GetBytes(32);
+        var otherRegistration = await identity.RedeemAsync(otherIssued.Secret, SHA256.HashData(otherSecret), token);
+        var otherCredential = Credential(otherRegistration.AgentId!.Value, otherSecret);
+        var saved = (await config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, null), ""), actor, token))!;
+        var otherSaved = (await config.UpdateAsync(otherDevice.Id, new AgentSettingsUpdate(new(120, null, null), ""), actor, token))!;
+        var monitoring = new AgentMonitoring(agents, source, clock);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
+        Assert.AreEqual(90, (await monitoring.GetAsync(device.Id, token))!.OfflineAfterSeconds);
+        Assert.AreEqual(saved.Effective, await config.GetForAgentAsync(credential, token));
+        Assert.AreEqual(otherSaved.Effective, await config.GetForAgentAsync(otherCredential, token));
+        Assert.AreNotEqual(saved.Effective, otherSaved.Effective);
+        Assert.AreEqual(270, (await monitoring.GetAsync(device.Id, token))!.OfflineAfterSeconds, "The threshold must widen before the longer interval is delivered.");
+        var reduced = (await config.UpdateAsync(device.Id, new AgentSettingsUpdate(new(30, null, null), saved.Version), actor, token))!;
+        Assert.AreEqual(reduced.Effective, await config.GetForAgentAsync(credential, token));
+        clock.Now = clock.Now.AddSeconds(100);
+        Assert.AreEqual(AgentConnectionState.Online, (await monitoring.GetAsync(device.Id, token))!.State, "A lost longer-interval report must not cause a false offline state after a later reduction.");
+        Assert.AreEqual(270, (await monitoring.GetAsync(device.Id, token))!.OfflineAfterSeconds);
+        Assert.IsNull(await config.GetForAgentAsync("invalid", token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(registered.AgentId.Value, actor, token));
+        Assert.IsNull(await config.GetForAgentAsync(credential, token));
+    });
 
     [TestMethod]
     [DataRow(false)]

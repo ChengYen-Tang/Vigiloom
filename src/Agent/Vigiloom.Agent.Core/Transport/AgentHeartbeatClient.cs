@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Transport;
@@ -18,7 +19,9 @@ public sealed class AgentHeartbeatClient(HttpClient http)
     private bool sessionReplaced;
     private long sequence;
 
-    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, CancellationToken token)
+    public Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, CancellationToken token) => SendAsync(vault, server, null, token);
+
+    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration, CancellationToken token)
     {
         await gate.WaitAsync(token);
         try
@@ -27,6 +30,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             var (state, mismatch) = await IdentityClient.ReadRegisteredAsync(vault, expected, token);
             if (state is null) return mismatch ? HeartbeatResult.ServerMismatch : HeartbeatResult.NotRegistered;
             var id = state.AgentId!.Value;
+            var settingsReport = configuration is not null && configuration.Owner.Matches(id, expected, vault) ? configuration.Report : null;
             if (agentId != id || serverUri != expected)
             {
                 agentId = id;
@@ -67,7 +71,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     {
                         // Unavailable differs from an empty queue.
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -75,6 +79,20 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 }
             }
             using var response = await PostHeartbeatAsync(expected, credential, report, token);
+            if (report?.Configuration is not null && response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                // A previous platform may understand the queue report but reject the new optional field.
+                using var prior = await PostHeartbeatAsync(expected, credential, report with { Configuration = null }, token);
+                return await HandleResponseAsync(prior, expected, credential, report, token);
+            }
+            return await HandleResponseAsync(response, expected, credential, report, token);
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<HeartbeatResult> HandleResponseAsync(HttpResponseMessage response, Uri expected, string credential,
+        AgentHeartbeatReport? report, CancellationToken token)
+    {
             if (report is not null && response.StatusCode == HttpStatusCode.Conflict)
             {
                 sessionEstablished = false;
@@ -88,8 +106,6 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 return Classify(fallback.StatusCode);
             }
             return sessionReplaced && response.StatusCode == HttpStatusCode.NoContent ? HeartbeatResult.SessionReplaced : Classify(response.StatusCode);
-        }
-        finally { gate.Release(); }
     }
 
     private async Task EstablishSessionAsync(Uri server, string credential, CancellationToken token)

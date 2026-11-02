@@ -18,20 +18,21 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         if (!device.Eligible) return new(deviceId, AgentConnectionState.Disabled, null, OfflineAfterSeconds);
         await using var db = await contexts.CreateDbContextAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
-            .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
+            .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
                 x.QueueQuarantinedBatches, x.QueueCapacityBytes, x.QueueCapacityBatches }).SingleOrDefaultAsync(token);
         if (agent is null) return new(deviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
         var now = clock.GetUtcNow();
         var last = agent.LastHeartbeatAt;
         var basis = last ?? agent.CreatedAt;
+        var offlineAfter = Math.Max(OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
         var state = basis > now ? AgentConnectionState.ClockUncertain
-            : now - basis >= TimeSpan.FromSeconds(OfflineAfterSeconds) ? AgentConnectionState.Offline
+            : now - basis >= TimeSpan.FromSeconds(offlineAfter) ? AgentConnectionState.Offline
             : last is null ? AgentConnectionState.AwaitingFirstHeartbeat : AgentConnectionState.Online;
         AgentQueueMonitoring? queue = agent.QueueReportedAt is { } reportedAt
             ? new(reportedAt, agent.QueueTotalBytes is { } bytes && agent.QueueTotalBatches is { } batches &&
                 agent.QueueQuarantinedBatches is { } quarantined && agent.QueueCapacityBytes is { } capacityBytes &&
                 agent.QueueCapacityBatches is { } capacityBatches ? new AgentQueueSnapshot(bytes, batches, quarantined, capacityBytes, capacityBatches) : null)
             : null;
-        return new(deviceId, state, last, OfflineAfterSeconds, queue);
+        return new(deviceId, state, last, offlineAfter, queue);
     }
 }

@@ -3,6 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Devices
+@using Vigiloom.Contracts.Agent
 @using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Modules.Resources.Application
@@ -13,6 +14,7 @@
 @inject DeviceManagement DevicesService
 @inject PingStore Ping
 @inject AgentMonitoring AgentMonitoring
+@inject AgentSettingsMonitoring AgentSettingsMonitoring
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
 
@@ -35,6 +37,28 @@
         </dl>
             @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a></Authorized></AuthorizeView> }
         </section>
+        @if (device.DeepMonitoring)
+        {
+            <section class="device-panel">
+                <h2>Agent 設定同步</h2>
+                @if (settingsError) { <p role="alert">無法讀取設定狀態，請稍後重新整理。</p> }
+                else if (settingsStatus is null) { <p>尚無設定狀態。</p> }
+                else
+                {
+                    <dl class="device-details">
+                        <div><dt>同步狀態</dt><dd>@SettingsState(settingsStatus.State)</dd></div>
+                        <div><dt>期望心跳間隔</dt><dd>@settingsStatus.Desired.Settings.HeartbeatSeconds 秒</dd></div>
+                        <div><dt>Agent 已套用心跳間隔</dt><dd>@(settingsStatus.Applied?.Settings.HeartbeatSeconds is { } seconds ? $"{seconds} 秒" : "尚無資料")</dd></div>
+                        <div><dt>Agent 已套用設定同步間隔</dt><dd>@(settingsStatus.Applied?.Settings.SettingsPollSeconds is { } poll ? $"{poll} 秒" : "尚無資料")</dd></div>
+                        <div><dt>Agent 已套用資料傳送間隔</dt><dd>@(settingsStatus.Applied?.Settings.BatchIntervalSeconds is { } batch ? $"{batch} 秒" : "尚無資料")</dd></div>
+                        <div><dt>最後設定回報（UTC）</dt><dd>@(settingsStatus.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                    </dl>
+                    @if (settingsStatus.Failure is { } failure) { <p class="device-alert" role="status">@SettingsFailure(failure)</p> }
+                    <p>設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。</p>
+                }
+                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">編輯此設備的 Agent 設定</a></Authorized></AuthorizeView>
+            </section>
+        }
         <section class="device-panel"><h2>Ping 量測</h2>
             <p>每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。</p>
             @if (pingStatus?.Policy is { } policy) { <p>目前每 @policy.IntervalSeconds 秒一次，逾時 @policy.TimeoutSeconds 秒；連續 @policy.FailureThreshold 次失敗判不可達、@policy.SuccessThreshold 次成功恢復。</p> }
@@ -74,6 +98,8 @@
     private bool pingError;
     private AgentConnectionStatus? agentStatus;
     private bool agentError;
+    private AgentSettingsStatus? settingsStatus;
+    private bool settingsError;
     private string? actionError;
     protected override async Task OnInitializedAsync()
     {
@@ -87,6 +113,8 @@
             {
                 try { agentStatus = await AgentMonitoring.GetAsync(Id, HttpContext.RequestAborted); }
                 catch (Exception exception) { Logger.LogWarning("Could not load Agent status: {ExceptionType}", exception.GetType().Name); agentError = true; }
+                try { settingsStatus = await AgentSettingsMonitoring.GetAsync(Id, HttpContext.RequestAborted); }
+                catch (Exception exception) { Logger.LogWarning("Could not load Agent settings status: {ExceptionType}", exception.GetType().Name); settingsError = true; }
             }
             if (device is { Archived: false, Enabled: true })
             {
@@ -123,5 +151,23 @@
         AgentConnectionState.AwaitingFirstHeartbeat => "等待首次回報", AgentConnectionState.Online => "已連線",
         AgentConnectionState.Offline => "已失聯", AgentConnectionState.ClockUncertain => "系統時間異常",
         _ => "尚無資料"
+    };
+    private static string SettingsState(AgentSettingsApplyState state) => state switch
+    {
+        AgentSettingsApplyState.Disabled => "監控已停用", AgentSettingsApplyState.NotRegistered => "尚未註冊 Agent",
+        AgentSettingsApplyState.WaitingForHeartbeat => "等待首次心跳", AgentSettingsApplyState.WaitingForReport => "等待設定回報",
+        AgentSettingsApplyState.Pending => "待同步", AgentSettingsApplyState.Applied => "已套用",
+        AgentSettingsApplyState.Failed => "同步失敗", AgentSettingsApplyState.Offline => "Agent 已失聯",
+        AgentSettingsApplyState.ReportStale => "設定回報已過期",
+        AgentSettingsApplyState.ClockUncertain => "系統時間異常", _ => "尚無資料"
+    };
+    private static string SettingsFailure(AgentConfigurationFailure failure) => failure switch
+    {
+        AgentConfigurationFailure.Unavailable => "無法連線至平台，Agent 會保留上次設定並重試。",
+        AgentConfigurationFailure.Invalid => "收到的設定無法套用，Agent 會保留上次設定。",
+        AgentConfigurationFailure.Unauthorized => "Agent 身分未獲授權，請檢查註冊狀態。",
+        AgentConfigurationFailure.LocalStorage => "Agent 無法讀寫本機設定，請檢查 Agent 狀態。",
+        AgentConfigurationFailure.Conflict => "設定同步發生衝突，Agent 會再次嘗試。",
+        _ => "Agent 回報設定同步異常。"
     };
 }

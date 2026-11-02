@@ -10,18 +10,26 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentAudit> Audits => Set<AgentAudit>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
+    public DbSet<AgentSetting> Settings => Set<AgentSetting>();
+    public DbSet<AgentSettingAudit> SettingAudits => Set<AgentSettingAudit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("agent");
         var agent = modelBuilder.Entity<Agent>();
-        agent.ToTable("Agents", table => table.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        agent.ToTable("Agents", table =>
+        {
+            table.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
+        });
         agent.HasKey(x => x.Id).IsClustered(false);
         agent.Property(x => x.Id).ValueGeneratedNever();
         agent.Property(x => x.RowId).UseIdentityColumn();
         agent.HasIndex(x => x.RowId).IsUnique().IsClustered();
         agent.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
         agent.Property(x => x.PendingVerifier).HasColumnType("binary(32)");
+        agent.Property(x => x.HeartbeatSafetyIntervalSeconds).HasDefaultValue(30);
+        agent.Property(x => x.AppliedConfigurationRevision).HasMaxLength(64);
         agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
 
         var enrollment = modelBuilder.Entity<Enrollment>();
@@ -61,5 +69,23 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         observation.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
         observation.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
         observation.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var setting = modelBuilder.Entity<AgentSetting>();
+        setting.ToTable("Settings", table => table.HasCheckConstraint("CK_AgentSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        setting.HasKey(x => x.Id).IsClustered(false);
+        setting.Property(x => x.Id).ValueGeneratedNever();
+        setting.Property(x => x.RowId).UseIdentityColumn();
+        setting.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        setting.HasIndex(x => x.DeviceId).IsUnique().HasFilter(null);
+        setting.Property(x => x.Version).IsRowVersion();
+
+        var settingAudit = modelBuilder.Entity<AgentSettingAudit>();
+        settingAudit.ToTable("SettingAudits");
+        settingAudit.HasKey(x => x.RowId).IsClustered();
+        settingAudit.Property(x => x.RowId).UseIdentityColumn();
+        settingAudit.Property(x => x.EffectiveRevision).HasMaxLength(64).IsRequired();
+        settingAudit.Property(x => x.ChangeVersion).HasColumnType("binary(8)").IsRequired();
+        settingAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        settingAudit.HasOne<AgentSetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
     }
 }

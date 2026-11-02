@@ -1,0 +1,10 @@
+.agent-settings-intro {
+    line-height: 1.6;
+    margin: 8px 0 22px;
+}
+
+.agent-settings-hint {
+    color: var(--vigiloom-muted);
+    font-size: .875rem;
+    margin-bottom: 6px;
+}

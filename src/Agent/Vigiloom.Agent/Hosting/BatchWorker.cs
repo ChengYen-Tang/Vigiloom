@@ -1,14 +1,18 @@
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Configuration;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Agent.Core.Transport;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Drains durable batches without overlapping requests, retaining all unconfirmed data.</summary>
-internal sealed class BatchWorker(AgentBatchClient client, IConfiguration configuration, TimeProvider clock, ILogger<BatchWorker> logger) : BackgroundService
+internal sealed class BatchWorker(AgentBatchClient client, AgentSettingsRuntime settings, IConfiguration configuration, TimeProvider clock, ILogger<BatchWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var delay = NormalDelay();
+        TimeSpan delay;
+        try { delay = await NormalDelayAsync(stoppingToken); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         var failures = 0;
         string? previous = null;
         while (!stoppingToken.IsCancellationRequested)
@@ -51,14 +55,43 @@ internal sealed class BatchWorker(AgentBatchClient client, IConfiguration config
             else
             {
                 failures = 0;
-                delay = outcome.Status is BatchSendResult.NotRegistered or BatchSendResult.ServerMismatch or BatchSendResult.Unauthorized
-                    ? TimeSpan.FromSeconds(30)
-                    : NormalDelay();
+                try
+                {
+                    delay = outcome.Status is BatchSendResult.NotRegistered or BatchSendResult.ServerMismatch or BatchSendResult.Unauthorized
+                        ? TimeSpan.FromSeconds(30)
+                        : await NormalDelayAsync(stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             }
         }
     }
 
-    private static TimeSpan NormalDelay() => TimeSpan.FromSeconds(5 + Random.Shared.NextDouble());
+    private TimeSpan NormalDelay() => TimeSpan.FromSeconds(settings.Current.BatchIntervalSeconds * (1 + Random.Shared.NextDouble() * 0.2));
+
+    private async Task<TimeSpan> NormalDelayAsync(CancellationToken token)
+    {
+        var directory = configuration["Vigiloom:Agent:StateDirectory"];
+        var server = configuration["Vigiloom:Agent:Server"];
+        if (string.IsNullOrWhiteSpace(directory) || !Uri.TryCreate(server, UriKind.Absolute, out var uri)) settings.Bind(null);
+        else
+        {
+            try
+            {
+                var owner = await AgentSettingsClient.GetOwnerAsync(new IdentityVault(directory), uri, token);
+                if (!string.Equals(directory, configuration["Vigiloom:Agent:StateDirectory"], StringComparison.Ordinal) ||
+                    !string.Equals(server, configuration["Vigiloom:Agent:Server"], StringComparison.Ordinal)) settings.Bind(null);
+                else settings.Bind(owner);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
+                UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+            {
+                // An unavailable identity cannot authorize cached settings, but is not
+                // evidence that the previous owner changed. Keep last-good for recovery.
+                return TimeSpan.FromSeconds(AgentSettings.Default.BatchIntervalSeconds * (1 + Random.Shared.NextDouble() * 0.2));
+            }
+        }
+        return NormalDelay();
+    }
 
     private static async Task DelayAsync(TimeSpan delay, TimeProvider clock, CancellationToken token)
     {

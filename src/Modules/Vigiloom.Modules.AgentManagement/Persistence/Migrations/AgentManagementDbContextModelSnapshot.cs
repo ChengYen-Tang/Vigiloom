@@ -28,6 +28,28 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("AppliedBatchIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AppliedConfigurationRevision")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int?>("AppliedHeartbeatSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AppliedSettingsPollSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfigurationAppliedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ConfigurationFailure")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -36,6 +58,11 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("HeartbeatSafetyIntervalSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
 
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("datetimeoffset");
@@ -98,6 +125,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.ToTable("Agents", "agent", t =>
                         {
+                            t.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
+
                             t.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
                         });
                 });
@@ -136,6 +165,117 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("AgentAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("BatchIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("HeartbeatSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int?>("SettingsPollSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("Settings", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_AgentSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSettingAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("BatchIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("ChangeVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EffectiveBatchIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EffectiveHeartbeatSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EffectiveRevision")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("EffectiveSettingsPollSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("HeartbeatSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("SettingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("SettingsPollSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SettingId");
+
+                    b.HasIndex("DeviceId", "OccurredAt", "RowId");
+
+                    b.ToTable("SettingAudits", "agent");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>
@@ -291,6 +431,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AgentId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSettingAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentSetting", null)
+                        .WithMany()
+                        .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>

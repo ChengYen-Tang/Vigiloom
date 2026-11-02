@@ -1,0 +1,34 @@
+@baseUrl = https://localhost:7043
+@deviceId = 00000000-0000-7000-8000-000000000001
+@antiforgery = replace-with-request-token
+@machineCredential = replace-with-machine-credential
+
+### Administrator session: inspect the platform layer.
+GET {{baseUrl}}/api/v1/agent-management/settings/platform
+
+### Administrator session: save a new platform layer; use the version returned above.
+PUT {{baseUrl}}/api/v1/agent-management/settings/platform
+Content-Type: application/json
+RequestVerificationToken: {{antiforgery}}
+
+{"overrides":{"heartbeatSeconds":30,"settingsPollSeconds":300,"batchIntervalSeconds":5},"version":""}
+
+### Administrator session: inspect and edit one device's overrides.
+GET {{baseUrl}}/api/v1/agent-management/settings/devices/{{deviceId}}
+
+### Null values inherit the platform; use the current device-layer version.
+PUT {{baseUrl}}/api/v1/agent-management/settings/devices/{{deviceId}}
+Content-Type: application/json
+RequestVerificationToken: {{antiforgery}}
+
+{"overrides":{"heartbeatSeconds":null,"settingsPollSeconds":null,"batchIntervalSeconds":null},"version":""}
+
+### Authenticated monitoring read: effective settings and the Agent's observed status.
+GET {{baseUrl}}/api/v1/devices/{{deviceId}}/agent-settings
+
+###
+GET {{baseUrl}}/api/v1/devices/{{deviceId}}/agent-settings-status
+
+### Agent machine credential: fetch only its own effective settings.
+GET {{baseUrl}}/api/v1/agent/settings
+Authorization: Bearer {{machineCredential}}

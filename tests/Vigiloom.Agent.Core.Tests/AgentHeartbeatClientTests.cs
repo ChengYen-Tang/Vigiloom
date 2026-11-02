@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Tests;
@@ -11,6 +12,68 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentHeartbeatClientTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task Heartbeat_DoesNotReportAnotherIdentitysAppliedSettings()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var actualId = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = actualId, MachineSecret = secret }, token);
+            var handler = new CaptureHandler();
+            using var http = new HttpClient(handler);
+            var snapshot = AgentSettingsSnapshot.Create(AgentSettings.Default);
+            var report = new AgentConfigurationReport(snapshot, DateTimeOffset.UtcNow, null);
+            var otherOwner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://example.test/"), new(otherOwner, report), token));
+            Assert.IsNull(handler.Reports.Single().Configuration);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Heartbeat_OlderPlatformReceivesQueueStatusWhenConfigurationFieldIsUnsupported()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var handler = new OlderConfigurationHandler();
+            using var http = new HttpClient(handler);
+            var snapshot = AgentSettingsSnapshot.Create(AgentSettings.Default);
+            var report = new AgentConfigurationReport(snapshot, DateTimeOffset.UtcNow, null);
+            var observation = new AgentConfigurationObservation(new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory), report);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://example.test/"), observation, token));
+            Assert.HasCount(2, handler.Reports);
+            Assert.IsNotNull(handler.Reports[0].Configuration);
+            Assert.IsNull(handler.Reports[1].Configuration);
+            Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
+            Assert.AreEqual(handler.Reports[0].Queue, handler.Reports[1].Queue);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 
     [TestMethod]
     public async Task Heartbeat_FallsBackToEmptyBodyForOlderPlatform()
@@ -211,6 +274,20 @@ public sealed class AgentHeartbeatClientTests
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
             Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
+    }
+
+    private sealed class OlderConfigurationHandler : HttpMessageHandler
+    {
+        public List<AgentHeartbeatReport> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            Reports.Add((await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!);
+            return new HttpResponseMessage(Reports.Count == 1 ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
+        }
     }
 
     private sealed class SessionHandler : HttpMessageHandler
