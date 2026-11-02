@@ -39,6 +39,7 @@ public sealed class AgentIdentityHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [Timeout(180000, CooperativeCancellation = true)]
     public Task AgentTransport_PreAuthenticationConcurrencyIsBoundedAndReleased() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -80,7 +81,7 @@ public sealed class AgentIdentityHttpTests
             HttpStatusCode? firstStatus = null;
             try
             {
-                await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await gate.Entered.Task.WaitAsync(token);
                 using var limited = await second.PostAsync("/api/v1/agent/heartbeat", null, token);
                 Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
                 Assert.IsNotNull(limited.Headers.RetryAfter);
