@@ -19,7 +19,10 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         if (pending is null) return new(BatchSendResult.Empty);
         if (!AgentBatchCodec.TryRead(pending.Payload, out var batch) || batch!.BatchId != pending.BatchId ||
             batch.EnqueuedAt != pending.EnqueuedAt || batch.Items.Count != pending.RecordCount)
+        {
+            await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
             return new(BatchSendResult.InvalidLocalBatch);
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(expected, "api/v1/agent/batches"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{id:D}.{identity.MachineSecret}");
         request.Content = new ByteArrayContent(pending.Payload);
@@ -36,6 +39,18 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnsupportedMediaType => BatchSendResult.Rejected,
             _ => BatchSendResult.Retry
         };
+        if (status == BatchSendResult.Rejected)
+        {
+            var reason = response.StatusCode switch
+            {
+                HttpStatusCode.BadRequest => QueueRejection.BadRequest,
+                HttpStatusCode.Conflict => QueueRejection.Conflict,
+                HttpStatusCode.RequestEntityTooLarge => QueueRejection.PayloadTooLarge,
+                HttpStatusCode.UnsupportedMediaType => QueueRejection.UnsupportedMediaType,
+                _ => throw new InvalidOperationException("Unexpected permanent batch response.")
+            };
+            await queue.QuarantineAsync(pending.BatchId, reason, token);
+        }
         var retry = response.Headers.RetryAfter;
         var delay = retry?.Delta ?? (retry?.Date is { } date ? date - clock.GetUtcNow() : (TimeSpan?)null);
         if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;

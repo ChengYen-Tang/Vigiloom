@@ -79,10 +79,47 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT batch_id, created_ticks, record_count, payload FROM batches ORDER BY ordinal LIMIT 1";
+            command.CommandText = "SELECT batch_id, created_ticks, record_count, payload FROM batches WHERE rejection IS NULL ORDER BY ordinal LIMIT 1";
             using var reader = command.ExecuteReader();
             return reader.Read() ? new QueuedBatch(Guid.Parse(reader.GetString(0)), new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero),
                 reader.GetInt32(2), (byte[])reader[3]) : null;
+        }
+        finally { gate.Release(); }
+    }
+
+    /// <summary>Retain a permanently rejected batch for diagnosis without blocking newer batches.</summary>
+    public async Task<bool> QuarantineAsync(Guid batchId, QueueRejection rejection, CancellationToken token)
+    {
+        if (!Enum.IsDefined(rejection)) throw new ArgumentOutOfRangeException(nameof(rejection));
+        await gate.WaitAsync(token);
+        try
+        {
+            await using var session = vault.Acquire();
+            token.ThrowIfCancellationRequested();
+            using var connection = Open(session.DirectoryPath);
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE batches SET rejection = $reason WHERE batch_id = $id AND rejection IS NULL";
+            command.Parameters.AddWithValue("$id", batchId.ToString("D"));
+            command.Parameters.AddWithValue("$reason", (int)rejection);
+            return command.ExecuteNonQuery() == 1;
+        }
+        finally { gate.Release(); }
+    }
+
+    /// <summary>Return queue pressure including quarantined data, which still consumes capacity.</summary>
+    public async Task<QueueStatus> GetStatusAsync(CancellationToken token)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            await using var session = vault.Acquire();
+            token.ThrowIfCancellationRequested();
+            using var connection = Open(session.DirectoryPath);
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT queued_bytes, queued_count, (SELECT count(*) FROM batches WHERE rejection IS NOT NULL) FROM queue_state WHERE singleton = 1";
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
+            return new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
         }
         finally { gate.Release(); }
     }
@@ -127,8 +164,8 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
             var version = (long)command.ExecuteScalar()!;
-            if (version is not (0 or 1)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
-            if (version == 1)
+            if (version is not (0 or 1 or 2)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
+            if (version is 1 or 2)
             {
                 command.CommandText = "SELECT agent_id FROM queue_state WHERE singleton = 1";
                 if (!string.Equals(command.ExecuteScalar() as string, agentId.ToString("D"), StringComparison.Ordinal))
@@ -142,8 +179,16 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
             {
                 using var transaction = connection.BeginTransaction();
                 command.Transaction = transaction;
-                command.CommandText = "CREATE TABLE queue_state (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), agent_id TEXT NOT NULL, queued_bytes INTEGER NOT NULL, queued_count INTEGER NOT NULL); INSERT INTO queue_state(singleton, agent_id, queued_bytes, queued_count) VALUES (1, $owner, 0, 0); CREATE TABLE batches (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL UNIQUE, created_ticks INTEGER NOT NULL, record_count INTEGER NOT NULL, payload BLOB NOT NULL); PRAGMA user_version = 1";
+                command.CommandText = "CREATE TABLE queue_state (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), agent_id TEXT NOT NULL, queued_bytes INTEGER NOT NULL, queued_count INTEGER NOT NULL); INSERT INTO queue_state(singleton, agent_id, queued_bytes, queued_count) VALUES (1, $owner, 0, 0); CREATE TABLE batches (ordinal INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL UNIQUE, created_ticks INTEGER NOT NULL, record_count INTEGER NOT NULL, payload BLOB NOT NULL, rejection INTEGER NULL); PRAGMA user_version = 2";
                 command.Parameters.AddWithValue("$owner", agentId.ToString("D"));
+                command.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            else if (version == 1)
+            {
+                using var transaction = connection.BeginTransaction();
+                command.Transaction = transaction;
+                command.CommandText = "ALTER TABLE batches ADD COLUMN rejection INTEGER NULL; PRAGMA user_version = 2";
                 command.ExecuteNonQuery();
                 transaction.Commit();
             }
@@ -154,4 +199,6 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
 }
 
 public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full }
+public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5 }
 public sealed record QueuedBatch(Guid BatchId, DateTimeOffset EnqueuedAt, int RecordCount, byte[] Payload);
+public readonly record struct QueueStatus(long TotalBytes, long TotalBatches, long QuarantinedBatches);

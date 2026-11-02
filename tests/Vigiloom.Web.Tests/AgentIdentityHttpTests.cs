@@ -222,7 +222,10 @@ public sealed class AgentIdentityHttpTests
                     var conflicting = AgentBatchCodec.Serialize(batch with { Items = [report with { RuntimeVersion = "different" }] });
                     Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, conflicting, token));
                     Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
-                    Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId, "A permanent rejection must not silently delete the batch.");
+                    Assert.IsNull(await queue.PeekAsync(token));
+                    var quarantined = await queue.GetStatusAsync(token);
+                    Assert.AreEqual(1L, quarantined.TotalBatches, "A permanent rejection must retain the batch.");
+                    Assert.AreEqual(1L, quarantined.QuarantinedBatches);
                 }
                 using (var rotationHttp = new HttpClient(new DropFirstRotationResponse(factory.Server.CreateHandler())))
                 {

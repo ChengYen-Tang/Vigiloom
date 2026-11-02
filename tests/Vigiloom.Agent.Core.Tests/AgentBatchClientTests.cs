@@ -12,6 +12,42 @@ public sealed class AgentBatchClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task Sender_QuarantinesInvalidLocalBatchAndContinuesWithNextBatch()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var queue = new DurableBatchQueue(vault, id);
+            var now = DateTimeOffset.UtcNow;
+            await queue.EnqueueAsync(Guid.CreateVersion7(), now, 1, "{"u8.ToArray(), token);
+            var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [item]);
+            await queue.EnqueueAsync(batch.BatchId, now, 1, AgentBatchCodec.Serialize(batch), token);
+            var handler = new SequenceHandler();
+            using var http = new HttpClient(handler);
+            var client = new AgentBatchClient(http, TimeProvider.System);
+            Assert.AreEqual(BatchSendResult.InvalidLocalBatch, (await client.SendNextAsync(vault, new Uri("https://example.test/"), token)).Status);
+            Assert.HasCount(0, handler.Payloads);
+            Assert.AreEqual(1L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
+            Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+            Assert.AreEqual(BatchSendResult.Retry, (await client.SendNextAsync(vault, new Uri("https://example.test/"), token)).Status);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Sender_ReportsRetryAfterAndRetainsBytesUntilConfirmed()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests", Path.GetRandomFileName());
