@@ -2,6 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Core.Configuration;
 
 namespace Vigiloom.Agent.Hosting;
 
@@ -17,6 +18,9 @@ public static class AgentHost
         builder.Services.AddHttpClient<IdentityClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentHeartbeatClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentBatchClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddHttpClient<AgentSettingsClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddSingleton<AgentSettingsRuntime>();
+        builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<HeartbeatWorker>();
         builder.Services.AddHostedService<BatchWorker>();
         return builder;

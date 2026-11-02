@@ -41,6 +41,8 @@ builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddScoped<AgentMonitoring>();
+builder.Services.AddScoped<AgentConfiguration>();
+builder.Services.AddScoped<AgentSettingsMonitoring>();
 builder.Services.AddScoped<AgentBatchReceiver>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
@@ -167,6 +169,7 @@ app.MapHealthChecks("/health/live").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapAgentEndpoints();
+app.MapAgentConfigurationEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapPingEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>

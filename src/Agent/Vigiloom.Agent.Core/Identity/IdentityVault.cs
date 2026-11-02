@@ -15,6 +15,8 @@ public sealed class IdentityVault(string directory)
     private readonly string directory = Path.IsPathFullyQualified(directory) && Path.GetPathRoot(directory) != directory
         ? Path.GetFullPath(directory) : throw new ArgumentException("A non-root absolute state directory is required.", nameof(directory));
 
+    public string StateDirectory => directory;
+
     public Session Acquire()
     {
         var directoryGuard = PrepareDirectory(directory);
@@ -29,6 +31,27 @@ public sealed class IdentityVault(string directory)
             {
                 if (OperatingSystem.IsLinux()) ValidateUnixFile(lockPath);
                 return new Session(directory, stream, directoryGuard);
+            }
+            catch { stream.Dispose(); throw; }
+        }
+        catch { directoryGuard?.Dispose(); throw; }
+    }
+
+    /// <summary>Allow one running settings synchronizer for an Agent state directory.</summary>
+    public IAsyncDisposable AcquireSettingsOwnership()
+    {
+        var directoryGuard = PrepareDirectory(directory);
+        try
+        {
+            var lockPath = Path.Combine(directory, "settings.lock");
+            RejectLink(lockPath);
+            var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
+            if (!OperatingSystem.IsWindows()) options.UnixCreateMode = PrivateFile;
+            var stream = new FileStream(lockPath, options);
+            try
+            {
+                if (OperatingSystem.IsLinux()) ValidateUnixFile(lockPath);
+                return new SettingsOwnership(stream, directoryGuard);
             }
             catch { stream.Dispose(); throw; }
         }
@@ -112,7 +135,17 @@ public sealed class IdentityVault(string directory)
 
         public async Task<IdentityState?> ReadAsync(CancellationToken token)
         {
-            var path = Path.Combine(directory, "identity.dat");
+            var state = await ReadFileAsync<IdentityState>("identity.dat", token);
+            if (state is not null && state.Version != 1) throw new InvalidDataException("Unsupported Agent identity state version.");
+            return state;
+        }
+
+        internal Task<AgentAppliedSettings?> ReadSettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentAppliedSettings>("settings.dat", token);
+
+        private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token) where T : class
+        {
+            var path = Path.Combine(directory, fileName);
             if (!File.Exists(path)) return null;
             RejectLink(path);
             if (OperatingSystem.IsLinux()) ValidateUnixFile(path);
@@ -124,14 +157,17 @@ public sealed class IdentityVault(string directory)
             try
             {
                 plain = OperatingSystem.IsWindows() ? ProtectedData.Unprotect(encoded, null, DataProtectionScope.CurrentUser) : encoded;
-                var state = JsonSerializer.Deserialize<IdentityState>(plain) ?? throw new InvalidDataException("Invalid Agent identity state.");
-                if (state.Version != 1) throw new InvalidDataException("Unsupported Agent identity state version.");
-                return state;
+                return JsonSerializer.Deserialize<T>(plain) ?? throw new InvalidDataException("Invalid Agent state.");
             }
             finally { CryptographicOperations.ZeroMemory(encoded); if (plain is not null) CryptographicOperations.ZeroMemory(plain); }
         }
 
-        public async Task WriteAsync(IdentityState state, CancellationToken token)
+        public Task WriteAsync(IdentityState state, CancellationToken token) => WriteFileAsync("identity.dat", state, token);
+
+        internal Task WriteSettingsAsync(AgentAppliedSettings settings, CancellationToken token) =>
+            WriteFileAsync("settings.dat", settings, token);
+
+        private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token)
         {
             var plain = JsonSerializer.SerializeToUtf8Bytes(state);
             byte[]? encoded = null;
@@ -149,7 +185,7 @@ public sealed class IdentityVault(string directory)
                     file.Flush(flushToDisk: true);
                 }
                 token.ThrowIfCancellationRequested();
-                File.Move(temp, Path.Combine(directory, "identity.dat"), overwrite: true);
+                File.Move(temp, Path.Combine(directory, fileName), overwrite: true);
             }
             finally
             {
@@ -159,6 +195,15 @@ public sealed class IdentityVault(string directory)
             }
         }
 
+        public async ValueTask DisposeAsync()
+        {
+            try { await lease.DisposeAsync(); }
+            finally { directoryGuard?.Dispose(); }
+        }
+    }
+
+    private sealed class SettingsOwnership(FileStream lease, SafeFileHandle? directoryGuard) : IAsyncDisposable
+    {
         public async ValueTask DisposeAsync()
         {
             try { await lease.DisposeAsync(); }
