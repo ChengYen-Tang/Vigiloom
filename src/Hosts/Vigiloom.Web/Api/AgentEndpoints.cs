@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -8,6 +9,14 @@ internal static class AgentEndpoints
 {
     public static void MapAgentEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-status", async (Guid deviceId, HttpContext context, AgentMonitoring monitoring, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await monitoring.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
+        })
+            .RequireAuthorization("DeviceRead").RequireRateLimiting("api-client")
+            .Produces<AgentConnectionStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
+            .WithSummary("Get Agent connectivity independently of device Ping");
         var admin = app.MapGroup("/api/v1/agent-management").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, AgentIdentity agents, CancellationToken token) =>
             await agents.GetDeviceAgentsAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound())

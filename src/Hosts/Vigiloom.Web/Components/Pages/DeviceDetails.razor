@@ -9,8 +9,10 @@
 @using Vigiloom.Web.Client.Components
 @using Vigiloom.Contracts.Network
 @using Vigiloom.Modules.NetworkMonitoring.Application
+@using Vigiloom.Modules.AgentManagement.Application
 @inject DeviceManagement DevicesService
 @inject PingStore Ping
+@inject AgentMonitoring AgentMonitoring
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
 
@@ -24,8 +26,14 @@
         <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
             <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a> }</Authorized></AuthorizeView>
         </header>
-        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div></dl>
-            @if (device.DeepMonitoring) { <p>深入監控需要為這台設備註冊 Agent；未連線不影響 Ping。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a></Authorized></AuthorizeView> }
+        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+            @if (device.DeepMonitoring)
+            {
+                <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
+                <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+            }
+        </dl>
+            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a></Authorized></AuthorizeView> }
         </section>
         <section class="device-panel"><h2>Ping 量測</h2>
             <p>每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。</p>
@@ -64,14 +72,22 @@
     private bool error;
     private DevicePingStatus? pingStatus;
     private bool pingError;
+    private AgentConnectionStatus? agentStatus;
+    private bool agentError;
     private string? actionError;
     protected override async Task OnInitializedAsync()
     {
+        HttpContext.Response.Headers.CacheControl = "no-store";
         Action ??= new();
         try
         {
             device = await DevicesService.GetAsync(Id, HttpContext.RequestAborted);
             if (device is not null && HttpMethods.IsGet(HttpContext.Request.Method)) Action.Version = device.Version;
+            if (device?.DeepMonitoring == true)
+            {
+                try { agentStatus = await AgentMonitoring.GetAsync(Id, HttpContext.RequestAborted); }
+                catch (Exception exception) { Logger.LogWarning("Could not load Agent status: {ExceptionType}", exception.GetType().Name); agentError = true; }
+            }
             if (device is { Archived: false, Enabled: true })
             {
                 try { pingStatus = await Ping.GetStatusAsync(Id, device.AdditionalTargets.Prepend(device.Address).ToArray(), device.Version, HttpContext.RequestAborted); }
@@ -100,5 +116,12 @@
     {
         PingOutcome.Success => "成功", PingOutcome.Timeout => "逾時", PingOutcome.Unreachable => "無法到達", PingOutcome.DnsError => "DNS 失敗",
         PingOutcome.PermissionDenied => "權限不足", PingOutcome.MonitorError => "監測器錯誤", _ => "尚無資料"
+    };
+    private static string AgentState(AgentConnectionState? state) => state switch
+    {
+        AgentConnectionState.Disabled => "監控已停用", AgentConnectionState.NotRegistered => "未註冊或已撤銷",
+        AgentConnectionState.AwaitingFirstHeartbeat => "等待首次回報", AgentConnectionState.Online => "已連線",
+        AgentConnectionState.Offline => "已失聯", AgentConnectionState.ClockUncertain => "系統時間異常",
+        _ => "尚無資料"
     };
 }

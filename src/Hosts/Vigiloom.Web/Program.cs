@@ -40,6 +40,7 @@ builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
+builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
