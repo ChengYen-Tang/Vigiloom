@@ -11,8 +11,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Time.Testing;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -108,6 +112,56 @@ public sealed class AgentIdentityTlsTests
                 Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
+
+                // Exercise the actual host workers against the real TLS listener and SQL database.
+                AgentSettingsView configured;
+                await using (var scope = factory.Services.CreateAsyncScope())
+                {
+                    var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
+                    var current = await configuration.GetAsync(device.Id, token);
+                    Assert.IsNotNull(current);
+                    configured = (await configuration.UpdateAsync(device.Id, new(new(10, 60, 3), current.Version), Guid.CreateVersion7(), token))!;
+                    Assert.IsNotNull(configured);
+                }
+                var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+                var agentBuilder = AgentHost.CreateBuilder([]);
+                agentBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Vigiloom:Agent:StateDirectory"] = statePath,
+                    ["Vigiloom:Agent:Server"] = url.AbsoluteUri
+                });
+                agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
+                agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, agentClock));
+                agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
+                agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
+                using (var agentHost = agentBuilder.Build())
+                {
+                    try
+                    {
+                        await agentHost.StartAsync(token);
+                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+                        var store = new AgentSettingsStore(vault, url, id);
+                        AgentAppliedSettings? saved = null;
+                        while (saved?.Snapshot != configured.Effective)
+                        {
+                            try { saved = await store.ReadAsync(deadline.Token); }
+                            catch (IOException) { /* The running host may briefly hold the identity lease. */ }
+                            if (saved?.Snapshot != configured.Effective) await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                        }
+                        AgentSettingsStatus? observed = null;
+                        while (observed?.State != AgentSettingsApplyState.Applied)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await using var scope = factory.Services.CreateAsyncScope();
+                            observed = await scope.ServiceProvider.GetRequiredService<AgentSettingsMonitoring>().GetAsync(device.Id, deadline.Token);
+                        }
+                        Assert.AreEqual(configured.Effective, observed.Applied);
+                        Assert.AreEqual(configured.Effective, saved.Snapshot);
+                    }
+                    finally { await agentHost.StopAsync(CancellationToken.None); }
+                }
                 var now = DateTimeOffset.UtcNow;
                 var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test system", "X64", ".NET 10");
                 var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
