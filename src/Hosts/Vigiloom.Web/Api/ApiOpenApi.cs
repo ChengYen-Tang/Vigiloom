@@ -68,6 +68,15 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     : "Requires an Administrator or Read only session, or an API credential with monitoring.read.";
                 operation.Description = string.IsNullOrWhiteSpace(operation.Description) ? authorization : $"{operation.Description}\n\n{authorization}";
             }
+            else if (path.StartsWith("/api/v1/speed-tests", StringComparison.OrdinalIgnoreCase))
+            {
+                if (method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
+                    operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] },
+                        new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
+                else
+                    operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
+                        [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
+            }
             else if (path.StartsWith("/api/v1/accounts", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/settings", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/session", StringComparison.OrdinalIgnoreCase) ||

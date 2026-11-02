@@ -26,26 +26,44 @@ public sealed class IdentityProcessTests(TestContext testContext)
         start.Environment["Vigiloom__Agent__Server"] = $"https://127.0.0.1:{port}/";
         start.Environment["Vigiloom__Agent__StateDirectory"] = root;
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start test Agent.");
+        Exception? primaryFailure = null;
         try
         {
             await process.StandardInput.WriteLineAsync(enrollment.AsMemory(), token);
             await process.StandardInput.FlushAsync(token);
             using var accepted = await listener.AcceptTcpClientAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(25), token);
             var vault = new IdentityVault(root);
-            Assert.Throws<IOException>(() => vault.Acquire());
+            IdentityVault.Session? contender = null;
+            try { Assert.Throws<IOException>(() => contender = vault.Acquire()); }
+            finally { if (contender is not null) await contender.DisposeAsync(); }
             process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(token);
+            // Wait on the OS process object before reopening its exclusive file. The async
+            // exit check can observe an exit code before Windows signals the process handle.
+            Assert.IsTrue(process.WaitForExit(TimeSpan.FromSeconds(10)), "The Agent did not terminate in time.");
             await using var session = vault.Acquire();
             var state = await session.ReadAsync(token);
             Assert.IsNotNull(state); Assert.IsNull(state.AgentId); Assert.AreEqual(enrollment, state.EnrollmentSecret);
         }
+        catch (Exception error)
+        {
+            primaryFailure = error;
+            throw;
+        }
         finally
         {
-            if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
-            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomIdentityProcessTests")) + Path.DirectorySeparatorChar;
-            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(TimeSpan.FromSeconds(10))) throw new TimeoutException("The Agent did not terminate during cleanup.");
+                var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomIdentityProcessTests")) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch (Exception cleanupError) when (primaryFailure is not null)
+            {
+                throw new AggregateException("The test and its cleanup both failed.", primaryFailure, cleanupError);
+            }
         }
     }
 }

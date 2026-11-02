@@ -22,6 +22,12 @@ PR 合併後，確認目標分支已包含變更，再清理由本次工作建�
 - 以真實 SQL Server 驗證 schema、約束與索引；效能未量測前不宣稱 UUID v7 在 SQL Server 已解決順序寫入。
 - 改政策需先提出理由與 ADR 修訂，不在產品程式裡靜默改鍵型別。
 
+## HTTP 與資料庫資源管理
+
+- HTTP 使用 `IHttpClientFactory` 管理 handler／連線生命週期；依用途設定逾時、取消及連線更新，正確釋放 response、stream 與其他持有資源。不為每次請求建立獨立連線池。
+- EF Core 以 `IDbContextFactory<TContext>` 依操作建立並釋放 context，不跨並行操作共用。只有確認 context 無不安全的跨次使用狀態時才啟用 pooled factory；SQL 連線池和 EF context pool 是不同機制。
+- 對涉及重用與並行的變更，驗證釋放及狀態隔離；涉及 SQL 實際連線或寫入時，以隔離的真實 SQL Server／LocalDB 補充驗證。
+
 ## 既有工作邊界
 
 使用者已於 2026-11-01 授權移除舊方案，建立全新 Solution、專案／測試骨架及相依關係。使用者已授權持續開發已討論且未明確擱置的產品需求，依看板前置條件安排，不必每完成一項需求就重新請求授權。
