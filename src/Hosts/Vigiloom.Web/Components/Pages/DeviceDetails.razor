@@ -15,6 +15,7 @@
 @inject PingStore Ping
 @inject AgentMonitoring AgentMonitoring
 @inject AgentSettingsMonitoring AgentSettingsMonitoring
+@inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
 
@@ -45,6 +46,7 @@
                 else if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
                 else
                 {
+                    var observedAt = Clock.GetUtcNow();
                     <dl class="device-details">
                         <div><dt>最後佇列回報（UTC）</dt><dd>@queue.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
                         @if (queue.Snapshot is { } snapshot)
@@ -59,8 +61,8 @@
                     else if (queue.Snapshot.TotalBytes >= queue.Snapshot.CapacityBytes || queue.Snapshot.TotalBatches >= queue.Snapshot.CapacityBatches)
                     { <p class="device-alert" role="status">佇列已達容量，新資料可能需要等待空間。</p> }
                     <p>數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。</p>
-                    @if (agentStatus.State is AgentConnectionState.Offline or AgentConnectionState.ClockUncertain)
-                    { <p class="device-alert" role="status">Agent 目前失聯或時間異常，佇列狀態可能已過時。</p> }
+                    @if (queue.ReportedAt > observedAt || observedAt - queue.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
+                    { <p class="device-alert" role="status">佇列回報已過時或時間異常，請確認 Agent 傳送狀態。</p> }
                 }
             </section>
             <section class="device-panel">
