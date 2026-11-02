@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -102,6 +103,10 @@ public sealed class AgentIdentityTlsTests
                     Assert.AreEqual(HttpStatusCode.OK, identity.StatusCode);
                     Assert.AreEqual(device.Id, (await identity.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
                 }
+                Assert.AreEqual(HeartbeatResult.ServerMismatch, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://different.example/"), token));
+                Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
+                await using (var db = await agents.CreateDbContextAsync(token))
+                    Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
                 using (var oversized = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new StringContent(new string('x', 4096), System.Text.Encoding.UTF8, "application/json"), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
                 using (var oversizedChunked = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new UnknownLengthContent(4096), token))

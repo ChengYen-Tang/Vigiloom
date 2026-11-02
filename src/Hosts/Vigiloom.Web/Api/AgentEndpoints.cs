@@ -58,6 +58,11 @@ internal static class AgentEndpoints
             Guid.Parse(context.User.FindFirstValue("vigiloom:device-id")!))))
             .RequireAuthorization("Agent").Produces<AgentIdentityResponse>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Inspect the current Agent identity");
+        machine.MapPost("/heartbeat", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
+            await agents.RecordHeartbeatAsync(Bearer(context), token) == AgentIdentityStatus.Success ? Results.NoContent() : Results.Unauthorized())
+            .RequireAuthorization("Agent").WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(0))
+            .Produces(204).ProducesProblem(401).ProducesProblem(403).ProducesProblem(413).ProducesProblem(429)
+            .WithSummary("Record an authenticated Agent heartbeat");
         machine.MapPost("/rotation/start", async (RotationRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
         {
             var result = await agents.BeginRotationAsync(Bearer(context), input.MachineVerifier, token);

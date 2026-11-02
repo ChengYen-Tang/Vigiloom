@@ -150,6 +150,8 @@ public sealed class AgentIdentityHttpTests
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
+            using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
+            using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
             using (var apiCannotManage = await api.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotManage.StatusCode);
             using (var unauthenticated = await agent.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
@@ -178,6 +180,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
+            using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotHeartbeat.StatusCode);
             using (var page = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
@@ -228,6 +232,9 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
+            using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
             using (var apiAccess = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiAccess.StatusCode);
             using (var management = await agent.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, management.StatusCode);
@@ -242,9 +249,14 @@ public sealed class AgentIdentityHttpTests
             using (var finish = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, finish.StatusCode);
             using (var retry = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, retry.StatusCode);
             using (var rotated = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.OK, rotated.StatusCode);
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
+            using (var oldHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oldHeartbeat.StatusCode);
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nextCredential);
+            using (var rotatedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, rotatedHeartbeat.StatusCode);
             using (var revoke = await admin.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             using (var revoked = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            using (var revokedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedHeartbeat.StatusCode);
         }, TestContext.CancellationToken);
 
     private sealed class TestClock : TimeProvider
