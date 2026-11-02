@@ -5,16 +5,32 @@ internal sealed class ControlledPhaseFactory(ControlledPhaseHandler handler) : I
     public HttpMessageHandler CreateHandler(string name) => handler;
 }
 
-internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uploadDelayMs = 100) : HttpMessageHandler
+internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uploadDelayMs = 100, int probeDelayMs = 0, bool slowUploads = false) : HttpMessageHandler
 {
     private static readonly byte[] Download = new byte[2 * 1048576];
     private static readonly byte[] UploadResponse = new byte[131072];
     private readonly object gate = new();
     private int uploadRequests;
-    private long uploadBytes, firstUpload, lastUpload;
+    private int uploadProbes;
+    private long uploadBytes, firstUpload, lastUpload, completedUploadTicks;
+    private long slowUploadBytes;
+    private long downloadBytes;
     public int UploadRequests => Volatile.Read(ref uploadRequests);
+    public int UploadProbes => Volatile.Read(ref uploadProbes);
+    public long SlowUploadBytes => Interlocked.Read(ref slowUploadBytes);
+    public long DownloadBytes => Interlocked.Read(ref downloadBytes);
     public long UploadBytes { get { lock (gate) return uploadBytes; } }
-    public double UploadElapsedSeconds { get { lock (gate) return System.Diagnostics.Stopwatch.GetElapsedTime(firstUpload, lastUpload).TotalSeconds; } }
+    public double UploadElapsedSeconds
+    {
+        get
+        {
+            lock (gate)
+            {
+                var current = firstUpload == 0 ? 0 : lastUpload - firstUpload;
+                return (completedUploadTicks + current) / (double)System.Diagnostics.Stopwatch.Frequency;
+            }
+        }
+    }
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         var path = request.RequestUri!.AbsolutePath;
@@ -25,8 +41,30 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
         else if (request.Method == HttpMethod.Post)
         {
             var length = request.Content?.Headers.ContentLength ?? 0;
+            if (length == 0)
+            {
+                Interlocked.Increment(ref uploadProbes);
+                lock (gate)
+                {
+                    if (firstUpload != 0)
+                    {
+                        completedUploadTicks += lastUpload - firstUpload;
+                        firstUpload = 0;
+                        lastUpload = 0;
+                    }
+                }
+                if (probeDelayMs > 0) await Task.Delay(probeDelayMs, token);
+            }
             if (length > 0) lock (gate) { if (firstUpload == 0) firstUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
-            if (request.Content is not null) await request.Content.CopyToAsync(Stream.Null, token);
+            if (request.Content is not null)
+            {
+                if (slowUploads && length > 0)
+                {
+                    using var sink = new SlowSink(bytes => Interlocked.Add(ref slowUploadBytes, bytes), token);
+                    await request.Content.CopyToAsync(sink, token);
+                }
+                else await request.Content.CopyToAsync(Stream.Null, token);
+            }
             Interlocked.Increment(ref uploadRequests);
             await Task.Delay(uploadDelayMs, token);
             if (length > 0) lock (gate) { uploadBytes += length; lastUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
@@ -35,8 +73,29 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
         else
         {
             await Task.Delay(downloadDelayMs, token);
-            content = new ByteArrayContent(Download);
+            content = new StreamContent(new CountingDownload(Download, bytes => Interlocked.Add(ref downloadBytes, bytes)));
         }
         return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content, RequestMessage = request };
+    }
+
+    private sealed class SlowSink(Action<int> received, CancellationToken stopping) : MemoryStream
+    {
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(100, stopping);
+            cancellationToken.ThrowIfCancellationRequested();
+            received(buffer.Length);
+        }
+    }
+
+    private sealed class CountingDownload(byte[] payload, Action<int> read) : MemoryStream(payload, writable: false)
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var count = base.Read(buffer.Span);
+            read(count);
+            return ValueTask.FromResult(count);
+        }
     }
 }

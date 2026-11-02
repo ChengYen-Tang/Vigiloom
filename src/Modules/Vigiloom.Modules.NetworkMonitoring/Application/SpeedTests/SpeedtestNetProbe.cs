@@ -100,19 +100,35 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                 {
                     if (transport is not null)
                     {
-                        total += Math.Max(0, (receiving ? budget.BytesReceived : budget.BytesSent) - before);
-                        milliseconds = stopwatch.ElapsedMilliseconds;
-                        if (total > 0 && milliseconds > 0) update(total * 8d / milliseconds / 1000d);
+                        var partialBytes = Math.Max(0, (receiving ? budget.BytesReceived : budget.BytesSent) - before);
+                        total += partialBytes;
+                        // Downloads have no per-batch endpoint probe. An interrupted upload can be
+                        // waiting in its empty probe, so its active duration cannot be recovered.
+                        if (receiving && partialBytes > 0)
+                        {
+                            milliseconds = stopwatch.ElapsedMilliseconds;
+                            if (milliseconds > 0) update(total * 8d / milliseconds / 1000d);
+                        }
                     }
                     failures++;
                     timedOut = true;
                     break;
                 }
-                var transferred = transport is null ? sample.BytesProcessed : (receiving ? budget.BytesReceived : budget.BytesSent) - before;
+                // Upload bytes are counted only after the server returns a successful response.
+                // Counting every locally written byte would include in-flight requests cancelled
+                // by NetPace's batch limit, inflating a short sample.
+                var transferred = transport is null || !receiving ? sample.BytesProcessed : budget.BytesReceived - before;
                 total += Math.Max(0, transferred);
-                milliseconds = transport is null ? milliseconds + Math.Max(0, sample.ElapsedMilliseconds) : stopwatch.ElapsedMilliseconds;
+                // NetPace times the transfer itself; its upload endpoint probe runs before that timer.
+                // Counting the outer wall clock here lets a slow, empty probe masquerade as a sample.
+                milliseconds += Math.Max(0, sample.ElapsedMilliseconds);
                 failures += sample.RequestsFailed;
-                if (sample.RequestsSucceeded == 0 || sample.ElapsedMilliseconds <= 0 || transferred <= 0) break;
+                if (sample.RequestsSucceeded == 0 || sample.ElapsedMilliseconds <= 0 || transferred <= 0)
+                {
+                    failures++;
+                    if (total > 0 && milliseconds > 0) update(total * 8d / milliseconds / 1000d);
+                    break;
+                }
                 update(total * 8d / milliseconds / 1000d);
                 batchMiB = NextBatchMiB(batchMiB, transferred, sample.ElapsedMilliseconds, milliseconds, phaseLimit - total);
             }
