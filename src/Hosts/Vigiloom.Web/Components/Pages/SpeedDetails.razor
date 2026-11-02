@@ -25,9 +25,9 @@
             <div><dt>下載</dt><dd>@SpeedPresentation.Value(result.Summary.DownloadMbps, "Mbps")</dd></div><div><dt>上傳</dt><dd>@SpeedPresentation.Value(result.Summary.UploadMbps, "Mbps")</dd></div><div><dt>服務端 HTTP 延遲</dt><dd>@SpeedPresentation.Value(result.Summary.LatencyMilliseconds, "ms")</dd></div>
             <div><dt>已計量內容流量</dt><dd>@(result.Summary.Bytes is { } bytes ? $"{bytes / 1048576d:0.###} MiB" : "未知")</dd></div>
             <div><dt>測試開始（UTC）</dt><dd>@(result.Summary.StartedAt?.ToString("u") ?? "尚未開始")</dd></div><div><dt>完成／中止（UTC）</dt><dd>@(result.Summary.CompletedAt?.ToString("u") ?? "尚未完成")</dd></div>
-        </dl><p>十進位 Mbps；參考預算 @result.MaxMiB MiB，最長 @result.TimeoutSeconds 秒。內容流量不含所有通訊開銷；速度代表中央到選定服務端的單一路徑。</p></section>
+        </dl><p>十進位 Mbps；參考預算 @result.MaxMiB MiB，最長 @result.TimeoutSeconds 秒。內容流量不含所有通訊開銷。下載可能使用多個測速伺服器；此紀錄僅保存主要伺服器的資訊。</p></section>
         <section class="device-panel"><h2>服務端與來源</h2><dl class="device-details">
-            <div><dt>測速服務</dt><dd>@result.Provider</dd></div><div><dt>測速伺服器</dt><dd>@(result.Summary.Server ?? "未選定")</dd></div><div><dt>測速端 ISP</dt><dd>@(result.Isp ?? "目前無資料")</dd></div><div><dt>伺服器位置</dt><dd>@(string.Join(" · ", new[] { result.City, result.Country }.Where(x => !string.IsNullOrWhiteSpace(x))) is { Length: > 0 } location ? location : "目前無資料")</dd></div>
+            <div><dt>測速服務</dt><dd>@result.Provider</dd></div><div><dt>主要測速伺服器</dt><dd>@(result.Summary.Server ?? "未選定")</dd></div><div><dt>測速端 ISP</dt><dd>@(result.Isp ?? "目前無資料")</dd></div><div><dt>伺服器位置</dt><dd>@(string.Join(" · ", new[] { result.City, result.Country }.Where(x => !string.IsNullOrWhiteSpace(x))) is { Length: > 0 } location ? location : "目前無資料")</dd></div>
             <div><dt>伺服器座標</dt><dd>@(result.Latitude is { } lat && result.Longitude is { } lon ? $"{lat:0.####}, {lon:0.####}" : "目前無資料")</dd></div><div><dt>診斷代碼</dt><dd>@(result.DiagnosticCode ?? "無")</dd></div>
         </dl><p>ISP 僅顯示 Speedtest.net 提供的測速端資料；伺服器業者不一定是測速端 ISP。</p></section>
         <AuthorizeView Policy="Administrator"><Authorized Context="administrator">

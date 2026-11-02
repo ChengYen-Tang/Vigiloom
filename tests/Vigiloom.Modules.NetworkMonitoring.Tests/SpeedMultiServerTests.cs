@@ -16,10 +16,10 @@ public sealed class SpeedMultiServerTests
     [TestMethod]
     public void AdaptiveConnections_StayBoundedAndNeverShrink()
     {
-        Assert.AreEqual(24, SpeedtestNetProbe.NextDownloadConcurrency(4, 4, 40_000_000, 1000));
-        Assert.AreEqual(6, SpeedtestNetProbe.NextDownloadConcurrency(4, 1, 40_000_000, 1000));
-        Assert.AreEqual(4, SpeedtestNetProbe.NextDownloadConcurrency(4, 4, 1000, 1000));
-        Assert.AreEqual(8, SpeedtestNetProbe.NextDownloadConcurrency(8, 4, 1000, 0));
+        Assert.AreEqual(24, SpeedMeasurementMath.NextDownloadConcurrency(4, 4, 40_000_000, 1000));
+        Assert.AreEqual(6, SpeedMeasurementMath.NextDownloadConcurrency(4, 1, 40_000_000, 1000));
+        Assert.AreEqual(4, SpeedMeasurementMath.NextDownloadConcurrency(4, 4, 1000, 1000));
+        Assert.AreEqual(8, SpeedMeasurementMath.NextDownloadConcurrency(8, 4, 1000, 0));
     }
 
     [TestMethod]
@@ -35,7 +35,7 @@ public sealed class SpeedMultiServerTests
         {
             Id = id, Url = $"http://s{id}.example.com:8080/speedtest/upload.php", Location = "City", Sponsor = $"S{id}", Country = "TW"
         }).ToArray();
-        var ranked = await SpeedtestNetProbe.RankServersAsync(service, servers, TestContext.CancellationToken);
+        var ranked = await SpeedServerDiscovery.RankServersAsync(service, servers, TestContext.CancellationToken);
         CollectionAssert.AreEqual(new[] { 3, 2, 1 }, ranked.Cast<OoklaServer>().Select(server => server.Id).ToArray());
     }
 
@@ -47,7 +47,7 @@ public sealed class SpeedMultiServerTests
         var server = new OoklaServer { Id = 1, Url = "http://s1.example.com:8080/speedtest/upload.php", Location = "City", Sponsor = "S1", Country = "TW" };
         using var cancellation = new CancellationTokenSource();
         await cancellation.CancelAsync();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => SpeedtestNetProbe.RankServersAsync(service, [server], cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => SpeedServerDiscovery.RankServersAsync(service, [server], cancellation.Token));
     }
 
     private sealed class LatencyHandler : HttpMessageHandler

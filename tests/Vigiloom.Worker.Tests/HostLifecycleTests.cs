@@ -148,7 +148,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using var scope = host.Services.CreateScope();
             var settings = scope.ServiceProvider.GetRequiredService<SpeedSettings>();
             var initial = await settings.GetAsync(token);
-            Assert.IsNotNull(await settings.UpdateAsync(new(true, 6, 100, 30, initial.Version), Guid.CreateVersion7(), token));
+            Assert.IsNotNull(await settings.UpdateAsync(new(true, 6, 100, 40, initial.Version), Guid.CreateVersion7(), token));
             await using (var db = new NetworkDbContext(network))
                 await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(minute,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE Name=N'central'", token);
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
