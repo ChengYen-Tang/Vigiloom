@@ -39,7 +39,7 @@ internal static class SpeedProbeTestFactory
                 if (duration > 0)
                 {
                     samples.Add((transferred, duration));
-                    update(SpeedtestNetProbe.CalculateTrimmedRate(samples));
+                    update(SpeedMeasurementMath.CalculateTrimmedRate(samples));
                 }
             }
             return (bytes, elapsed, failures, false);

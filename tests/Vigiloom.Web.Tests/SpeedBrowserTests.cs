@@ -156,7 +156,7 @@ public sealed class SpeedBrowserTests
         Assert.IsTrue(await page.GetByLabel("啟用排程測速").IsCheckedAsync());
         await page.GetByText("進階限制", new() { Exact = true }).ClickAsync();
         await page.Locator("#speed-budget").FillAsync("2");
-        await page.Locator("#speed-timeout").FillAsync("5");
+        await page.Locator("#speed-timeout").FillAsync("40");
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存測速設定" }).ClickAsync();
         await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "設定已儲存" }).WaitForAsync();
         await page.GotoAsync(baseUrl + "/speed-tests");

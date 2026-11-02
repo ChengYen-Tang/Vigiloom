@@ -18,15 +18,15 @@ public sealed class SpeedtestNetProbeTests
             (1_000_000, 1000), (8_000_000, 2000), (3_000_000, 1000),
             (1_000_000, 1000), (1_000_000, 1000), (1_000_000, 1000)];
         // The three fastest early samples are excluded; two of six later samples remain.
-        Assert.AreEqual(88d / 3, SpeedtestNetProbe.CalculateTrimmedRate(samples), 0.0001);
+        Assert.AreEqual(88d / 3, SpeedMeasurementMath.CalculateTrimmedRate(samples), 0.0001);
     }
 
     [TestMethod]
     public void TrimmedRate_RoundsSampleCountsUpAndIgnoresInvalidSamples()
     {
         (long Bytes, long Milliseconds)[] samples = [(1_000_000, 1000), (0, 1000), (4_000_000, 2000)];
-        Assert.AreEqual(16d, SpeedtestNetProbe.CalculateTrimmedRate(samples), 0.0001);
-        Assert.AreEqual(0d, SpeedtestNetProbe.CalculateTrimmedRate([]));
+        Assert.AreEqual(16d, SpeedMeasurementMath.CalculateTrimmedRate(samples), 0.0001);
+        Assert.AreEqual(0d, SpeedMeasurementMath.CalculateTrimmedRate([]));
     }
     public TestContext TestContext { get; set; } = null!;
     private static SpeedtestNetProbe CreateProbe(ISpeedTestService service) => SpeedProbeTestFactory.Create(service, 2000);
@@ -60,9 +60,9 @@ public sealed class SpeedtestNetProbeTests
     public void AdaptiveBatch_GrowsForFastLinksAndHonoursLimits()
     {
         const long mib = 1024 * 1024;
-        Assert.AreEqual(8, SpeedtestNetProbe.NextBatchMiB(1, mib, 10, 10, 100 * mib, 2000));
-        Assert.AreEqual(3, SpeedtestNetProbe.NextBatchMiB(8, 8 * mib, 50, 60, 3 * mib, 2000));
-        Assert.AreEqual(1, SpeedtestNetProbe.NextBatchMiB(1, mib, 1500, 1500, 100 * mib, 2000));
+        Assert.AreEqual(8, SpeedMeasurementMath.NextBatchMiB(1, mib, 10, 10, 100 * mib, 2000));
+        Assert.AreEqual(3, SpeedMeasurementMath.NextBatchMiB(8, 8 * mib, 50, 60, 3 * mib, 2000));
+        Assert.AreEqual(1, SpeedMeasurementMath.NextBatchMiB(1, mib, 1500, 1500, 100 * mib, 2000));
     }
 
     [TestMethod]

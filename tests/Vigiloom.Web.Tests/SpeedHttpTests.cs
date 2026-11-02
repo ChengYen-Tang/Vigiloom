@@ -33,12 +33,12 @@ public sealed class SpeedHttpTests
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
         var first = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
         Assert.IsNotNull(first); Assert.IsTrue(first.Automatic); Assert.IsNotNull(first.NextAutomaticAt);
-        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 5, first.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
+        using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 40, first.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
         using var page = await admin.GetAsync("/settings/speed-tests", token);
         Assert.IsTrue(page.Headers.CacheControl?.NoStore);
         var form = await FormAsync(page, "speed-settings", token);
         var fields = Hidden(form);
-        fields["Input.Hours"] = "6"; fields["Input.MaxMiB"] = "2"; fields["Input.Timeout"] = "5";
+        fields["Input.Hours"] = "6"; fields["Input.MaxMiB"] = "2"; fields["Input.Timeout"] = "40";
         fields["Input.Automatic"] = "false";
         using (var save = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已儲存", await TextAsync(save, token));

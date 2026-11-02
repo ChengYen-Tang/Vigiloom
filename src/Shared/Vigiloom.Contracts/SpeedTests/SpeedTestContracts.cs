@@ -1,6 +1,11 @@
 namespace Vigiloom.Contracts.SpeedTests;
 
 public enum SpeedTestState { Queued, Running, Success, Partial, BudgetExceeded, TimedOut, Failed, Cancelled, Interrupted, NoServer, Unavailable }
+public static class SpeedSettingsLimits
+{
+    public const int MinTimeoutSeconds = 40;
+    public const int MaxTimeoutSeconds = 60;
+}
 public sealed record SpeedSettingsInput(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds, string? Version);
 public sealed record SpeedSettingsSnapshot(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds,
     string Version, DateTimeOffset? NextAutomaticAt, int ReservedToday);

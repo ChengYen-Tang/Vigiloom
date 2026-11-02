@@ -49,7 +49,7 @@ internal static class ContinuousSpeedUpload
                     while (clock.ElapsedMilliseconds < targetMilliseconds / 2 && index >= allowed)
                     {
                         await Task.Delay(500, transfer.Token);
-                        allowed = SpeedtestNetProbe.NextDownloadConcurrency(4, 1,
+                        allowed = SpeedMeasurementMath.NextDownloadConcurrency(4, 1,
                             Interlocked.Read(ref confirmed), clock.ElapsedMilliseconds);
                     }
                     if (index >= allowed) return;
@@ -128,7 +128,7 @@ internal static class ContinuousSpeedUpload
             lastTime = now;
             lastBytes = current;
             samples.Add((bytes, duration));
-            if (samples.Any(sample => sample.Bytes > 0)) update(SpeedtestNetProbe.CalculateTrimmedRate(samples));
+            if (samples.Any(sample => sample.Bytes > 0)) update(SpeedMeasurementMath.CalculateTrimmedRate(samples));
         }
     }
 

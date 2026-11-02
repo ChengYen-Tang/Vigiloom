@@ -1,7 +1,4 @@
-using System.Net;
 using System.Net.Sockets;
-using System.Globalization;
-using System.Text.Json;
 using NetPace.Core;
 using NetPace.Core.Clients.Ookla;
 using NetPace.Core.Clients.Ookla.Settings;
@@ -69,8 +66,8 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
             try { deadline.Cancel(); }
             catch (ObjectDisposedException) { }
         }, deadline.Token);
-        EndpointGuard? guard = null;
-        using var transport = testService is null ? CreateTransport(handlerFactory!, budget, out guard) : null;
+        SpeedHttpTransport.EndpointGuard? guard = null;
+        using var transport = testService is null ? SpeedHttpTransport.CreateTransport(handlerFactory!, budget, out guard) : null;
         var service = testService ?? CreateService(1, transport!, parallelRequests);
         IServer? selected = null;
         IServer[] downloadServers = [];
@@ -79,25 +76,25 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         try
         {
             var candidates = fixedDownloadServerIds is null
-                ? transport is null ? Array.Empty<IServer>() : await GetSuggestedServersAsync(transport, deadline.Token, serverId)
+                ? transport is null ? Array.Empty<IServer>() : await SpeedServerDiscovery.GetSuggestedServersAsync(transport, deadline.Token, serverId)
                 : await ResolveFixedServersAsync(fixedDownloadServerIds);
             if (serverId is not null) candidates = candidates.Where(MatchesServer).ToArray();
             var usedSuggestions = candidates.Length > 0;
             if (fixedDownloadServerIds is not null && candidates.Length != fixedDownloadServerIds.Count)
                 return new(SpeedTestState.NoServer, Bytes: transport is null ? null : budget.BytesTransferred, DiagnosticCode: "fixed_server_not_found");
             if (candidates.Length == 0 && fixedDownloadServerIds is null)
-                candidates = (await service.GetServersAsync(deadline.Token)).Where(IsValidCandidate).Where(MatchesServer)
+                candidates = (await service.GetServersAsync(deadline.Token)).Where(SpeedServerDiscovery.IsValidCandidate).Where(MatchesServer)
                     .Take(serverId is null ? 20 : 1).ToArray();
             if (candidates.Length == 0) return new(SpeedTestState.NoServer, DiagnosticCode: serverId is null ? "no_valid_servers" : "server_not_found");
             guard?.Allow(candidates);
             if (multiServerDownload && serverId is null && transport is not null)
             {
-                var ranked = await RankServersAsync(service, candidates, deadline.Token);
+                var ranked = await SpeedServerDiscovery.RankServersAsync(service, candidates, deadline.Token);
                 if (ranked.Length == 0 && usedSuggestions && !budget.Reached && fixedDownloadServerIds is null)
                 {
-                    candidates = (await service.GetServersAsync(deadline.Token)).Where(IsValidCandidate).Take(20).ToArray();
+                    candidates = (await service.GetServersAsync(deadline.Token)).Where(SpeedServerDiscovery.IsValidCandidate).Take(20).ToArray();
                     guard!.Allow(candidates);
-                    ranked = await RankServersAsync(service, candidates, deadline.Token);
+                    ranked = await SpeedServerDiscovery.RankServersAsync(service, candidates, deadline.Token);
                 }
                 if (ranked.Length == 0)
                     return new(budget.Reached ? SpeedTestState.BudgetExceeded : SpeedTestState.NoServer,
@@ -117,7 +114,7 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                     if (!usedSuggestions || budget.Reached || serverId is not null)
                         return new(budget.Reached ? SpeedTestState.BudgetExceeded : SpeedTestState.NoServer,
                             Bytes: transport is null ? null : budget.BytesTransferred, DiagnosticCode: budget.Reached ? "traffic_budget" : "no_reachable_servers");
-                    candidates = (await service.GetServersAsync(deadline.Token)).Where(IsValidCandidate).Take(20).ToArray();
+                    candidates = (await service.GetServersAsync(deadline.Token)).Where(SpeedServerDiscovery.IsValidCandidate).Take(20).ToArray();
                     if (candidates.Length == 0) return new(SpeedTestState.NoServer, Bytes: budget.BytesTransferred, DiagnosticCode: "no_reachable_servers");
                     guard!.Allow(candidates);
                     try { fastest = await service.GetFastestServerByLatencyAsync(candidates, deadline.Token); }
@@ -159,14 +156,14 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
             var found = new Dictionary<int, IServer>();
             if (transport is not null)
             {
-                var responses = await Task.WhenAll(ids.Select(id => GetSuggestedServersAsync(transport, deadline.Token, id)));
+                var responses = await Task.WhenAll(ids.Select(id => SpeedServerDiscovery.GetSuggestedServersAsync(transport, deadline.Token, id)));
                 foreach (var candidate in responses.SelectMany(response => response).OfType<OoklaServer>())
                     if (ids.Contains(candidate.Id)) found.TryAdd(candidate.Id, candidate);
             }
             if (found.Count != ids.Count)
             {
                 var directory = await service.GetServersAsync(deadline.Token);
-                foreach (var candidate in directory.OfType<OoklaServer>().Where(IsValidCandidate))
+                foreach (var candidate in directory.OfType<OoklaServer>().Where(SpeedServerDiscovery.IsValidCandidate))
                     if (ids.Contains(candidate.Id)) found.TryAdd(candidate.Id, candidate);
             }
             return ids.Where(found.ContainsKey).Select(id => found[id]).ToArray();
@@ -269,7 +266,7 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                             milliseconds = stopwatch.ElapsedMilliseconds;
                             if (batchClock.ElapsedMilliseconds > 0)
                                 rateSamples.Add((partialBytes, batchClock.ElapsedMilliseconds));
-                            if (rateSamples.Count > 0) update(CalculateTrimmedRate(rateSamples));
+                            if (rateSamples.Count > 0) update(SpeedMeasurementMath.CalculateTrimmedRate(rateSamples));
                         }
                     }
                     failures++;
@@ -295,7 +292,7 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                 if (sample.RequestsSucceeded == 0 || sample.ElapsedMilliseconds < 0 || transferred <= 0)
                 {
                     failures++;
-                    if (rateSamples.Count > 0) update(CalculateTrimmedRate(rateSamples));
+                    if (rateSamples.Count > 0) update(SpeedMeasurementMath.CalculateTrimmedRate(rateSamples));
                     break;
                 }
                 if (sample.ElapsedMilliseconds == 0)
@@ -308,10 +305,10 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                     continue;
                 }
                 rateSamples.Add((transferred, sample.ElapsedMilliseconds));
-                update(CalculateTrimmedRate(rateSamples));
+                update(SpeedMeasurementMath.CalculateTrimmedRate(rateSamples));
                 if (multiServerDownload && serverId is null && transport is not null && milliseconds < targetMilliseconds / 2)
-                    downloadConcurrency = NextDownloadConcurrency(downloadConcurrency, downloadServers.Length, transferred, sample.ElapsedMilliseconds);
-                batchMiB = NextBatchMiB(batchMiB, transferred, sample.ElapsedMilliseconds, milliseconds, phaseLimit - total, targetMilliseconds);
+                    downloadConcurrency = SpeedMeasurementMath.NextDownloadConcurrency(downloadConcurrency, downloadServers.Length, transferred, sample.ElapsedMilliseconds);
+                batchMiB = SpeedMeasurementMath.NextBatchMiB(batchMiB, transferred, sample.ElapsedMilliseconds, milliseconds, phaseLimit - total, targetMilliseconds);
             }
             return (total, milliseconds, failures, timedOut);
         }
@@ -331,107 +328,7 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         }
     }
 
-    // Use batches as samples: discard the first third in chronological order,
-    // then retain the fastest 30% of the remaining batches (rounding up).
-    // Average retained bytes over retained transfer time rather than averaging rates.
-    internal static double CalculateTrimmedRate(IReadOnlyList<(long Bytes, long Milliseconds)> samples)
-    {
-        var valid = samples.Where(sample => sample.Bytes > 0 && sample.Milliseconds > 0).ToArray();
-        if (valid.Length == 0) return 0;
-        var recent = valid.Skip(valid.Length / 3).ToArray();
-        var count = (int)Math.Ceiling(recent.Length * 0.3d);
-        var selected = recent.OrderByDescending(sample => (double)sample.Bytes / sample.Milliseconds).Take(count).ToArray();
-        return selected.Sum(sample => (double)sample.Bytes) * 8d / selected.Sum(sample => (double)sample.Milliseconds) / 1000d;
-    }
-
-    internal static int NextBatchMiB(int previousMiB, long sampleBytes, long sampleMs, long elapsedMs, long remainingBytes, int targetMilliseconds = DefaultTargetMilliseconds)
-    {
-        var remainingMiB = Math.Max(0, remainingBytes / (1024d * 1024d));
-        // Limit the planned sample to roughly three seconds so a throughput drop
-        // cannot leave a single oversized batch running until the phase deadline.
-        var remainingTargetMs = Math.Min(3000d, Math.Max(0, targetMilliseconds - elapsedMs));
-        var estimateMiB = sampleBytes / (1024d * 1024d) * remainingTargetMs / Math.Max(1, sampleMs);
-        return (int)Math.Clamp(Math.Ceiling(estimateMiB), 1, Math.Max(1, Math.Min(remainingMiB, previousMiB * 8d)));
-    }
-
-    internal static async Task<IServer[]> RankServersAsync(ISpeedTestService service, IEnumerable<IServer> candidates,
-        CancellationToken token)
-    {
-        using var screeningDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        screeningDeadline.CancelAfter(TimeSpan.FromSeconds(5));
-        var tested = candidates.OfType<OoklaServer>().DistinctBy(server => server.Id).Take(10).ToArray();
-        var results = await Task.WhenAll(tested.Select(async server =>
-        {
-            var successes = 0;
-            try
-            {
-                var diagnostics = new InlineProgress<RequestDiagnostic>(request =>
-                {
-                    if (request.Outcome == RequestOutcome.Succeeded) Interlocked.Increment(ref successes);
-                });
-                var result = await service.GetServerLatencyAsync(server, null, diagnostics, screeningDeadline.Token);
-                return (Server: server, Latency: Volatile.Read(ref successes) > 0 && double.IsFinite(result.LatencyMilliseconds) && result.LatencyMilliseconds >= 0
-                    ? (double?)result.LatencyMilliseconds : null);
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested) { return (Server: server, Latency: (double?)null); }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or ArgumentException)
-            {
-                return (Server: server, Latency: (double?)null);
-            }
-        }));
-        token.ThrowIfCancellationRequested();
-        return results.Where(result => result.Latency.HasValue).OrderBy(result => result.Latency).Select(result => (IServer)result.Server).ToArray();
-    }
-
     internal static double PhaseDeadlineSeconds(int timeoutSeconds) => Math.Max(3, timeoutSeconds / 2d - 2);
-
-    internal static int NextDownloadConcurrency(int current, int serverCount, long bytes, long milliseconds)
-    {
-        if (serverCount < 1 || milliseconds <= 0 || bytes <= 0) return current;
-        var max = Math.Min(24, serverCount * 6);
-        var estimated = bytes / (double)milliseconds * 1000d / 750_000d;
-        return Math.Clamp((int)Math.Min(max, Math.Ceiling(estimated)), Math.Min(current, max), max);
-    }
-
-    // This endpoint is not documented as a stable public API. Never use its clientAuth
-    // token or infer that its server isp_id has the same semantics as the client ispId.
-    internal static async Task<IServer[]> GetSuggestedServersAsync(HttpClient transport, CancellationToken token, int? serverId = null)
-    {
-        using var requestDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        requestDeadline.CancelAfter(TimeSpan.FromSeconds(5));
-        try
-        {
-            var url = serverId is null ? "https://www.speedtest.net/api/js/config-sdk" :
-                $"https://www.speedtest.net/api/js/config-sdk?server_ids%5B%5D={serverId.Value.ToString(CultureInfo.InvariantCulture)}";
-            using var response = await transport.GetAsync(url, requestDeadline.Token);
-            response.EnsureSuccessStatusCode();
-            using var content = await response.Content.ReadAsStreamAsync(requestDeadline.Token);
-            using var json = await JsonDocument.ParseAsync(content, cancellationToken: requestDeadline.Token);
-            if (json.RootElement.ValueKind != JsonValueKind.Object ||
-                !json.RootElement.TryGetProperty("servers", out var servers) || servers.ValueKind != JsonValueKind.Array) return [];
-            var candidates = new List<IServer>();
-            foreach (var item in servers.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object) continue;
-                string? Value(string name) => item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                if (!int.TryParse(Value("id"), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0 ||
-                    !double.TryParse(Value("lat"), NumberStyles.Float, CultureInfo.InvariantCulture, out var lat) ||
-                    !double.TryParse(Value("lon"), NumberStyles.Float, CultureInfo.InvariantCulture, out var lon)) continue;
-                var server = new OoklaServer { Id = id, Url = Value("url") ?? "", Location = Value("name") ?? "",
-                    Sponsor = Value("sponsor") ?? "", Country = Value("country") ?? "", Latitude = lat, Longitude = lon };
-                if (IsValidCandidate(server)) candidates.Add(server);
-                if (candidates.Count == 20) break;
-            }
-            return [.. candidates];
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return []; }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException) { return []; }
-    }
-
-    private static bool IsValidCandidate(IServer server) => Uri.TryCreate(server.Url, UriKind.Absolute, out var uri)
-        && uri.Scheme is "http" or "https" && uri.Port is 80 or 443 or 8080 && string.IsNullOrEmpty(uri.UserInfo)
-        && !IPAddress.TryParse(uri.Host, out _) && uri.AbsolutePath.StartsWith("/speedtest/", StringComparison.OrdinalIgnoreCase)
-        && server.Location.Length <= 100 && server.Sponsor.Length <= 100 && (server is not OoklaServer ookla || ookla.Country is null || ookla.Country.Length <= 100);
 
     private static int DownloadSize(int batchMiB, int maximum) => Math.Min(maximum,
         batchMiB switch { >= 64 => 4000, >= 16 => 3000, >= 8 => 2000, >= 4 => 1500, _ => 1000 });
@@ -453,99 +350,5 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         return new OoklaSpeedtest(settings, transport);
     }
 
-    public static SocketsHttpHandler CreatePrimaryHandler() => new()
-    {
-        AllowAutoRedirect = false, UseProxy = false, UseCookies = false,
-        ConnectTimeout = TimeSpan.FromSeconds(5), ConnectCallback = ConnectPublicAsync,
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-    };
-
-    private static HttpClient CreateTransport(IHttpMessageHandlerFactory factory, SpeedTrafficBudget budget, out EndpointGuard guard)
-    {
-        guard = new EndpointGuard(budget) { InnerHandler = factory.CreateHandler(HttpClientName) };
-        var client = new HttpClient(guard) { MaxResponseContentBufferSize = 2 * 1024 * 1024, Timeout = Timeout.InfiniteTimeSpan };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Vigiloom/1.0");
-        return client;
-    }
-
-    private sealed class EndpointGuard(SpeedTrafficBudget budget) : DelegatingHandler
-    {
-        private readonly HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase) { "c.speedtest.net", "www.speedtest.net" };
-        private DownloadBatchResponses? downloadBatch;
-        public DownloadBatchResponses TrackDownloadBatch()
-        {
-            var batch = new DownloadBatchResponses();
-            Volatile.Write(ref downloadBatch, batch);
-            return batch;
-        }
-        public void StopTrackingDownloadBatch(DownloadBatchResponses batch) => Interlocked.CompareExchange(ref downloadBatch, null, batch);
-        public void Allow(IEnumerable<IServer> servers)
-        {
-            foreach (var server in servers) hosts.Add(new Uri(server.Url).Host);
-        }
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var uri = request.RequestUri;
-            if (budget.Reached) throw new HttpRequestException("Speed-test traffic budget exhausted.");
-            if (uri is null || !hosts.Contains(uri.Host) || uri.Port is not (80 or 443 or 8080) ||
-                uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo))
-                throw new HttpRequestException("Untrusted speed test endpoint.");
-            if (request.Content is not null) request.Content = new SpeedBudgetContent(request.Content, budget, TrafficDirection.Sent);
-            var batch = request.Method == HttpMethod.Get && uri.AbsolutePath.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                ? Volatile.Read(ref downloadBatch) : null;
-            try
-            {
-                var response = await base.SendAsync(request, cancellationToken);
-                batch?.Record(response.StatusCode);
-                if (response.Content is not null) response.Content = new SpeedBudgetContent(response.Content, budget, TrafficDirection.Received);
-                return response;
-            }
-            catch
-            {
-                batch?.RecordOther();
-                throw;
-            }
-        }
-    }
-
-    private sealed class DownloadBatchResponses
-    {
-        private int missing, other;
-        public void Record(HttpStatusCode status)
-        {
-            if (status is HttpStatusCode.NotFound or HttpStatusCode.Gone) Interlocked.Increment(ref missing);
-            else Interlocked.Increment(ref other);
-        }
-        public void RecordOther() => Interlocked.Increment(ref other);
-        public bool OnlyMissingFiles(int failures) => failures > 0 && Volatile.Read(ref missing) == failures && Volatile.Read(ref other) == 0;
-    }
-
-    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
-    {
-        public void Report(T value) => report(value);
-    }
-
-    private static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken token)
-    {
-        if (context.DnsEndPoint.Port is not (80 or 443 or 8080)) throw new HttpRequestException("Unsupported speed test port.");
-        var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, token);
-        foreach (var address in addresses.Where(IsPublic))
-        {
-            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            try { await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), token); return new NetworkStream(socket, ownsSocket: true); }
-            catch (SocketException) { socket.Dispose(); }
-            catch { socket.Dispose(); throw; }
-        }
-        throw new HttpRequestException("No public speed test address is reachable.");
-    }
-
-    private static bool IsPublic(IPAddress ip)
-    {
-        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-        var b = ip.GetAddressBytes();
-        if (b.Length == 16) return (b[0] & 0xe0) == 0x20 && !(b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == 0xb8);
-        return b.Length == 4 && b[0] is > 0 and < 224 && b[0] != 10 && b[0] != 127 &&
-            !(b[0] == 169 && b[1] == 254) && !(b[0] == 172 && b[1] is >= 16 and <= 31) &&
-            !(b[0] == 192 && b[1] == 168) && !(b[0] == 100 && b[1] is >= 64 and <= 127);
-    }
+    public static SocketsHttpHandler CreatePrimaryHandler() => SpeedHttpTransport.CreatePrimaryHandler();
 }

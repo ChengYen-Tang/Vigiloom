@@ -18,8 +18,8 @@ public sealed class SpeedMeasurementDurationTests
     public void AdaptiveBatch_PrefersThreeSecondSamplesAndRespectsRemainingTarget()
     {
         const long mib = 1024 * 1024;
-        Assert.AreEqual(300, SpeedtestNetProbe.NextBatchMiB(128, 100 * mib, 1000, 1000, 1000 * mib));
-        Assert.AreEqual(50, SpeedtestNetProbe.NextBatchMiB(128, 100 * mib, 1000, 14500, 1000 * mib));
+        Assert.AreEqual(300, SpeedMeasurementMath.NextBatchMiB(128, 100 * mib, 1000, 1000, 1000 * mib));
+        Assert.AreEqual(50, SpeedMeasurementMath.NextBatchMiB(128, 100 * mib, 1000, 14500, 1000 * mib));
         Assert.AreEqual(28d, SpeedtestNetProbe.PhaseDeadlineSeconds(60));
         Assert.AreEqual(4d, SpeedtestNetProbe.PhaseDeadlineSeconds(12));
     }

@@ -8,7 +8,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
 {
     public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 1 and <= 168 && input.MaxMiB is >= 2 and <= 2048 &&
-        input.TimeoutSeconds is >= 5 and <= 60;
+        input.TimeoutSeconds is >= SpeedSettingsLimits.MinTimeoutSeconds and <= SpeedSettingsLimits.MaxTimeoutSeconds;
     public async Task<SpeedSettingsSnapshot> GetAsync(CancellationToken token)
     {
         await SpeedDatabase.EnsureAsync(contexts, token);

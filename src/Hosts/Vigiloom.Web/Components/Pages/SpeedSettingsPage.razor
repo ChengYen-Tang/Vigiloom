@@ -22,7 +22,7 @@
                 <label for="speed-hours">測速間隔（1～168 小時）</label><InputNumber id="speed-hours" @bind-Value="Input.Hours" min="1" max="168" />
                 <details><summary>進階限制</summary>
                     <label for="speed-budget">每次參考流量預算（2～2048 MiB）</label><InputNumber id="speed-budget" @bind-Value="Input.MaxMiB" min="2" max="2048" />
-                    <label for="speed-timeout">每次最長時間（5～60 秒）</label><InputNumber id="speed-timeout" @bind-Value="Input.Timeout" min="5" max="60" />
+                    <label for="speed-timeout">每次最長時間（@SpeedSettingsLimits.MinTimeoutSeconds～@SpeedSettingsLimits.MaxTimeoutSeconds 秒）</label><InputNumber id="speed-timeout" @bind-Value="Input.Timeout" min="@SpeedSettingsLimits.MinTimeoutSeconds" max="@SpeedSettingsLimits.MaxTimeoutSeconds" />
                     <p>測試量會依測得的速度自動調整；通訊開銷及失敗請求的部分流量可能超出參考預算。</p>
                 </details>
                 <p>每個中央位置同時只執行一筆。停用排程會取消待執行與進行中的測試。</p>

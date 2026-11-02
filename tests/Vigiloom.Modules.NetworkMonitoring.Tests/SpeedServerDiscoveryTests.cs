@@ -22,7 +22,7 @@ public sealed class SpeedServerDiscoveryTests
     public async Task SuggestedServers_ParsesProviderDataAndRejectsPrivateEndpoint()
     {
         using var client = new HttpClient(new DiscoveryHandler(HttpStatusCode.OK, ValidConfig));
-        var result = await SpeedtestNetProbe.GetSuggestedServersAsync(client, TestContext.CancellationToken);
+        var result = await SpeedServerDiscovery.GetSuggestedServersAsync(client, TestContext.CancellationToken);
         Assert.HasCount(1, result);
         var server = result[0] as OoklaServer;
         Assert.IsNotNull(server);
@@ -39,7 +39,7 @@ public sealed class SpeedServerDiscoveryTests
     public async Task SuggestedServers_UnavailableOrInvalidReturnsEmptyForFallback(HttpStatusCode status, string body)
     {
         using var client = new HttpClient(new DiscoveryHandler(status, body));
-        var result = await SpeedtestNetProbe.GetSuggestedServersAsync(client, TestContext.CancellationToken);
+        var result = await SpeedServerDiscovery.GetSuggestedServersAsync(client, TestContext.CancellationToken);
         Assert.IsEmpty(result);
     }
 
@@ -49,7 +49,7 @@ public sealed class SpeedServerDiscoveryTests
         using var client = new HttpClient(new DiscoveryHandler(HttpStatusCode.OK, ValidConfig));
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => SpeedtestNetProbe.GetSuggestedServersAsync(client, cancelled.Token));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(() => SpeedServerDiscovery.GetSuggestedServersAsync(client, cancelled.Token));
     }
 
     [TestMethod]
