@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
@@ -20,20 +21,40 @@ internal static class AgentBatchEndpoints
 
     private static async Task<IResult> ReceiveAsync(HttpContext context, AgentBatchReceiver receiver, CancellationToken token)
     {
-        if (!context.Request.HasJsonContentType() || context.Request.Headers.ContainsKey("Content-Encoding"))
+        var encodings = context.Request.Headers.ContentEncoding;
+        var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
+        if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
         if (context.Request.ContentLength > AgentBatchCodec.MaximumBytes)
             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-        using var body = new MemoryStream();
+        using var encoded = new MemoryStream();
+        using var decoded = gzip ? new MemoryStream() : null;
         var chunk = ArrayPool<byte>.Shared.Rent(16 * 1024);
         try
         {
-            int read;
-            while ((read = await context.Request.Body.ReadAsync(chunk, token)) != 0)
+            // Read the complete wire body before decoding: a gzip decoder can stop
+            // at trailing data without consuming an oversized chunked request.
+            try
             {
-                if (body.Length + read > AgentBatchCodec.MaximumBytes)
+                if (!await ReadBoundedAsync(context.Request.Body, encoded, chunk, token))
                     return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                await body.WriteAsync(chunk.AsMemory(0, read), token);
+            }
+            catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            }
+            var body = encoded;
+            if (gzip)
+            {
+                encoded.Position = 0;
+                using var decompressor = new GZipStream(encoded, CompressionMode.Decompress, leaveOpen: true);
+                try
+                {
+                    if (!await ReadBoundedAsync(decompressor, decoded!, chunk, token))
+                        return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
+                catch (InvalidDataException) { return Results.BadRequest(); }
+                body = decoded!;
             }
             var result = await receiver.ReceiveAsync(AgentEndpoints.Bearer(context), body.GetBuffer().AsMemory(0, (int)body.Length), token);
             return result switch
@@ -48,8 +69,20 @@ internal static class AgentBatchEndpoints
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(body.GetBuffer().AsSpan(0, (int)body.Length));
+            CryptographicOperations.ZeroMemory(encoded.GetBuffer().AsSpan(0, (int)encoded.Length));
+            if (decoded is not null) CryptographicOperations.ZeroMemory(decoded.GetBuffer().AsSpan(0, (int)decoded.Length));
             ArrayPool<byte>.Shared.Return(chunk, clearArray: true);
         }
+    }
+
+    private static async Task<bool> ReadBoundedAsync(Stream input, MemoryStream output, byte[] buffer, CancellationToken token)
+    {
+        int read;
+        while ((read = await input.ReadAsync(buffer, token)) != 0)
+        {
+            if (output.Length + read > AgentBatchCodec.MaximumBytes) return false;
+            await output.WriteAsync(buffer.AsMemory(0, read), token);
+        }
+        return true;
     }
 }

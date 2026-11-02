@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Security;
@@ -172,7 +173,10 @@ public sealed class AgentIdentityTlsTests
                     Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
                 }
                 await using (var db = await agents.CreateDbContextAsync(token))
+                {
                     Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
+                }
                 using (var oversized = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new StringContent(new string('x', 4096), System.Text.Encoding.UTF8, "application/json"), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
                 using (var oversizedChunked = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new UnknownLengthContent(4096), token))
@@ -182,6 +186,22 @@ public sealed class AgentIdentityTlsTests
                     tooLarge.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                     using var rejected = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), tooLarge, token);
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                }
+                var otherBatch = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [message with { MessageId = Guid.CreateVersion7() }] });
+                using var compressed = new MemoryStream();
+                using (var gzip = new GZipStream(compressed, CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(otherBatch);
+                var oversizedEncoded = new byte[compressed.Length + AgentBatchCodec.MaximumBytes + 1];
+                compressed.GetBuffer().AsSpan(0, checked((int)compressed.Length)).CopyTo(oversizedEncoded);
+                using (var trailing = new UnknownLengthBytesContent(oversizedEncoded))
+                {
+                    trailing.Headers.ContentEncoding.Add("gzip");
+                    using var rejected = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), trailing, token);
+                    Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                }
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
                 }
             }
             finally
@@ -199,5 +219,13 @@ public sealed class AgentIdentityTlsTests
         public UnknownLengthContent(int length) { this.length = length; Headers.ContentType = new MediaTypeHeaderValue("application/json"); }
         protected override bool TryComputeLength(out long value) { value = 0; return false; }
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(new byte[length]).AsTask();
+    }
+
+    private sealed class UnknownLengthBytesContent : HttpContent
+    {
+        private readonly byte[] bytes;
+        public UnknownLengthBytesContent(byte[] bytes) { this.bytes = bytes; Headers.ContentType = new MediaTypeHeaderValue("application/json"); }
+        protected override bool TryComputeLength(out long value) { value = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(bytes).AsTask();
     }
 }
