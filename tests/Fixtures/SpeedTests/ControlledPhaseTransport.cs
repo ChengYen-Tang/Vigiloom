@@ -43,6 +43,7 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         var path = request.RequestUri!.AbsolutePath;
+        if (path == "/api/js/config-sdk") return new(System.Net.HttpStatusCode.ServiceUnavailable) { RequestMessage = request };
         HttpContent content;
         if (path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal))
             content = new StringContent("<settings><servers><server url=\"http://speedtest.example.com:8080/speedtest/upload.php\" lat=\"25\" lon=\"121\" name=\"Taipei\" country=\"Taiwan\" sponsor=\"Example\" id=\"1\" /></servers></settings>");

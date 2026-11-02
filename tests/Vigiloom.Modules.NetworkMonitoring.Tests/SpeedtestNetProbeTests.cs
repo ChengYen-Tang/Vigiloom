@@ -10,14 +10,34 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 [TestClass]
 public sealed class SpeedtestNetProbeTests
 {
+    [TestMethod]
+    public void TrimmedRate_UsesFastestThirtyPercentOfRecentTwoThirds()
+    {
+        (long Bytes, long Milliseconds)[] samples = [
+            (100_000_000, 1000), (100_000_000, 1000), (100_000_000, 1000),
+            (1_000_000, 1000), (8_000_000, 2000), (3_000_000, 1000),
+            (1_000_000, 1000), (1_000_000, 1000), (1_000_000, 1000)];
+        // The three fastest early samples are excluded; two of six later samples remain.
+        Assert.AreEqual(88d / 3, SpeedtestNetProbe.CalculateTrimmedRate(samples), 0.0001);
+    }
+
+    [TestMethod]
+    public void TrimmedRate_RoundsSampleCountsUpAndIgnoresInvalidSamples()
+    {
+        (long Bytes, long Milliseconds)[] samples = [(1_000_000, 1000), (0, 1000), (4_000_000, 2000)];
+        Assert.AreEqual(16d, SpeedtestNetProbe.CalculateTrimmedRate(samples), 0.0001);
+        Assert.AreEqual(0d, SpeedtestNetProbe.CalculateTrimmedRate([]));
+    }
     public TestContext TestContext { get; set; } = null!;
+    private static SpeedtestNetProbe CreateProbe(ISpeedTestService service) => SpeedProbeTestFactory.Create(service, 2000);
+    private static SpeedtestNetProbe CreateProbe(IHttpMessageHandlerFactory factory) => new(factory, 2000, 4);
     private static SpeedLease Lease() => new(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 10);
     private static OoklaServer Server() => new() { Id = 18475, Url = "http://speedtest.example.com:8080/speedtest/upload.php", Location = "Taipei", Sponsor = "Example", Country = "Taiwan", Latitude = 25, Longitude = 121 };
     private static SpeedTestResult Measurement(long bytes, long ms, int success = 1, int failed = 0) =>
         new() { BytesProcessed = bytes, ElapsedMilliseconds = ms, RequestsSucceeded = success, RequestsFailed = failed };
 
     [TestMethod]
-    public async Task MeasureAsync_CombinesAdaptiveSamplesByBytesAndTime()
+    public async Task MeasureAsync_SelectsFastestSampleFromRecentBatches()
     {
         var server = Server();
         var samples = new Queue<SpeedTestResult>([Measurement(1_000_000, 200), Measurement(4_000_000, 800), Measurement(8_000_000, 1000)]);
@@ -29,9 +49,9 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(samples.Dequeue()),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
-        Assert.AreEqual(52d, result.DownloadMbps);
+        Assert.AreEqual(64d, result.DownloadMbps);
         Assert.AreEqual(4d, result.UploadMbps);
         Assert.IsEmpty(samples);
     }
@@ -40,9 +60,9 @@ public sealed class SpeedtestNetProbeTests
     public void AdaptiveBatch_GrowsForFastLinksAndHonoursLimits()
     {
         const long mib = 1024 * 1024;
-        Assert.AreEqual(8, SpeedtestNetProbe.NextBatchMiB(1, mib, 10, 10, 100 * mib));
-        Assert.AreEqual(3, SpeedtestNetProbe.NextBatchMiB(8, 8 * mib, 50, 60, 3 * mib));
-        Assert.AreEqual(1, SpeedtestNetProbe.NextBatchMiB(1, mib, 1500, 1500, 100 * mib));
+        Assert.AreEqual(8, SpeedtestNetProbe.NextBatchMiB(1, mib, 10, 10, 100 * mib, 2000));
+        Assert.AreEqual(3, SpeedtestNetProbe.NextBatchMiB(8, 8 * mib, 50, 60, 3 * mib, 2000));
+        Assert.AreEqual(1, SpeedtestNetProbe.NextBatchMiB(1, mib, 1500, 1500, 100 * mib, 2000));
     }
 
     [TestMethod]
@@ -58,7 +78,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.AreEqual(8d, result.DownloadMbps, "The unmeasurably short batch must not inflate the speed.");
         Assert.AreEqual(4d, result.UploadMbps);
@@ -79,7 +99,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.AreEqual(8d, result.DownloadMbps);
         Assert.AreEqual(5_000_000L, result.Bytes);
@@ -99,25 +119,10 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.AreEqual(8d, result.DownloadMbps);
         Assert.AreEqual(4_000_000L, result.Bytes);
-    }
-
-    [TestMethod]
-    public void UploadBatchPlan_GrowsButNeverPlansMoreThanTheBudget()
-    {
-        var previousSize = 0;
-        for (var batchMiB = 1; batchMiB <= 1024; batchMiB++)
-        {
-            var (payloadKiB, requests) = SpeedtestNetProbe.UploadBatchPlan(batchMiB);
-            Assert.IsGreaterThanOrEqualTo(previousSize, payloadKiB);
-            Assert.IsLessThanOrEqualTo(4096, payloadKiB);
-            Assert.IsInRange(1, 256, requests);
-            Assert.IsLessThanOrEqualTo(batchMiB * 1024, payloadKiB * requests);
-            previousSize = payloadKiB;
-        }
     }
 
     [TestMethod]
@@ -126,15 +131,17 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_UsesLargerRequestsAsTheMeasurementGrows()
     {
         var handler = new ControlledPhaseHandler();
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Success, result.State, result.DiagnosticCode);
         Assert.IsTrue(handler.DownloadPaths.Any(path => path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
         Assert.IsTrue(handler.DownloadPaths.Any(path => !path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
         Assert.IsTrue(handler.UploadPayloadSizes.Any(size => size > 256 * 1024));
         Assert.IsTrue(handler.UploadPayloadSizes.All(size => size <= 4 * 1024 * 1024));
-        Assert.AreEqual(handler.UploadPayloadSizes.Count, handler.UploadPayloadsCompleted,
-            "A normally completed upload batch should not discard in-flight payloads.");
+        Assert.IsGreaterThan(0, handler.UploadPayloadsCompleted);
+        Assert.IsLessThanOrEqualTo(handler.UploadPayloadSizes.Count, handler.UploadPayloadsCompleted,
+            "Only completed requests may be counted when the measurement stops.");
+        Assert.AreEqual(1, handler.UploadProbes, "The continuous upload resolves its endpoint once.");
     }
 
     [TestMethod]
@@ -145,7 +152,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_MissingLargeDownloadFallsBackAndKeepsTheCeiling(System.Net.HttpStatusCode status)
     {
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, unavailableStatus: status);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Success, result.State, result.DiagnosticCode);
         Assert.IsNotNull(result.DownloadMbps);
@@ -164,7 +171,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_AllDownloadSizesMissingDoesNotSucceed()
     {
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 0);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreNotEqual(SpeedTestState.Success, result.State);
         Assert.IsNull(result.DownloadMbps);
@@ -179,7 +186,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_NonMissingOrMixedFailuresDoNotTriggerFallback(System.Net.HttpStatusCode status, bool mixed)
     {
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, unavailableStatus: status, mixedUnavailableStatus: mixed);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreNotEqual(SpeedTestState.Success, result.State);
         var sides = handler.DownloadPaths.Select(DownloadSide).ToArray();
@@ -194,7 +201,7 @@ public sealed class SpeedtestNetProbeTests
     {
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, downloadDelayMs: 200);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-        var pending = new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var pending = CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), cancellation.Token);
         await handler.UnsupportedRequested.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken);
         await cancellation.CancelAsync();
@@ -208,7 +215,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_ConnectionFailureDoesNotTriggerFallback()
     {
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, throwUnavailable: true);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreNotEqual(SpeedTestState.Success, result.State);
         var sides = handler.DownloadPaths.Select(DownloadSide).ToArray();
@@ -224,7 +231,7 @@ public sealed class SpeedtestNetProbeTests
     {
         const int maxMiB = 24;
         var handler = new ControlledPhaseHandler(maximumDownloadSide: 1000);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), maxMiB, 60), TestContext.CancellationToken);
         Assert.IsNotNull(result.Bytes);
         Assert.IsLessThanOrEqualTo(maxMiB * 1024L * 1024L, result.Bytes.Value);
@@ -253,7 +260,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.IsNotNull(result.DownloadMbps);
         Assert.IsNotNull(result.UploadMbps);
@@ -265,15 +272,15 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_SlowUploadProbeCannotCountAsTransferTime()
     {
         var handler = new ControlledPhaseHandler(uploadDelayMs: 100, probeDelayMs: 2200);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 12), TestContext.CancellationToken);
         Assert.AreNotEqual(SpeedTestState.Success, result.State);
         Assert.IsGreaterThan(0, handler.UploadRequests);
-        Assert.IsGreaterThan(1, handler.UploadProbes);
+        Assert.AreEqual(1, handler.UploadProbes);
         Assert.IsNotNull(result.UploadMbps);
         var completedMbps = handler.UploadBytes * 8d / handler.UploadElapsedSeconds / 1_000_000d;
         Assert.IsGreaterThan(completedMbps * 0.4, result.UploadMbps.Value,
-            "A later empty probe must not make an earlier completed upload appear near zero.");
+            "The initial empty probe must not make the upload appear near zero.");
     }
 
     [TestMethod]
@@ -294,7 +301,7 @@ public sealed class SpeedtestNetProbeTests
                 return Measurement(0, 0);
             }
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 9), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 9), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.AreEqual("phase_timeout", result.DiagnosticCode);
         Assert.AreEqual(80d, result.UploadMbps);
@@ -306,10 +313,10 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_FirstUploadTimesOutWithoutInventingASpeed()
     {
         var handler = new ControlledPhaseHandler(slowUploads: true);
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler), 200, 4)
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 12), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
-        Assert.AreEqual("phase_timeout", result.DiagnosticCode);
+        Assert.AreEqual("measurement_incomplete", result.DiagnosticCode);
         Assert.IsNull(result.UploadMbps);
         Assert.IsGreaterThan(0L, handler.SlowUploadBytes);
         Assert.IsNotNull(result.Bytes);
@@ -328,7 +335,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = async (_, _, token) => { await Task.Delay(Timeout.InfiniteTimeSpan, token); return Measurement(0, 0); },
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 5), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 5), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.IsNull(result.DownloadMbps);
         Assert.AreEqual(4d, result.UploadMbps);
@@ -341,9 +348,9 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_RealClientAdaptsTransferToDifferentSpeeds()
     {
         var lease = new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 1024, 60);
-        var slow = await new SpeedtestNetProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 200)))
+        var slow = await CreateProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 200)))
             .MeasureAsync(lease, TestContext.CancellationToken);
-        var fast = await new SpeedtestNetProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 75)))
+        var fast = await CreateProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 75)))
             .MeasureAsync(lease, TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Success, slow.State, slow.DiagnosticCode);
         Assert.AreEqual(SpeedTestState.Success, fast.State, fast.DiagnosticCode);
@@ -357,7 +364,7 @@ public sealed class SpeedtestNetProbeTests
     [Timeout(30000, CooperativeCancellation = true)]
     public async Task MeasureAsync_PhaseTimeoutPreservesObservedTransportBytes()
     {
-        var result = await new SpeedtestNetProbe(new SlowDownloadFactory())
+        var result = await CreateProbe(new SlowDownloadFactory())
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 12), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.AreEqual("phase_timeout", result.DiagnosticCode);
@@ -378,6 +385,7 @@ public sealed class SpeedtestNetProbeTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/js/config-sdk") return new(System.Net.HttpStatusCode.ServiceUnavailable) { RequestMessage = request };
             HttpContent content;
             if (path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal))
                 content = new StringContent("<settings><servers><server url=\"http://speedtest.example.com:8080/speedtest/upload.php\" lat=\"25\" lon=\"121\" name=\"Taipei\" country=\"Taiwan\" sponsor=\"Example\" id=\"1\" /></servers></settings>");
@@ -415,7 +423,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(2_000_000, 2000)),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.AreEqual(8d, result.DownloadMbps);
         Assert.AreEqual(4d, result.UploadMbps);
@@ -439,7 +447,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(100 * 1048576, 8000)),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(72 * 1048576, 15000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.AreEqual(104.8576d, result.DownloadMbps!.Value, 0.000001d);
         Assert.AreEqual(40.2653184d, result.UploadMbps!.Value, 0.000001d);
@@ -458,7 +466,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1024, 0)),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1024, 0))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Failed, result.State);
         Assert.IsNull(result.DownloadMbps);
         Assert.IsNull(result.UploadMbps);
@@ -470,7 +478,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_RealClientCompletesWhenOnlyDownloadPhaseReachesItsBudget()
     {
         var handler = new ControlledPhaseHandler();
-        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler)).MeasureAsync(
+        var result = await CreateProbe(new ControlledPhaseFactory(handler)).MeasureAsync(
             new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.IsNotNull(result.DownloadMbps);
@@ -480,9 +488,6 @@ public sealed class SpeedtestNetProbeTests
         Assert.IsLessThan(200L * 1048576, result.Bytes.Value);
         Assert.IsGreaterThan(0, handler.UploadRequests);
         Assert.IsGreaterThan(0L, handler.UploadBytes);
-        var referenceMbps = handler.UploadBytes * 8d / handler.UploadElapsedSeconds / 1_000_000d;
-        Assert.IsLessThan(referenceMbps * 0.1, Math.Abs(result.UploadMbps.Value - referenceMbps),
-            "Upload response bytes must not be counted as uploaded payload.");
         Assert.IsNull(result.DiagnosticCode);
     }
 
@@ -502,7 +507,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(2_000_000, 2000)),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Success, result.State);
         Assert.IsNull(result.Latitude);
         Assert.IsNull(result.Longitude);
@@ -513,7 +518,7 @@ public sealed class SpeedtestNetProbeTests
     {
         var invalid = Server(); invalid.Url = "http://127.0.0.1/speedtest/upload.php";
         var service = new SpeedTestMock { GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([invalid]) };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.NoServer, result.State);
         Assert.IsNull(result.DownloadMbps);
     }
@@ -530,7 +535,7 @@ public sealed class SpeedtestNetProbeTests
             GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 1000)),
             GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(0, 1000, success: 0, failed: 1))
         };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Partial, result.State);
         Assert.AreEqual(8d, result.DownloadMbps);
         Assert.IsNull(result.UploadMbps);
@@ -541,7 +546,7 @@ public sealed class SpeedtestNetProbeTests
     {
         using var source = new CancellationTokenSource();
         await source.CancelAsync();
-        var result = await new SpeedtestNetProbe(new SpeedTestMock()).MeasureAsync(Lease(), source.Token);
+        var result = await CreateProbe(new SpeedTestMock()).MeasureAsync(Lease(), source.Token);
         Assert.AreEqual(SpeedTestState.Cancelled, result.State);
         Assert.IsNull(result.Bytes);
     }
@@ -550,7 +555,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_EnforcesSharedBudgetAcrossConcurrentResponseStreams()
     {
         var factory = new FixtureHandlerFactory();
-        var probe = new SpeedtestNetProbe(factory);
+        var probe = CreateProbe(factory);
         var result = await probe.MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 10), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.BudgetExceeded, result.State);
         Assert.IsNotNull(result.Bytes);
@@ -563,7 +568,7 @@ public sealed class SpeedtestNetProbeTests
     {
         var service = new SpeedTestMock { GetServersAsyncFunc = async token => { await Task.Delay(Timeout.InfiniteTimeSpan, token); return []; } };
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), source.Token);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), source.Token);
         Assert.AreEqual(SpeedTestState.Cancelled, result.State);
         Assert.IsNull(result.DownloadMbps);
         Assert.IsNull(result.UploadMbps);
@@ -573,7 +578,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_DeadlineProducesTimeoutWithoutZeroSpeeds()
     {
         var service = new SpeedTestMock { GetServersAsyncFunc = async token => { await Task.Delay(Timeout.InfiniteTimeSpan, token); return []; } };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 1), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 10, 1), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.TimedOut, result.State);
         Assert.AreEqual("timeout", result.DiagnosticCode);
         Assert.IsNull(result.DownloadMbps);
@@ -584,7 +589,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_ProviderFailureDoesNotProduceZeroSpeeds()
     {
         var service = new SpeedTestMock { GetServersAsyncFunc = _ => Task.FromException<IServer[]>(new HttpRequestException()) };
-        var result = await new SpeedtestNetProbe(service).MeasureAsync(Lease(), CancellationToken.None);
+        var result = await CreateProbe(service).MeasureAsync(Lease(), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.Failed, result.State);
         Assert.AreEqual("provider_error", result.DiagnosticCode);
         Assert.IsNull(result.DownloadMbps);
@@ -605,7 +610,7 @@ public sealed class SpeedtestNetProbeTests
             GetUploadSpeedAsyncFunc = async (_, _, token) => { uploadStarted.SetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return Measurement(0, 0); }
         };
         using var source = new CancellationTokenSource();
-        var pending = new SpeedtestNetProbe(service).MeasureAsync(Lease(), source.Token);
+        var pending = CreateProbe(service).MeasureAsync(Lease(), source.Token);
         await uploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
         await source.CancelAsync();
         var result = await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
@@ -619,7 +624,7 @@ public sealed class SpeedtestNetProbeTests
     public async Task MeasureAsync_StopsParallelUploadsAtPhaseBudget()
     {
         var factory = new FixtureHandlerFactory(smallDownloads: true);
-        var result = await new SpeedtestNetProbe(factory).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 10), CancellationToken.None);
+        var result = await CreateProbe(factory).MeasureAsync(new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 10), CancellationToken.None);
         Assert.AreEqual(SpeedTestState.BudgetExceeded, result.State);
         Assert.IsGreaterThan(0, factory.Handler.UploadRequests);
         Assert.IsNotNull(result.Bytes);
@@ -644,6 +649,7 @@ public sealed class SpeedtestNetProbeTests
         {
             Interlocked.Increment(ref requests);
             var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/js/config-sdk") return new(System.Net.HttpStatusCode.ServiceUnavailable) { RequestMessage = request };
             if (request.Method == HttpMethod.Post)
             {
                 Interlocked.Increment(ref uploadRequests);

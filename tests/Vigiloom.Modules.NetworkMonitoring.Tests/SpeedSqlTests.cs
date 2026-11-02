@@ -292,7 +292,7 @@ public sealed class SpeedSqlTests
         Assert.IsNotNull(request.RunId);
 
         var handler = new ControlledPhaseHandler();
-        var probe = new SpeedtestNetProbe(new ControlledPhaseFactory(handler));
+        var probe = new SpeedtestNetProbe(new ControlledPhaseFactory(handler), 2000, 4);
         var runner = new SpeedRunner(queue, probe, NullLogger<SpeedRunner>.Instance);
         await runner.RunOnceAsync(token);
 

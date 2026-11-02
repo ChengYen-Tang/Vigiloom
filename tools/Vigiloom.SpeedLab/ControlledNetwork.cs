@@ -13,10 +13,11 @@ internal sealed class ControlledNetwork(Profile profile) : HttpMessageHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
-        if (request.RequestUri is not { Host: "c.speedtest.net" or "speedtest.example.com" } uri)
+        if (request.RequestUri is not { Host: "c.speedtest.net" or "www.speedtest.net" or "speedtest.example.com" } uri)
             throw new InvalidOperationException("Unexpected destination in offline fixture.");
 
         var path = uri.AbsolutePath;
+        if (path == "/api/js/config-sdk") return new(HttpStatusCode.ServiceUnavailable) { RequestMessage = request };
         HttpContent content;
         if (path.EndsWith("speedtest-servers-static.php", StringComparison.Ordinal))
         {
