@@ -20,29 +20,19 @@ internal static class SpeedTestEndpoints
             await history.GetAsync(id, token) is { } result ? Results.Ok(result) : Results.NotFound())
             .RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client").Produces<SpeedRunDetails>().ProducesProblem(404).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Get one private speed-test result");
-        app.MapPost("/api/v1/speed-tests", async (StartSpeedTestRequest request, SpeedQueue queue, HttpContext context, CancellationToken token) =>
-        {
-            if (request.RequestId == Guid.Empty) return Results.ValidationProblem(new Dictionary<string, string[]> { ["requestId"] = ["A stable request UUID is required."] });
-            return await ApiMutation.ExecuteAsync(context, async actor =>
-            {
-                var result = await queue.RequestAsync(request.RequestId, actor, false, token);
-                return result.Status == SpeedRequestStatus.Accepted ? Results.Accepted($"/api/v1/speed-tests/{result.RunId:D}", result) : Results.Conflict(result);
-            }, allowApiCredential: false);
-        }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedRequestResult>(202).Produces<SpeedRequestResult>(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
-            .WithSummary("Queue one consented manual speed test");
         app.MapPost("/api/v1/speed-tests/{id:guid}/cancel", async (Guid id, SpeedQueue queue, HttpContext context, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ => await queue.CancelAsync(id, token) ? Results.NoContent() : Results.NotFound(), allowApiCredential: false))
             .RequireAuthorization(AccessPolicies.Administrator).Produces(204).ProducesProblem(404).ProducesProblem(401).ProducesProblem(403).ProducesProblem(400)
             .WithSummary("Cancel a queued or running speed test");
         app.MapGet("/api/v1/settings/speed-tests", async (SpeedSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
             .RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403)
-            .WithSummary("Get speed-test settings and consent state");
+            .WithSummary("Get speed-test schedule settings");
         app.MapPut("/api/v1/settings/speed-tests", async (SpeedSettingsInput input, SpeedSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!SpeedSettings.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["settings"] = ["Invalid speed-test settings."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.UpdateAsync(input, actor, token) is { } saved
                 ? Results.Ok(saved) : Results.Conflict(), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedSettingsSnapshot>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
-            .WithSummary("Update limits, automatic scheduling and Speedtest.net activation");
+            .WithSummary("Update speed-test scheduling and limits");
     }
 }
