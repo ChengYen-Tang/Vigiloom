@@ -92,6 +92,8 @@ public sealed class IdentityVault(string directory)
         private readonly SafeFileHandle? directoryGuard;
         internal Session(string directory, FileStream lease, SafeFileHandle? directoryGuard) { this.directory = directory; this.lease = lease; this.directoryGuard = directoryGuard; }
 
+        internal string DirectoryPath => directory;
+
         public async Task<IdentityState?> ReadAsync(CancellationToken token)
         {
             var path = Path.Combine(directory, "identity.dat");

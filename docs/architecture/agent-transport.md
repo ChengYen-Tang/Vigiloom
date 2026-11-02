@@ -1,0 +1,22 @@
+# Agent transport: implementation notes
+
+REQ-19 is in progress. This document describes the local queue slice and lists the remaining work; it does not claim the end-to-end transport is complete.
+
+## Local durable queue
+
+The queue stores the exact serialized batch bytes, its UUID v7 batch ID, first enqueue time, record count and local insertion order. It is bound to one registered Agent ID: a different identity must not drain an existing identity's queue. The local database lives in the existing protected Agent state directory, outside version-specific installation folders. The existing identity lease protects each database operation across processes; a queue instance serializes its own operations. The host must coordinate queue operations with other users of the identity lease, including credential rotation, and handle a busy lease without losing a batch.
+
+The queue uses Microsoft.Data.Sqlite 10.0.14 and the bundled SQLite native library pinned to 3.53.3. SQLite's upstream WAL documentation records a concurrency corruption bug fixed in 3.51.3 and supported backports; the queue uses rollback journaling and synchronous FULL, not WAL. The database and its transient journal remain in the protected directory; SQLite connections are disposed after each operation and pooling is disabled so the lease is not released with a connection still open. Transactions atomically change a batch and the stored capacity counters. Unknown future database formats are rejected before modifying them.
+
+The initial capacity is 256 MiB of serialized payload and at most 8,192 queued batches. This is a **logical payload limit**, not a hard filesystem quota: SQLite pages, metadata and a rollback journal add disk use. A full queue rejects the new batch so the caller can apply backpressure; rejection is not yet a durable loss count and no policy for discarding or expiry is implemented in this slice. The host must expose available capacity, persist and report any actual loss, distinguish classes of data, and handle disk-full and filesystem errors without reporting success. User-adjustable limits and explicit retention/expiry behavior remain to be integrated.
+
+## Required integration
+
+- Persist individual message IDs and their order inside a versioned immutable batch format. Do not repackage expired batches with new IDs to bypass the replay window. Retries send identical bytes and acknowledge locally only after the central transaction succeeds.
+- The central receiver must authenticate and revalidate the Agent binding in its commit transaction, so a revocation or device archive cannot race a data commit. Unique `(AgentId, BatchId)` plus a payload digest must distinguish a genuine retry from the same ID with different content. A lost acknowledgement followed by a retry must return the committed result without duplicate effects.
+- Define and implement the 24-hour accepted replay window, seven-day inbox retention, clock-skew handling and grace period together. An Agent-supplied timestamp alone cannot prove when a batch was created; inbox cleanup must not allow an expired or previously committed batch to be accepted as new. Configuration changes must preserve old-generation guarantees.
+- Apply bounded batching, retries, cancellation, compression and payload size checks on both endpoints. Monitor and expose missing data, loss counts, queue pressure and last successful send without storing credentials in the queue.
+- Implement 30-second heartbeats, 90-second offline detection separate from device Ping, and startup plus jittered configuration polling. Versioned settings must be validated and applied atomically with the last successful configuration preserved on failure; administrator settings and read-only monitoring require their agreed UI and authorization.
+- Validate actual process termination, restart, simultaneous submissions, acknowledgment loss, migration/downgrade compatibility, Windows service accounts, Windows x86, Linux x64 and applicable filesystems. SQLite FULL relies on operating-system and storage guarantees; tests must not claim hardware power-loss durability without evidence.
+
+References: [SQLite WAL](https://www.sqlite.org/wal.html), [SQLite synchronous pragma](https://www.sqlite.org/pragma.html#pragma_synchronous), [Microsoft.Data.Sqlite locking](https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/database-errors).
