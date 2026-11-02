@@ -15,7 +15,7 @@ internal static class AgentEndpoints
             context.Response.Headers.CacheControl = "no-store";
             return await monitoring.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
         })
-            .RequireAuthorization("DeviceRead").RequireRateLimiting("api-client")
+            .RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentConnectionStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
             .WithSummary("Get Agent connectivity independently of device Ping");
         var admin = app.MapGroup("/api/v1/agent-management").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");

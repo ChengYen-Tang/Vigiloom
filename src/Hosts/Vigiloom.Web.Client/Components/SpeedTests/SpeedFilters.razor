@@ -1,0 +1,41 @@
+@using Vigiloom.Contracts.SpeedTests
+<EditForm Model="input" OnSubmit="SubmitAsync" class="device-filters">
+    <DataAnnotationsValidator /><ValidationSummary />
+    <label for="speed-from">開始日期（UTC）<InputDate id="speed-from" @bind-Value="input.From" /></label>
+    <label for="speed-to">結束日期（UTC，含當日）<InputDate id="speed-to" @bind-Value="input.To" /></label>
+    <label for="speed-search">服務端<InputText id="speed-search" @bind-Value="input.Search" maxlength="100" placeholder="服務端名稱" /></label>
+    <label for="speed-sort">排序<InputSelect id="speed-sort" @bind-Value="input.Sort"><option value="time">時間</option><option value="download">下載</option><option value="upload">上傳</option></InputSelect></label>
+    <label><InputCheckbox @bind-Value="input.Descending" /> 由大到小</label>
+    <button type="submit" disabled="@Busy">套用篩選</button>
+    @if (error) { <p role="alert">請選擇最多 31 天的有效日期範圍。</p> }
+</EditForm>
+@code {
+    [Parameter, EditorRequired] public SpeedHistoryQuery Query { get; set; } = default!;
+    [Parameter] public EventCallback<SpeedHistoryQuery> Changed { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    private FilterInput input = new();
+    private SpeedHistoryQuery? previous;
+    private bool error;
+    protected override void OnParametersSet()
+    {
+        if (Query == previous) return;
+        previous = Query;
+        input = new() { From = Query.From.UtcDateTime.Date, To = Query.To.UtcDateTime.Date.AddDays(-1), Search = Query.Search ?? "", Sort = Query.Sort, Descending = Query.Descending };
+    }
+    private async Task SubmitAsync(EditContext context)
+    {
+        if (!context.Validate()) return;
+        if (input.To >= DateTime.MaxValue.Date || input.To < input.From || input.To - input.From >= TimeSpan.FromDays(31)) { error = true; return; }
+        error = false;
+        await Changed.InvokeAsync(new(new DateTimeOffset(DateTime.SpecifyKind(input.From, DateTimeKind.Utc)),
+            new DateTimeOffset(DateTime.SpecifyKind(input.To.AddDays(1), DateTimeKind.Utc)), input.Search, input.Sort, input.Descending));
+    }
+    private sealed class FilterInput
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public string Search { get; set; } = "";
+        public string Sort { get; set; } = "time";
+        public bool Descending { get; set; } = true;
+    }
+}

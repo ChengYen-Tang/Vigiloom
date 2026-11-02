@@ -10,29 +10,32 @@ public static class SqlServerRegistration
     public static IServiceCollection AddModuleSqlServer<TContext>(
         this IServiceCollection services,
         string connectionString,
-        string? migrationSchema = null)
+        string? migrationSchema = null,
+        bool pooled = false)
         where TContext : DbContext
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        return services.AddModuleSqlServer<TContext>(_ => connectionString, migrationSchema);
+        return services.AddModuleSqlServer<TContext>(_ => connectionString, migrationSchema, pooled);
     }
 
     public static IServiceCollection AddModuleSqlServer<TContext>(
         this IServiceCollection services,
         Func<IServiceProvider, string> connectionString,
-        string? migrationSchema = null)
+        string? migrationSchema = null,
+        bool pooled = false)
         where TContext : DbContext
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(connectionString);
-        return services.AddDbContextFactory<TContext>((provider, options) =>
+        void Configure(IServiceProvider provider, DbContextOptionsBuilder options) =>
             options.UseSqlServer(connectionString(provider), sql =>
             {
                 sql.UseCompatibilityLevel(CompatibilityLevel);
                 if (migrationSchema is not null)
                     sql.MigrationsHistoryTable("__EFMigrationsHistory", migrationSchema);
-            }));
+            });
+        return pooled ? services.AddPooledDbContextFactory<TContext>(Configure) : services.AddDbContextFactory<TContext>(Configure);
     }
 }

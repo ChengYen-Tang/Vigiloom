@@ -67,25 +67,29 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await db.Database.OpenConnectionAsync(token);
-        await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.CommandText = """
-            ;WITH due AS
-            (
-                SELECT TOP (@count) * FROM network.PingTargets WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
-                WHERE Enabled = 1 AND DueAt <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
-                  AND (LeaseUntil IS NULL OR LeaseUntil <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
-                ORDER BY DueAt, DeviceId, Target
-            )
-            UPDATE due SET Generation = Generation + 1,
-                LeaseUntil = DATEADD(second, @lease, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
-            OUTPUT inserted.DeviceId, inserted.Target, inserted.DeviceVersion, inserted.Generation
-            """;
-        Add(command, "@count", SqlDbType.Int, settings.MaxConcurrency);
-        Add(command, "@lease", SqlDbType.Int, 2 * settings.TimeoutSeconds + 30);
-        var leases = new List<PingLease>(settings.MaxConcurrency);
-        await using var reader = await command.ExecuteReaderAsync(token);
-        while (await reader.ReadAsync(token)) leases.Add(new(reader.GetGuid(0), reader.GetString(1), (byte[])reader.GetValue(2), reader.GetInt64(3)));
-        return leases;
+        try
+        {
+            await using var command = db.Database.GetDbConnection().CreateCommand();
+            command.CommandText = """
+                ;WITH due AS
+                (
+                    SELECT TOP (@count) * FROM network.PingTargets WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
+                    WHERE Enabled = 1 AND DueAt <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+                      AND (LeaseUntil IS NULL OR LeaseUntil <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
+                    ORDER BY DueAt, DeviceId, Target
+                )
+                UPDATE due SET Generation = Generation + 1,
+                    LeaseUntil = DATEADD(second, @lease, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
+                OUTPUT inserted.DeviceId, inserted.Target, inserted.DeviceVersion, inserted.Generation
+                """;
+            Add(command, "@count", SqlDbType.Int, settings.MaxConcurrency);
+            Add(command, "@lease", SqlDbType.Int, 2 * settings.TimeoutSeconds + 30);
+            var leases = new List<PingLease>(settings.MaxConcurrency);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) leases.Add(new(reader.GetGuid(0), reader.GetString(1), (byte[])reader.GetValue(2), reader.GetInt64(3)));
+            return leases;
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 
     public async Task<bool> IsCurrentAsync(PingLease lease, CancellationToken token)

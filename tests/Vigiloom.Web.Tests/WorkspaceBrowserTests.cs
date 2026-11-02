@@ -47,6 +47,7 @@ public sealed class WorkspaceBrowserTests
             await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
             await using var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
+            await using var wasmGate = await AutoRenderGate.HoldAsync(page);
             var circuit = new TaskCompletionSource<IWebSocketRoute>(TaskCreationOptions.RunContinuationsAsynchronously);
             await page.RouteWebSocketAsync("**/_blazor*", socket =>
             {
@@ -63,6 +64,7 @@ public sealed class WorkspaceBrowserTests
             await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Reader-Password-123");
             await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
             await page.Locator("[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+            await wasmGate.ReleaseAsync();
             Assert.AreEqual("browser-reader", await page.Locator("#workspace-user").InnerTextAsync());
             Assert.Contains("Read only", await page.Locator("main.workspace").InnerTextAsync());
             await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)",
@@ -156,12 +158,14 @@ public sealed class WorkspaceBrowserTests
             await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
             await using var context = await browser.NewContextAsync();
             var page = await context.NewPageAsync();
+            await using var wasmGate = await AutoRenderGate.HoldAsync(page);
             await page.GotoAsync(baseAddress + "/workspace");
             await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
             await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
             var beforeLogin = DateTimeOffset.UtcNow;
             await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
             await page.Locator("[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+            await wasmGate.ReleaseAsync();
             Assert.AreEqual("admin", await page.Locator("#workspace-user").InnerTextAsync());
             var remaining = beforeLogin.AddSeconds(17) - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
@@ -180,8 +184,10 @@ public sealed class WorkspaceBrowserTests
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
         await using var context = await browser.NewContextAsync();
         var page = await context.NewPageAsync();
+        await using var wasmGate = await AutoRenderGate.HoldAsync(page);
         await page.GotoAsync(factory.ClientOptions.BaseAddress.ToString().TrimEnd('/') + "/__test/chart");
         await AssertChartAsync(page, "Server");
+        await wasmGate.ReleaseAsync();
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
         await page.ReloadAsync();

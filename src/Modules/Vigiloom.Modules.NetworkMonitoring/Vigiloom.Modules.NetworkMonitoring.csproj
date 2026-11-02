@@ -5,6 +5,7 @@
     <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="NetPace.Core" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
 </Project>
