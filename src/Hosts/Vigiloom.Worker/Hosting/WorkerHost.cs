@@ -1,4 +1,8 @@
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
@@ -23,6 +27,8 @@ public static class WorkerHost
         builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
         builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
         builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
+        builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
+        builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
         builder.Services.AddVigiloomScheduling(builder.Configuration);

@@ -13,6 +13,7 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -133,6 +134,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
         await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
         await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
+        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
         var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);

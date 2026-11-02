@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
@@ -24,7 +26,7 @@ public sealed class SpeedSqlTests
     [TestMethod]
     public Task UpgradeTimeout_AdjustsSettingsAndQueuedRunsOnly() => WithDatabase(async (factory, token) =>
     {
-        await new SpeedSettings(factory).GetAsync(token);
+        await new SpeedSettings(factory, new OperationAuditWriter()).GetAsync(token);
         var now = DateTimeOffset.UtcNow;
         var queued = new SpeedRun { Location = "queued", RequestId = Guid.CreateVersion7(), RequestedAt = now, TimeoutSeconds = 10, State = SpeedTestState.Queued };
         var running = new SpeedRun { Location = "running", RequestId = Guid.CreateVersion7(), RequestedAt = now, TimeoutSeconds = 10, State = SpeedTestState.Running };
@@ -45,7 +47,7 @@ public sealed class SpeedSqlTests
     [TestMethod]
     public Task UpgradeSchedule_PreservesCustomSettingsAndHistory() => WithDatabase(async (factory, token) =>
     {
-        var settings = new SpeedSettings(factory);
+        var settings = new SpeedSettings(factory, new OperationAuditWriter());
         await settings.GetAsync(token);
         var runId = Guid.CreateVersion7();
         await using (var db = factory.CreateDbContext())
@@ -101,7 +103,7 @@ public sealed class SpeedSqlTests
     [TestMethod]
     public Task ScheduleConcurrencyCancellationAndRecovery() => WithDatabase(async (factory, token) =>
     {
-        var queue = new SpeedQueue(factory); var settings = new SpeedSettings(factory);
+        var queue = new SpeedQueue(factory); var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var actor = Guid.CreateVersion7(); var request = Guid.CreateVersion7();
         var initial = await settings.GetAsync(token);
         var saved = await settings.UpdateAsync(new(true, 6, 5, 40, initial.Version), actor, token);
@@ -138,7 +140,7 @@ public sealed class SpeedSqlTests
     public Task AutomaticSchedule_ClaimsOnceAndStopsWhenDisabled() => WithDatabase(async (factory, token) =>
     {
         var queue = new SpeedQueue(factory);
-        var settings = new SpeedSettings(factory);
+        var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var actor = Guid.CreateVersion7();
         var initial = await settings.GetAsync(token);
         Assert.IsTrue(initial.Automatic);
@@ -249,7 +251,7 @@ public sealed class SpeedSqlTests
     public Task Runner_PersistsFailedAndTimedOutRunsWithoutZeroSpeeds() => WithDatabase(async (factory, token) =>
     {
         var queue = new SpeedQueue(factory);
-        var settings = new SpeedSettings(factory);
+        var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var actor = Guid.CreateVersion7();
         var initial = await settings.GetAsync(token);
         Assert.IsNotNull(await settings.UpdateAsync(new(true, 6, 5, 40, initial.Version), actor, token));
@@ -302,7 +304,7 @@ public sealed class SpeedSqlTests
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Runner_RealClientPersistsMeasurementAndHistory() => WithDatabase(async (factory, token) =>
     {
-        var settings = new SpeedSettings(factory);
+        var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var queue = new SpeedQueue(factory);
         var actor = Guid.CreateVersion7();
         var initial = await settings.GetAsync(token);
@@ -364,6 +366,8 @@ public sealed class SpeedSqlTests
     {
         var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
         await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
         var factory = new Factory(new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options);
         await using (var db = factory.CreateDbContext()) await db.Database.MigrateAsync(token);
         await action(factory, token);

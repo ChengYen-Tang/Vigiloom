@@ -142,6 +142,13 @@ public sealed class WebHostTests(TestContext testContext)
         var paths = document.RootElement.GetProperty("paths");
         var accessSecurity = paths.GetProperty("/api/v1/access").GetProperty("get").GetProperty("security")[0];
         Assert.IsTrue(accessSecurity.TryGetProperty("ApiBearer", out _));
+        var audit = paths.GetProperty("/api/v1/operations/audit").GetProperty("get");
+        var auditSecurity = audit.GetProperty("security");
+        Assert.AreEqual(1, auditSecurity.GetArrayLength());
+        Assert.IsTrue(auditSecurity[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsFalse(auditSecurity[0].TryGetProperty("ApiBearer", out _));
+        Assert.IsFalse(auditSecurity[0].TryGetProperty("AgentBearer", out _));
+        Assert.Contains("Administrator", audit.GetProperty("description").GetString()!);
         var deviceRead = paths.GetProperty("/api/v1/devices").GetProperty("get");
         var deviceReadSecurity = deviceRead.GetProperty("security");
         Assert.IsTrue(deviceReadSecurity[0].TryGetProperty("BrowserSession", out _));
