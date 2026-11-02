@@ -1,5 +1,11 @@
 # Vigiloom 開發 Agent 指引
 
+## HTTP 與資料庫資源生命週期
+
+外部 HTTP 呼叫使用 `IHttpClientFactory` 或有明確理由、生命週期受控且可重用連線的等效做法；設定合理的逾時、取消與回應釋放，避免每次請求建立獨立連線集區。不得把使用者憑證或要求專屬狀態放進共用 handler／預設標頭；需用 Cookie 時評估 factory handler 的 CookieContainer 共用與輪替行為。
+
+資料存取沿用既有的 `IDbContextFactory<TContext>` 註冊；每個操作建立並及時釋放 context，不跨並行操作共用，不將 context 保留於長生命週期服務。`DbContext` pooling 與底層 SQL 連線 pooling 是不同機制：是否啟用 context pool 先驗證 context／相依服務可安全重用、狀態完整重置與實際效益，不能為了 pooling 洩漏狀態或無條件改用 pooled factory。連線、交易和 reader 均須正確釋放，依需求驗證取消、失敗與並行情境。
+
 ## 已合併分支清理
 
 PR 合併後，確認目標分支已包含變更，再清理由本次工作建立且沒有未合併提交的本機與遠端分支；先保護工作區現有修改，遠端刪除時確認分支未被更新。不刪除他人的分支或尚未完成的工作。

@@ -6,6 +6,7 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 
@@ -37,11 +38,13 @@ await using (var connection = new SqlConnection(connectionString))
 var services = new ServiceCollection();
 services.AddModuleSqlServer<IdentityAccessDbContext>(connectionString, "identity");
 services.AddModuleSqlServer<ResourcesDbContext>(connectionString, "resources");
+services.AddModuleSqlServer<AgentManagementDbContext>(connectionString, "agent");
 services.AddModuleSqlServer<NetworkDbContext>(connectionString, "network");
 services.AddModuleSqlServer<SchedulingDbContext>(connectionString, "scheduling");
 using var provider = services.BuildServiceProvider();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>());
+await ApplyAsync(provider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<NetworkDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>());
 await RoleInitializer.InitializeAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
