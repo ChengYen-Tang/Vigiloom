@@ -79,18 +79,21 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
 
         async Task<(long Bytes, long Milliseconds, int Failures, bool TimedOut)> MeasureDirectionAsync(bool receiving, Action<double?> update)
         {
-            long total = 0, milliseconds = 0;
+            long total = 0, measuredBytes = 0, milliseconds = 0;
             var failures = 0;
             var timedOut = false;
             var batchMiB = 1;
+            var maximumDownloadSize = 4000;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             using var phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
             phaseDeadline.CancelAfter(TimeSpan.FromSeconds(Math.Max(3, lease.TimeoutSeconds / 3d)));
             var phaseLimit = Math.Max(1, lease.MaxMiB / 2) * 1024L * 1024L;
             for (var round = 0; round < 16 && milliseconds < 2000 && total < phaseLimit; round++)
             {
-                var current = testService ?? CreateService(batchMiB, transport!);
+                var downloadSize = DownloadSize(batchMiB, maximumDownloadSize);
+                var current = testService ?? CreateService(batchMiB, transport!, maximumDownloadSize);
                 var before = receiving ? budget.BytesReceived : budget.BytesSent;
+                var responses = receiving ? guard?.TrackDownloadBatch() : null;
                 SpeedTestResult sample;
                 try
                 {
@@ -106,13 +109,26 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                         // waiting in its empty probe, so its active duration cannot be recovered.
                         if (receiving && partialBytes > 0)
                         {
+                            measuredBytes += partialBytes;
                             milliseconds = stopwatch.ElapsedMilliseconds;
-                            if (milliseconds > 0) update(total * 8d / milliseconds / 1000d);
+                            if (milliseconds > 0) update(measuredBytes * 8d / milliseconds / 1000d);
                         }
                     }
                     failures++;
                     timedOut = true;
                     break;
+                }
+                finally
+                {
+                    if (responses is not null) guard!.StopTrackingDownloadBatch(responses);
+                }
+                if (receiving && downloadSize > 1000 && sample.RequestsSucceeded == 0 &&
+                    responses?.OnlyMissingFiles(sample.RequestsFailed) == true)
+                {
+                    // Only explicit 404/410 responses prove this particular asset is absent.
+                    // Remember the smaller ceiling so a later batch cannot retry the missing size.
+                    maximumDownloadSize = SmallerDownloadSize(downloadSize);
+                    continue;
                 }
                 // Upload bytes are counted only after the server returns a successful response.
                 // Counting every locally written byte would include in-flight requests cancelled
@@ -123,13 +139,23 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                 // Counting the outer wall clock here lets a slow, empty probe masquerade as a sample.
                 milliseconds += Math.Max(0, sample.ElapsedMilliseconds);
                 failures += sample.RequestsFailed;
-                if (sample.RequestsSucceeded == 0 || sample.ElapsedMilliseconds <= 0 || transferred <= 0)
+                if (sample.RequestsSucceeded == 0 || sample.ElapsedMilliseconds < 0 || transferred <= 0)
                 {
                     failures++;
-                    if (total > 0 && milliseconds > 0) update(total * 8d / milliseconds / 1000d);
+                    if (measuredBytes > 0 && milliseconds > 0) update(measuredBytes * 8d / milliseconds / 1000d);
                     break;
                 }
-                update(total * 8d / milliseconds / 1000d);
+                if (sample.ElapsedMilliseconds == 0)
+                {
+                    // Count the traffic, but omit an unmeasurably short batch from the rate.
+                    // Try a larger batch while a whole MiB of the phase budget remains.
+                    var remainingMiB = (phaseLimit - total) / (1024 * 1024);
+                    if (remainingMiB < 1) break;
+                    batchMiB = (int)Math.Min(batchMiB * 4L, remainingMiB);
+                    continue;
+                }
+                measuredBytes += transferred;
+                update(measuredBytes * 8d / milliseconds / 1000d);
                 batchMiB = NextBatchMiB(batchMiB, transferred, sample.ElapsedMilliseconds, milliseconds, phaseLimit - total);
             }
             return (total, milliseconds, failures, timedOut);
@@ -170,9 +196,17 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         && !IPAddress.TryParse(uri.Host, out _) && uri.AbsolutePath.StartsWith("/speedtest/", StringComparison.OrdinalIgnoreCase)
         && server.Location.Length <= 100 && server.Sponsor.Length <= 100;
 
-    private static ISpeedTestService CreateService(int batchMiB, HttpClient transport)
+    private static int DownloadSize(int batchMiB, int maximum) => Math.Min(maximum,
+        batchMiB switch { >= 64 => 4000, >= 16 => 3000, >= 8 => 2000, >= 4 => 1500, _ => 1000 });
+
+    private static int SmallerDownloadSize(int size) => size switch
     {
-        var downloadSize = batchMiB switch { >= 64 => 4000, >= 16 => 3000, >= 8 => 2000, >= 4 => 1500, _ => 1000 };
+        4000 => 3000, 3000 => 2000, 2000 => 1500, _ => 1000
+    };
+
+    private static ISpeedTestService CreateService(int batchMiB, HttpClient transport, int maximumDownloadSize = 4000)
+    {
+        var downloadSize = DownloadSize(batchMiB, maximumDownloadSize);
         var (uploadKiB, uploadIterations) = UploadBatchPlan(batchMiB);
         var settings = new OoklaSpeedtestSettings(Profile.Medium)
         {
@@ -202,6 +236,14 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
     private sealed class EndpointGuard(SpeedTrafficBudget budget) : DelegatingHandler
     {
         private readonly HashSet<string> hosts = new(StringComparer.OrdinalIgnoreCase) { "c.speedtest.net" };
+        private DownloadBatchResponses? downloadBatch;
+        public DownloadBatchResponses TrackDownloadBatch()
+        {
+            var batch = new DownloadBatchResponses();
+            Volatile.Write(ref downloadBatch, batch);
+            return batch;
+        }
+        public void StopTrackingDownloadBatch(DownloadBatchResponses batch) => Interlocked.CompareExchange(ref downloadBatch, null, batch);
         public void Allow(IEnumerable<IServer> servers)
         {
             foreach (var server in servers) hosts.Add(new Uri(server.Url).Host);
@@ -214,10 +256,33 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
                 uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo))
                 throw new HttpRequestException("Untrusted speed test endpoint.");
             if (request.Content is not null) request.Content = new SpeedBudgetContent(request.Content, budget, TrafficDirection.Sent);
-            var response = await base.SendAsync(request, cancellationToken);
-            if (response.Content is not null) response.Content = new SpeedBudgetContent(response.Content, budget, TrafficDirection.Received);
-            return response;
+            var batch = request.Method == HttpMethod.Get && uri.AbsolutePath.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                ? Volatile.Read(ref downloadBatch) : null;
+            try
+            {
+                var response = await base.SendAsync(request, cancellationToken);
+                batch?.Record(response.StatusCode);
+                if (response.Content is not null) response.Content = new SpeedBudgetContent(response.Content, budget, TrafficDirection.Received);
+                return response;
+            }
+            catch
+            {
+                batch?.RecordOther();
+                throw;
+            }
         }
+    }
+
+    private sealed class DownloadBatchResponses
+    {
+        private int missing, other;
+        public void Record(HttpStatusCode status)
+        {
+            if (status is HttpStatusCode.NotFound or HttpStatusCode.Gone) Interlocked.Increment(ref missing);
+            else Interlocked.Increment(ref other);
+        }
+        public void RecordOther() => Interlocked.Increment(ref other);
+        public bool OnlyMissingFiles(int failures) => failures > 0 && Volatile.Read(ref missing) == failures && Volatile.Read(ref other) == 0;
     }
 
     private static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken token)

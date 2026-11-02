@@ -5,7 +5,10 @@ internal sealed class ControlledPhaseFactory(ControlledPhaseHandler handler) : I
     public HttpMessageHandler CreateHandler(string name) => handler;
 }
 
-internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uploadDelayMs = 100, int probeDelayMs = 0, bool slowUploads = false) : HttpMessageHandler
+internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uploadDelayMs = 100, int probeDelayMs = 0,
+    bool slowUploads = false, int maximumDownloadSide = 4000,
+    System.Net.HttpStatusCode unavailableStatus = System.Net.HttpStatusCode.NotFound, bool mixedUnavailableStatus = false,
+    bool throwUnavailable = false) : HttpMessageHandler
 {
     private static readonly byte[] Download = new byte[2 * 1048576];
     private static readonly byte[] UploadResponse = new byte[131072];
@@ -13,6 +16,7 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
     private int uploadRequests;
     private int uploadProbes;
     private int uploadPayloadsCompleted;
+    private int unavailableRequests;
     private long uploadBytes, firstUpload, lastUpload, completedUploadTicks;
     private long slowUploadBytes;
     private long downloadBytes;
@@ -21,6 +25,7 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
     public int UploadPayloadsCompleted => Volatile.Read(ref uploadPayloadsCompleted);
     public System.Collections.Concurrent.ConcurrentQueue<long> UploadPayloadSizes { get; } = new();
     public System.Collections.Concurrent.ConcurrentQueue<string> DownloadPaths { get; } = new();
+    public TaskCompletionSource UnsupportedRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public long SlowUploadBytes => Interlocked.Read(ref slowUploadBytes);
     public long DownloadBytes => Interlocked.Read(ref downloadBytes);
     public long UploadBytes { get { lock (gate) return uploadBytes; } }
@@ -82,7 +87,18 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
         else
         {
             DownloadPaths.Enqueue(path);
+            var file = Path.GetFileNameWithoutExtension(path);
+            var side = int.Parse(file.AsSpan(6, file.IndexOf('x') - 6));
+            var unavailable = side > maximumDownloadSide;
+            if (unavailable) UnsupportedRequested.TrySetResult();
             await Task.Delay(downloadDelayMs, token);
+            if (unavailable)
+            {
+                if (throwUnavailable) throw new HttpRequestException("Simulated connection failure.");
+                var occurrence = Interlocked.Increment(ref unavailableRequests);
+                var status = mixedUnavailableStatus && occurrence % 2 == 0 ? System.Net.HttpStatusCode.InternalServerError : unavailableStatus;
+                return new HttpResponseMessage(status) { Content = new StringContent("unavailable"), RequestMessage = request };
+            }
             content = new StreamContent(new CountingDownload(Download, bytes => Interlocked.Add(ref downloadBytes, bytes)));
         }
         return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = content, RequestMessage = request };
