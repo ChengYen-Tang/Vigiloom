@@ -1,6 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Data.SqlClient;
+using System.Data;
+using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
@@ -16,6 +21,41 @@ public sealed class PingSqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    public Task PooledContext_ClosesConnectionsAfterPingClaimAndSpeedSettings() => WithDatabase(async (resources, network, token) =>
+    {
+        string connection;
+        await using (var db = network.CreateDbContext()) connection = db.Database.GetDbConnection().ConnectionString;
+        var services = new ServiceCollection();
+        services.AddModuleSqlServer<NetworkDbContext>(connection, "network", pooled: true);
+        using var provider = services.BuildServiceProvider();
+        var pooled = provider.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+        NetworkDbContext original;
+        await using (var db = await pooled.CreateDbContextAsync(token)) original = db;
+
+        var settings = new PingSettings(pooled, TimeProvider.System);
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(pooled, new DevicePingSource(resources), TimeProvider.System);
+        await store.ClaimAsync(policy, token);
+        await using (var db = await pooled.CreateDbContextAsync(token))
+        {
+            Assert.AreSame(original, db);
+            Assert.AreEqual(ConnectionState.Closed, db.Database.GetDbConnection().State);
+        }
+        await new SpeedSettings(pooled).GetAsync(token);
+        await using (var db = await pooled.CreateDbContextAsync(token))
+        {
+            Assert.AreSame(original, db);
+            Assert.AreEqual(ConnectionState.Closed, db.Database.GetDbConnection().State);
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE network.PingTargets", token);
+        }
+        await Assert.ThrowsAsync<SqlException>(() => store.ClaimAsync(policy, token));
+        await using var afterFailure = await pooled.CreateDbContextAsync(token);
+        Assert.AreSame(original, afterFailure);
+        Assert.AreEqual(ConnectionState.Closed, afterFailure.Database.GetDbConnection().State);
+    });
 
     [TestMethod]
     [DataRow(false)]

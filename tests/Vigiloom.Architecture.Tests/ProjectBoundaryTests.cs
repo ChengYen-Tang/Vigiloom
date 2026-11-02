@@ -138,6 +138,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
         "Vigiloom.Worker" => [.. modules, "Vigiloom.Infrastructure"],
         "Vigiloom.Migrator" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess", "Vigiloom.Modules.Resources", "Vigiloom.Modules.NetworkMonitoring", "Vigiloom.Modules.AgentManagement"],
+        "Vigiloom.SpeedLab" => ["Vigiloom.Modules.NetworkMonitoring"],
         "Vigiloom.Agent.Core" or "Vigiloom.Updater.Core" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Agent.Platforms.Windows" or "Vigiloom.Agent.Platforms.Linux" => ["Vigiloom.Agent.Core"],
         "Vigiloom.Agent" => ["Vigiloom.Agent.Core", "Vigiloom.Agent.Platforms.Windows", "Vigiloom.Agent.Platforms.Linux"],
@@ -147,7 +148,7 @@ public sealed class ProjectBoundaryTests
     };
 
     private static Dictionary<string, ProjectDescription> ReadProjects() =>
-        new[] { "src", "tests" }
+        new[] { "src", "tests", "tools" }
             .SelectMany(folder => Directory.EnumerateFiles(Path.Combine(Root, folder), "*.csproj", SearchOption.AllDirectories))
             .Select(path =>
             {
