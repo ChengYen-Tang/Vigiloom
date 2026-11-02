@@ -46,6 +46,38 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
+    public void UploadBatchPlan_GrowsButNeverPlansMoreThanTheBudget()
+    {
+        var previousSize = 0;
+        for (var batchMiB = 1; batchMiB <= 1024; batchMiB++)
+        {
+            var (payloadKiB, requests) = SpeedtestNetProbe.UploadBatchPlan(batchMiB);
+            Assert.IsGreaterThanOrEqualTo(previousSize, payloadKiB);
+            Assert.IsLessThanOrEqualTo(4096, payloadKiB);
+            Assert.IsInRange(1, 256, requests);
+            Assert.IsLessThanOrEqualTo(batchMiB * 1024, payloadKiB * requests);
+            previousSize = payloadKiB;
+        }
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task MeasureAsync_UsesLargerRequestsAsTheMeasurementGrows()
+    {
+        var handler = new ControlledPhaseHandler();
+        var result = await new SpeedtestNetProbe(new ControlledPhaseFactory(handler))
+            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
+        Assert.AreEqual(SpeedTestState.Success, result.State, result.DiagnosticCode);
+        Assert.IsTrue(handler.DownloadPaths.Any(path => path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
+        Assert.IsTrue(handler.DownloadPaths.Any(path => !path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
+        Assert.IsTrue(handler.UploadPayloadSizes.Any(size => size > 256 * 1024));
+        Assert.IsTrue(handler.UploadPayloadSizes.All(size => size <= 4 * 1024 * 1024));
+        Assert.AreEqual(handler.UploadPayloadSizes.Count, handler.UploadPayloadsCompleted,
+            "A normally completed upload batch should not discard in-flight payloads.");
+    }
+
+    [TestMethod]
     public async Task MeasureAsync_EmptyLaterDownloadDoesNotTurnShortSampleIntoSuccess()
     {
         var server = Server();

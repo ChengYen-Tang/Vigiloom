@@ -157,6 +157,14 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
         return (int)Math.Clamp(Math.Ceiling(estimateMiB), 1, Math.Max(1, Math.Min(remainingMiB, previousMiB * 8d)));
     }
 
+    internal static (int PayloadKiB, int Requests) UploadBatchPlan(int batchMiB)
+    {
+        var payloadKiB = Math.Clamp(batchMiB * 256, 128, 4096);
+        // Keep planned request bodies within the batch budget so ordinary completion
+        // does not cancel other uploads and discard their unconfirmed bytes.
+        return (payloadKiB, Math.Clamp(batchMiB * 1024 / payloadKiB, 1, 256));
+    }
+
     private static bool IsValidCandidate(IServer server) => Uri.TryCreate(server.Url, UriKind.Absolute, out var uri)
         && uri.Scheme is "http" or "https" && uri.Port is 80 or 443 or 8080 && string.IsNullOrEmpty(uri.UserInfo)
         && !IPAddress.TryParse(uri.Host, out _) && uri.AbsolutePath.StartsWith("/speedtest/", StringComparison.OrdinalIgnoreCase)
@@ -164,12 +172,14 @@ public sealed class SpeedtestNetProbe : ISpeedProbe
 
     private static ISpeedTestService CreateService(int batchMiB, HttpClient transport)
     {
+        var downloadSize = batchMiB switch { >= 64 => 4000, >= 16 => 3000, >= 8 => 2000, >= 4 => 1500, _ => 1000 };
+        var (uploadKiB, uploadIterations) = UploadBatchPlan(batchMiB);
         var settings = new OoklaSpeedtestSettings(Profile.Medium)
         {
             ServerDiscovery = new ServerDiscoverySettings { ServersUrl = "https://c.speedtest.net/speedtest-servers-static.php" },
             LatencyTest = new LatencyTestSettings { LatencyTestIterations = 3, LatencyTestIntervalMilliseconds = 50 },
-            DownloadTest = new DownloadTestSettings { DownloadSizeMb = batchMiB, DownloadParallelTasks = 4, DownloadSizes = [1000, 1500, 2000, 3000, 4000], DownloadSizeIterations = Math.Clamp(batchMiB, 8, 128) },
-            UploadTest = new UploadTestSettings { UploadSizeMb = batchMiB, UploadParallelTasks = 4, UploadSizeIncrementKb = 128, UploadIncrements = 8, UploadSizeIterations = Math.Clamp((int)Math.Ceiling(batchMiB / 4.5), 1, 64) }
+            DownloadTest = new DownloadTestSettings { DownloadSizeMb = batchMiB, DownloadParallelTasks = 4, DownloadSizes = [downloadSize], DownloadSizeIterations = Math.Clamp(batchMiB, 8, 128) },
+            UploadTest = new UploadTestSettings { UploadSizeMb = batchMiB, UploadParallelTasks = 4, UploadSizeIncrementKb = uploadKiB, UploadIncrements = 1, UploadSizeIterations = uploadIterations }
         };
         return new OoklaSpeedtest(settings, transport);
     }

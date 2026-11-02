@@ -33,6 +33,9 @@
     <Project Path="src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
     <Project Path="src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Vigiloom.SpeedLab/Vigiloom.SpeedLab.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Vigiloom.Agent.Core.Tests/Vigiloom.Agent.Core.Tests.csproj" />
     <Project Path="tests/Vigiloom.Agent.Platforms.Linux.Tests/Vigiloom.Agent.Platforms.Linux.Tests.csproj" />

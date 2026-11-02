@@ -12,11 +12,15 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
     private readonly object gate = new();
     private int uploadRequests;
     private int uploadProbes;
+    private int uploadPayloadsCompleted;
     private long uploadBytes, firstUpload, lastUpload, completedUploadTicks;
     private long slowUploadBytes;
     private long downloadBytes;
     public int UploadRequests => Volatile.Read(ref uploadRequests);
     public int UploadProbes => Volatile.Read(ref uploadProbes);
+    public int UploadPayloadsCompleted => Volatile.Read(ref uploadPayloadsCompleted);
+    public System.Collections.Concurrent.ConcurrentQueue<long> UploadPayloadSizes { get; } = new();
+    public System.Collections.Concurrent.ConcurrentQueue<string> DownloadPaths { get; } = new();
     public long SlowUploadBytes => Interlocked.Read(ref slowUploadBytes);
     public long DownloadBytes => Interlocked.Read(ref downloadBytes);
     public long UploadBytes { get { lock (gate) return uploadBytes; } }
@@ -41,6 +45,7 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
         else if (request.Method == HttpMethod.Post)
         {
             var length = request.Content?.Headers.ContentLength ?? 0;
+            if (length > 0) UploadPayloadSizes.Enqueue(length);
             if (length == 0)
             {
                 Interlocked.Increment(ref uploadProbes);
@@ -66,12 +71,17 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
                 else await request.Content.CopyToAsync(Stream.Null, token);
             }
             Interlocked.Increment(ref uploadRequests);
-            await Task.Delay(uploadDelayMs, token);
+            // Scale the simulated transfer time with payload size; a fixed delay would
+            // make larger uploads unrealistically fast and exhaust the phase budget.
+            var payloadUnits = Math.Max(1, (int)Math.Ceiling(length / 1048576d));
+            await Task.Delay(uploadDelayMs * payloadUnits, token);
+            if (length > 0) Interlocked.Increment(ref uploadPayloadsCompleted);
             if (length > 0) lock (gate) { uploadBytes += length; lastUpload = System.Diagnostics.Stopwatch.GetTimestamp(); }
             content = new ByteArrayContent(UploadResponse);
         }
         else
         {
+            DownloadPaths.Enqueue(path);
             await Task.Delay(downloadDelayMs, token);
             content = new StreamContent(new CountingDownload(Download, bytes => Interlocked.Add(ref downloadBytes, bytes)));
         }
@@ -82,7 +92,7 @@ internal sealed class ControlledPhaseHandler(int downloadDelayMs = 200, int uplo
     {
         public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            await Task.Delay(100, stopping);
+            await Task.Delay(150, stopping);
             cancellationToken.ThrowIfCancellationRequested();
             received(buffer.Length);
         }
