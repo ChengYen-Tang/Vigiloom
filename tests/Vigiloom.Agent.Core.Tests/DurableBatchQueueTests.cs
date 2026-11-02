@@ -60,6 +60,42 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
+    public async Task Queue_AcceptsBacklogBeyondFormerCountLimit()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var owner = Guid.CreateVersion7();
+            var queue = new DurableBatchQueue(new IdentityVault(root), owner);
+            var now = DateTimeOffset.UtcNow;
+            await queue.EnqueueAsync(Guid.CreateVersion7(), now, 1, new byte[] { 1 }, token);
+            // Seed a large persisted backlog in one transaction so this integration
+            // test exercises reopening and the old boundary without 8,192 fsyncs.
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var transaction = db.BeginTransaction();
+                using var command = db.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = """
+                    WITH RECURSIVE numbers(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM numbers WHERE n < 8192)
+                    INSERT INTO batches(batch_id, created_ticks, record_count, payload)
+                    SELECT printf('%08x-0000-7000-8000-000000000000', n), $ticks, 1, X'01' FROM numbers;
+                    UPDATE queue_state SET queued_bytes = queued_bytes + 8192, queued_count = queued_count + 8192 WHERE singleton = 1;
+                    """;
+                command.Parameters.AddWithValue("$ticks", now.UtcTicks);
+                command.ExecuteNonQuery();
+                transaction.Commit();
+            }
+            var reopened = new DurableBatchQueue(new IdentityVault(root), owner);
+            Assert.AreEqual(EnqueueResult.Queued, await reopened.EnqueueAsync(Guid.CreateVersion7(), now, 1, new byte[] { 2 }, token));
+            Assert.AreEqual(new QueueStatus(8194, 8194, 0), await reopened.GetStatusAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task Queue_BatchCountLimitAndCancellationDoNotRemovePendingData()
     {
         var root = NewRoot();
