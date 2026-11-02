@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -58,11 +59,13 @@ public sealed class AgentIdentityTlsTests
             using var tlsCertificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
             CryptographicOperations.ZeroMemory(pfx);
 
+            var rejectedStatus = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
                 builder.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(tlsCertificate)));
+                builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new CaptureRejectedStatus(rejectedStatus)));
             });
             factory.UseKestrel(0); factory.StartServer();
             var addresses = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses;
@@ -195,8 +198,20 @@ public sealed class AgentIdentityTlsTests
                 using (var trailing = new UnknownLengthBytesContent(oversizedEncoded))
                 {
                     trailing.Headers.ContentEncoding.Add("gzip");
-                    using var rejected = await http.PostAsync(new Uri(url, "/api/v1/agent/batches"), trailing, token);
-                    Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                    using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url, "/api/v1/agent/batches")) { Content = trailing };
+                    request.Headers.Add("X-Test-Capture-Status", "1");
+                    try
+                    {
+                        using var rejected = await http.SendAsync(request, token);
+                        Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+                    }
+                    catch (HttpRequestException exception) when (exception.InnerException is IOException)
+                    {
+                        // The server can send 413 and close the connection while the client
+                        // is still writing an unknown-length request. Verify the server's
+                        // response below instead of treating an arbitrary socket error as success.
+                    }
+                    Assert.AreEqual((int)HttpStatusCode.RequestEntityTooLarge, await rejectedStatus.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
                 }
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
@@ -212,6 +227,20 @@ public sealed class AgentIdentityTlsTests
                 if (Directory.Exists(statePath)) Directory.Delete(statePath, recursive: true);
             }
         }, TestContext.CancellationToken);
+
+    private sealed class CaptureRejectedStatus(TaskCompletionSource<int> result) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, following) =>
+            {
+                if (context.Request.Headers.ContainsKey("X-Test-Capture-Status"))
+                    context.Response.OnStarting(() => { result.TrySetResult(context.Response.StatusCode); return Task.CompletedTask; });
+                await following(context);
+            });
+            next(app);
+        };
+    }
 
     private sealed class UnknownLengthContent : HttpContent
     {

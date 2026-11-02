@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Reflection;
 using NetPace.Core;
 using NetPace.Core.Clients.Ookla;
 using NetPace.Core.Clients.Ookla.Settings;
@@ -25,18 +26,29 @@ public sealed class SpeedMultiServerTests
     [TestMethod]
     public async Task RankServers_OrdersLatencyAndExcludesUnreachableCandidates()
     {
-        using var client = new HttpClient(new LatencyHandler());
-        var settings = new OoklaSpeedtestSettings(Profile.Medium)
-        {
-            LatencyTest = new LatencyTestSettings { LatencyTestIterations = 1, LatencyTestIntervalMilliseconds = 0 }
-        };
-        var service = new OoklaSpeedtest(settings, client);
+        var service = DispatchProxy.Create<ISpeedTestService, LatencyServiceProxy>();
         var servers = Enumerable.Range(1, 4).Select(id => new OoklaServer
         {
             Id = id, Url = $"http://s{id}.example.com:8080/speedtest/upload.php", Location = "City", Sponsor = $"S{id}", Country = "TW"
         }).ToArray();
         var ranked = await SpeedServerDiscovery.RankServersAsync(service, servers, TestContext.CancellationToken);
         CollectionAssert.AreEqual(new[] { 3, 2, 1 }, ranked.Cast<OoklaServer>().Select(server => server.Id).ToArray());
+    }
+
+    public class LatencyServiceProxy : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method?.Name != nameof(ISpeedTestService.GetServerLatencyAsync) || args is not [OoklaServer server, _, IProgress<RequestDiagnostic> diagnostics, CancellationToken token])
+                throw new NotSupportedException("Unexpected speed test service call.");
+            token.ThrowIfCancellationRequested();
+            if (server.Id != 4) diagnostics.Report(new RequestDiagnostic
+            {
+                StartedAt = DateTime.UnixEpoch, Sequence = 1, Url = server.Url,
+                Outcome = RequestOutcome.Succeeded, BytesProcessed = 1, ElapsedMilliseconds = 1
+            });
+            return Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 4 - server.Id });
+        }
     }
 
     [TestMethod]
