@@ -25,8 +25,6 @@ internal static class AgentBatchEndpoints
         var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
         if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
-        if (context.Request.ContentLength > AgentBatchCodec.MaximumBytes)
-            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         using var encoded = new MemoryStream();
         using var decoded = gzip ? new MemoryStream() : null;
         var chunk = ArrayPool<byte>.Shared.Rent(16 * 1024);
