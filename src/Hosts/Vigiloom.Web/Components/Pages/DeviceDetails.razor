@@ -40,6 +40,30 @@
         @if (device.DeepMonitoring)
         {
             <section class="device-panel">
+                <h2>Agent 本機傳送佇列</h2>
+                @if (agentError) { <p role="alert">無法讀取傳送狀態，請稍後重新整理。</p> }
+                else if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
+                else
+                {
+                    <dl class="device-details">
+                        <div><dt>最後佇列回報（UTC）</dt><dd>@queue.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                        @if (queue.Snapshot is { } snapshot)
+                        {
+                            <div><dt>等待傳送</dt><dd>@(snapshot.TotalBatches - snapshot.QuarantinedBatches) 批</dd></div>
+                            <div><dt>已隔離</dt><dd>@snapshot.QuarantinedBatches 批</dd></div>
+                            <div><dt>佇列容量</dt><dd>@QueueBytes(snapshot.TotalBytes) / @QueueBytes(snapshot.CapacityBytes)</dd></div>
+                            <div><dt>批次容量</dt><dd>@snapshot.TotalBatches / @snapshot.CapacityBatches 批</dd></div>
+                        }
+                    </dl>
+                    @if (queue.Snapshot is null) { <p class="device-alert" role="status">Agent 無法讀取佇列，資料狀態未知。</p> }
+                    else if (queue.Snapshot.TotalBytes >= queue.Snapshot.CapacityBytes || queue.Snapshot.TotalBatches >= queue.Snapshot.CapacityBatches)
+                    { <p class="device-alert" role="status">佇列已達容量，新資料可能需要等待空間。</p> }
+                    <p>數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。</p>
+                    @if (agentStatus.State is AgentConnectionState.Offline or AgentConnectionState.ClockUncertain)
+                    { <p class="device-alert" role="status">Agent 目前失聯或時間異常，佇列狀態可能已過時。</p> }
+                }
+            </section>
+            <section class="device-panel">
                 <h2>Agent 設定同步</h2>
                 @if (settingsError) { <p role="alert">無法讀取設定狀態，請稍後重新整理。</p> }
                 else if (settingsStatus is null) { <p>尚無設定狀態。</p> }
@@ -170,4 +194,6 @@
         AgentConfigurationFailure.Conflict => "設定同步發生衝突，Agent 會再次嘗試。",
         _ => "Agent 回報設定同步異常。"
     };
+    private static string QueueBytes(long bytes) => bytes < 1024 * 1024
+        ? $"{bytes:N0} 位元組" : $"{bytes / 1048576d:N2} MiB";
 }

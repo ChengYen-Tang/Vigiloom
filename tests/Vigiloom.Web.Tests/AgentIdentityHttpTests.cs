@@ -338,9 +338,9 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(InitialAdministratorStatus.Created, (await scope.ServiceProvider.GetRequiredService<InitialAdministrator>()
                     .CreateAsync(setupSecret, "admin", "Strong-Password-123", token)).Status);
                 var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
-                var reader = new Account { UserName = "reader" };
-                Assert.IsTrue((await users.CreateAsync(reader, "Strong-Password-123")).Succeeded);
-                Assert.IsTrue((await users.AddToRoleAsync(reader, BuiltInRoles.ReadOnly)).Succeeded);
+                var readerAccount = new Account { UserName = "reader" };
+                Assert.IsTrue((await users.CreateAsync(readerAccount, "Strong-Password-123")).Succeeded);
+                Assert.IsTrue((await users.AddToRoleAsync(readerAccount, BuiltInRoles.ReadOnly)).Succeeded);
                 var adminAccount = await users.FindByNameAsync("admin");
                 Assert.IsNotNull(adminAccount);
                 var bytes = RandomNumberGenerator.GetBytes(32);
@@ -394,7 +394,7 @@ public sealed class AgentIdentityHttpTests
                 using var adminRead = await admin.GetAsync(path, token);
                 Assert.AreEqual(HttpStatusCode.OK, adminRead.StatusCode, path);
             }
-            using (var reader = factory.CreateClient(options))
+            using var reader = factory.CreateClient(options);
             {
                 using var page = await reader.GetAsync("/account/login", token);
                 var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
@@ -420,6 +420,7 @@ public sealed class AgentIdentityHttpTests
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
                 Assert.Contains("未註冊或已撤銷", detailsDoc.Body.TextContent);
+                Assert.Contains("尚無佇列回報", detailsDoc.Body.TextContent);
                 Assert.IsNull(detailsDoc.QuerySelector($"a[href='/devices/{device.Id:D}/agent']"));
                 using var denied = await reader.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
@@ -591,6 +592,37 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentConnectionState.Online, status!.State);
                 Assert.AreEqual(queueReport.Queue, status.Queue!.Snapshot);
                 Assert.IsNotNull(status.LastHeartbeatAt);
+            }
+            using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                var fields = page.QuerySelectorAll("dl div").Where(x => x.QuerySelector("dt") is not null)
+                    .ToDictionary(x => x.QuerySelector("dt")!.TextContent, x => x.QuerySelector("dd")?.TextContent.Trim() ?? "");
+                Assert.AreEqual("3 批", fields["等待傳送"]);
+                Assert.AreEqual("2 批", fields["已隔離"]);
+                Assert.AreEqual("5 / 10 批", fields["批次容量"]);
+                Assert.Contains("可能不是目前狀態", page.Body!.TextContent);
+            }
+            using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, deliveryPage.StatusCode);
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("等待傳送", page.Body!.TextContent);
+                Assert.Contains("3 批", page.Body.TextContent);
+            }
+            using (var full = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = queueReport.Queue! with { TotalBatches = 10 } }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, full.StatusCode);
+            using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("佇列已達容量", page.Body!.TextContent);
+            }
+            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, unreadable.StatusCode);
+            using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 無法讀取佇列，資料狀態未知", page.Body!.TextContent);
             }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
