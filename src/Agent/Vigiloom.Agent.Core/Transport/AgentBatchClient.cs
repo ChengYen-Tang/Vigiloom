@@ -40,7 +40,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
-            HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnsupportedMediaType => BatchSendResult.Rejected,
+            HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Gone or HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnsupportedMediaType => BatchSendResult.Rejected,
             _ => BatchSendResult.Retry
         };
         if (status == BatchSendResult.Rejected)
@@ -49,6 +49,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             {
                 HttpStatusCode.BadRequest => QueueRejection.BadRequest,
                 HttpStatusCode.Conflict => QueueRejection.Conflict,
+                HttpStatusCode.Gone => QueueRejection.Expired,
                 HttpStatusCode.RequestEntityTooLarge => QueueRejection.PayloadTooLarge,
                 HttpStatusCode.UnsupportedMediaType => QueueRejection.UnsupportedMediaType,
                 _ => throw new InvalidOperationException("Unexpected permanent batch response.")
