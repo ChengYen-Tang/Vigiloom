@@ -20,6 +20,7 @@ internal static class AgentHeartbeatEndpoint
     public static async Task<IResult> ReceiveAsync(HttpContext context, AgentIdentity agents, CancellationToken token)
     {
         if (context.Request.Headers.ContainsKey("Content-Encoding")) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+        if (context.Request.ContentLength > MaximumBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
         var buffer = ArrayPool<byte>.Shared.Rent(MaximumBytes + 1);
         try
         {
