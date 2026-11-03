@@ -34,10 +34,10 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         foreach (var item in batch.Items)
             if (existing.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
 
-        var receipts = db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agent.Id);
-        var count = await receipts.CountAsync(token);
-        var bytes = await receipts.SumAsync(x => (long?)x.ByteCount, token) ?? 0;
-        if (count >= maximumBatches || payload.Length > capacityBytes - bytes)
+        var usage = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agent.Id)
+            .GroupBy(x => x.AgentId).Select(group => new { Count = group.LongCount(), Bytes = group.Sum(x => (long)x.ByteCount) })
+            .SingleOrDefaultAsync(token);
+        if ((usage?.Count ?? 0) >= maximumBatches || payload.Length > capacityBytes - (usage?.Bytes ?? 0))
             return BatchReceiptStatus.CapacityExceeded;
 
         var receivedAt = clock.GetUtcNow();

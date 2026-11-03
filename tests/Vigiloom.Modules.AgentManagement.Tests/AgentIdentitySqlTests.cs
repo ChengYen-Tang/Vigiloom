@@ -424,6 +424,12 @@ public sealed class AgentIdentitySqlTests
         await using var verify = agents.CreateDbContext();
         Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
         Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+        var next = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [item with { MessageId = Guid.CreateVersion7() }] });
+        Assert.HasCount(payload.Length, next);
+        var byteLimited = new AgentBatchReceiver(agents, identity, clock, capacityBytes: payload.Length + next.Length - 1L, maximumBatches: 10);
+        Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await byteLimited.ReceiveAsync(credential, next, token));
+        var exactCapacity = new AgentBatchReceiver(agents, identity, clock, capacityBytes: payload.Length + next.Length, maximumBatches: 10);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await exactCapacity.ReceiveAsync(credential, next, token));
     });
 
     [TestMethod]
