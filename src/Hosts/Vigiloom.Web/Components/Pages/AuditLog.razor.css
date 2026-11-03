@@ -8,12 +8,21 @@
 .audit-panel .audit-error { color: #a32d20; font-weight: 600; }
 .audit-panel .audit-scroll-hint { color: #244e83; font-weight: 600; }
 form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.audit-date-field { display: flex; align-items: center; gap: 8px; max-width: 100%; }
+.audit-date-field label { white-space: nowrap; }
+.audit-date-field input { min-width: 0; }
 input { border: 1px solid #9aabc3; border-radius: 6px; padding: 8px; }
 button { color: white; background: #075ff0; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
 .audit-table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; text-align: left; }
-th, td { padding: 12px; border-bottom: 1px solid #e3eaf3; vertical-align: top; }
+table { width: 100%; min-width: 800px; table-layout: fixed; border-collapse: collapse; text-align: left; }
+th, td { box-sizing: border-box; padding: 12px; border-bottom: 1px solid #e3eaf3; vertical-align: top; overflow-wrap: anywhere; }
 th { background: #eaf2ff; color: #304e73; font-weight: 600; }
+th:nth-child(1) { width: 17%; }
+th:nth-child(2) { width: 13%; }
+th:nth-child(3) { width: 10%; }
+th:nth-child(4) { width: 16%; }
+th:nth-child(5) { width: 32%; }
+th:nth-child(6) { width: 12%; }
 .audit-badge { display: inline-block; border-radius: 5px; padding: 3px 8px; font-size: .875rem; font-weight: 600; white-space: nowrap; }
 .audit-badge-action { background: #e7f0ff; color: #154c9e; }
 .audit-badge-success { background: #e2f5e9; color: #146b37; }
@@ -23,4 +32,5 @@ summary { color: #075ff0; cursor: pointer; }
 .audit-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 20px; }
 a { color: #075ff0; }
 a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible, .audit-table-wrap:focus-visible { outline: 3px solid #075ff0; outline-offset: 3px; }
-@media (max-width: 700px) { .audit-page { padding: 0 16px 36px; margin-top: 24px; } table { min-width: 800px; } }
+@media (max-width: 700px) { .audit-page { padding: 0 16px 36px; margin-top: 24px; } }
+@media (min-width: 1200px) { .audit-panel .audit-scroll-hint { display: none; } }
