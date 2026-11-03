@@ -116,6 +116,45 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
+    public async Task Queue_FailedMetadataUpdateRollsBackBatchAndCanRetry()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var owner = Guid.CreateVersion7();
+            var queue = new DurableBatchQueue(new IdentityVault(root), owner, 100, maximumBatches: 10);
+            var now = DateTimeOffset.UtcNow;
+            var original = Guid.CreateVersion7();
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(original, now, 1, new byte[] { 1, 2 }, token));
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                await db.OpenAsync(token);
+                using var command = db.CreateCommand();
+                command.CommandText = "CREATE TRIGGER test_reject_queue_update BEFORE UPDATE ON queue_state BEGIN SELECT RAISE(ABORT, 'injected metadata failure'); END";
+                await command.ExecuteNonQueryAsync(token);
+            }
+            var next = Guid.CreateVersion7();
+            await Assert.ThrowsAsync<SqliteException>(() => queue.EnqueueAsync(next, now, 1, new byte[] { 3, 4, 5 }, token));
+            var reopened = new DurableBatchQueue(new IdentityVault(root), owner, 100, maximumBatches: 10);
+            Assert.AreEqual(new QueueStatus(2, 1, 0), await reopened.GetStatusAsync(token));
+            Assert.AreEqual(original, (await reopened.PeekAsync(token))!.BatchId);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                await db.OpenAsync(token);
+                using var command = db.CreateCommand();
+                command.CommandText = "DROP TRIGGER test_reject_queue_update";
+                await command.ExecuteNonQueryAsync(token);
+            }
+            Assert.AreEqual(EnqueueResult.Queued, await reopened.EnqueueAsync(next, now, 1, new byte[] { 3, 4, 5 }, token));
+            Assert.AreEqual(new QueueStatus(5, 2, 0), await reopened.GetStatusAsync(token));
+            Assert.IsTrue(await reopened.AcknowledgeAsync(original, token));
+            Assert.AreEqual(next, (await reopened.PeekAsync(token))!.BatchId);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task Queue_IdentityLeaseContentionDoesNotDiscardBatch()
     {
         var root = NewRoot();
