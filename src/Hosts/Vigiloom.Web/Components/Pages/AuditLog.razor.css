@@ -5,13 +5,18 @@
 .audit-panel, .audit-notice { background: white; border: 1px solid #e3eaf3; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
 .audit-notice { border-left: 4px solid #b97000; }
 .audit-panel h2 { font-size: 1.2rem; margin: 0 0 12px; }
+.audit-panel .audit-error { color: #a32d20; font-weight: 600; }
+.audit-panel .audit-scroll-hint { color: #244e83; font-weight: 600; }
 form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
 input { border: 1px solid #9aabc3; border-radius: 6px; padding: 8px; }
 button { color: white; background: #075ff0; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
 .audit-table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th, td { padding: 12px; border-bottom: 1px solid #e3eaf3; vertical-align: top; }
-th { color: #586b87; font-weight: 600; }
+th { background: #eaf2ff; color: #304e73; font-weight: 600; }
+.audit-badge { display: inline-block; border-radius: 5px; padding: 3px 8px; font-size: .875rem; font-weight: 600; white-space: nowrap; }
+.audit-badge-action { background: #e7f0ff; color: #154c9e; }
+.audit-badge-success { background: #e2f5e9; color: #146b37; }
 td > div { margin-bottom: 4px; }
 details { margin-top: 8px; }
 summary { color: #075ff0; cursor: pointer; }
