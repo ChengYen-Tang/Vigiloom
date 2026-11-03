@@ -28,11 +28,16 @@ public sealed class SpeedHttpTests
         await PingTestSite.InitializeAsync(factory, token);
         var now = DateTimeOffset.UtcNow;
         var auditUrl = $"/api/v1/operations/audit?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var feedUrl = $"/api/v1/operations/audit-feed/accounts?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using (var denied = await anonymous.GetAsync("/api/v1/speed-tests?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
         using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         using (var denied = await reader.GetAsync("/settings/audit", token))
         {
             Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
@@ -41,6 +46,16 @@ public sealed class SpeedHttpTests
         using (var denied = await reader.GetAsync("/api/v1/settings/speed-tests", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         using (var denied = await reader.PostAsJsonAsync("/api/v1/speed-tests", new { }, token)) Assert.AreEqual(HttpStatusCode.MethodNotAllowed, denied.StatusCode);
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        using (var feed = await admin.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.OK, feed.StatusCode);
+        using (var invalid = await admin.GetAsync(feedUrl.Replace("/accounts?", "/unsupported?"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using (var health = await admin.GetAsync("/api/v1/operations/platform-status", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+            using var document = System.Text.Json.JsonDocument.Parse(await health.Content.ReadAsStringAsync(token));
+            Assert.AreEqual(1, document.RootElement.GetProperty("database").GetInt32());
+            Assert.IsFalse(document.RootElement.GetProperty("agentQueryAvailable").GetBoolean());
+            Assert.IsFalse(document.RootElement.GetProperty("scheduler").GetProperty("available").GetBoolean());
+        }
         var first = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
         Assert.IsNotNull(first); Assert.IsTrue(first.Automatic); Assert.IsNotNull(first.NextAutomaticAt);
         using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 40, first.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
@@ -72,7 +87,7 @@ public sealed class SpeedHttpTests
             Assert.Contains("網路測速設定", text);
             Assert.Contains("admin", text);
             Assert.Contains("已儲存", text);
-            Assert.Contains("其他操作與失敗紀錄尚未接入", text);
+            Assert.Contains("其他來源可由上方選擇", text);
         }
         using (var invalidAudit = await admin.GetAsync(auditUrl + "&page=1001", token))
             Assert.AreEqual(HttpStatusCode.BadRequest, invalidAudit.StatusCode);

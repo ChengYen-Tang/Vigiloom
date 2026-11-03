@@ -56,6 +56,56 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
 
                     b.ToTable("AuditEvents", "operations");
                 });
+
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.WorkerDiagnosticSlot", b =>
+                {
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("BootId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("PingFailureAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<short>("PingFailureKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("PingFailures")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("PingSuccessAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("SpeedFailureAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<short>("SpeedFailureKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("SpeedFailures")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("SpeedSuccessAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Slot");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Slot"));
+
+                    b.ToTable("WorkerDiagnosticSlots", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkerDiagnosticSlots_Failures", "[PingFailures] >= 0 AND [SpeedFailures] >= 0");
+
+                            t.HasCheckConstraint("CK_WorkerDiagnosticSlots_Slot", "[Slot] BETWEEN 1 AND 64");
+                        });
+                });
 #pragma warning restore 612, 618
         }
     }

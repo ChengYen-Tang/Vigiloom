@@ -4,6 +4,7 @@ using System.Text.Json;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Contracts.Network;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;
 
@@ -23,6 +24,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         var (kind, details) = audit.Details switch
         {
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
+            PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             _ => throw new ArgumentException("Unsupported or invalid audit event details.", nameof(audit))
         };
         if (details.Length > 2048) throw new ArgumentException("Audit event details exceed the supported limit.", nameof(audit));
@@ -41,6 +43,11 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         change.Previous is not null && change.Current is not null &&
         SpeedSettingsLimits.IsValid(change.Current.IntervalHours, change.Current.MaxMiB, change.Current.TimeoutSeconds) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(PingSettingsChanged change) => change.Previous is not null && change.Current is not null &&
+        PingSettingsLimits.IsValid(change.Current.IntervalSeconds, change.Current.TimeoutSeconds, change.Current.FailureThreshold,
+            change.Current.SuccessThreshold, change.Current.MaxConcurrency) &&
+        (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
 
     private static bool IsVersion(string? value)
     {

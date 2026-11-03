@@ -33,6 +33,9 @@ public static class WorkerHost
         builder.Services.AddSystemd();
         builder.Services.AddVigiloomScheduling(builder.Configuration);
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<WorkerDiagnosticsStore>();
+        builder.Services.AddSingleton<WorkerDiagnostics>();
+        builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
         builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
         builder.Services.AddScoped<PingSettings>();
         builder.Services.AddScoped<PingStore>();

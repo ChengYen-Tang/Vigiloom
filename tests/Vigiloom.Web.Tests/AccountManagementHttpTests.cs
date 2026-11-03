@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests;
@@ -111,6 +113,41 @@ public sealed class AccountManagementHttpTests
             using (var role = await admin.PutAsJsonAsync($"/api/v1/accounts/{apiId}/role", new { role = "Administrator" }, token)) Assert.AreEqual(HttpStatusCode.NoContent, role.StatusCode);
             using (var reset = await admin.PostAsync($"/api/v1/accounts/{apiId}/password-reset", null, token)) Assert.AreEqual(HttpStatusCode.OK, reset.StatusCode);
             using (var deleted = await admin.DeleteAsync($"/api/v1/accounts/{apiId}", token)) Assert.AreEqual(HttpStatusCode.NoContent, deleted.StatusCode);
+            var now = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit-feed/accounts?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+            using (var audit = await admin.GetAsync(auditUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var body = await audit.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain("setupCode", body, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("password", body, StringComparison.OrdinalIgnoreCase);
+                using var json = JsonDocument.Parse(body);
+                Assert.IsTrue(json.RootElement.GetProperty("items").EnumerateArray().Any(item =>
+                    item.GetProperty("subjectId").GetGuid() == apiId && item.GetProperty("action").GetInt32() == (int)AuditFeedAction.AccountDeleted));
+            }
+            using (var auditPage = await admin.GetAsync("/settings/audit?source=accounts", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+                var document = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("刪除帳號", document.Body!.TextContent);
+                Assert.Contains(apiId.ToString("D"), document.Body.TextContent);
+                Assert.AreEqual("accounts", document.QuerySelector("#audit-source option[selected]")?.GetAttribute("value"));
+            }
+            await using (var db = await contexts.CreateDbContextAsync(token))
+            {
+                for (var index = 0; index < 51; index++) db.AccountAuditEvents.Add(new AccountAuditEvent(null, Guid.CreateVersion7(), "AccountCreated", now));
+                await db.SaveChangesAsync(token);
+            }
+            using (var secondPage = await admin.GetAsync("/settings/audit?source=accounts&page=2", token))
+            {
+                var document = await new HtmlParser().ParseDocumentAsync(await secondPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("第 2 頁", document.Body!.TextContent);
+                var previous = document.QuerySelector("nav[aria-label='稽核紀錄分頁'] a")?.GetAttribute("href");
+                Assert.Contains("source=accounts", previous ?? "");
+                Assert.Contains("from=", previous ?? "");
+                Assert.Contains("to=", previous ?? "");
+                Assert.IsNull(document.QuerySelector("form input[name='page']"));
+            }
             using (var denied = await reader.GetAsync("/account/manage", token))
             {
                 Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);

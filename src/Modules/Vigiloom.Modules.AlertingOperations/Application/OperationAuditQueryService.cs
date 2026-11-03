@@ -21,15 +21,23 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         query.To > query.From && query.To - query.From <= TimeSpan.FromDays(31) && query.Page is >= 1 and <= 1000;
 
     public async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, false, cancellationToken);
+
+    public async Task<OperationAuditPage> QueryPingAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, true, cancellationToken);
+
+    private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, bool pingOnly, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+        var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
+                (pingOnly ? x.Kind == AuditKinds.PingSettingsChangedV1 : x.Kind != AuditKinds.PingSettingsChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
         var entries = rows.Take(PageSize).Select(x => new OperationAuditEntry(x.OccurredAt, x.ActorId, x.ResourceId,
-            x.Kind == AuditKinds.SpeedSettingsChangedV1 ? ReadSpeedSettings(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.SpeedSettingsChangedV1 ? ReadSpeedSettings(x.Details) : null,
+            x.Kind == AuditKinds.PingSettingsChangedV1 ? ReadPingSettings(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -39,6 +47,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedSettingsChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static PingSettingsChanged? ReadPingSettings(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<PingSettingsChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

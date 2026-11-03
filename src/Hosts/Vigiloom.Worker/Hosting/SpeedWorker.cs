@@ -10,7 +10,7 @@ public sealed class AutomaticSpeedJob(SpeedQueue queue)
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token) => await queue.RequestAsync(ResourceIds.Create(), token);
 }
-internal sealed class SpeedWorker(IServiceScopeFactory scopes, ILogger<SpeedWorker> logger) : BackgroundService
+internal sealed class SpeedWorker(IServiceScopeFactory scopes, WorkerDiagnostics diagnostics, ILogger<SpeedWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -21,9 +21,10 @@ internal sealed class SpeedWorker(IServiceScopeFactory scopes, ILogger<SpeedWork
             {
                 await using var scope = scopes.CreateAsyncScope();
                 await scope.ServiceProvider.GetRequiredService<SpeedRunner>().RunOnceAsync(stoppingToken);
+                diagnostics.Success(Scanner.Speed);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception exception) { logger.LogWarning("Speed test scan failed: {ExceptionType}", exception.GetType().Name); }
+            catch (Exception exception) { diagnostics.Failure(Scanner.Speed, exception); logger.LogWarning("Speed test scan failed: {ExceptionType}", exception.GetType().Name); }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 }

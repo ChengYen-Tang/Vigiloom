@@ -4,4 +4,5 @@ namespace Vigiloom.Modules.AlertingOperations.Application;
 internal static class AuditKinds
 {
     public const short SpeedSettingsChangedV1 = 1;
+    public const short PingSettingsChangedV1 = 2;
 }
