@@ -136,6 +136,7 @@ public sealed class DurableBatchQueueTests
             }
             var next = Guid.CreateVersion7();
             await Assert.ThrowsAsync<SqliteException>(() => queue.EnqueueAsync(next, now, 1, new byte[] { 3, 4, 5 }, token));
+            await Assert.ThrowsAsync<SqliteException>(() => queue.AcknowledgeAsync(original, token));
             var reopened = new DurableBatchQueue(new IdentityVault(root), owner, 100, maximumBatches: 10);
             Assert.AreEqual(new QueueStatus(2, 1, 0), await reopened.GetStatusAsync(token));
             Assert.AreEqual(original, (await reopened.PeekAsync(token))!.BatchId);
