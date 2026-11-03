@@ -593,6 +593,14 @@ public sealed class AgentIdentityHttpTests
             using (var oneTimeNotMachine = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oneTimeNotMachine.StatusCode);
             var machineSecret = Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
+            foreach (var path in new[] { $"/devices/{device.Id:D}", $"/api/v1/devices/{device.Id:D}/agent-status" })
+            {
+                using var visible = await reader.GetAsync(path, token);
+                Assert.AreEqual(HttpStatusCode.OK, visible.StatusCode);
+                var content = await visible.Content.ReadAsStringAsync(token);
+                Assert.IsFalse(content.Contains(enrollment.Secret, StringComparison.Ordinal), "Enrollment secret leaked to the reader.");
+                Assert.IsFalse(content.Contains(machineSecret, StringComparison.Ordinal), "Machine secret leaked to the reader.");
+            }
             foreach (var path in monitoringPaths)
             {
                 using var machineRead = await agent.GetAsync(path, token);
