@@ -48,6 +48,8 @@ internal static class ServiceObservationEndpoint
             try
             {
                 var result = await candidates.ObserveAsync(sourceId, observation.ServiceKey, observation.Environment, observation.DisplayName, token);
+                if (result is CandidateObservation.CapacityReached or CandidateObservation.Busy)
+                    context.Response.Headers.RetryAfter = "60";
                 return result switch
                 {
                     CandidateObservation.Recorded or CandidateObservation.AlreadyApproved => Results.NoContent(),

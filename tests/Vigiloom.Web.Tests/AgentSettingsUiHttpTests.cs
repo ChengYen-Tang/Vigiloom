@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
@@ -20,6 +22,52 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task ServiceObservation_RateLimitAndCapacityDoNotConsumeAdministratorQuota() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Vigiloom:ServiceDiscovery:RequestsPerMinute"] = "2"
+                })));
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("source", token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            {
+                var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+                db.Candidates.AddRange(Enumerable.Range(0, CandidateDiscovery.PerSourceLimit)
+                    .Select(i => new Vigiloom.Modules.ServiceObservability.Domain.ServiceCandidate(source.SourceId, $"key-{i}", "prod", "Service", now)));
+                await db.SaveChangesAsync(token);
+            }
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var machine = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            await LoginAsync(admin, "admin", token);
+            machine.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", source.Secret);
+            const string url = "/api/v1/service-discovery/observations";
+            using (var existing = await machine.PostAsJsonAsync(url, new ServiceObservation("key-0", "prod", "Updated"), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, existing.StatusCode);
+            using (var full = await machine.PostAsJsonAsync(url, new ServiceObservation("new-key", "prod", "New"), token))
+            {
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, full.StatusCode);
+                Assert.AreEqual(TimeSpan.FromSeconds(60), full.Headers.RetryAfter?.Delta);
+            }
+            using (var limited = await machine.PostAsJsonAsync(url, new ServiceObservation("key-0", "prod", "Updated"), token))
+            {
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+                Assert.AreEqual(TimeSpan.FromSeconds(60), limited.Headers.RetryAfter?.Delta);
+            }
+            using (var list = await admin.GetAsync("/api/v1/service-discovery/candidates/", token)) Assert.AreEqual(HttpStatusCode.OK, list.StatusCode);
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(CandidateDiscovery.PerSourceLimit, await verify.Candidates.CountAsync(token));
+            Assert.IsFalse(await verify.Candidates.AnyAsync(x => x.SourceId == source.SourceId && x.ServiceKey == "new-key", token));
+            Assert.AreEqual("Updated", (await verify.Candidates.SingleAsync(x => x.SourceId == source.SourceId && x.ServiceKey == "key-0", token)).DisplayName);
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task ServiceDiscoveryPage_ManagesSourcesAndApprovesCandidate() =>
