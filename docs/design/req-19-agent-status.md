@@ -6,7 +6,7 @@ The display distinguishes disabled monitoring, no current registration, waiting 
 
 The existing overview image is the agreed style reference, not a same-screen mockup. An isolated LocalDB and test-only accounts were used to inspect the actual rendered device page in the in-app browser at desktop and 390 × 844 CSS pixels. The test showed Ping without samples alongside an online Agent; after 90 seconds and a page reload the Agent changed to offline without changing Ping. At the narrow width the document did not overflow horizontally and no browser warning or error was observed. The test process completed and cleaned up its database.
 
-This is preliminary visual verification. A saved, normalized side-by-side comparison against the selected reference and a full keyboard/accessibility pass remain open; it is not a completed design QA or full REQ-19 acceptance. Real-time updates and reliable data delivery remain incomplete.
+This is preliminary visual verification, not full REQ-19 acceptance. The selected overview is a style reference, not a same-screen design target; exact page-fidelity comparison against it would be misleading. The device and settings screens still need validation of their own states, interaction and accessibility. Real-time updates and reliable data delivery remain incomplete.
 
 ## Agent delivery snapshot
 
