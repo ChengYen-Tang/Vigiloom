@@ -59,7 +59,7 @@ public sealed class ServiceDiscoveryBrowserTests(TestContext context)
         await page.Keyboard.PressAsync("Tab");
         Assert.IsTrue(await page.GetByRole(AriaRole.Button, new() { Name = "加入服務", Exact = true }).First.EvaluateAsync<bool>("element => document.activeElement === element"));
         await page.Keyboard.PressAsync("Enter");
-        await page.GetByText("服務已加入，預設為私人；正式遙測接收尚未完成。", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("服務已加入，預設為私人；正式遙測接收尚未完成。", new() { Exact = false }).WaitForAsync();
         context.AddResultFile(Path.Combine(evidence, "desktop.png"));
         context.AddResultFile(Path.Combine(evidence, "mobile.png"));
     }, context.CancellationToken);

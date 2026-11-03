@@ -18,7 +18,13 @@
     @if (secret is not null)
     {
         <section class="device-panel"><h2>立即保存來源憑證</h2><p>憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時請撤銷後重新建立。</p>
-            <textarea readonly rows="3" aria-label="來源憑證">@secret</textarea></section>
+            <textarea readonly rows="3" aria-label="來源憑證">@secret</textarea>
+            <p>請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。</p>
+            <details><summary>目前可用的來源回報資訊</summary>
+                <p>使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 <code>POST /api/v1/service-discovery/observations</code> 傳送 JSON 欄位 <code>serviceKey</code>、<code>environment</code> 及 <code>displayName</code>。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。</p>
+                <p>這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。</p>
+            </details>
+        </section>
     }
     <section class="device-panel"><h2>服務候選清單</h2>
         <p>請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。</p>
@@ -129,7 +135,8 @@
         try
         {
             var result = await Approval.ApproveAsync(id, actor, HttpContext.RequestAborted);
-            message = result.Status is ApprovalStatus.Approved or ApprovalStatus.AlreadyApproved ? "服務已加入，預設為私人；正式遙測接收尚未完成。" : null;
+            message = result.Status is ApprovalStatus.Approved or ApprovalStatus.AlreadyApproved && result.ServiceId is not null
+                ? $"服務已加入，預設為私人；正式遙測接收尚未完成。服務識別碼：{result.ServiceId:D}" : null;
             if (message is null) error = "服務已過期或無法加入，請重新整理後確認。";
             await LoadAsync();
         }
