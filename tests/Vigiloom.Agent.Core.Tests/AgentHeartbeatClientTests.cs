@@ -82,6 +82,43 @@ public sealed class AgentHeartbeatClientTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Heartbeat_CapacityReportFallsBackForOlderPlatforms(bool rejectConfiguration)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            var observation = new AgentConfigurationObservation(owner, new(AgentSettingsSnapshot.Create(AgentSettings.Default), DateTimeOffset.UtcNow, null));
+            var handler = new OlderConfigurationHandler(rejectConfiguration);
+            using var http = new HttpClient(handler);
+            var capacity = new AgentQueueCapacityObservation(owner, null);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://example.test/"), observation, capacity, token));
+            Assert.HasCount(rejectConfiguration ? 4 : 3, handler.Reports);
+            Assert.IsNotNull(handler.Reports[0].CapacityConfiguration);
+            Assert.IsNull(handler.Reports[1].CapacityConfiguration);
+            Assert.IsNotNull(handler.Reports[1].Quarantine);
+            Assert.IsNull(handler.Reports[2].Quarantine);
+            if (rejectConfiguration) Assert.IsNull(handler.Reports[3].Configuration);
+            Assert.IsTrue(handler.Reports.All(x => x.Sequence == handler.Reports[0].Sequence && x.Queue == handler.Reports[0].Queue));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Heartbeat_FallsBackToEmptyBodyForOlderPlatform()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());

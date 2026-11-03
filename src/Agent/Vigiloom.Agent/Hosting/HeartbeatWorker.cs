@@ -6,7 +6,7 @@ using Vigiloom.Agent.Core.Transport;
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Runs the initial heartbeat schedule; configuration synchronization will supply its effective interval.</summary>
-internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger) : BackgroundService
+internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -22,6 +22,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                 if (string.IsNullOrWhiteSpace(directory) || !Uri.TryCreate(server, UriKind.Absolute, out var uri))
                 {
                     settings.Bind(null);
+                    capacity.Bind(null);
                     status = "NotConfigured";
                 }
                 else
@@ -32,14 +33,16 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         !string.Equals(server, configuration["Vigiloom:Agent:Server"], StringComparison.Ordinal))
                     {
                         settings.Bind(null);
+                        capacity.Bind(null);
                         status = "ConfigurationChanged";
                     }
                     else
                     {
                         settings.Bind(owner);
+                        capacity.Bind(owner);
                         var initialPeriod = TimeSpan.FromSeconds(settings.Current.HeartbeatSeconds);
                         if (timer.Period != initialPeriod) timer.Period = initialPeriod;
-                        status = (await client.SendAsync(vault, uri, settings.Report(), stoppingToken)).ToString();
+                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), stoppingToken)).ToString();
                     }
                 }
             }

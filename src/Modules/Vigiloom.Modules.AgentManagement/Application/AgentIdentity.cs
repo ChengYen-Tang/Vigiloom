@@ -134,8 +134,11 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         var now = clock.GetUtcNow();
         agent.RecordHeartbeat(now);
         var staleSession = report is not null && agent.QueueReportEpoch != report.Epoch;
-        if (report is not null && !staleSession && agent.RecordQueueStatus(report.Sequence, report.Queue, report.Quarantine, now) && report.Configuration is { } settings)
-            agent.RecordConfigurationStatus(settings, now);
+        if (report is not null && !staleSession && agent.RecordQueueStatus(report.Sequence, report.Queue, report.Quarantine, now))
+        {
+            if (report.Configuration is { } settings) agent.RecordConfigurationStatus(settings, now);
+            if (report.CapacityConfiguration is { } capacity) agent.RecordQueueCapacityStatus(capacity, report.Sequence, now);
+        }
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return staleSession ? AgentIdentityStatus.Conflict : AgentIdentityStatus.Success;

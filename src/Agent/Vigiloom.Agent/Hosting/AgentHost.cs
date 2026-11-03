@@ -19,7 +19,9 @@ public static class AgentHost
         builder.Services.AddHttpClient<AgentHeartbeatClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentBatchClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentSettingsClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddHttpClient<AgentQueueCapacityClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddSingleton<AgentSettingsRuntime>();
+        builder.Services.AddSingleton<AgentQueueCapacityRuntime>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<HeartbeatWorker>();
         builder.Services.AddHostedService<BatchWorker>();

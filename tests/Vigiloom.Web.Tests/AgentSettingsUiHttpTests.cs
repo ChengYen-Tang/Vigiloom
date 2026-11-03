@@ -75,6 +75,38 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains("有效心跳：60 秒", text);
                 Assert.Contains("平台設定", text);
             }
+            using (var existing = await admin.GetAsync(platformUrl, token))
+            {
+                var capacityFields = await FieldsAsync(existing, token, "agent-capacity");
+                capacityFields["CapacityInput.PayloadMiB"] = "128";
+                capacityFields["CapacityInput.BatchCount"] = "200";
+                using var capacitySaved = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(capacityFields), token);
+                Assert.Contains("設定已儲存", await BodyTextAsync(capacitySaved, token));
+                var settingsAfterCapacity = await FieldsAsync(capacitySaved, token);
+                Assert.AreEqual("60", settingsAfterCapacity["Input.HeartbeatSeconds"]);
+                Assert.IsFalse(string.IsNullOrEmpty(settingsAfterCapacity["Input.Version"]));
+                settingsAfterCapacity["Input.HeartbeatSeconds"] = "70";
+                using var settingsSaved = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(settingsAfterCapacity), token);
+                Assert.Contains("設定已儲存", await BodyTextAsync(settingsSaved, token));
+                var capacityAfterSettings = await FieldsAsync(settingsSaved, token, "agent-capacity");
+                Assert.AreEqual("128", capacityAfterSettings["CapacityInput.PayloadMiB"]);
+                Assert.AreEqual("200", capacityAfterSettings["CapacityInput.BatchCount"]);
+                Assert.IsFalse(string.IsNullOrEmpty(capacityAfterSettings["CapacityInput.Version"]));
+                capacityAfterSettings["CapacityInput.BatchCount"] = "300";
+                using var capacityResaved = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(capacityAfterSettings), token);
+                Assert.Contains("設定已儲存", await BodyTextAsync(capacityResaved, token));
+                var settingsRestore = await FieldsAsync(capacityResaved, token);
+                settingsRestore["Input.HeartbeatSeconds"] = "60";
+                using var restored = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(settingsRestore), token);
+                Assert.Contains("設定已儲存", await BodyTextAsync(restored, token));
+            }
+            using (var capacityAudit = await admin.GetAsync("/settings/audit?source=agent-queue-capacity", token))
+            {
+                var text = await BodyTextAsync(capacityAudit, token);
+                Assert.Contains("變更 Agent 佇列容量", text);
+                Assert.Contains("有效容量：128 MiB", text);
+                Assert.Contains("平台設定", text);
+            }
             using (var stale = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(platformFields), token))
                 Assert.Contains("設定已被其他操作變更", await BodyTextAsync(stale, token));
             var deviceUrl = $"/devices/{device.Id:D}/agent-settings";
@@ -111,10 +143,10 @@ public sealed class AgentSettingsUiHttpTests
         Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
     }
 
-    private static async Task<Dictionary<string, string>> FieldsAsync(HttpResponseMessage response, CancellationToken token)
+    private static async Task<Dictionary<string, string>> FieldsAsync(HttpResponseMessage response, CancellationToken token, string formName = "agent-settings")
     {
         var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
-        var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "agent-settings");
+        var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == formName);
         return form.QuerySelectorAll("input[name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
     }
 

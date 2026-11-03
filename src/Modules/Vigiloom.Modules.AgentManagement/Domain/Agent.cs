@@ -44,6 +44,14 @@ public sealed class Agent
     public long? QuarantineOther { get; private set; }
     public Guid? QuarantineReportEpoch { get; private set; }
     public long? QuarantineReportSequence { get; private set; }
+    public Guid? QueueCapacityReportEpoch { get; private set; }
+    public long? QueueCapacityReportSequence { get; private set; }
+    public DateTimeOffset? QueueCapacityReportedAt { get; private set; }
+    public string? QueueCapacityAppliedRevision { get; private set; }
+    public long? QueueCapacityAppliedBytes { get; private set; }
+    public int? QueueCapacityAppliedBatches { get; private set; }
+    public DateTimeOffset? QueueCapacityAppliedAt { get; private set; }
+    public AgentConfigurationFailure? QueueCapacityFailure { get; private set; }
     public DateTimeOffset? ConfigurationReportedAt { get; private set; }
     public string? AppliedConfigurationRevision { get; private set; }
     public int? AppliedHeartbeatSeconds { get; private set; }
@@ -94,6 +102,17 @@ public sealed class Agent
         ConfigurationAppliedAt = report.AppliedAt?.ToUniversalTime();
         ConfigurationFailure = report.Failure;
     }
+    public void RecordQueueCapacityStatus(AgentQueueCapacityReport report, long sequence, DateTimeOffset now)
+    {
+        QueueCapacityReportEpoch = QueueReportEpoch;
+        QueueCapacityReportSequence = sequence;
+        QueueCapacityReportedAt = now.ToUniversalTime();
+        QueueCapacityAppliedRevision = report.Applied?.Revision;
+        QueueCapacityAppliedBytes = report.Applied?.Capacity.PayloadBytes;
+        QueueCapacityAppliedBatches = report.Applied?.Capacity.BatchCount;
+        QueueCapacityAppliedAt = report.AppliedAt?.ToUniversalTime();
+        QueueCapacityFailure = report.Failure;
+    }
     public void BeginQueueSession(Guid epoch)
     {
         QueueReportEpoch = epoch;
@@ -113,6 +132,14 @@ public sealed class Agent
         QuarantineOther = null;
         QuarantineReportEpoch = null;
         QuarantineReportSequence = null;
+        QueueCapacityReportEpoch = null;
+        QueueCapacityReportSequence = null;
+        QueueCapacityReportedAt = null;
+        QueueCapacityAppliedRevision = null;
+        QueueCapacityAppliedBytes = null;
+        QueueCapacityAppliedBatches = null;
+        QueueCapacityAppliedAt = null;
+        QueueCapacityFailure = null;
         ConfigurationReportedAt = null;
         AppliedConfigurationRevision = null;
         AppliedHeartbeatSeconds = null;
