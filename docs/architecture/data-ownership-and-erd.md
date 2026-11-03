@@ -65,7 +65,9 @@ erDiagram
 | AgentManagement / Agent | R | `DeviceId` 必填，註冊狀態、能力、最後心跳與版本；同一 Device 同時最多一個有效 Agent（filtered unique index），保留已撤銷歷史；機器憑證只保存必要驗證資訊 |
 | AgentManagement / IngestReceipt | D | 可信 `ProducerId`、`BatchId`、payload SHA-256、提交時間；unique `(ProducerId, BatchId)`；來源認證後指派 ProducerId，不信任 payload 自報 |
 | NetworkMonitoring / PingSample | D | `DeviceId`、監測位置、OccurredAt／ReceivedAt、結果與延遲；無量測與失敗區分；每筆位置屬於量測，不推論服務健康 |
-| ServiceObservability / Service | R | 邏輯名稱、環境、來源授權、收集狀態；不要求 DeviceId 或 IP；核准與公開分開 |
+| ServiceObservability / Source | R | `service.Sources`；UUID v7 `Id` nonclustered PK、`RowId` bigint IDENTITY unique clustered；名稱、驗證摘要及建立／撤銷時間，無明文憑證 |
+| ServiceObservability / Candidate | R | `service.Candidates`；UUID v7 `Id` nonclustered PK、`RowId` bigint IDENTITY unique clustered；`SourceId` FK 指向 Source（不可 cascade）；`(SourceId, ServiceKey, Environment)` 唯一；只保存最小識別及 FirstSeen／LastSeen |
+| ServiceObservability / Service | R | `service.Services`；UUID v7 `Id` nonclustered PK、`RowId` bigint IDENTITY unique clustered；`SourceId` FK 指向 Source（不可 cascade）；`(SourceId, ServiceKey, Environment)` 唯一，`CandidateId` 唯一且可空，保留核准冪等識別但不設候選 FK；核准時間與 Private 狀態，不要求 DeviceId 或 IP；核准與公開分開 |
 | ServiceObservability / ServiceInstance | R | `ServiceId`、已驗證的 `SourceScopeId` 與外部 `service.instance.id` 原字串；對外部 instance ID 非空且未退役的列，filtered unique `(ServiceId, SourceScopeId, ExternalInstanceId)`；另建 unique `(Id, ServiceId)` 支援同服務的組合 FK。缺少 instance ID 不以名稱或 IP 合併，無法可靠辨識時保留缺失狀態 |
 | ServiceObservability / HealthInterval | D | `ServiceId`、狀態、起訖及資料新鮮度；未知、過期與未核准不能記為正常 |
 | ServiceObservability / AppLog、MetricPoint、SpanRecord | D | `ServiceId`、可選 instance、事件與接收時間、signal payload；Span 的 TraceId `binary(16)`、SpanId `binary(8)` 保留協定位元組。沒有可靠原始識別時不以內容雜湊刪除重複 OTLP Log |
