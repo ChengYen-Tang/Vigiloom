@@ -21,6 +21,72 @@ public sealed class DiscoverySchemaTests(TestContext context)
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
     [TestMethod]
+    [Timeout(180000, CooperativeCancellation = true)]
+    public Task CandidateDiscovery_GlobalCapacityIsSerializedAndExpiredCapacityIsReused() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var credentials = new SourceCredentials(factory, TimeProvider.System);
+            var sources = new List<SourceCredentialIssue>();
+            for (var i = 0; i < 12; i++) sources.Add(await credentials.IssueAsync($"source-{i}", token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+                for (var i = 0; i < sources.Count; i++)
+                    db.Candidates.AddRange(Enumerable.Range(0, i >= 10 ? 0 : i == 9 ? 999 : 1000)
+                        .Select(j => new ServiceCandidate(sources[i].SourceId, $"key-{j}", "prod", "Service", now)));
+                await db.SaveChangesAsync(token);
+            }
+            var discovery = new CandidateDiscovery(factory);
+            var outcomes = await Task.WhenAll(
+                discovery.ObserveAsync(sources[10].SourceId, "last-a", "prod", "A", token),
+                discovery.ObserveAsync(sources[11].SourceId, "last-b", "prod", "B", token));
+            Assert.AreEqual(1, outcomes.Count(x => x == CandidateObservation.Recorded));
+            Assert.AreEqual(1, outcomes.Count(x => x == CandidateObservation.CapacityReached));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                Assert.AreEqual(CandidateDiscovery.GlobalLimit, await db.Candidates.CountAsync(token));
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Candidates] SET [LastSeen] = DATEADD(minute, -4, SYSUTCDATETIME()) WHERE [SourceId] = {sources[0].SourceId} AND [ServiceKey] = {"key-0"}", token);
+            }
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(sources[0].SourceId, "replacement", "prod", "Replacement", token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                Assert.AreEqual(CandidateDiscovery.GlobalLimit, await db.Candidates.CountAsync(token));
+                Assert.IsFalse(await db.Candidates.AnyAsync(x => x.SourceId == sources[0].SourceId && x.ServiceKey == "key-0", token));
+                Assert.IsTrue(await db.Candidates.AnyAsync(x => x.SourceId == sources[0].SourceId && x.ServiceKey == "replacement", token));
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task CandidateDiscovery_HidesExpiredAndFutureRowsAndResetsOnReport() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "expired", "prod", "Expired", token));
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "future", "prod", "Future", token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.ExecuteSqlRawAsync("UPDATE [service].[Candidates] SET [LastSeen] = DATEADD(minute, CASE WHEN [ServiceKey] = N'expired' THEN -4 ELSE 4 END, SYSUTCDATETIME())", token);
+            }
+            Assert.IsEmpty(await discovery.ListAsync(1, token));
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "future", "prod", "Future", token));
+            var visible = (await discovery.ListAsync(1, token)).Single();
+            Assert.AreEqual("future", visible.ServiceKey);
+            Assert.AreEqual(visible.LastSeen, visible.FirstSeen);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "expired", "prod", "Expired", token));
+            var renewed = (await discovery.ListAsync(1, token)).Single(x => x.ServiceKey == "expired");
+            Assert.AreEqual(renewed.LastSeen, renewed.FirstSeen);
+        }, context.CancellationToken);
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task ReceptionAuthorization_RequiresApprovedBindingAndActiveSource(bool snapshotReads) =>
