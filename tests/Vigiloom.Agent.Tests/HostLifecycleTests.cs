@@ -647,9 +647,17 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 }
                 await clock.BurstPauseScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 Assert.AreEqual(4, handler.Count);
-                Assert.IsNotNull(await queue.PeekAsync(token));
+                Assert.AreEqual(1L, (await queue.GetStatusAsync(token)).TotalBatches);
+                var newItem = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Example OS", "X64", ".NET 10");
+                var newBatch = new AgentBatch(1, Guid.CreateVersion7(), now, [newItem]);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(newBatch.BatchId, now, 1, AgentBatchCodec.Serialize(newBatch), token));
+                Assert.AreEqual(2L, (await queue.GetStatusAsync(token)).TotalBatches);
                 clock.Advance(TimeSpan.FromSeconds(6));
                 await handler.Fifth.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
+                Assert.AreEqual(1L, (await queue.GetStatusAsync(token)).TotalBatches);
+                Assert.AreEqual(newBatch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+                clock.Advance(TimeSpan.FromMilliseconds(250));
                 Assert.IsTrue(await clock.BurstTimers.WaitAsync(TimeSpan.FromSeconds(5), token));
                 Assert.IsNull(await queue.PeekAsync(token));
             }
