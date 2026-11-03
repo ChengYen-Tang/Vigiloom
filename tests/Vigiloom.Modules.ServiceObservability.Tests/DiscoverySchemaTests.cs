@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Data.Common;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
@@ -18,6 +19,133 @@ public sealed class DiscoverySchemaTests(TestContext context)
 {
     [AssemblyCleanup]
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ReceptionAuthorization_RequiresApprovedBindingAndActiveSource(bool snapshotReads) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var credentials = new SourceCredentials(factory, TimeProvider.System);
+            var first = await credentials.IssueAsync("first", token);
+            var second = await credentials.IssueAsync("second", token);
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(first.SourceId, "orders", "prod", "Orders", token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var transaction = await db.Database.BeginTransactionAsync(token))
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), first.SourceId, "orders", "prod", token));
+            var candidate = (await discovery.ListAsync(1, token)).Single();
+            var approved = await new ServiceApproval(factory, new OperationAuditWriter()).ApproveAsync(candidate.Id, Guid.CreateVersion7(), token);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var transaction = await db.Database.BeginTransactionAsync(token))
+            {
+                var connection = db.Database.GetDbConnection();
+                var sqlTransaction = transaction.GetDbTransaction();
+                await using (var otherDb = new ServiceObservabilityDbContext(options))
+                await using (var otherTransaction = await otherDb.Database.BeginTransactionAsync(token))
+                    await Assert.ThrowsAsync<InvalidOperationException>(() => ServiceReceptionAuthorization.LockAsync(connection, otherTransaction.GetDbTransaction(), first.SourceId, "orders", "prod", token));
+                var binding = await ServiceReceptionAuthorization.LockAsync(connection, sqlTransaction, first.SourceId, "orders", "prod", token);
+                Assert.AreEqual(approved.ServiceId, binding!.ServiceId);
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(connection, sqlTransaction, second.SourceId, "orders", "prod", token));
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(connection, sqlTransaction, first.SourceId, "orders", "test", token));
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(connection, sqlTransaction, first.SourceId, "Orders", "prod", token));
+                await using var command = connection.CreateCommand();
+                command.Transaction = sqlTransaction;
+                command.CommandText = "SELECT @@SPID";
+                var blockingSession = Convert.ToInt32(await command.ExecuteScalarAsync(token));
+                var revocation = new SourceAdministration(factory, new OperationAuditWriter()).RevokeAsync(first.SourceId, Guid.CreateVersion7(), token);
+                Exception? failure = null;
+                try
+                {
+                    await using var observer = new ServiceObservabilityDbContext(options);
+                    var timeout = System.Diagnostics.Stopwatch.StartNew();
+                    var waiting = false;
+                    while (timeout.Elapsed < TimeSpan.FromSeconds(10) && !revocation.IsCompleted)
+                    {
+                        waiting = await observer.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM sys.dm_exec_requests WHERE blocking_session_id = {blockingSession}").SingleAsync(token) > 0;
+                        if (waiting) break;
+                        await Task.Delay(50, token);
+                    }
+                    Assert.IsTrue(waiting, "Revocation must wait for the reception transaction's source lock.");
+                }
+                catch (Exception ex) { failure = ex; throw; }
+                finally
+                {
+                    try { try { await transaction.CommitAsync(CancellationToken.None); } finally { await revocation; } }
+                    catch when (failure is not null) { }
+                }
+                Assert.IsTrue(await revocation);
+            }
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var transaction = await db.Database.BeginTransactionAsync(token))
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), first.SourceId, "orders", "prod", token));
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(second.SourceId, "orders", "prod", "Orders", token));
+            var secondCandidate = (await discovery.ListAsync(1, token)).Single(x => x.SourceId == second.SourceId);
+            Assert.AreEqual(ApprovalStatus.Approved, (await new ServiceApproval(factory, new OperationAuditWriter()).ApproveAsync(secondCandidate.Id, Guid.CreateVersion7(), token)).Status);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var transaction = await db.Database.BeginTransactionAsync(token))
+            {
+                var source = await db.Sources.SingleAsync(x => x.Id == second.SourceId, token);
+                source.Revoke(DateTimeOffset.UtcNow);
+                await db.SaveChangesAsync(token);
+                await using var command = db.Database.GetDbConnection().CreateCommand();
+                command.Transaction = transaction.GetDbTransaction();
+                command.CommandText = "SELECT @@SPID";
+                var blockingSession = Convert.ToInt32(await command.ExecuteScalarAsync(token));
+                async Task<ServiceReceptionBinding?> AuthorizeAsync()
+                {
+                    await using var reader = new ServiceObservabilityDbContext(options);
+                    await using var readTransaction = await reader.Database.BeginTransactionAsync(token);
+                    return await ServiceReceptionAuthorization.LockAsync(reader.Database.GetDbConnection(), readTransaction.GetDbTransaction(), second.SourceId, "orders", "prod", token);
+                }
+                var reception = AuthorizeAsync();
+                Exception? failure = null;
+                try
+                {
+                    await using var observer = new ServiceObservabilityDbContext(options);
+                    var timeout = System.Diagnostics.Stopwatch.StartNew();
+                    var waiting = false;
+                    while (timeout.Elapsed < TimeSpan.FromSeconds(10) && !reception.IsCompleted)
+                    {
+                        waiting = await observer.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM sys.dm_exec_requests WHERE blocking_session_id = {blockingSession}").SingleAsync(token) > 0;
+                        if (waiting) break;
+                        await Task.Delay(50, token);
+                    }
+                    Assert.IsTrue(waiting, "Reception must wait for a source revocation transaction.");
+                }
+                catch (Exception ex) { failure = ex; throw; }
+                finally
+                {
+                    try { try { await transaction.CommitAsync(CancellationToken.None); } finally { await reception; } }
+                    catch when (failure is not null) { }
+                }
+                Assert.IsNull(await reception);
+            }
+            var third = await credentials.IssueAsync("third", token);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(third.SourceId, "orders", "prod", "Orders", token));
+            var thirdCandidate = (await discovery.ListAsync(1, token)).Single(x => x.SourceId == third.SourceId);
+            var thirdApproval = await new ServiceApproval(factory, new OperationAuditWriter()).ApproveAsync(thirdCandidate.Id, Guid.CreateVersion7(), token);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                var service = await db.Services.SingleAsync(x => x.Id == thirdApproval.ServiceId, token);
+                service.Revoke(DateTimeOffset.UtcNow);
+                await db.SaveChangesAsync(token);
+            }
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var transaction = await db.Database.BeginTransactionAsync(token))
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), third.SourceId, "orders", "prod", token));
+        }, context.CancellationToken);
 
     [TestMethod]
     public Task SourceAdministration_AuditFailureRollsBackIssuanceAndRevocation() =>

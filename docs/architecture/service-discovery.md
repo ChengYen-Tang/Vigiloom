@@ -1,6 +1,6 @@
 # Service discovery and approval
 
-Status: REQ-22 implementation design. The ServiceObservability module does not yet implement this flow. REQ-23 owns OTLP ingestion; this document does not claim an OTLP receiver or formal telemetry storage exists.
+Status: REQ-22 source credentials, candidate discovery, approval and the transaction-scoped authorization primitive are implemented on the development branch. REQ-23 owns OTLP ingestion; this document does not claim an OTLP receiver or formal telemetry storage exists.
 
 ## Identity and trust
 
@@ -14,13 +14,17 @@ The discovery boundary accepts bounded identity metadata only. Persist only the 
 
 Filter candidates using server time and `LastSeen >= now - 3 minutes`; scheduled cleanup is not the visibility rule. A continuing report updates LastSeen. Once expired, the next report begins a new window and resets FirstSeen. A future LastSeen after a server clock rollback must not be presented indefinitely as a fresh candidate. Only administrators can query candidates or approve them.
 
-Implementation must choose and document bounded field, request, per-source and global candidate limits, and return an explicit retryable capacity response without silently dropping or falsely approving a candidate. Tests must exercise exact limits and concurrent admission. Use one database clock for both admission and listing across nodes; hide a candidate whose LastSeen is ahead of that clock. If the database clock catches up without a new report, the candidate may become visible until its ordinary three-minute window expires; a fresh observation during the rollback resets its window. These are test requirements, not claims that a schema or endpoint has already been built.
+The implementation applies bounded fields, request size, rate and candidate limits, and returns a retryable capacity response without silently dropping or falsely approving a candidate. Tests must exercise exact limits and concurrent admission. Use one database clock for both admission and listing across nodes; hide a candidate whose LastSeen is ahead of that clock. If the database clock catches up without a new report, the candidate may become visible until its ordinary three-minute window expires; a fresh observation during the rollback resets its window. Remaining boundary and concurrency cases must be verified against the implementation.
 
 Approval and concurrent discovery serialize on the same source/key/environment binding. In one SQL transaction, approval creates or selects the unique approved service, records its source authorization and start time, and removes it from the pending view. Repeated or concurrent approval cannot create duplicates. New services are Private. Service and source identities use the resource key policy in ADR-0001; source-supplied keys do not become central GUIDs.
+
+The metadata endpoint accepts at most 2 KiB; service key and display name are limited to 128 characters and environment to 64. Pending candidates are limited to 1,000 per source and 10,000 globally. The metadata endpoint has a separate configurable per-IP fixed-window rate limit (default 6,000 requests/minute); this is a limit, not a measured throughput guarantee. Full global-limit and clock edge case tests remain outstanding.
 
 ## Formal reception boundary
 
 REQ-22 owns the source, service binding and authorization lifecycle; REQ-23 owns actual OTLP parsing and persistence. A receiver must revalidate the current source and service authorization under the same SQL transaction and compatible locking as its telemetry write. An earlier authentication result or cached approval alone cannot protect against concurrent revocation. Stop/revoke takes effect centrally; reauthorization starts a new collection period. Apply the existing event-time rules in `resource-lifecycles.md`; never backfill unapproved payload or fabricate receipt time.
+
+`ServiceReceptionAuthorization.LockAsync` accepts a previously authenticated source ID and logical binding, then acquires shared serializable source and service locks on the receiver's own connection and transaction. The receiver must commit or roll back before attempting discovery, including when no binding is returned, because a failed lookup can still hold locks. Never cache the binding across transactions or hold locks while reading the network; bounded parsing precedes the short write transaction. The caller must enforce approval time and event-time policy. These locks serialize revocation with a write, but the primitive does not ingest data or authenticate a caller.
 
 REQ-22 can deliver candidate management, approval and the transactional authorization contract before REQ-23. End-to-end acceptance of real OTLP reception, revocation races and pre-approval payload exclusion remains pending until REQ-23 supplies the actual receiver. Public projection and group integration remain owned by REQ-12 and REQ-08 respectively.
 
