@@ -19,7 +19,9 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         await using var db = await contexts.CreateDbContextAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
             .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
-                x.QueueQuarantinedBatches, x.QueueCapacityBytes, x.QueueCapacityBatches }).SingleOrDefaultAsync(token);
+                x.QueueQuarantinedBatches, x.QueueCapacityBytes, x.QueueCapacityBatches,
+                LastCommittedBatchAt = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
+                    .OrderByDescending(batch => batch.ReceivedAt).Select(batch => (DateTimeOffset?)batch.ReceivedAt).FirstOrDefault() }).SingleOrDefaultAsync(token);
         if (agent is null) return new(deviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
         var now = clock.GetUtcNow();
         var last = agent.LastHeartbeatAt;
@@ -33,6 +35,6 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
                 agent.QueueQuarantinedBatches is { } quarantined && agent.QueueCapacityBytes is { } capacityBytes &&
                 agent.QueueCapacityBatches is { } capacityBatches ? new AgentQueueSnapshot(bytes, batches, quarantined, capacityBytes, capacityBatches) : null)
             : null;
-        return new(deviceId, state, last, offlineAfter, queue);
+        return new(deviceId, state, last, offlineAfter, queue, agent.LastCommittedBatchAt);
     }
 }

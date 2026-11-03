@@ -43,9 +43,13 @@
             <section class="device-panel">
                 <h2>Agent 本機傳送佇列</h2>
                 @if (agentError) { <p role="alert">無法讀取傳送狀態，請稍後重新整理。</p> }
-                else if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
                 else
                 {
+                    <dl class="device-details"><div><dt>目前 Agent 最後提交批次（UTC）</dt><dd>@(agentStatus?.LastCommittedBatchAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "保留範圍內無資料")</dd></div></dl>
+                    <p>顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。</p>
+                    @if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
+                    else
+                    {
                     var observedAt = Clock.GetUtcNow();
                     <dl class="device-details">
                         <div><dt>最後佇列回報（UTC）</dt><dd>@queue.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
@@ -63,6 +67,7 @@
                     <p>數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。</p>
                     @if (queue.ReportedAt > observedAt || observedAt - queue.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
                     { <p class="device-alert" role="status">佇列回報已過時或時間異常，請確認 Agent 傳送狀態。</p> }
+                    }
                 }
             </section>
             <section class="device-panel">
