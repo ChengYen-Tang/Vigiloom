@@ -795,6 +795,31 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.ServiceUnavailable, newBatch.StatusCode);
             using (var duplicateAtCapacity = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, duplicateAtCapacity.StatusCode);
+            var previousSettings = AgentSettingsSnapshot.Create(AgentSettings.Default);
+            var failedReport = queueReport with { Sequence = 5, Configuration = new(previousSettings, clock.Now, AgentConfigurationFailure.Invalid) };
+            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("同步失敗", page.Body!.TextContent);
+                Assert.Contains("收到的設定無法套用，Agent 會保留上次設定", page.Body.TextContent);
+            }
+            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport with { Sequence = 6, Configuration = new(previousSettings, clock.Now, null) }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("待同步", page.Body!.TextContent);
+                Assert.Contains("期望心跳間隔", page.Body.TextContent);
+            }
+            clock.Now += TimeSpan.FromMinutes(10);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 已失聯", page.Body!.TextContent);
+                Assert.Contains("Ping", page.Body.TextContent);
+            }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
             using (var apiAccess = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiAccess.StatusCode);
