@@ -22,6 +22,59 @@ public sealed class AgentSettingsUiHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task ServiceDiscoveryPage_ManagesSourcesAndApprovesCandidate() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var admin = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            await LoginAsync(admin, "admin", token);
+            await LoginAsync(reader, "reader", token);
+            const string url = "/settings/service-discovery";
+            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
+            using var page = await admin.GetAsync(url, token);
+            Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+            var fields = await FieldsAsync(page, token, "source-create");
+            fields["CreateSource.Name"] = "orders collector";
+            using var created = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+            var doc = await new HtmlParser().ParseDocumentAsync(await created.Content.ReadAsStringAsync(token), token);
+            var secret = doc.QuerySelector("textarea[aria-label='來源憑證']")!.TextContent;
+            await using var scope = factory.Services.CreateAsyncScope();
+            var credential = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
+            var sourceId = (await credential.AuthenticateAsync(secret, token))!.Value;
+            Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(sourceId, "orders", "prod", "Orders", token));
+            var other = await scope.ServiceProvider.GetRequiredService<SourceAdministration>().IssueAsync("billing collector", Guid.CreateVersion7(), token);
+            Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(other.SourceId, "billing", "prod", "Billing", token));
+            using var candidates = await admin.GetAsync(url, token);
+            var text = await candidates.Content.ReadAsStringAsync(token);
+            Assert.Contains("orders collector", text);
+            Assert.Contains("Orders", text);
+            Assert.Contains(sourceId.ToString("D"), text);
+            Assert.Contains(other.SourceId.ToString("D"), text);
+            Assert.DoesNotContain(secret, text);
+            var candidate = (await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token)).Single(x => x.SourceId == sourceId);
+            var approve = await FieldsAsync(candidates, token, $"service-approve-{candidate.Id:N}");
+            approve["ConfirmApproval.Confirm"] = "true";
+            approve["ConfirmApproval.Id"] = candidate.Id.ToString("D");
+            using var approved = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token);
+            Assert.Contains("服務已加入", await BodyTextAsync(approved, token));
+            var remaining = await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token);
+            Assert.AreEqual(other.SourceId, remaining.Single().SourceId);
+            using var sourcePage = await admin.GetAsync(url, token);
+            var revoke = await FieldsAsync(sourcePage, token, $"source-revoke-{sourceId:N}");
+            revoke["ConfirmRevocation.Confirm"] = "true";
+            revoke["ConfirmRevocation.Id"] = sourceId.ToString("D");
+            using var revoked = await admin.PostAsync(url, new FormUrlEncodedContent(revoke), token);
+            Assert.Contains("來源已撤銷", await BodyTextAsync(revoked, token));
+            Assert.IsNull(await credential.AuthenticateAsync(secret, token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task ServiceSourceManagement_RequiresAdministratorAndAuditsChanges() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

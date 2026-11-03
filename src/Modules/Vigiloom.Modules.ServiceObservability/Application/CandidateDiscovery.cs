@@ -48,11 +48,13 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
         await using var db = await contexts.CreateDbContextAsync(token);
         var now = await DiscoveryTransaction.NowAsync(db, token);
         var cutoff = now.AddMinutes(-3);
-        return await db.Candidates.AsNoTracking().Where(x => x.LastSeen >= cutoff && x.LastSeen <= now)
-            .Where(x => db.Sources.Any(s => s.Id == x.SourceId && s.RevokedAt == null))
-            .OrderByDescending(x => x.LastSeen).ThenByDescending(x => x.RowId)
+        return await (from candidate in db.Candidates.AsNoTracking()
+                      join source in db.Sources.AsNoTracking() on candidate.SourceId equals source.Id
+                      where candidate.LastSeen >= cutoff && candidate.LastSeen <= now && source.RevokedAt == null
+                      orderby candidate.LastSeen descending, candidate.RowId descending
+                      select new { candidate, source.Name })
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(x => new CandidateSummary(x.Id, x.SourceId, x.ServiceKey, x.Environment, x.DisplayName, x.FirstSeen, x.LastSeen)).ToArrayAsync(token);
+            .Select(x => new CandidateSummary(x.candidate.Id, x.candidate.SourceId, x.candidate.ServiceKey, x.candidate.Environment, x.candidate.DisplayName, x.candidate.FirstSeen, x.candidate.LastSeen, x.Name)).ToArrayAsync(token);
     }
 }
 
