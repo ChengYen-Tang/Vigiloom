@@ -657,6 +657,27 @@ public sealed class AgentIdentityHttpTests
             var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [observation]);
             var batchBytes = AgentBatchCodec.Serialize(batch);
             using (var batchResponse = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchResponse.StatusCode);
+            await using (var db = await resources.CreateDbContextAsync(token))
+            {
+                var renamed = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
+                renamed.Update("renamed server", "192.0.2.45", true, true, clock.Now);
+                await db.SaveChangesAsync(token);
+            }
+            using (var afterDeviceChange = await agent.GetAsync("/api/v1/agent/identity", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, afterDeviceChange.StatusCode);
+                var identity = await afterDeviceChange.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token);
+                Assert.AreEqual(result.AgentId, identity!.AgentId);
+                Assert.AreEqual(device.Id, identity.DeviceId);
+            }
+            var afterChange = batch with { BatchId = Guid.CreateVersion7(), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
+            using (var afterDeviceChange = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(afterChange)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, afterDeviceChange.StatusCode);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await db.Agents.CountAsync(x => x.DeviceId == device.Id, token));
+                Assert.IsTrue(await db.ReceivedBatches.AnyAsync(x => x.AgentId == result.AgentId && x.BatchId == afterChange.BatchId, token));
+            }
             using (var batchRetry = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, batchRetry.StatusCode);
             using (var compressedRetry = await agent.PostAsync("/api/v1/agent/batches", GzipBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, compressedRetry.StatusCode);
             using (var changedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(batch with { Items = [observation with { RuntimeVersion = "changed" }] })), token))
@@ -706,8 +727,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
                 Assert.IsNotNull(status.LastHeartbeatAt);
                 Assert.IsNotNull(status.LastCommittedBatchAt);
-                Assert.AreEqual(1L, status.ReceiptCapacity!.RetainedBatches);
-                Assert.AreEqual(batchBytes.Length, status.ReceiptCapacity.OriginalPayloadBytes);
+                Assert.AreEqual(2L, status.ReceiptCapacity!.RetainedBatches);
+                Assert.AreEqual(batchBytes.Length + AgentBatchCodec.Serialize(afterChange).Length, status.ReceiptCapacity.OriginalPayloadBytes);
             }
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
