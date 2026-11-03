@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Data.SqlClient;
+using System.Data.Common;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
@@ -456,6 +459,152 @@ public sealed class AgentIdentitySqlTests
         }
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, next, token));
     }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ReplayPolicy_TransitionsAreAuditedOnceAndGraceCannotRestart(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] int IDENTITY PRIMARY KEY)", token);
+        var writer = new ReplayPolicyTestAuditWriter();
+        var service = new AgentReplayPolicyService(agents, writer);
+        var initial = await service.GetAsync(token);
+        Assert.AreEqual(AgentReplayPhase.Disabled, initial.Phase);
+        writer.Fail = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.TransitionAsync(AgentReplayPhase.Grace, initial.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(initial, await service.GetAsync(token));
+        writer.Fail = false;
+        var attempts = await Task.WhenAll(
+            service.TransitionAsync(AgentReplayPhase.Grace, initial.Version, Guid.CreateVersion7(), token),
+            service.TransitionAsync(AgentReplayPhase.Grace, initial.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(1, attempts.Count(x => x is not null));
+        var grace = attempts.Single(x => x is not null)!;
+        Assert.AreEqual(AgentReplayPhase.Grace, grace.Phase);
+        Assert.AreEqual(TimeSpan.FromHours(24) + TimeSpan.FromMinutes(5), grace.GraceUntil - grace.ActivatedAt);
+        Assert.IsNull(await service.TransitionAsync(AgentReplayPhase.Grace, grace.Version, Guid.CreateVersion7(), token));
+        Assert.IsNull(await service.TransitionAsync(AgentReplayPhase.Enforced, grace.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(grace, await service.GetAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [ActivatedAt] = DATEADD(hour, -25, @now), [GraceUntil] = DATEADD(minute, 5, DATEADD(hour, -1, @now)) WHERE [Scope] = 1", token);
+        }
+        var due = await service.GetAsync(token);
+        var enforced = await service.TransitionAsync(AgentReplayPhase.Enforced, due.Version, Guid.CreateVersion7(), token);
+        Assert.AreEqual(AgentReplayPhase.Enforced, enforced!.Phase);
+        Assert.IsNull(await service.TransitionAsync(AgentReplayPhase.Grace, enforced.Version, Guid.CreateVersion7(), token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(2, await verify.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task ReplayPolicy_EnforcementPreservesDuplicatesAndRejectsExpiredBatches(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] int IDENTITY PRIMARY KEY)", token);
+        var clock = new TestClock();
+        var device = new Device("replay policy", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var old = new AgentBatch(1, Guid.CreateVersion7(), clock.Now.AddDays(-2), [item]);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var service = new AgentReplayPolicyService(agents, new ReplayPolicyTestAuditWriter());
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(old), token));
+        var initial = await service.GetAsync(token);
+        var grace = await service.TransitionAsync(AgentReplayPhase.Grace, initial.Version, Guid.CreateVersion7(), token);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7() }), token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [ActivatedAt] = DATEADD(hour, 1, @now), [GraceUntil] = DATEADD(minute, 5, DATEADD(hour, 25, @now)) WHERE [Scope] = 1", token);
+        Assert.AreEqual(BatchReceiptStatus.ClockUncertain, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now }), token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(old), token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [ActivatedAt] = DATEADD(hour, -25, @now), [GraceUntil] = DATEADD(minute, 5, DATEADD(hour, -1, @now)) WHERE [Scope] = 1", token);
+        var due = await service.GetAsync(token);
+        Assert.AreEqual(AgentReplayPhase.Grace, grace!.Phase);
+        Assert.IsNotNull(await service.TransitionAsync(AgentReplayPhase.Enforced, due.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(old), token));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { Items = [item with { RuntimeVersion = "different" }] }), token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7() }), token));
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
+        Assert.AreEqual(AgentReplayIssue.Expired, (await monitoring.GetAsync(device.Id, token))!.LastReplayIssue!.Reason);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(old), token));
+        Assert.AreEqual(AgentReplayIssue.Expired, (await monitoring.GetAsync(device.Id, token))!.LastReplayIssue!.Reason);
+        Assert.AreEqual(BatchReceiptStatus.TimestampAhead, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddMinutes(10) }), token));
+        Assert.AreEqual(AgentReplayIssue.TimestampAhead, (await monitoring.GetAsync(device.Id, token))!.LastReplayIssue!.Reason);
+        var current = AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now });
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[ReceivedBatches] WITH NOCHECK ADD CONSTRAINT [CK_ReplayTestFailure] CHECK ([ByteCount] = -1)", token);
+        await Assert.ThrowsAsync<DbUpdateException>(() => receiver.ReceiveAsync(credential, current, token));
+        Assert.AreEqual(AgentReplayIssue.TimestampAhead, (await monitoring.GetAsync(device.Id, token))!.LastReplayIssue!.Reason);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[ReceivedBatches] DROP CONSTRAINT [CK_ReplayTestFailure]", token);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, current, token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastReplayIssue);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(3, await verify.ReceivedBatches.CountAsync(token));
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task ReplayPolicy_DowngradeCannotRaceAnActivation() => WithDatabase(async (resources, agents, token) =>
+    {
+        var writer = new BlockingReplayAuditWriter();
+        var service = new AgentReplayPolicyService(agents, writer);
+        var initial = await service.GetAsync(token);
+        var activation = service.TransitionAsync(AgentReplayPhase.Grace, initial.Version, Guid.CreateVersion7(), token);
+        try
+        {
+            await writer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            await using var migrationDb = agents.CreateDbContext();
+            var downgrade = migrationDb.GetService<IMigrator>().MigrateAsync("20261103193528_AgentReplayClock", token);
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+                Assert.IsFalse(downgrade.IsCompleted, "Downgrade must wait for the active policy transaction.");
+            }
+            finally { writer.Release.TrySetResult(); }
+            Assert.IsNotNull(await activation);
+            var failure = await Assert.ThrowsAsync<SqlException>(() => downgrade);
+            Assert.AreEqual(51000, failure.Number);
+        }
+        finally { writer.Release.TrySetResult(); }
+    });
+
+    private sealed class BlockingReplayAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class ReplayPolicyTestAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public bool Fail { get; set; }
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO [agent].[ReplayPolicyTestAudit] DEFAULT VALUES";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (Fail) throw new InvalidOperationException("Injected audit failure.");
+        }
+    }
 
     [TestMethod]
     public Task ReplayClockMigration_InitializesExistingReceiptHistory() => WithDatabase(async (resources, agents, token) =>

@@ -11,3 +11,6 @@
     font-size: .875rem;
     margin-bottom: 6px;
 }
+
+.replay-policy p { line-height: 1.6; margin: 10px 0; }
+.replay-policy label { display: flex; gap: 8px; align-items: baseline; line-height: 1.5; }

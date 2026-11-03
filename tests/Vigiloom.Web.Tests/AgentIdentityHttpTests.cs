@@ -18,6 +18,8 @@ using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.Resources.Domain;
@@ -364,6 +366,7 @@ public sealed class AgentIdentityHttpTests
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(identities, token);
             string apiCredential;
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -456,6 +459,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
                 using var manageCapacity = await reader.GetAsync("/api/v1/agent-management/queue-capacity/platform", token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, manageCapacity.StatusCode);
+                using var manageReplay = await reader.GetAsync("/api/v1/agent-management/replay-policy/", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, manageReplay.StatusCode);
                 using var changeCapacity = await reader.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
@@ -473,6 +478,13 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
             using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
+            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
+            {
+                var replay = await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token);
+                Assert.AreEqual(AgentReplayPhase.Disabled, replay!.Phase);
+                using var forgedReplay = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedReplay.StatusCode);
+            }
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -499,6 +511,43 @@ public sealed class AgentIdentityHttpTests
             {
                 using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+            }
+            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
+            {
+                var replay = (await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
+                using var unconfirmed = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, false), token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
+                using var activated = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.OK, activated.StatusCode);
+                var grace = (await activated.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
+                Assert.AreEqual(AgentReplayPhase.Grace, grace.Phase);
+                using var stale = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+                var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-1).ToString("O"));
+                var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(1).ToString("O"));
+                using var audit = await admin.GetAsync($"/api/v1/operations/audit/agent-replay?from={from}&to={to}", token);
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var records = (await audit.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token))!;
+                Assert.HasCount(1, records.Items);
+                Assert.AreEqual(AgentReplayPhase.Grace, records.Items[0].AgentReplayPolicy!.Current);
+                using var speedAudit = await admin.GetAsync($"/api/v1/operations/audit?from={from}&to={to}", token);
+                Assert.HasCount(0, (await speedAudit.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token))!.Items);
+                using var settingsPage = await admin.GetAsync("/settings/agents", token);
+                Assert.AreEqual(HttpStatusCode.OK, settingsPage.StatusCode);
+                var settingsDoc = await new HtmlParser().ParseDocumentAsync(await settingsPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("過渡期間", settingsDoc.Body!.TextContent);
+                Assert.Contains("啟用 24 小時期限", settingsDoc.Body.TextContent);
+                var replayForm = settingsDoc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "agent-replay");
+                var fields = replayForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["ReplayInput.Confirmed"] = "true";
+                using var earlyEnforcement = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(fields), token);
+                var earlyDoc = await new HtmlParser().ParseDocumentAsync(await earlyEnforcement.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("過渡期尚未結束", earlyDoc.Body!.TextContent);
+                using var auditPage = await admin.GetAsync("/settings/audit?source=agent-replay", token);
+                Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+                var auditDoc = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 補送政策", auditDoc.Body!.TextContent);
+                Assert.Contains("過渡期間", auditDoc.Body.TextContent);
             }
             AgentSettingsView configured;
             using (var initialSettings = await admin.GetAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", token))
