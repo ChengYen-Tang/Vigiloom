@@ -26,6 +26,7 @@ public sealed class Agent
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
+    public DateTimeOffset? ReplayClockFloor { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
     public DateTimeOffset? QueueReportedAt { get; private set; }
     public Guid? QueueReportEpoch { get; private set; }
@@ -61,6 +62,11 @@ public sealed class Agent
     public AgentConfigurationFailure? ConfigurationFailure { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
+    public void AdvanceReplayClock(DateTimeOffset now)
+    {
+        var utc = now.ToUniversalTime();
+        if (ReplayClockFloor is null || utc > ReplayClockFloor) ReplayClockFloor = utc;
+    }
     public void RecordHeartbeat(DateTimeOffset now)
     {
         var utc = now.ToUniversalTime();

@@ -6,7 +6,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded }
+public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded, ClockUncertain }
 
 /// <summary>Commits a validated batch receipt and all supported observations atomically.</summary>
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
@@ -28,6 +28,12 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         if (previous is not null)
             return CryptographicOperations.FixedTimeEquals(previous.Digest, digest) ? BatchReceiptStatus.AlreadyAccepted : BatchReceiptStatus.Conflict;
 
+        // All Web nodes use the same database clock, and AuthenticateForWriteAsync
+        // holds the device lock until commit. Existing acknowledgments remain valid
+        // even if the platform clock has moved backwards.
+        var policyTime = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        if (agent.ReplayClockFloor is { } floor && policyTime < floor) return BatchReceiptStatus.ClockUncertain;
+
         var itemIds = batch!.Items.Select(item => item.MessageId).ToArray();
         var existing = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
@@ -39,6 +45,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             return BatchReceiptStatus.CapacityExceeded;
 
         var receivedAt = clock.GetUtcNow();
+        agent.AdvanceReplayClock(policyTime);
         db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
         {

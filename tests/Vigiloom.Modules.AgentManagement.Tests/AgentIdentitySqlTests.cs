@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
@@ -408,6 +410,82 @@ public sealed class AgentIdentitySqlTests
         await identity.RedeemAsync(replacement.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt, "A new Agent must not inherit the old identity's receipt history.");
     }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Batches_ClockRollbackPreservesAcknowledgmentsAndPausesNewReceipts(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("clock server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Windows test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item]);
+        var bytes = AgentBatchCodec.Serialize(batch);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[ReceivedBatches] ADD CONSTRAINT [CK_TestReceiptFailure] CHECK ([ByteCount] = -1)", token);
+        await Assert.ThrowsAsync<DbUpdateException>(() => receiver.ReceiveAsync(credential, bytes, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.IsNull((await db.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayClockFloor);
+            Assert.AreEqual(0, await db.ReceivedBatches.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[ReceivedBatches] DROP CONSTRAINT [CK_TestReceiptFailure]", token);
+        }
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, bytes, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayClockFloor);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayClockFloor] = DATEADD(day, 1, SYSDATETIMEOFFSET()) WHERE [Id] = {agentId}", token);
+        }
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, bytes, token));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { Items = [item with { RuntimeVersion = "different" }] }), token));
+        var next = AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() });
+        Assert.AreEqual(BatchReceiptStatus.ClockUncertain, await receiver.ReceiveAsync(credential, next, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayClockFloor] = DATEADD(day, -1, SYSDATETIMEOFFSET()) WHERE [Id] = {agentId}", token);
+        }
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, next, token));
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task ReplayClockMigration_InitializesExistingReceiptHistory() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var firstDevice = new Device("receipt owner", "127.0.0.1", true, clock.Now);
+        var emptyDevice = new Device("no receipt", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(firstDevice, emptyDevice); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        async Task<(Guid Id, string Credential)> RegisterAsync(Guid deviceId)
+        {
+            var issued = await identity.IssueAsync(deviceId, Guid.CreateVersion7(), token);
+            var secret = RandomNumberGenerator.GetBytes(32);
+            var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+            return (registered.AgentId!.Value, Credential(registered.AgentId.Value, secret));
+        }
+        var first = await RegisterAsync(firstDevice.Id);
+        var empty = await RegisterAsync(emptyDevice.Id);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(first.Credential, AgentBatchCodec.Serialize(batch), token));
+        await using (var db = agents.CreateDbContext())
+            await db.GetService<IMigrator>().MigrateAsync("20261103181531_AgentQueueCapacity", token);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.MigrateAsync(token);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(clock.Now, (await verify.Agents.SingleAsync(x => x.Id == first.Id, token)).ReplayClockFloor);
+        Assert.IsNull((await verify.Agents.SingleAsync(x => x.Id == empty.Id, token)).ReplayClockFloor);
+        Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+    });
 
     [TestMethod]
     public Task Batches_AcknowledgmentRetrySucceedsEvenWhenCapacityIsFull() => WithDatabase(async (resources, agents, token) =>

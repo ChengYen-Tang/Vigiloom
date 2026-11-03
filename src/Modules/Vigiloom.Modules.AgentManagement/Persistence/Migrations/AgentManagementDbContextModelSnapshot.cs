@@ -149,6 +149,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<long?>("QueueTotalBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset?>("ReplayClockFloor")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
 

@@ -63,7 +63,7 @@ internal static class AgentBatchEndpoints
                 BatchReceiptStatus.Unauthorized => Results.Unauthorized(),
                 BatchReceiptStatus.Invalid => Results.BadRequest(),
                 BatchReceiptStatus.Conflict => Results.Conflict(),
-                BatchReceiptStatus.CapacityExceeded => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
+                BatchReceiptStatus.CapacityExceeded or BatchReceiptStatus.ClockUncertain => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
                 _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
             };
         }
