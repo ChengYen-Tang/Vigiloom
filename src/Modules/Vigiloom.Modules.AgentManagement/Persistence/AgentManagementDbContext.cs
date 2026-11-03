@@ -48,6 +48,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         audit.Property(x => x.RowId).UseIdentityColumn();
         audit.Property(x => x.Action).HasMaxLength(32).IsRequired();
         audit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        audit.HasIndex(x => new { x.OccurredAt, x.RowId });
         audit.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
 
         var batch = modelBuilder.Entity<ReceivedBatch>();
@@ -86,6 +87,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         settingAudit.Property(x => x.EffectiveRevision).HasMaxLength(64).IsRequired();
         settingAudit.Property(x => x.ChangeVersion).HasColumnType("binary(8)").IsRequired();
         settingAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        settingAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
         settingAudit.HasOne<AgentSetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
     }
 }

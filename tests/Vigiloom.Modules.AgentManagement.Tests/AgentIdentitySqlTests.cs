@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -37,6 +38,10 @@ public sealed class AgentIdentitySqlTests
         var secret = RandomNumberGenerator.GetBytes(32);
         var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
         var credential = Credential(registration.AgentId!.Value, secret);
+        var identityFeed = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentIdentity,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.IsTrue(identityFeed.Items.Any(item => item.Action == AuditFeedAction.AgentEnrolled &&
+            item.SubjectId == device.Id && item.AgentId == registration.AgentId && item.ActorId is null));
         Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, (await monitoring.GetAsync(device.Id, token))!.State);
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, token));
         Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, (await monitoring.GetAsync(device.Id, token))!.State);
@@ -159,6 +164,21 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(reset.Effective.Revision, audits[^1].EffectiveRevision);
         Assert.AreEqual(reset.Effective.Settings.HeartbeatSeconds, audits[^1].EffectiveHeartbeatSeconds);
         Assert.AreEqual(reset.Version, Convert.ToBase64String(audits[^1].ChangeVersion));
+        var feed = new AgentAuditFeed(agents);
+        var range = new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1));
+        var records = await feed.QueryAsync(AuditFeedSource.AgentSettings, range, token);
+        Assert.HasCount(4, records.Items);
+        var last = records.Items[0];
+        Assert.AreEqual(AuditFeedAction.AgentSettingsChanged, last.Action);
+        Assert.AreEqual(device.Id, last.SubjectId);
+        Assert.IsNotNull(last.AgentSettings);
+        Assert.AreEqual(reset.Effective.Settings.HeartbeatSeconds, last.AgentSettings.EffectiveHeartbeatSeconds);
+        Assert.AreEqual(reset.Version, last.AgentSettings.Version);
+        audits[^1].HeartbeatSeconds = 10; // Contradicts the stored effective value despite a valid revision.
+        await verify.SaveChangesAsync(token);
+        var corrupted = (await feed.QueryAsync(AuditFeedSource.AgentSettings, range, token)).Items[0];
+        Assert.AreEqual(AuditFeedAction.Unknown, corrupted.Action);
+        Assert.IsNull(corrupted.AgentSettings);
     }, snapshotReads);
 
     [TestMethod]
@@ -250,13 +270,20 @@ public sealed class AgentIdentitySqlTests
         var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [item, other]);
         var payload = AgentBatchCodec.Serialize(batch);
         var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var receiverHealth = new AgentReceiverMonitoring(agents);
+        Assert.IsNull(await receiverHealth.LastCommittedBatchAsync(token));
         var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
+        Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
+        clock.Now = clock.Now.AddMinutes(1);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(clock.Now.AddMinutes(-1), await receiverHealth.LastCommittedBatchAsync(token));
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
             AgentBatchCodec.Serialize(batch with { Items = [item with { RuntimeVersion = "different" }, other] }), token));
         var anotherBatch = batch with { BatchId = Guid.CreateVersion7(), Items = [item] };
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(anotherBatch), token));
+        Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
         var newMessage = other with { MessageId = Guid.CreateVersion7() };
         var conflictingMessage = anotherBatch with { BatchId = Guid.CreateVersion7(), Items = [newMessage, item with { RuntimeVersion = "different" }] };
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(conflictingMessage), token));
@@ -755,18 +782,19 @@ public sealed class AgentIdentitySqlTests
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
             var agents = new Factory<AgentManagementDbContext>(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
-            await using (var db = resources.CreateDbContext()) await db.Database.MigrateAsync(token);
-            await using (var db = agents.CreateDbContext()) await db.Database.MigrateAsync(token);
             if (snapshotReads)
             {
                 var server = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(database.ConnectionString);
                 var name = server.InitialCatalog; server.InitialCatalog = "master";
+                server.Pooling = false;
                 await using var connection = new Microsoft.Data.SqlClient.SqlConnection(server.ConnectionString);
                 await connection.OpenAsync(token);
                 await using var command = connection.CreateCommand();
                 command.CommandText = $"ALTER DATABASE [{name}] SET READ_COMMITTED_SNAPSHOT ON";
                 await command.ExecuteNonQueryAsync(token);
             }
+            await using (var db = resources.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = agents.CreateDbContext()) await db.Database.MigrateAsync(token);
             await test(resources, agents, token);
         }, TestContext.CancellationToken);
 

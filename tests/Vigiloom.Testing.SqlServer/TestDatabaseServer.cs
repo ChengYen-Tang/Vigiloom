@@ -74,7 +74,7 @@ public sealed class TestDatabaseServer
 
     internal string ForDatabase(string databaseName)
     {
-        var builder = new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = databaseName };
+        var builder = new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = databaseName, Pooling = true };
         return builder.ConnectionString;
     }
 }

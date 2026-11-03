@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using Vigiloom.Contracts.SpeedTests;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
@@ -25,12 +26,36 @@ public sealed class SpeedHttpTests
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         await PingTestSite.InitializeAsync(factory, token);
+        var now = DateTimeOffset.UtcNow;
+        var auditUrl = $"/api/v1/operations/audit?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var feedUrl = $"/api/v1/operations/audit-feed/accounts?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
         using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using (var denied = await anonymous.GetAsync("/api/v1/speed-tests?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.GetAsync("/settings/audit", token))
+        {
+            Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
+            Assert.Contains("/account/access-denied", denied.Headers.Location?.OriginalString ?? "");
+        }
         using (var denied = await reader.GetAsync("/api/v1/settings/speed-tests", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         using (var denied = await reader.PostAsJsonAsync("/api/v1/speed-tests", new { }, token)) Assert.AreEqual(HttpStatusCode.MethodNotAllowed, denied.StatusCode);
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        using (var feed = await admin.GetAsync(feedUrl, token)) Assert.AreEqual(HttpStatusCode.OK, feed.StatusCode);
+        using (var invalid = await admin.GetAsync(feedUrl.Replace("/accounts?", "/unsupported?"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using (var health = await admin.GetAsync("/api/v1/operations/platform-status", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+            using var document = System.Text.Json.JsonDocument.Parse(await health.Content.ReadAsStringAsync(token));
+            Assert.AreEqual(1, document.RootElement.GetProperty("database").GetInt32());
+            Assert.IsFalse(document.RootElement.GetProperty("agentQueryAvailable").GetBoolean());
+            Assert.IsFalse(document.RootElement.GetProperty("scheduler").GetProperty("available").GetBoolean());
+        }
         var first = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
         Assert.IsNotNull(first); Assert.IsTrue(first.Automatic); Assert.IsNotNull(first.NextAutomaticAt);
         using (var csrf = await admin.PutAsJsonAsync("/api/v1/settings/speed-tests", new SpeedSettingsInput(false, 6, 2, 40, first.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, csrf.StatusCode);
@@ -46,6 +71,48 @@ public sealed class SpeedHttpTests
             Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
         var updated = await admin.GetFromJsonAsync<SpeedSettingsSnapshot>("/api/v1/settings/speed-tests", token);
         Assert.IsNotNull(updated); Assert.IsFalse(updated.Automatic); Assert.AreEqual(2, updated.MaxMiB);
+        using (var auditResponse = await admin.GetAsync(auditUrl, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, auditResponse.StatusCode);
+            Assert.IsTrue(auditResponse.Headers.CacheControl?.NoStore);
+            var audit = await auditResponse.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token);
+            Assert.IsNotNull(audit);
+            Assert.HasCount(1, audit.Items);
+            Assert.AreEqual(2, audit.Items[0].SpeedSettings!.Current.MaxMiB);
+        }
+        using (var auditPage = await admin.GetAsync("/settings/audit", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+            var text = await TextAsync(auditPage, token);
+            Assert.Contains("網路測速設定", text);
+            Assert.Contains("admin", text);
+            Assert.Contains("已儲存", text);
+            Assert.Contains("其他來源可由上方選擇", text);
+        }
+        using (var invalidAudit = await admin.GetAsync(auditUrl + "&page=1001", token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, invalidAudit.StatusCode);
+        using (var invalidPage = await admin.GetAsync("/settings/audit?page=abc", token))
+            Assert.Contains("頁碼無效，請重新查詢", await TextAsync(invalidPage, token));
+        using (var invertedDates = await admin.GetAsync("/settings/audit?from=2026-02-02&to=2026-02-01", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await invertedDates.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("開始日期不能晚於結束日期", document.Body!.TextContent);
+            Assert.AreEqual("audit-date-error", document.QuerySelector("#audit-from")?.GetAttribute("aria-describedby"));
+        }
+        using (var longRange = await admin.GetAsync("/settings/audit?from=2026-01-01&to=2026-02-01", token))
+            Assert.Contains("一次最多查詢 31 天", await TextAsync(longRange, token));
+        using (var empty = await admin.GetAsync("/settings/audit?from=2000-01-01&to=2000-01-02", token))
+        {
+            var html = await TextAsync(empty, token);
+            Assert.Contains("此日期範圍沒有稽核紀錄", html);
+            Assert.DoesNotContain("第 1 頁", html);
+        }
+        using (var emptyLaterPage = await admin.GetAsync("/settings/audit?from=2000-01-01&to=2000-01-02&page=2", token))
+        {
+            var text = await TextAsync(emptyLaterPage, token);
+            Assert.Contains("此頁沒有紀錄，請返回上一頁", text);
+            Assert.Contains("上一頁", text);
+        }
         using var response = await admin.PostAsJsonAsync("/api/v1/speed-tests", new { }, token);
         Assert.AreEqual(HttpStatusCode.MethodNotAllowed, response.StatusCode);
         using var invalidRange = await reader.GetAsync("/api/v1/speed-tests?from=2026-01-01T00:00:00Z&to=2026-11-01T00:00:00Z", token);

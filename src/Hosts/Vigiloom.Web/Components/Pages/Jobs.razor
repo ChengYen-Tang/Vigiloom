@@ -3,10 +3,13 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Infrastructure.Scheduling
 @using Vigiloom.Web.Authentication
+@using Vigiloom.Web.Diagnostics
+@using Vigiloom.Modules.AlertingOperations.Application
 @inject SchedulingOverview Overview
 @inject OutboxScheduleManager Schedule
 @inject DashboardAuditStore Audit
 @inject ILogger<Jobs> Logger
+@inject PlatformStatus Platform
 
 <PageTitle>背景工作 - Vigiloom</PageTitle>
 <main class="jobs-page">
@@ -14,6 +17,41 @@
         <div><h1>背景工作</h1><p>查看排程執行狀態與最近結果。</p></div>
         <nav aria-label="背景工作操作"><a href="/settings/jobs">重新整理</a><a class="jobs-primary" href="/admin/jobs/">進階管理</a></nav>
     </header>
+    <section class="jobs-panel jobs-platform" aria-labelledby="platform-title">
+        <h2 id="platform-title">平台健康</h2>
+        @if (platform is null)
+        {
+            <p role="status">目前無法取得平台健康資料，請稍後重新整理。</p>
+        }
+        else
+        {
+            <p>觀察時間：@FormatTime(platform.ObservedAt)；各項狀態彼此獨立。</p>
+            <dl class="platform-status">
+                <div><dt>資料庫連線</dt><dd>@StateText(platform.Database)</dd></div>
+                <div><dt>排程服務心跳</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
+                <div><dt>Agent 批次接收</dt><dd>@AgentBatchText(platform)</dd></div>
+                <div><dt>應用遙測接收</dt><dd>尚未接入</dd></div>
+            </dl>
+            <p>接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。</p>
+            <h3>Worker 掃描摘要</h3>
+            <p>排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。</p>
+            @if (platform.Workers is null) { <p role="status">目前無法取得 Worker 診斷。</p> }
+            else if (platform.Workers.Workers.Count == 0) { <p>目前沒有 Worker 診斷資料。</p> }
+            else
+            {
+                <p class="jobs-scroll-hint">← 左右滑動查看完整表格 →</p>
+                <div class="jobs-table-wrap" tabindex="0" role="region" aria-label="Worker 掃描摘要，可左右捲動">
+                    <table class="worker-table"><thead><tr><th scope="col">程序識別</th><th scope="col">診斷租約</th><th scope="col">Ping 掃描</th><th scope="col">測速掃描</th></tr></thead><tbody>
+                    @foreach (var worker in platform.Workers.Workers)
+                    {
+                        <tr @key="worker.BootId"><td>@worker.BootId</td><td>@LeaseText(worker, platform.Workers.ObservedAt)</td><td>@ScannerText(worker.Observation.Ping)</td><td>@ScannerText(worker.Observation.Speed)</td></tr>
+                    }
+                    </tbody></table>
+                </div>
+                @if (platform.Workers.Workers.Count(worker => LeaseIsValid(worker, platform.Workers.ObservedAt)) == 64) { <p>診斷槽位已達上限；新 Worker 可能無法登記診斷。</p> }
+            }
+        }
+    </section>
     @if (unavailable)
     {
         <section class="jobs-notice" role="alert"><h2>暫時無法取得背景工作狀態</h2><p>請確認資料庫與 Worker 連線後重新整理。</p></section>
@@ -43,10 +81,10 @@
             @if (overview.Recent.Count == 0) { <p>目前沒有執行結果。</p> }
             else
             {
-                <div class="jobs-table-wrap"><table><thead><tr><th scope="col">工作</th><th scope="col">結果</th><th scope="col">時間（UTC）</th><th scope="col">說明</th></tr></thead><tbody>
+                <div class="jobs-table-wrap"><table><thead><tr><th scope="col">工作</th><th scope="col">結果</th><th scope="col">時間（UTC）</th><th scope="col">說明</th><th scope="col">參考識別</th></tr></thead><tbody>
                     @foreach (var entry in overview.Recent)
                     {
-                        <tr><td>@entry.Name</td><td>@entry.Result</td><td>@(entry.OccurredAt?.ToUniversalTime().ToString("u") ?? "未知")</td><td>@(entry.Detail ?? "—")</td></tr>
+                        <tr><td>@entry.Name</td><td>@entry.Result</td><td>@(entry.OccurredAt?.ToUniversalTime().ToString("u") ?? "未知")</td><td>@(entry.Detail ?? "—")</td><td>@(entry.Reference ?? "—")</td></tr>
                     }
                 </tbody></table></div>
             }
@@ -69,6 +107,7 @@
 
 @code {
     private WorkOverview? overview;
+    private PlatformStatusSnapshot? platform;
     private bool unavailable;
     private bool saved;
     private bool saveError;
@@ -81,10 +120,14 @@
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
+        try { platform = await Platform.GetAsync(HttpContext.RequestAborted); }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { throw; }
+        catch (Exception exception) { Logger.LogWarning("Could not load platform health: {ExceptionType}", exception.GetType().Name); }
+        if (platform?.Database != ObservationState.Healthy) { unavailable = true; return; }
         try
         {
-            overview = await Overview.GetAsync();
-            var snapshot = Schedule.GetSnapshot();
+            overview = await Overview.GetAsync(HttpContext.RequestAborted);
+            var snapshot = await Schedule.GetSnapshotAsync(HttpContext.RequestAborted);
             scheduleApplied = snapshot.Applied;
             if (HttpMethods.IsGet(HttpContext.Request.Method)) { Input.Minutes = snapshot.Minutes; Input.Version = snapshot.Version; }
         }
@@ -94,6 +137,32 @@
             unavailable = true;
         }
     }
+
+    private static string StateText(ObservationState state) => state switch
+    {
+        ObservationState.Healthy => "正常",
+        ObservationState.Unhealthy => "異常或已過期",
+        _ => "未知"
+    };
+    private static string FormatTime(DateTimeOffset value) => value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
+    private static string SchedulerText(SchedulerObservation value) => !value.Available ? "無法取得心跳資料"
+        : value.Current + value.Stale + value.Unknown == 0
+        ? "目前沒有心跳資料" : $"{StateText(value.State)}（正常 {value.Current}、過期 {value.Stale}、未知 {value.Unknown}）";
+    private static string AgentBatchText(PlatformStatusSnapshot value) => !value.AgentQueryAvailable ? "無法取得資料"
+        : value.LastAgentBatch is { } last ? $"最近提交：{FormatTime(last)}" : "保留範圍內沒有成功批次紀錄";
+    private static string LeaseText(WorkerDiagnostic worker, DateTimeOffset now) => worker.ObservedAt is not { } observed ||
+        worker.LeaseUntil is null || observed > now ? "未知" : LeaseIsValid(worker, now) ? "有效" : "已過期";
+    private static bool LeaseIsValid(WorkerDiagnostic worker, DateTimeOffset now) =>
+        worker.ObservedAt is { } observed && observed <= now && worker.LeaseUntil is { } until && until > now;
+    private static string ScannerText(ScannerObservation value) => value.ConsecutiveFailures > 0
+        ? $"最近失敗：{FailureText(value.FailureKind)}（連續 {value.ConsecutiveFailures} 次，{(value.LastFailure is { } failed ? FormatTime(failed) : "時間未知")}）"
+        : value.LastSuccess is { } success ? $"最近成功：{FormatTime(success)}" : "尚無掃描結果";
+    private static string FailureText(ScannerFailureKind kind) => kind switch
+    {
+        ScannerFailureKind.Database => "資料庫連線或操作失敗",
+        ScannerFailureKind.Timeout => "掃描逾時",
+        _ => "掃描失敗"
+    };
     private async Task SaveAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty || !OutboxScheduleManager.IsValidInterval(Input.Minutes)) { saveError = true; return; }
@@ -126,7 +195,7 @@
         {
             try
             {
-                var snapshot = Schedule.GetSnapshot();
+                var snapshot = await Schedule.GetSnapshotAsync(HttpContext.RequestAborted);
                 scheduleApplied = snapshot.Applied;
                 Input.Version = snapshot.Version;
             }

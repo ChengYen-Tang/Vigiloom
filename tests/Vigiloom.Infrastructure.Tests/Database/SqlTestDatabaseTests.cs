@@ -29,7 +29,7 @@ public sealed class SqlTestDatabaseTests
             name = database.DatabaseName;
             var manifest = database.ManifestPath;
             directory = Path.GetDirectoryName(manifest)!;
-            master = new SqlConnectionStringBuilder(database.ConnectionString) { InitialCatalog = "master" };
+            master = new SqlConnectionStringBuilder(database.ConnectionString) { InitialCatalog = "master", Pooling = false };
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
@@ -69,6 +69,17 @@ public sealed class SqlTestDatabaseTests
         {
             var databases = await Task.WhenAll(creations);
             Assert.AreNotEqual(databases[0].DatabaseName, databases[1].DatabaseName);
+            Assert.IsTrue(new SqlConnectionStringBuilder(databases[0].ConnectionString).Pooling);
+            await using (var first = new SqlConnection(databases[0].ConnectionString))
+            {
+                await first.OpenAsync(TestContext.CancellationToken);
+            }
+            Guid secondConnectionId;
+            await using (var second = new SqlConnection(databases[1].ConnectionString))
+            {
+                await second.OpenAsync(TestContext.CancellationToken);
+                secondConnectionId = second.ClientConnectionId;
+            }
             await Assert.ThrowsAsync<IOException>(async () => await SqlTestDatabase.RecoverAsync(databases[0].ManifestPath, server));
             await databases[0].DisposeAsync();
             await using var connection = new SqlConnection(databases[1].ConnectionString);
@@ -76,6 +87,7 @@ public sealed class SqlTestDatabaseTests
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT DB_NAME()";
             Assert.AreEqual(databases[1].DatabaseName, await command.ExecuteScalarAsync(TestContext.CancellationToken));
+            Assert.AreEqual(secondConnectionId, connection.ClientConnectionId);
         }
         catch (Exception exception)
         {
@@ -254,7 +266,7 @@ public sealed class SqlTestDatabaseTests
             await using var sentinelCommand = sentinelConnection.CreateCommand();
             sentinelCommand.CommandText = "CREATE TABLE dbo.Sentinel (Id int NOT NULL PRIMARY KEY); INSERT INTO dbo.Sentinel VALUES (42)";
             await sentinelCommand.ExecuteNonQueryAsync(token);
-            var masterBuilder = new SqlConnectionStringBuilder(sentinel.ConnectionString) { InitialCatalog = "master" };
+            var masterBuilder = new SqlConnectionStringBuilder(sentinel.ConnectionString) { InitialCatalog = "master", Pooling = false };
             await using var master = new SqlConnection(masterBuilder.ConnectionString);
             await master.OpenAsync(token);
             await using var catalog = master.CreateCommand();

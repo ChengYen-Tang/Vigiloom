@@ -5,6 +5,8 @@ public static class SpeedSettingsLimits
 {
     public const int MinTimeoutSeconds = 40;
     public const int MaxTimeoutSeconds = 60;
+    public static bool IsValid(int intervalHours, int maxMiB, int timeoutSeconds) =>
+        intervalHours is >= 1 and <= 168 && maxMiB is >= 2 and <= 2048 && timeoutSeconds is >= MinTimeoutSeconds and <= MaxTimeoutSeconds;
 }
 public sealed record SpeedSettingsInput(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds, string? Version);
 public sealed record SpeedSettingsSnapshot(bool Automatic, int IntervalHours, int MaxMiB, int TimeoutSeconds,

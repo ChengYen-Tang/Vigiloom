@@ -73,6 +73,7 @@ erDiagram
 | Publishing / DevicePublication、ServicePublication | R | 對應的 DeviceId 或 ServiceId 各自必填且唯一；Public／Private、公開名稱；DevicePublication 的 `PublicTemplateId` 可為空，選 Public 並儲存時才要求有效範本。ServicePublication 獨立呈現服務狀態，不強制套設備範本；匿名永不取得 IP／進階資料 |
 | AlertingOperations / Alert | R | 事件來源的明確資源類型與 Guid、狀態、時間及並行版本；不得把 Device 與 Service 身分混同 |
 | AlertingOperations / AlertEvent | D | `AlertId`、事件時間、狀態變化；依 AlertId／時間查詢；不以 RowId 作外部事件身分 |
+| AlertingOperations / AuditEvent | D | 操作者與目標資源 Guid、中央 UTC 時間、版本化事件種類及白名單非機密內容；依 `(OccurredAt, RowId)` 查詢，不以 RowId 作公開身分。操作者身分保留歷史，不以 FK 阻止帳號刪除；一般保留／清理由 REQ-39 擁有 |
 | SecurityAnalysis / SecurityEvent | D | 已驗證來源資源、事件時間、規則／情報版本與證據參照；證據依所屬保留政策保存 |
 | 各模組 / MigrationHistory | F | 每個 DbContext 的 migrations history 使用不同表或 schema；由該模組與 EF 管理，不由業務 ID generator 管理 |
 | AlertingOperations / Hangfire schema | F | Hangfire SQL storage 自有表與 key；框架升級及清理由部署流程管理，不改造成業務資源表 |

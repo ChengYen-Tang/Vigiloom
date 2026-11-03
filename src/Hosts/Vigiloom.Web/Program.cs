@@ -3,8 +3,13 @@ using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -17,6 +22,7 @@ using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Web.Scheduling;
+using Vigiloom.Web.Diagnostics;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -34,6 +40,13 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configurati
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
+builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
+builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
+builder.Services.AddScoped<OperationAuditQueryService>();
+builder.Services.AddScoped<IdentityAuditFeed>();
+builder.Services.AddScoped<DeviceAuditFeed>();
+builder.Services.AddScoped<AgentAuditFeed>();
+builder.Services.AddScoped<AuditFeedReader>();
 builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentity();
@@ -47,6 +60,9 @@ builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<AgentConfiguration>();
 builder.Services.AddScoped<AgentSettingsMonitoring>();
 builder.Services.AddScoped<AgentBatchReceiver>();
+builder.Services.AddScoped<AgentReceiverMonitoring>();
+builder.Services.AddScoped<WorkerDiagnosticsStore>();
+builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
@@ -114,7 +130,8 @@ builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = 
         503 => "service_unavailable", _ => "request_failed"
     });
 });
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
 
@@ -172,7 +189,11 @@ app.UseAntiforgery();
     });
 });
 
-app.MapHealthChecks("/health/live").AllowAnonymous();
+// Liveness reports the Web process, not whether dependencies are reachable.
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+}).AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapAgentEndpoints();
@@ -180,6 +201,8 @@ app.MapAgentConfigurationEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapPingEndpoints();
 app.MapSpeedTestEndpoints();
+app.MapOperationAuditEndpoints();
+app.MapPlatformStatusEndpoints();
 app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceIdentityService service, CancellationToken token) =>
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
     .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)

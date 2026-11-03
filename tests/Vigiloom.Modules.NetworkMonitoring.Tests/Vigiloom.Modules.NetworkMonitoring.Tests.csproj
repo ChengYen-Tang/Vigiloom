@@ -3,6 +3,7 @@
     <Compile Include="../Fixtures/SpeedTests/ControlledPhaseTransport.cs" Link="Fixtures/ControlledPhaseTransport.cs" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
+    <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
 </Project>

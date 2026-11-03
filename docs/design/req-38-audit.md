@@ -1,0 +1,7 @@
+# REQ-38 operation audit page
+
+The [concept](req-38-audit-concept.png) extends the selected Vigiloom style with a quiet settings heading, date filters and a readable audit table. It is a visual reference, not a source of product facts: its sample P95, API and delete events are illustrative and are not implemented by this slice. Keep the existing global navigation rather than introducing a separate settings sidebar.
+
+Administrators can select one source and filter by an inclusive UTC date range of up to 31 days. The speed and Ping settings sources show previous and current non-secret values; the account, API credential, device, Agent identity, Agent settings and scheduling sources display only their own approved metadata. These records do not imply that every product operation has been integrated. A saved speed setting does not mean a measurement ran, and an accepted background request does not mean the work succeeded. Display actor names where available, IDs otherwise, and identify a null actor as a system or machine flow. Unknown event types or malformed details never expose raw stored values. Empty, invalid range, account lookup failure and unavailable data have distinct states. Read only and anonymous users cannot access the page or its API.
+
+The earlier speed-settings view was manually accepted by the user. Source selection was added later; desktop and 390px browser smoke tests cover source selection, unknown actions and keyboard scrolling. That does not establish screen-reader accessibility or complete REQ-38's remaining cross-source acceptance.

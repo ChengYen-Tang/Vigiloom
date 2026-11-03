@@ -143,6 +143,9 @@ public sealed class ApiCredentialHttpTests
                 Assert.HasCount(1, json.RootElement.GetProperty("scopes").EnumerateArray());
             }
             using (var cannotManageAccounts = await client.GetAsync("/api/v1/accounts/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, cannotManageAccounts.StatusCode);
+            using (var cannotViewPlatform = await client.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, cannotViewPlatform.StatusCode);
+            foreach (var source in new[] { "accounts", "api-credentials", "devices", "agent-identity", "agent-settings", "scheduling" })
+                using (var cannotViewAudit = await client.GetAsync($"/api/v1/operations/audit-feed/{source}?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, cannotViewAudit.StatusCode);
             var changed = first.ToCharArray(); changed[41] = changed[41] == 'A' ? 'B' : 'A';
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new string(changed));
             using (var invalid = await client.GetAsync("/api/v1/access", token))

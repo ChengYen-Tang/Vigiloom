@@ -58,6 +58,7 @@ public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbCon
         audit.Property(x => x.RowId).UseIdentityColumn();
         audit.Property(x => x.Action).HasMaxLength(64).IsRequired();
         audit.HasIndex(x => new { x.SubjectId, x.OccurredAt, x.RowId });
+        audit.HasIndex(x => new { x.OccurredAt, x.RowId });
         var credential = modelBuilder.Entity<ApiCredential>();
         credential.ToTable("ApiCredentials", table => table.HasCheckConstraint("CK_ApiCredentials_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
         credential.HasKey(x => x.Id).IsClustered(false);
@@ -73,6 +74,7 @@ public sealed class IdentityAccessDbContext(DbContextOptions<IdentityAccessDbCon
         credentialAudit.Property(x => x.RowId).UseIdentityColumn();
         credentialAudit.Property(x => x.Action).HasMaxLength(64).IsRequired();
         credentialAudit.HasIndex(x => new { x.CredentialId, x.OccurredAt, x.RowId });
+        credentialAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
         // Identity owns the related claim, login, token and membership keys.
         modelBuilder.Entity<IdentityUserRole<Guid>>().HasKey(x => new { x.UserId, x.RoleId });
     }

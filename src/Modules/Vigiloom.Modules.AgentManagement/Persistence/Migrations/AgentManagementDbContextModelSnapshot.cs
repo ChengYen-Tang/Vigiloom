@@ -162,6 +162,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.HasIndex("AgentId");
 
+                    b.HasIndex("OccurredAt", "RowId");
+
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("AgentAudits", "agent");
@@ -272,6 +274,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
                     b.HasIndex("SettingId");
+
+                    b.HasIndex("OccurredAt", "RowId");
 
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 

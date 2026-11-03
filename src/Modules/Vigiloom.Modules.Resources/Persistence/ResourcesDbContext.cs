@@ -38,6 +38,7 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         audit.Property(x => x.RowId).UseIdentityColumn();
         audit.Property(x => x.Action).HasMaxLength(32).IsRequired();
         audit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        audit.HasIndex(x => new { x.OccurredAt, x.RowId });
         audit.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.NoAction);
 
         var group = modelBuilder.Entity<Group>();

@@ -22,6 +22,9 @@ public static class SchedulingRegistration
         services.AddScoped<OutboxWriter>();
         services.AddScoped<DashboardAuditStore>();
         services.AddScoped<SchedulingOverview>();
+        services.AddSingleton<SchedulingReadStorage>();
+        services.AddScoped<SchedulingHealth>();
+        services.AddScoped<SchedulingAuditFeed>();
         services.AddScoped<OutboxScheduleManager>();
         services.AddScoped(provider => new OutboxDispatcher(Connection(configuration), provider.GetServices<IOutboxHandler>(),
             provider.GetRequiredService<ILogger<OutboxDispatcher>>()));

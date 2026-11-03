@@ -35,3 +35,13 @@ final result: passed
 - No P0/P1/P2 visual finding was established from this preliminary inspection. This does not constitute the required comparative QA; typography, spacing, colors, assets and copy still require a recorded comparison.
 
 final result: blocked
+
+# REQ-38 preliminary design QA
+
+- Source: `docs/design/req-38-audit-concept.png`, generated from the selected Vigiloom style. Its sample content is illustrative; the current slice only records speed-settings changes and retains the existing navigation.
+- Implementation: the actual Administrator audit page on an isolated LocalDB/Kestrel test site, viewed in the in-app browser at its desktop size and at 390 × 844 CSS px. The date-range error and a real saved test setting change were observed. The narrow table can scroll horizontally; a labelled keyboard-focusable region and explanatory text were subsequently added and still require visual and keyboard verification.
+- The images have not yet been saved and normalized into a joint comparison input. The in-app browser rejected the local data-URL comparison under its URL security policy; no alternative route around that restriction was attempted. Focused visual comparison, keyboard/accessibility testing and console review remain outstanding; this preliminary inspection is not completed design QA.
+- The user independently compared the initial rendered page with the reference and accepted the overall style and page structure. They checked the normal, invalid-date, empty and 390 px states and requested more specific date errors, clearer table hierarchy, a stronger horizontal-scroll hint and no redundant pagination on the first empty page. Those changes were implemented; the revised page has not yet had a post-fix comparison with the reference.
+- In the revised page, keyboard testing confirmed Enter submits the query, Tab moves from the query button to the scroll region and then to the version disclosure, and Enter expands the disclosure. At a 390 px viewport, the right arrow moved the focused table's horizontal scroll position from 0 to 40 px. A screen-reader pass is still outstanding.
+
+final result: blocked
