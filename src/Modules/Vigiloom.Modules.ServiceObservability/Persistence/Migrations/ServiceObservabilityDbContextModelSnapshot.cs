@@ -31,6 +31,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<DateTimeOffset>("ApprovedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("CandidateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -72,6 +75,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasKey("Id");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("CandidateId")
+                        .IsUnique()
+                        .HasFilter("[CandidateId] IS NOT NULL");
 
                     b.HasIndex("RowId")
                         .IsUnique();

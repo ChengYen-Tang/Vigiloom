@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -18,15 +17,11 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         // Serialize short capacity transactions across Web instances. Approval and
         // cleanup must take the same lock before touching a source or candidate.
-        await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.Transaction = transaction.GetDbTransaction();
-        command.CommandText = "DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.ServiceCandidates', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
-        var lockResult = Convert.ToInt32(await command.ExecuteScalarAsync(token));
-        if (lockResult < 0) return CandidateObservation.Busy;
+        if (!await DiscoveryTransaction.TryLockAsync(db, transaction, token)) return CandidateObservation.Busy;
         var source = await db.Sources.FromSqlInterpolated($"SELECT * FROM [service].[Sources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
             .SingleOrDefaultAsync(token);
         if (source is null || source.RevokedAt is not null) return CandidateObservation.SourceUnavailable;
-        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var now = await DiscoveryTransaction.NowAsync(db, token);
         if (await db.Services.AnyAsync(x => x.SourceId == sourceId && x.ServiceKey == proposed.ServiceKey && x.Environment == proposed.Environment, token))
             return CandidateObservation.AlreadyApproved;
         var current = await db.Candidates.SingleOrDefaultAsync(x => x.SourceId == sourceId && x.ServiceKey == proposed.ServiceKey && x.Environment == proposed.Environment, token);
@@ -50,7 +45,7 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
         ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(page, GlobalLimit / pageSize);
         await using var db = await contexts.CreateDbContextAsync(token);
-        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var now = await DiscoveryTransaction.NowAsync(db, token);
         var cutoff = now.AddMinutes(-3);
         return await db.Candidates.AsNoTracking().Where(x => x.LastSeen >= cutoff && x.LastSeen <= now)
             .Where(x => db.Sources.Any(s => s.Id == x.SourceId && s.RevokedAt == null))

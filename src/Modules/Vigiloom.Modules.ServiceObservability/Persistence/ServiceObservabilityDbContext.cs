@@ -45,6 +45,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         service.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
         service.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
         service.HasIndex(x => new { x.SourceId, x.ServiceKey, x.Environment }).IsUnique();
+        service.HasIndex(x => x.CandidateId).IsUnique();
         service.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
     }
 }

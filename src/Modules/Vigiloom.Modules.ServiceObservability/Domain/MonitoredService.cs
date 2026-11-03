@@ -9,6 +9,7 @@ public sealed class MonitoredService
     {
         ArgumentNullException.ThrowIfNull(candidate);
         Id = Guid.CreateVersion7();
+        CandidateId = candidate.Id;
         SourceId = candidate.SourceId;
         ServiceKey = candidate.ServiceKey;
         Environment = candidate.Environment;
@@ -19,6 +20,7 @@ public sealed class MonitoredService
     public Guid Id { get; private set; }
     public long RowId { get; private set; }
     public Guid SourceId { get; private set; }
+    public Guid? CandidateId { get; private set; }
     public string ServiceKey { get; private set; } = "";
     public string Environment { get; private set; } = "";
     public string DisplayName { get; private set; } = "";
