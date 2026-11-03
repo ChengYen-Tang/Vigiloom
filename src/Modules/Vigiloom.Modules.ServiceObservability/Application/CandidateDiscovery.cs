@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -56,4 +57,3 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
 }
 
 public enum CandidateObservation { Recorded, AlreadyApproved, SourceUnavailable, CapacityReached, Busy }
-public sealed record CandidateSummary(Guid Id, Guid SourceId, string ServiceKey, string Environment, string DisplayName, DateTimeOffset FirstSeen, DateTimeOffset LastSeen);

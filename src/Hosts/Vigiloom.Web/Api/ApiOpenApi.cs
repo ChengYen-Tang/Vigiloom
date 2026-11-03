@@ -82,6 +82,13 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
                         [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
             }
+            else if (path.StartsWith("/api/v1/service-discovery/candidates", StringComparison.OrdinalIgnoreCase))
+            {
+                var requirement = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
+                if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase)) requirement[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
+                operation.Security = [requirement];
+                operation.Description = "Requires a signed-in Administrator session.";
+            }
             else if (path.Equals("/api/v1/operations/audit", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/ping", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/agent-replay", StringComparison.OrdinalIgnoreCase) ||

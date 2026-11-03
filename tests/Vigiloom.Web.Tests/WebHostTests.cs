@@ -171,6 +171,15 @@ public sealed class WebHostTests(TestContext testContext)
         var serviceAudit = paths.GetProperty("/api/v1/operations/audit/service-approvals").GetProperty("get");
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);
+        var candidateList = paths.GetProperty("/api/v1/service-discovery/candidates").GetProperty("get");
+        Assert.IsTrue(candidateList.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.Contains("Administrator", candidateList.GetProperty("description").GetString()!);
+        Assert.IsTrue(candidateList.GetProperty("responses").TryGetProperty("429", out _));
+        var approveCandidate = paths.GetProperty("/api/v1/service-discovery/candidates/{candidateId}/approve").GetProperty("post");
+        Assert.IsTrue(approveCandidate.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(approveCandidate.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsTrue(approveCandidate.GetProperty("responses").TryGetProperty("429", out _));
+        Assert.IsTrue(approveCandidate.GetProperty("responses").GetProperty("200").GetProperty("content").TryGetProperty("application/json", out _));
         var replayMutation = paths.GetProperty("/api/v1/agent-management/replay-policy").GetProperty("put").GetProperty("security")[0];
         Assert.IsTrue(replayMutation.TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(replayMutation.TryGetProperty("Antiforgery", out _));
