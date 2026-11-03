@@ -366,16 +366,22 @@ public sealed class AgentIdentitySqlTests
         var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
         Assert.IsNull(await receiverHealth.LastCommittedBatchAsync(token));
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.AreEqual(new AgentReceiptCapacity(0, 0, AgentBatchReceiver.MaximumRetainedBatchesPerAgent, AgentBatchReceiver.MaximumRetainedBytesPerAgent),
+            (await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity);
         var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
         Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
         Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         Assert.IsNull((await monitoring.GetAsync(otherDevice.Id, token))!.LastCommittedBatchAt);
+        Assert.AreEqual(new AgentReceiptCapacity(1, payload.Length, AgentBatchReceiver.MaximumRetainedBatchesPerAgent, AgentBatchReceiver.MaximumRetainedBytesPerAgent),
+            (await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity);
+        Assert.AreEqual(0L, (await monitoring.GetAsync(otherDevice.Id, token))!.ReceiptCapacity!.RetainedBatches);
         clock.Now = clock.Now.AddMinutes(1);
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(clock.Now.AddMinutes(-1), await receiverHealth.LastCommittedBatchAsync(token));
         Assert.AreEqual(clock.Now.AddMinutes(-1), (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.AreEqual(1L, (await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity!.RetainedBatches);
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
             AgentBatchCodec.Serialize(batch with { Items = [item with { RuntimeVersion = "different" }, other] }), token));
         var anotherBatch = batch with { BatchId = Guid.CreateVersion7(), Items = [item] };
@@ -397,6 +403,7 @@ public sealed class AgentIdentitySqlTests
         var administrator = Guid.CreateVersion7();
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(registered.AgentId.Value, administrator, token));
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity);
         var replacement = await identity.IssueAsync(device.Id, administrator, token);
         await identity.RedeemAsync(replacement.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt, "A new Agent must not inherit the old identity's receipt history.");

@@ -111,6 +111,21 @@
                     }
                 }
             </section>
+            <section class="device-panel central-receipts">
+                <h2>中央收據容量</h2>
+                @if (agentError) { <p role="alert">無法讀取中央收據容量，請稍後重新整理。</p> }
+                else if (agentStatus?.ReceiptCapacity is not { } receipts) { <p>目前沒有可用的中央收據容量資訊。</p> }
+                else
+                {
+                    <dl class="device-details">
+                        <div><dt>中央收據筆數</dt><dd>@receipts.RetainedBatches / @receipts.MaximumBatches 筆</dd></div>
+                        <div><dt>原始批次長度累計</dt><dd>@QueueBytes(receipts.OriginalPayloadBytes) / @QueueBytes(receipts.MaximumPayloadBytes)</dd></div>
+                    </dl>
+                    <p>這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。</p>
+                    @if (receipts.RetainedBatches >= receipts.MaximumBatches || receipts.OriginalPayloadBytes >= receipts.MaximumPayloadBytes)
+                    { <p class="device-alert" role="status">中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。</p> }
+                }
+            </section>
             <section class="device-panel">
                 <h2>Agent 設定同步</h2>
                 @if (settingsError) { <p role="alert">無法讀取設定狀態，請稍後重新整理。</p> }

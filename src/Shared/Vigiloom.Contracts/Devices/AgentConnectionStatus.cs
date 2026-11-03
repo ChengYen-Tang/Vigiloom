@@ -10,7 +10,10 @@ public enum AgentConnectionState { Disabled, NotRegistered, AwaitingFirstHeartbe
 /// <summary>Non-secret Agent monitoring status for an authenticated reader.</summary>
 public sealed record AgentConnectionStatus(Guid DeviceId, AgentConnectionState State, DateTimeOffset? LastHeartbeatAt,
     int OfflineAfterSeconds, AgentQueueMonitoring? Queue = null, DateTimeOffset? LastCommittedBatchAt = null,
-    AgentBatchTimeObservation? LastBatchTime = null);
+    AgentBatchTimeObservation? LastBatchTime = null, AgentReceiptCapacity? ReceiptCapacity = null);
+
+/// <summary>Central retained receipt usage; original payload lengths are not database disk usage.</summary>
+public sealed record AgentReceiptCapacity(long RetainedBatches, long OriginalPayloadBytes, int MaximumBatches, long MaximumPayloadBytes);
 
 /// <summary>Historical timestamps from one committed batch; not a measurement of the current clock.</summary>
 public sealed record AgentBatchTimeObservation(DateTimeOffset EnqueuedAt, DateTimeOffset ReceivedAt, bool EnqueuedAheadOfReceipt);
