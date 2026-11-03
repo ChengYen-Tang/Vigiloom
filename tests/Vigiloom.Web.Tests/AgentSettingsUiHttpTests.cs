@@ -91,6 +91,8 @@ public sealed class AgentSettingsUiHttpTests
             using var created = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
             Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
             var doc = await new HtmlParser().ParseDocumentAsync(await created.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("serviceKey", doc.Body!.TextContent);
+            Assert.Contains("並非 OpenTelemetry 接收端", doc.Body.TextContent);
             var secret = doc.QuerySelector("textarea[aria-label='來源憑證']")!.TextContent;
             await using var scope = factory.Services.CreateAsyncScope();
             var credential = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
@@ -127,7 +129,13 @@ public sealed class AgentSettingsUiHttpTests
             approve[$"approve-{candidate.Id:N}"] = "true";
             approve["ConfirmApproval.Id"] = candidate.Id.ToString("D");
             using var approved = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token);
-            Assert.Contains("服務已加入", await BodyTextAsync(approved, token));
+            var approvedText = await BodyTextAsync(approved, token);
+            Assert.Contains("服務已加入", approvedText);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            {
+                var service = await db.Services.SingleAsync(x => x.SourceId == sourceId, token);
+                Assert.Contains(service.Id.ToString("D"), approvedText);
+            }
             using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token))
                 Assert.Contains("服務已加入", await BodyTextAsync(repeated, token));
             var remaining = await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token);
