@@ -11,16 +11,22 @@ public sealed class SourceCredentials(IDbContextFactory<ServiceObservabilityDbCo
     private const string Prefix = "vls_";
     private const int SecretLength = 32;
 
-    public async Task<SourceCredentialIssue> IssueAsync(string name, CancellationToken token)
+    internal async Task<SourceCredentialIssue> IssueAsync(string name, CancellationToken token)
+    {
+        var (source, credential) = Create(name, clock.GetUtcNow());
+        await using var db = await contexts.CreateDbContextAsync(token);
+        db.Sources.Add(source);
+        await db.SaveChangesAsync(token);
+        return new(source.Id, credential);
+    }
+
+    internal static (ServiceSource Source, string Credential) Create(string name, DateTimeOffset now)
     {
         var secret = RandomNumberGenerator.GetBytes(SecretLength);
         try
         {
-            var source = new ServiceSource(name, SHA256.HashData(secret), clock.GetUtcNow());
-            await using var db = await contexts.CreateDbContextAsync(token);
-            db.Sources.Add(source);
-            await db.SaveChangesAsync(token);
-            return new(source.Id, $"{Prefix}{source.Id:D}.{Base64Url(secret)}");
+            var source = new ServiceSource(name, SHA256.HashData(secret), now);
+            return (source, $"{Prefix}{source.Id:D}.{Base64Url(secret)}");
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
@@ -41,7 +47,7 @@ public sealed class SourceCredentials(IDbContextFactory<ServiceObservabilityDbCo
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
 
-    public async Task<bool> RevokeAsync(Guid sourceId, CancellationToken token)
+    internal async Task<bool> RevokeAsync(Guid sourceId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         var source = await db.Sources.SingleOrDefaultAsync(x => x.Id == sourceId, token);

@@ -28,6 +28,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
+            ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             _ => throw new ArgumentException("Unsupported or invalid audit event details.", nameof(audit))
         };
         if (details.Length > 2048) throw new ArgumentException("Audit event details exceed the supported limit.", nameof(audit));

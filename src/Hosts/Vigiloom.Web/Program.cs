@@ -62,6 +62,7 @@ builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddScoped<CandidateDiscovery>();
 builder.Services.AddScoped<ServiceApproval>();
 builder.Services.AddScoped<SourceCredentials>();
+builder.Services.AddScoped<SourceAdministration>();
 builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<AgentConfiguration>();
 builder.Services.AddScoped<AgentQueueCapacityConfiguration>();

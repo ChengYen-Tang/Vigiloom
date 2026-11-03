@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <InternalsVisibleTo Include="Vigiloom.Modules.ServiceObservability.Tests" />
+    <InternalsVisibleTo Include="Vigiloom.Web.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../Shared/Vigiloom.BuildingBlocks/Vigiloom.BuildingBlocks.csproj" />
     <ProjectReference Include="../../Shared/Vigiloom.Contracts/Vigiloom.Contracts.csproj" />
     <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
