@@ -16,6 +16,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
@@ -656,6 +657,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
                 Assert.IsNotNull(status.LastHeartbeatAt);
                 Assert.IsNotNull(status.LastCommittedBatchAt);
+                Assert.AreEqual(1L, status.ReceiptCapacity!.RetainedBatches);
+                Assert.AreEqual(batchBytes.Length, status.ReceiptCapacity.OriginalPayloadBytes);
             }
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
@@ -676,6 +679,8 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("等待傳送", page.Body!.TextContent);
                 Assert.Contains("3 批", page.Body.TextContent);
+                Assert.Contains("中央收據容量", page.Body.TextContent);
+                Assert.Contains("不代表 SQL 磁碟用量", page.Body.TextContent);
                 Assert.DoesNotContain("入列時間，比平台記錄的接收時間超前", page.Body.TextContent);
             }
             var futureBatch = batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddMinutes(6), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
@@ -724,6 +729,23 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("隔離原因摘要尚未提供", page.Body!.TextContent);
                 Assert.DoesNotContain("批次內容衝突：2 批", page.Body.TextContent);
             }
+            // Synthetic retained receipts exercise the byte limit without transferring 256 MiB.
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            {
+                for (var i = 0; i < 256; i++)
+                    db.ReceivedBatches.Add(new ReceivedBatch(result.AgentId, Guid.CreateVersion7(), new byte[32], clock.Now, clock.Now, 1, 1024 * 1024));
+                await db.SaveChangesAsync(token);
+            }
+            using (var capacityPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await capacityPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("中央新批次接收已達限制", page.Body!.TextContent);
+                Assert.Contains("既有收據仍可確認重送", page.Body.TextContent);
+            }
+            using (var newBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(futureBatch with { BatchId = Guid.CreateVersion7() })), token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, newBatch.StatusCode);
+            using (var duplicateAtCapacity = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, duplicateAtCapacity.StatusCode);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
             using (var apiAccess = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiAccess.StatusCode);
