@@ -435,6 +435,52 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
+    public Task Batches_TimeObservationUsesOneLatestReceiptWithoutRefreshingOnRetry(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("clock observation", "127.0.0.8", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var monitoring = new AgentMonitoring(agents, source, clock);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastBatchTime);
+        var received = clock.Now;
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, received, "test", "test", "test");
+        var boundary = new AgentBatch(1, Guid.CreateVersion7(), received.AddMinutes(5), [item]);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(boundary), token));
+        var status = (await monitoring.GetAsync(device.Id, token))!.LastBatchTime!;
+        Assert.IsFalse(status.EnqueuedAheadOfReceipt);
+        Assert.AreEqual(boundary.EnqueuedAt, status.EnqueuedAt);
+        Assert.AreEqual(received, status.ReceivedAt);
+        var future = boundary with { BatchId = Guid.CreateVersion7(), EnqueuedAt = received.AddMinutes(5).AddTicks(1), Items = [item with { MessageId = Guid.CreateVersion7() }] };
+        var payload = AgentBatchCodec.Serialize(future);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        status = (await monitoring.GetAsync(device.Id, token))!.LastBatchTime!;
+        Assert.IsTrue(status.EnqueuedAheadOfReceipt, "The later RowId breaks identical receipt-time ties.");
+        Assert.AreEqual(future.EnqueuedAt, status.EnqueuedAt);
+        clock.Now = received.AddMinutes(1);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(status, (await monitoring.GetAsync(device.Id, token))!.LastBatchTime, "A duplicate does not change historical observations.");
+        var older = boundary with { BatchId = Guid.CreateVersion7(), EnqueuedAt = received.AddDays(-1), Items = [item with { MessageId = Guid.CreateVersion7() }] };
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(older), token));
+        var latest = (await monitoring.GetAsync(device.Id, token))!.LastBatchTime!;
+        Assert.IsFalse(latest.EnqueuedAheadOfReceipt, "Later received historical batches are not evidence of the current clock.");
+        Assert.AreEqual(older.EnqueuedAt, latest.EnqueuedAt);
+        Assert.AreEqual(clock.Now, latest.ReceivedAt);
+        clock.Now = received.AddMinutes(-1);
+        Assert.IsTrue((await monitoring.GetAsync(device.Id, token))!.LastBatchTime!.ReceivedAt > clock.Now, "A platform clock rollback leaves the observation visible.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(registration.AgentId.Value, Guid.CreateVersion7(), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastBatchTime);
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     public Task Batches_ConcurrentNewBatchesCannotExceedCapacity(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();

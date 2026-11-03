@@ -58,6 +58,19 @@
                 {
                     <dl class="device-details"><div><dt>目前 Agent 最後提交批次（UTC）</dt><dd>@(agentStatus?.LastCommittedBatchAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "保留範圍內無資料")</dd></div></dl>
                     <p>顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。</p>
+                    @if (agentStatus?.LastBatchTime is { } batchTime)
+                    {
+                        @if (batchTime.EnqueuedAheadOfReceipt)
+                        {
+                            <div class="device-alert batch-time-notice" role="status">
+                                <p>此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。</p>
+                                <p>入列（UTC）：@batchTime.EnqueuedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")<br />接收（UTC）：@batchTime.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p>
+                                <p>這是歷史批次觀察，不代表目前時鐘狀態。</p>
+                            </div>
+                        }
+                        @if (batchTime.ReceivedAt > Clock.GetUtcNow())
+                        { <p class="device-alert" role="status">批次接收時間晚於目前平台時間，請確認平台時鐘。</p> }
+                    }
                     @if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
                     else
                     {
