@@ -676,6 +676,22 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("等待傳送", page.Body!.TextContent);
                 Assert.Contains("3 批", page.Body.TextContent);
+                Assert.DoesNotContain("入列時間，比平台記錄的接收時間超前", page.Body.TextContent);
+            }
+            var futureBatch = batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddMinutes(6), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
+            using (var futureResult = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(futureBatch)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, futureResult.StatusCode);
+            using (var futureStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                var status = await futureStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
+                Assert.IsTrue(status!.LastBatchTime!.EnqueuedAheadOfReceipt);
+                Assert.AreEqual(futureBatch.EnqueuedAt, status.LastBatchTime.EnqueuedAt);
+            }
+            using (var futurePage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await futurePage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("入列時間，比平台記錄的接收時間超前超過 5 分鐘", page.Body!.TextContent);
+                Assert.Contains("歷史批次觀察，不代表目前時鐘狀態", page.Body.TextContent);
             }
             clock.Now += TimeSpan.FromMinutes(4);
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token))
