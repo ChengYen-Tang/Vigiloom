@@ -371,6 +371,84 @@ public sealed class HostLifecycleTests(TestContext testContext)
         }
     }
 
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task Host_ChangesBatchIntervalWithoutInterruptingRetryAfter()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomLiveBatchSettingsTests", Path.GetRandomFileName());
+        var token = testContext.CancellationToken;
+        var clock = new ObservedTimeProvider();
+        var handler = new LiveBatchHandler();
+        var heartbeat = new LiveHeartbeatHandler();
+        var settings = new LiveSettingsHandler(AgentSettingsSnapshot.Create(AgentSettings.Default with { BatchIntervalSeconds = 10 }));
+        using var batchHttp = new HttpClient(handler);
+        using var heartbeatHttp = new HttpClient(heartbeat);
+        using var settingsHttp = new HttpClient(settings);
+        using var capacityHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
+        try
+        {
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var queue = new DurableBatchQueue(vault, id);
+            async Task EnqueueAsync()
+            {
+                var now = clock.GetUtcNow();
+                var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test", "test", "test");
+                var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, AgentBatchCodec.Serialize(batch), token));
+            }
+            await EnqueueAsync();
+            var builder = AgentHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri
+            });
+            builder.Services.AddSingleton(new AgentBatchClient(batchHttp, clock));
+            builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
+            builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            heartbeat.ReleaseFirst.TrySetResult(); heartbeat.ReleaseSecond.TrySetResult();
+            try
+            {
+                await host.StartAsync(token);
+                await settings.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await clock.FirstScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromSeconds(6));
+                await clock.RetryScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                settings.Release.TrySetResult();
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(10, host.Services.GetRequiredService<AgentSettingsRuntime>().Current.BatchIntervalSeconds);
+                Assert.AreEqual(10, (await new AgentSettingsStore(vault, server, id).ReadAsync(token))!.Snapshot.Settings.BatchIntervalSeconds);
+                clock.Advance(TimeSpan.FromSeconds(59));
+                Assert.AreEqual(1, handler.Count);
+                clock.Advance(TimeSpan.FromSeconds(1));
+                await handler.Retried.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await clock.BurstScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromMilliseconds(250));
+                await clock.ConfiguredBatchScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await EnqueueAsync();
+                clock.Advance(TimeSpan.FromSeconds(9));
+                Assert.AreEqual(2, handler.Count);
+                clock.Advance(TimeSpan.FromSeconds(3));
+                await handler.NextDelivered.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            }
+            finally { settings.Release.TrySetResult(); await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomLiveBatchSettingsTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class CapacityHostHandler(AgentQueueCapacitySnapshot next) : HttpMessageHandler
     {
         private int requests;
@@ -1062,7 +1140,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         }
     }
 
-    private sealed class LiveSettingsHandler : HttpMessageHandler
+    private sealed class LiveSettingsHandler(AgentSettingsSnapshot? desired = null) : HttpMessageHandler
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1071,10 +1149,32 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.AreEqual("/api/v1/agent/settings", request.RequestUri!.AbsolutePath);
             Started.TrySetResult();
             await Release.Task.WaitAsync(token);
-            var snapshot = AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 90 });
+            var snapshot = desired ?? AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 90 });
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(snapshot) };
             response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue($"\"{snapshot.Revision}\"");
             return response;
+        }
+    }
+
+    private sealed class LiveBatchHandler : HttpMessageHandler
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public TaskCompletionSource Retried { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource NextDelivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.AreEqual("/api/v1/agent/batches", request.RequestUri!.AbsolutePath);
+            var number = Interlocked.Increment(ref count);
+            if (number == 1)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(60));
+                return Task.FromResult(response);
+            }
+            if (number == 2) Retried.TrySetResult();
+            if (number == 3) NextDelivered.TrySetResult();
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
         }
     }
 
