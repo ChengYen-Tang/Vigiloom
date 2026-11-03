@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
@@ -350,6 +351,7 @@ public sealed class AgentIdentityHttpTests
         {
             const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
             var clock = new TestClock();
+            using var captured = new CapturedLogs();
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
@@ -359,6 +361,7 @@ public sealed class AgentIdentityHttpTests
                     ["Vigiloom:SetupToken"] = setupSecret
                 }));
                 builder.ConfigureServices(services => services.AddSingleton<TimeProvider>(clock));
+                builder.ConfigureLogging(logging => logging.AddProvider(captured));
             });
             var identities = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
             await using (var db = await identities.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
@@ -601,6 +604,11 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsFalse(content.Contains(enrollment.Secret, StringComparison.Ordinal), "Enrollment secret leaked to the reader.");
                 Assert.IsFalse(content.Contains(machineSecret, StringComparison.Ordinal), "Machine secret leaked to the reader.");
             }
+            factory.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AgentSecretTest").LogWarning("Capture marker");
+            var logs = captured.Messages.ToArray();
+            Assert.IsTrue(logs.Any(message => message.Contains("Capture marker", StringComparison.Ordinal)));
+            Assert.IsFalse(logs.Any(message => message.Contains(enrollment.Secret, StringComparison.Ordinal)), "Enrollment secret leaked to logs.");
+            Assert.IsFalse(logs.Any(message => message.Contains(machineSecret, StringComparison.Ordinal)), "Machine secret leaked to logs.");
             foreach (var path in monitoringPaths)
             {
                 using var machineRead = await agent.GetAsync(path, token);
@@ -928,6 +936,24 @@ public sealed class AgentIdentityHttpTests
 
         public Task<bool> IsCurrentAsync(Guid deviceId, long generation, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
             inner.IsCurrentAsync(deviceId, generation, connection, transaction, token);
+    }
+
+    private sealed class CapturedLogs : ILoggerProvider
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<string> Messages { get; } = new();
+        public ILogger CreateLogger(string categoryName) => new CaptureLogger(Messages);
+        public void Dispose() { }
+
+        private sealed class CaptureLogger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel level) => level != LogLevel.None;
+            public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                messages.Enqueue(formatter(state, exception));
+                if (exception is not null) messages.Enqueue(exception.ToString());
+            }
+        }
     }
 
     private sealed class DropFirstEnrollmentResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
