@@ -223,13 +223,21 @@ public sealed class AgentIdentityHttpTests
                 {
                     var sender = new AgentBatchClient(batchHttp, TimeProvider.System);
                     await Assert.ThrowsAsync<HttpRequestException>(() => sender.SendNextAsync(vault, server, token));
-                    Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+                    var restartedVault = new IdentityVault(root);
+                    var restartedQueue = new DurableBatchQueue(restartedVault, recoveredId);
+                    var pending = await restartedQueue.PeekAsync(token);
+                    Assert.AreEqual(batch.BatchId, pending!.BatchId);
+                    CollectionAssert.AreEqual(bytes, pending.Payload, "Reopening the queue must retain the exact original wire bytes.");
+                    var decoded = AgentBatchCodec.TryRead(pending.Payload, out var pendingBatch);
+                    Assert.IsTrue(decoded);
+                    Assert.AreEqual(report.MessageId, pendingBatch!.Items[0].MessageId);
                     await using (var db = await agents.CreateDbContextAsync(token))
                     {
                         Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
                         Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
                     }
-                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    var restartedSender = new AgentBatchClient(batchHttp, TimeProvider.System);
+                    Assert.AreEqual(BatchSendResult.Delivered, (await restartedSender.SendNextAsync(restartedVault, server, token)).Status);
                     Assert.IsNull(await queue.PeekAsync(token));
                     await using var dbAfter = await agents.CreateDbContextAsync(token);
                     Assert.AreEqual(1, await dbAfter.ReceivedBatches.CountAsync(token));
@@ -243,6 +251,10 @@ public sealed class AgentIdentityHttpTests
                     Assert.IsTrue(batchHandler.SawGzip);
                     Assert.AreEqual(2, await dbAfter.ReceivedBatches.CountAsync(token));
                     Assert.AreEqual(13, await dbAfter.RuntimeObservations.CountAsync(token));
+                    var ordered = await dbAfter.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == recoveredId && x.BatchId == compressedBatch.BatchId)
+                        .OrderBy(x => x.Ordinal).Select(x => new { x.Ordinal, x.MessageId }).ToArrayAsync(token);
+                    CollectionAssert.AreEqual(more.Select((x, ordinal) => (ordinal, x.MessageId)).ToArray(),
+                        ordered.Select(x => (x.Ordinal, x.MessageId)).ToArray(), "Message identity and ordinal survive retry and commit.");
                     var conflicting = AgentBatchCodec.Serialize(batch with { Items = [report with { RuntimeVersion = "different" }] });
                     Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, conflicting, token));
                     Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
