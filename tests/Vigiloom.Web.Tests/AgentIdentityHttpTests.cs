@@ -273,6 +273,8 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
                     Assert.AreEqual(1L, queueStatus.Snapshot!.TotalBatches);
                     Assert.AreEqual(1L, queueStatus.Snapshot.QuarantinedBatches);
+                    Assert.AreEqual(new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 0, 0), queueStatus.Quarantine,
+                        "A real rejected batch must be reported through the Agent heartbeat.");
                     Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
                     var changedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), expectedSettings.Version), Guid.CreateVersion7(), token))!;
                     Assert.AreEqual(AgentSettingsApplyState.Pending, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
