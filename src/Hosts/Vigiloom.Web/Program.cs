@@ -14,6 +14,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Components;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Api;
@@ -38,6 +40,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "identity");
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
+builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service");
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
 builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
@@ -56,6 +59,10 @@ builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
+builder.Services.AddScoped<CandidateDiscovery>();
+builder.Services.AddScoped<ServiceApproval>();
+builder.Services.AddScoped<SourceCredentials>();
+builder.Services.AddScoped<SourceAdministration>();
 builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<AgentConfiguration>();
 builder.Services.AddScoped<AgentQueueCapacityConfiguration>();
@@ -112,6 +119,13 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddPolicy("service-discovery", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:ServiceDiscovery:RequestsPerMinute", 6000), 1, 100000),
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
@@ -204,6 +218,7 @@ app.MapAgentConfigurationEndpoints();
 app.MapAgentQueueCapacityEndpoints();
 app.MapAgentReplayPolicyEndpoints();
 app.MapAgentBatchEndpoints();
+app.MapServiceDiscoveryEndpoints();
 app.MapPingEndpoints();
 app.MapSpeedTestEndpoints();
 app.MapOperationAuditEndpoints();
