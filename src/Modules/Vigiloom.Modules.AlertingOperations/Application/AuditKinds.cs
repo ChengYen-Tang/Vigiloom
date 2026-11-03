@@ -6,4 +6,5 @@ internal static class AuditKinds
     public const short SpeedSettingsChangedV1 = 1;
     public const short PingSettingsChangedV1 = 2;
     public const short AgentReplayPolicyChangedV1 = 3;
+    public const short ServiceApprovedV1 = 4;
 }

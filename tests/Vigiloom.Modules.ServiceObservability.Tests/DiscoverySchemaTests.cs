@@ -1,4 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using System.Data.Common;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
@@ -13,6 +18,58 @@ public sealed class DiscoverySchemaTests(TestContext context)
 {
     [AssemblyCleanup]
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Approval_ConcurrentClicksAreIdempotentAndAuditIsAtomic(bool snapshotReads) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            var candidate = (await discovery.ListAsync(1, token)).Single();
+            var actor = Guid.CreateVersion7();
+            var failing = new ServiceApproval(factory, new FailingAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.ApproveAsync(candidate.Id, actor, token));
+            await using (var check = new ServiceObservabilityDbContext(options))
+            {
+                Assert.AreEqual(0, await check.Services.CountAsync(token));
+                Assert.AreEqual(1, await check.Candidates.CountAsync(token));
+            }
+            await using (var checkAudit = new OperationsDbContext(operations))
+                Assert.AreEqual(0, await checkAudit.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [Kind] = 4").SingleAsync(token));
+            var approval = new ServiceApproval(factory, new OperationAuditWriter());
+            var results = await Task.WhenAll(approval.ApproveAsync(candidate.Id, actor, token), approval.ApproveAsync(candidate.Id, actor, token));
+            Assert.AreEqual(1, results.Count(x => x.Status == ApprovalStatus.Approved));
+            Assert.AreEqual(1, results.Count(x => x.Status == ApprovalStatus.AlreadyApproved));
+            Assert.AreEqual(results[0].ServiceId, results[1].ServiceId);
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            await using var verify = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(1, await verify.Services.CountAsync(token));
+            Assert.AreEqual(0, await verify.Candidates.CountAsync(token));
+            Assert.IsFalse((await verify.Services.SingleAsync(token)).IsPublic);
+            await using var audit = new OperationsDbContext(operations);
+            Assert.AreEqual(1, await audit.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [Kind] = 4").SingleAsync(token));
+            var query = new OperationAuditQuery(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1));
+            var history = new OperationAuditQueryService(new OperationsFactory(operations));
+            var entry = (await history.QueryServiceApprovalsAsync(query, token)).Items.Single();
+            Assert.AreEqual(actor, entry.ActorId);
+            Assert.AreEqual(results[0].ServiceId, entry.ResourceId);
+            Assert.AreEqual(source.SourceId, entry.ServiceApproval!.SourceId);
+            Assert.IsEmpty((await history.QueryAsync(query, token)).Items);
+        }, context.CancellationToken);
 
     [TestMethod]
     [DataRow(false)]
@@ -130,5 +187,19 @@ public sealed class DiscoverySchemaTests(TestContext context)
     private sealed class Factory(DbContextOptions<ServiceObservabilityDbContext> options) : IDbContextFactory<ServiceObservabilityDbContext>
     {
         public ServiceObservabilityDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class OperationsFactory(DbContextOptions<OperationsDbContext> options) : IDbContextFactory<OperationsDbContext>
+    {
+        public OperationsDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class FailingAudit : IOperationAuditWriter<OperationAudit>
+    {
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken token)
+        {
+            await new OperationAuditWriter().AppendAsync(connection, transaction, audit, token);
+            throw new InvalidOperationException("Injected failure after audit insertion.");
+        }
     }
 }

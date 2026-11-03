@@ -58,6 +58,10 @@ public sealed class PingHttpTests
             Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
         var now = DateTimeOffset.UtcNow;
         var auditUrl = $"/api/v1/operations/audit/ping?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var approvalAuditUrl = $"/api/v1/operations/audit/service-approvals?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        using (var denied = await anonymous.GetAsync(approvalAuditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await reader.GetAsync(approvalAuditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var allowed = await admin.GetAsync(approvalAuditUrl, token)) Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
         using (var denied = await anonymous.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         using (var response = await admin.GetAsync(auditUrl, token))
