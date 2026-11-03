@@ -18,31 +18,32 @@
     <section class="audit-panel" aria-labelledby="audit-filter-title">
         <h2 id="audit-filter-title">查詢紀錄</h2>
         <form method="get" action="/settings/audit">
-            <label for="audit-from">開始日期（UTC）</label><input id="audit-from" name="from" type="date" value="@fromText" required />
-            <label for="audit-to">結束日期（UTC）</label><input id="audit-to" name="to" type="date" value="@toText" required />
+            <label for="audit-from">開始日期（UTC）</label><input id="audit-from" name="from" type="date" value="@fromText" aria-invalid="@(dateError is not null ? "true" : null)" aria-describedby="@(dateError is not null ? "audit-date-error" : null)" required />
+            <label for="audit-to">結束日期（UTC）</label><input id="audit-to" name="to" type="date" value="@toText" aria-invalid="@(dateError is not null ? "true" : null)" aria-describedby="@(dateError is not null ? "audit-date-error" : null)" required />
             <button type="submit">查詢</button>
         </form>
+        @if (dateError is not null) { <p id="audit-date-error" class="audit-error" role="alert">@dateError</p> }
+        @if (pageError is not null) { <p class="audit-error" role="alert">@pageError</p> }
         <p>一次最多查詢 31 天，包含所選結束日期。</p>
     </section>
-    @if (invalid) { <section class="audit-notice" role="alert">請選擇有效的日期範圍及頁碼，每次最多 31 天。</section> }
-    else if (unavailable) { <section class="audit-notice" role="alert">暫時無法讀取稽核紀錄，請稍後重新整理。</section> }
+    @if (unavailable) { <section class="audit-notice" role="alert">暫時無法讀取稽核紀錄，請稍後重新整理。</section> }
     else if (result is not null)
     {
         <section class="audit-panel" aria-labelledby="audit-results-title">
             <h2 id="audit-results-title">查詢結果</h2>
             <p>目前僅收錄成功儲存的網路測速設定變更；其他操作與失敗紀錄尚未接入。</p>
             @if (actorLookupFailed) { <p role="status">目前無法取得帳號名稱，改以帳號 ID 顯示。</p> }
-            @if (result.Items.Count == 0) { <p>此日期範圍沒有稽核紀錄。</p> }
+            @if (result.Items.Count == 0) { <p>@(result.Page > 1 ? "此頁沒有紀錄，請返回上一頁。" : "此日期範圍沒有稽核紀錄。")</p> }
             else
             {
-                <p>小螢幕可左右捲動表格。</p>
+                <p class="audit-scroll-hint">← 左右滑動查看完整表格 →</p>
                 <div class="audit-table-wrap" role="region" aria-label="稽核紀錄表，可左右捲動" tabindex="0"><table><thead><tr><th scope="col">時間（UTC）</th><th scope="col">操作者</th><th scope="col">操作</th><th scope="col">對象</th><th scope="col">變更內容</th><th scope="col">結果</th></tr></thead><tbody>
                     @foreach (var entry in result.Items)
                     {
                         <tr>
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
-                            <td>@(entry.SpeedSettings is null ? "未支援的紀錄" : "更新")</td>
+                            <td>@if (entry.SpeedSettings is null) { <span>未支援的紀錄</span> } else { <span class="audit-badge audit-badge-action">更新</span> }</td>
                             <td>@(entry.SpeedSettings is null ? "未知" : "網路測速設定")</td>
                             <td>
                                 @if (entry.SpeedSettings is { } change)
@@ -55,16 +56,16 @@
                                 }
                                 else { <span>無法顯示此紀錄的內容。</span> }
                             </td>
-                            <td>@(entry.SpeedSettings is null ? "未知" : "已儲存")</td>
+                            <td>@if (entry.SpeedSettings is null) { <span>未知</span> } else { <span class="audit-badge audit-badge-success">已儲存</span> }</td>
                         </tr>
                     }
                 </tbody></table></div>
             }
-            <nav class="audit-pagination" aria-label="稽核紀錄分頁">
+            @if (result.Items.Count > 0 || result.Page > 1) { <nav class="audit-pagination" aria-label="稽核紀錄分頁">
                 @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
                 <span>第 @result.Page 頁</span>
                 @if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
-            </nav>
+            </nav> }
             @if (result.LimitReached) { <p role="status">已達查詢頁數上限，請縮小日期範圍。</p> }
         </section>
     }
@@ -76,7 +77,8 @@
     [SupplyParameterFromQuery(Name = "to")] public string? To { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public string? Page { get; set; }
     private string fromText = "", toText = "";
-    private bool invalid, unavailable, actorLookupFailed;
+    private string? dateError, pageError;
+    private bool unavailable, actorLookupFailed;
     private OperationAuditPage? result;
     private Dictionary<Guid, string> actors = [];
 
@@ -88,13 +90,15 @@
         if (!DateOnly.TryParseExact(fromText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
             !DateOnly.TryParseExact(toText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to) ||
             to == DateOnly.MaxValue)
-        { invalid = true; return; }
+        { dateError = "請選擇有效的日期。"; return; }
+        if (from > to) { dateError = "開始日期不能晚於結束日期。"; return; }
+        if (to.DayNumber - from.DayNumber >= 31) { dateError = "一次最多查詢 31 天。"; return; }
         var page = 1;
-        if (Page is not null && !int.TryParse(Page, NumberStyles.None, CultureInfo.InvariantCulture, out page))
-        { invalid = true; return; }
+        if (Page is not null && (!int.TryParse(Page, NumberStyles.None, CultureInfo.InvariantCulture, out page) || page is < 1 or > 1000))
+        { pageError = "頁碼無效，請重新查詢。"; return; }
         var query = new OperationAuditQuery(new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)),
             new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), page);
-        if (!OperationAuditQueryService.Valid(query)) { invalid = true; return; }
+        if (!OperationAuditQueryService.Valid(query)) { dateError = "請選擇有效的日期範圍。"; return; }
         try
         {
             result = await Audit.QueryAsync(query, HttpContext.RequestAborted);

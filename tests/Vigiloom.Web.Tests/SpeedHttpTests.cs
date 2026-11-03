@@ -77,7 +77,27 @@ public sealed class SpeedHttpTests
         using (var invalidAudit = await admin.GetAsync(auditUrl + "&page=1001", token))
             Assert.AreEqual(HttpStatusCode.BadRequest, invalidAudit.StatusCode);
         using (var invalidPage = await admin.GetAsync("/settings/audit?page=abc", token))
-            Assert.Contains("請選擇有效的日期範圍及頁碼", await TextAsync(invalidPage, token));
+            Assert.Contains("頁碼無效，請重新查詢", await TextAsync(invalidPage, token));
+        using (var invertedDates = await admin.GetAsync("/settings/audit?from=2026-02-02&to=2026-02-01", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await invertedDates.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("開始日期不能晚於結束日期", document.Body!.TextContent);
+            Assert.AreEqual("audit-date-error", document.QuerySelector("#audit-from")?.GetAttribute("aria-describedby"));
+        }
+        using (var longRange = await admin.GetAsync("/settings/audit?from=2026-01-01&to=2026-02-01", token))
+            Assert.Contains("一次最多查詢 31 天", await TextAsync(longRange, token));
+        using (var empty = await admin.GetAsync("/settings/audit?from=2000-01-01&to=2000-01-02", token))
+        {
+            var html = await TextAsync(empty, token);
+            Assert.Contains("此日期範圍沒有稽核紀錄", html);
+            Assert.DoesNotContain("第 1 頁", html);
+        }
+        using (var emptyLaterPage = await admin.GetAsync("/settings/audit?from=2000-01-01&to=2000-01-02&page=2", token))
+        {
+            var text = await TextAsync(emptyLaterPage, token);
+            Assert.Contains("此頁沒有紀錄，請返回上一頁", text);
+            Assert.Contains("上一頁", text);
+        }
         using var response = await admin.PostAsJsonAsync("/api/v1/speed-tests", new { }, token);
         Assert.AreEqual(HttpStatusCode.MethodNotAllowed, response.StatusCode);
         using var invalidRange = await reader.GetAsync("/api/v1/speed-tests?from=2026-01-01T00:00:00Z&to=2026-11-01T00:00:00Z", token);
