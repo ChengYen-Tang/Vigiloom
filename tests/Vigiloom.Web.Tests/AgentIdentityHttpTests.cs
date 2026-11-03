@@ -529,7 +529,8 @@ public sealed class AgentIdentityHttpTests
             using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, queueEpoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             var settingsReport = new AgentConfigurationReport(configured.Effective, DateTimeOffset.UtcNow, null);
-            var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport);
+            var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport,
+                new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0));
             using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
             using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings-status", token))
@@ -541,6 +542,16 @@ public sealed class AgentIdentityHttpTests
             }
             using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Queue = queueReport.Queue! with { QuarantinedBatches = 6 } }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Quarantine = queueReport.Quarantine! with { Conflict = -1 } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = null }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                var status = await statusResponse.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
+                Assert.AreEqual(queueReport.Queue, status!.Queue!.Snapshot);
+                Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
+            }
             using (var wrongVersion = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Version = 2 }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
             using (var duplicate = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes("{\"version\":1,\"version\":1,\"queue\":null}"u8.ToArray()), token))
@@ -600,6 +611,7 @@ public sealed class AgentIdentityHttpTests
                 var status = await connected.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
                 Assert.AreEqual(AgentConnectionState.Online, status!.State);
                 Assert.AreEqual(queueReport.Queue, status.Queue!.Snapshot);
+                Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
                 Assert.IsNotNull(status.LastHeartbeatAt);
                 Assert.IsNotNull(status.LastCommittedBatchAt);
             }
@@ -613,6 +625,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual("5 / 10 批", fields["批次容量"]);
                 Assert.AreNotEqual("保留範圍內無資料", fields["目前 Agent 最後提交批次（UTC）"]);
                 Assert.Contains("不代表 Agent 已收到確認", page.Body!.TextContent);
+                Assert.Contains("批次內容衝突：2 批", page.Body.TextContent);
                 Assert.Contains("可能不是目前狀態", page.Body!.TextContent);
             }
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
@@ -638,12 +651,20 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("佇列已達容量", page.Body!.TextContent);
             }
-            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null }, token))
+            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null, Quarantine = null }, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, unreadable.StatusCode);
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 無法讀取佇列，資料狀態未知", page.Body!.TextContent);
+            }
+            using (var legacy = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 4, Quarantine = null }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, legacy.StatusCode);
+            using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("隔離原因摘要尚未提供", page.Body!.TextContent);
+                Assert.DoesNotContain("批次內容衝突：2 批", page.Body.TextContent);
             }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);

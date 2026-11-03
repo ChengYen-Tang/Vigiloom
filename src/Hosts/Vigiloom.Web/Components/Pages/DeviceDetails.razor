@@ -64,6 +64,23 @@
                     @if (queue.Snapshot is null) { <p class="device-alert" role="status">Agent 無法讀取佇列，資料狀態未知。</p> }
                     else if (queue.Snapshot.TotalBytes >= queue.Snapshot.CapacityBytes || queue.Snapshot.TotalBatches >= queue.Snapshot.CapacityBatches)
                     { <p class="device-alert" role="status">佇列已達容量，新資料可能需要等待空間。</p> }
+                    @if (queue.Snapshot is { QuarantinedBatches: > 0 })
+                    {
+                        @if (queue.Quarantine is not { } reasons) { <p>隔離原因摘要尚未提供。</p> }
+                        else
+                        {
+                            <p>隔離批次仍保留在 Agent，暫停自動傳送：</p>
+                            <ul>
+                                @if (reasons.InvalidLocalBatch > 0) { <li>本機批次格式無效：@reasons.InvalidLocalBatch 批</li> }
+                                @if (reasons.BadRequest > 0) { <li>平台拒絕無效內容：@reasons.BadRequest 批</li> }
+                                @if (reasons.Conflict > 0) { <li>批次內容衝突：@reasons.Conflict 批</li> }
+                                @if (reasons.PayloadTooLarge > 0) { <li>批次超過平台大小限制：@reasons.PayloadTooLarge 批</li> }
+                                @if (reasons.UnsupportedMediaType > 0) { <li>平台不支援批次格式：@reasons.UnsupportedMediaType 批</li> }
+                                @if (reasons.Expired > 0) { <li>平台拒絕過期批次：@reasons.Expired 批</li> }
+                                @if (reasons.Other > 0) { <li>其他或未知原因：@reasons.Other 批</li> }
+                            </ul>
+                        }
+                    }
                     <p>數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。</p>
                     @if (queue.ReportedAt > observedAt || observedAt - queue.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
                     { <p class="device-alert" role="status">佇列回報已過時或時間異常，請確認 Agent 傳送狀態。</p> }

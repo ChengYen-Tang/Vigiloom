@@ -61,17 +61,19 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     if (current?.AgentId != id || !string.Equals(current.Server, expected.AbsoluteUri, StringComparison.Ordinal))
                         throw new InvalidOperationException("Agent identity changed during heartbeat preparation.");
                     AgentQueueSnapshot? snapshot = null;
+                    AgentQuarantineBreakdown? quarantine = null;
                     try
                     {
-                        var status = new DurableBatchQueue(vault, id).ReadStatusLocked(lease);
+                        var (status, details) = new DurableBatchQueue(vault, id).ReadDiagnosticsLocked(lease);
                         snapshot = new(status.TotalBytes, status.TotalBatches, status.QuarantinedBatches,
                             DurableBatchQueue.DefaultCapacityBytes, DurableBatchQueue.MaximumQueuedBatches);
+                        quarantine = details;
                     }
                     catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                     {
                         // Unavailable differs from an empty queue.
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -79,6 +81,17 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 }
             }
             using var response = await PostHeartbeatAsync(expected, credential, report, token);
+            if (report?.Quarantine is not null && response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                var priorReport = report with { Quarantine = null };
+                using var prior = await PostHeartbeatAsync(expected, credential, priorReport, token);
+                if (priorReport.Configuration is not null && prior.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    using var oldest = await PostHeartbeatAsync(expected, credential, priorReport with { Configuration = null }, token);
+                    return await HandleResponseAsync(oldest, expected, credential, priorReport, token);
+                }
+                return await HandleResponseAsync(prior, expected, credential, priorReport, token);
+            }
             if (report?.Configuration is not null && response.StatusCode == HttpStatusCode.BadRequest)
             {
                 // A previous platform may understand the queue report but reject the new optional field.

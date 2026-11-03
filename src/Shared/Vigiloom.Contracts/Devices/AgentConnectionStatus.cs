@@ -12,4 +12,4 @@ public sealed record AgentConnectionStatus(Guid DeviceId, AgentConnectionState S
     int OfflineAfterSeconds, AgentQueueMonitoring? Queue = null, DateTimeOffset? LastCommittedBatchAt = null);
 
 /// <summary>Most recent queue report received by the platform; null snapshot means the Agent could not read the queue.</summary>
-public sealed record AgentQueueMonitoring(DateTimeOffset ReportedAt, AgentQueueSnapshot? Snapshot);
+public sealed record AgentQueueMonitoring(DateTimeOffset ReportedAt, AgentQueueSnapshot? Snapshot, AgentQuarantineBreakdown? Quarantine = null);

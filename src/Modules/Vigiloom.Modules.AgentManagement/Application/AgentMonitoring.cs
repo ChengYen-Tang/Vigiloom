@@ -20,6 +20,9 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
             .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
                 x.QueueQuarantinedBatches, x.QueueCapacityBytes, x.QueueCapacityBatches,
+                x.QuarantineInvalidLocal, x.QuarantineBadRequest, x.QuarantineConflict, x.QuarantineTooLarge,
+                x.QuarantineUnsupported, x.QuarantineExpired, x.QuarantineOther,
+                x.QueueReportEpoch, x.QueueReportSequence, x.QuarantineReportEpoch, x.QuarantineReportSequence,
                 LastCommittedBatchAt = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
                     .OrderByDescending(batch => batch.ReceivedAt).Select(batch => (DateTimeOffset?)batch.ReceivedAt).FirstOrDefault() }).SingleOrDefaultAsync(token);
         if (agent is null) return new(deviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
@@ -30,11 +33,16 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         var state = basis > now ? AgentConnectionState.ClockUncertain
             : now - basis >= TimeSpan.FromSeconds(offlineAfter) ? AgentConnectionState.Offline
             : last is null ? AgentConnectionState.AwaitingFirstHeartbeat : AgentConnectionState.Online;
-        AgentQueueMonitoring? queue = agent.QueueReportedAt is { } reportedAt
-            ? new(reportedAt, agent.QueueTotalBytes is { } bytes && agent.QueueTotalBatches is { } batches &&
+        AgentQueueSnapshot? snapshot = agent.QueueTotalBytes is { } bytes && agent.QueueTotalBatches is { } batches &&
                 agent.QueueQuarantinedBatches is { } quarantined && agent.QueueCapacityBytes is { } capacityBytes &&
-                agent.QueueCapacityBatches is { } capacityBatches ? new AgentQueueSnapshot(bytes, batches, quarantined, capacityBytes, capacityBatches) : null)
-            : null;
+                agent.QueueCapacityBatches is { } capacityBatches ? new AgentQueueSnapshot(bytes, batches, quarantined, capacityBytes, capacityBatches) : null;
+        AgentQuarantineBreakdown? details = agent.QuarantineInvalidLocal is { } invalid && agent.QuarantineBadRequest is { } bad &&
+            agent.QuarantineConflict is { } conflict && agent.QuarantineTooLarge is { } tooLarge && agent.QuarantineUnsupported is { } unsupported &&
+            agent.QuarantineExpired is { } expired && agent.QuarantineOther is { } other ? new(invalid, bad, conflict, tooLarge, unsupported, expired, other) : null;
+        if (snapshot is null || agent.QueueReportEpoch is null || agent.QueueReportSequence is null ||
+            agent.QuarantineReportEpoch != agent.QueueReportEpoch || agent.QuarantineReportSequence != agent.QueueReportSequence ||
+            details?.IsValid(snapshot.QuarantinedBatches) != true) details = null;
+        AgentQueueMonitoring? queue = agent.QueueReportedAt is { } reportedAt ? new(reportedAt, snapshot, details) : null;
         return new(deviceId, state, last, offlineAfter, queue, agent.LastCommittedBatchAt);
     }
 }

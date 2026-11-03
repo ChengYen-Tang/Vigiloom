@@ -73,6 +73,33 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<byte[]>("PendingVerifier")
                         .HasColumnType("binary(32)");
 
+                    b.Property<long?>("QuarantineBadRequest")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineConflict")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineExpired")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineInvalidLocal")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineOther")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("QuarantineReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QuarantineReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineTooLarge")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineUnsupported")
+                        .HasColumnType("bigint");
+
                     b.Property<int?>("QueueCapacityBatches")
                         .HasColumnType("int");
 

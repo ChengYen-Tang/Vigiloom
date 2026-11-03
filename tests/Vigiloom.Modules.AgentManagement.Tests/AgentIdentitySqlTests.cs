@@ -454,20 +454,39 @@ public sealed class AgentIdentitySqlTests
         var epoch = Guid.CreateVersion7();
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new AgentQueueSessionRequest(null, epoch), token));
         var queue = new AgentQueueSnapshot(1024, 3, 1, 4096, 10);
-        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 2, queue), token));
+        var reasons = new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 0, 0);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 2, queue, Quarantine: reasons), token));
         var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
         Assert.AreEqual(receivedAt, queueStatus!.ReportedAt);
         Assert.AreEqual(queue, queueStatus.Snapshot);
+        Assert.AreEqual(reasons, queueStatus.Quarantine);
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportSequence = {3L} WHERE Id = {registration.AgentId!.Value}", token);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue!.Quarantine, "A legacy server can advance the queue without clearing new columns.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 4, queue, Quarantine: reasons), token));
+        var legacyEpoch = Guid.CreateVersion7();
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportEpoch = {legacyEpoch} WHERE Id = {registration.AgentId!.Value}", token);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue!.Quarantine, "A legacy session replacement must not expose the previous session's details.");
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportEpoch = {epoch} WHERE Id = {registration.AgentId!.Value}", token);
         clock.Now = receivedAt.AddSeconds(1);
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 1, null), token));
         Assert.AreEqual(queue, (await monitoring.GetAsync(device.Id, token))!.Queue!.Snapshot, "A late older sequence must not replace newer queue status.");
+        Assert.AreEqual(reasons, (await monitoring.GetAsync(device.Id, token))!.Queue!.Quarantine);
         clock.Now = receivedAt.AddSeconds(-1);
-        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 3, null), token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 5, queue), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue!.Quarantine, "An old Agent's newer report must not reuse previous details.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new AgentHeartbeatReport(1, epoch, 6, null), token));
         queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
         Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
         Assert.IsNull(queueStatus.Snapshot, "Unavailable must differ from an empty queue.");
         await Assert.ThrowsAsync<ArgumentException>(() => identity.RecordHeartbeatAsync(credential,
-            new AgentHeartbeatReport(1, epoch, 4, queue with { QuarantinedBatches = 4 }), token));
+            new AgentHeartbeatReport(1, epoch, 7, queue with { QuarantinedBatches = 4 }), token));
+        await Assert.ThrowsAsync<ArgumentException>(() => identity.RecordHeartbeatAsync(credential,
+            new AgentHeartbeatReport(1, epoch, 7, queue, Quarantine: reasons with { Conflict = 2 }), token));
+        await Assert.ThrowsAsync<ArgumentException>(() => identity.RecordHeartbeatAsync(credential,
+            new AgentHeartbeatReport(1, epoch, 7, null, Quarantine: reasons), token));
         var replacementEpoch = Guid.CreateVersion7();
         var replacement = new AgentQueueSessionRequest(epoch, replacementEpoch);
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, replacement, token));
