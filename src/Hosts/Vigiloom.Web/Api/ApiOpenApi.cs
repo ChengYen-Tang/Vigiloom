@@ -84,6 +84,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             }
             else if (path.Equals("/api/v1/operations/audit", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/ping", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/agent-replay", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/operations/audit-feed/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/platform-status", StringComparison.OrdinalIgnoreCase))
             {

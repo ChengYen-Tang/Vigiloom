@@ -58,6 +58,13 @@
                 {
                     <dl class="device-details"><div><dt>目前 Agent 最後提交批次（UTC）</dt><dd>@(agentStatus?.LastCommittedBatchAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "保留範圍內無資料")</dd></div></dl>
                     <p>顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。</p>
+                    @if (agentStatus?.LastReplayIssue is { } replayIssue)
+                    {
+                        <div class="device-alert" role="status">
+                            <p>最近記錄的時間拒收：@(replayIssue.Reason switch { AgentReplayIssue.ClockUncertain => "平台時間異常，請確認平台時鐘", AgentReplayIssue.TimestampAhead => "批次入列時間超前，請核對 Agent 與平台時鐘", AgentReplayIssue.Expired => "平台拒收超過補送期限的批次", _ => "未知原因" })。</p>
+                            <p>記錄時間（UTC）：@replayIssue.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")。這是歷史紀錄，不代表問題目前仍持續。</p>
+                        </div>
+                    }
                     @if (agentStatus?.LastBatchTime is { } batchTime)
                     {
                         @if (batchTime.EnqueuedAheadOfReceipt)

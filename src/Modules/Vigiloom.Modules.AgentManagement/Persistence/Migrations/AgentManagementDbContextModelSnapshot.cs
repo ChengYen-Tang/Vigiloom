@@ -67,6 +67,12 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int?>("LastReplayIssue")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LastReplayIssueAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("PendingUntil")
                         .HasColumnType("datetimeoffset");
 
@@ -183,6 +189,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                             t.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
 
                             t.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
                         });
                 });
 
@@ -325,6 +333,63 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.ToTable("QueueCapacitySettings", "agent", t =>
                         {
                             t.HasCheckConstraint("CK_QueueCapacitySettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EnforcedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("FreshInstallation")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("GraceUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Phase")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Scope")
+                        .IsUnique();
+
+                    b.ToTable("ReplayPolicies", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
                         });
                 });
 

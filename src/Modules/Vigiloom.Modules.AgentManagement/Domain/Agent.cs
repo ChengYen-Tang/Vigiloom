@@ -1,5 +1,6 @@
 using Vigiloom.BuildingBlocks.Identifiers;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Devices;
 
 namespace Vigiloom.Modules.AgentManagement.Domain;
 
@@ -27,6 +28,8 @@ public sealed class Agent
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
     public DateTimeOffset? ReplayClockFloor { get; private set; }
+    public AgentReplayIssue? LastReplayIssue { get; private set; }
+    public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
     public DateTimeOffset? QueueReportedAt { get; private set; }
     public Guid? QueueReportEpoch { get; private set; }
@@ -67,6 +70,13 @@ public sealed class Agent
         var utc = now.ToUniversalTime();
         if (ReplayClockFloor is null || utc > ReplayClockFloor) ReplayClockFloor = utc;
     }
+    public void RecordReplayIssue(AgentReplayIssue issue, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(issue)) throw new ArgumentOutOfRangeException(nameof(issue));
+        LastReplayIssue = issue;
+        LastReplayIssueAt = now.ToUniversalTime();
+    }
+    public void ClearReplayIssue() { LastReplayIssue = null; LastReplayIssueAt = null; }
     public void RecordHeartbeat(DateTimeOffset now)
     {
         var utc = now.ToUniversalTime();

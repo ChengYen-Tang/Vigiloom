@@ -165,6 +165,12 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsFalse(auditSecurity[0].TryGetProperty("ApiBearer", out _));
         Assert.IsFalse(auditSecurity[0].TryGetProperty("AgentBearer", out _));
         Assert.Contains("Administrator", audit.GetProperty("description").GetString()!);
+        var replayAudit = paths.GetProperty("/api/v1/operations/audit/agent-replay").GetProperty("get");
+        Assert.IsTrue(replayAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.Contains("Administrator", replayAudit.GetProperty("description").GetString()!);
+        var replayMutation = paths.GetProperty("/api/v1/agent-management/replay-policy").GetProperty("put").GetProperty("security")[0];
+        Assert.IsTrue(replayMutation.TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(replayMutation.TryGetProperty("Antiforgery", out _));
         var feed = paths.GetProperty("/api/v1/operations/audit-feed/{source}").GetProperty("get");
         var feedSecurity = feed.GetProperty("security");
         Assert.AreEqual(1, feedSecurity.GetArrayLength());
