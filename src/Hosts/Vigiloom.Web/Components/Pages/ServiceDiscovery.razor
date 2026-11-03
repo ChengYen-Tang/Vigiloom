@@ -22,6 +22,7 @@
     }
     <section class="device-panel"><h2>服務候選清單</h2>
         <p>請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。</p>
+        <EditForm Model="ConfirmApproval" FormName="service-approve" method="post" OnValidSubmit="ApproveAsync">
         @if (loadError) { <p role="alert">無法讀取清單，請重新整理後再試。</p> }
         else if (candidates.Count == 0) { <p>此頁沒有待加入的服務。</p> }
         else
@@ -34,14 +35,14 @@
                 <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>服務識別：@candidate.ServiceKey</small></td><td class="environment">@candidate.Environment</td>
                 <td>@candidate.SourceName<details><summary>來源識別碼</summary><small>@candidate.SourceId</small></details></td><td class="timestamp">@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
                     <details><summary>加入服務</summary>
-                    <EditForm Model="ConfirmApproval" FormName="@($"service-approve-{candidate.Id:N}")" method="post" OnValidSubmit="ApproveAsync">
-                        <label><InputCheckbox @bind-Value="ConfirmApproval.Confirm" /> 我已確認來源及環境，並了解服務預設為私人</label>
+                        <label><input type="checkbox" name="@($"approve-{candidate.Id:N}")" value="true" /> 我已確認來源及環境，並了解服務預設為私人</label>
                         <button type="submit" name="ConfirmApproval.Id" value="@candidate.Id">加入服務</button>
-                    </EditForm></details>
+                    </details>
                 </td></tr>
             }
             </tbody></table></div>
         }
+        </EditForm>
         <nav aria-label="候選清單分頁"><span>第 @candidatePage 頁</span>
             @if (candidatePage > 1) { <a href="@PageUrl(candidatePage - 1, sourcePage)">上一頁</a> }
             @if (candidates.Count == 50 && candidatePage < 200) { <a href="@PageUrl(candidatePage + 1, sourcePage)">下一頁</a> }
@@ -53,6 +54,7 @@
             <label for="source-name">來源名稱</label><InputText id="source-name" @bind-Value="CreateSource.Name" maxlength="128" required />
             <button type="submit">建立來源</button>
         </EditForm>
+        <EditForm Model="ConfirmRevocation" FormName="source-revoke" method="post" OnValidSubmit="RevokeAsync">
         @if (loadError) { <p role="alert">無法讀取來源，請重新整理後再試。</p> }
         else if (sources.Count == 0) { <p>此頁沒有來源。</p> }
         else
@@ -65,15 +67,16 @@
                 <tr @key="source.Id"><td><strong>@source.Name</strong><details><summary>來源識別碼</summary><small>@source.Id</small></details></td><td>@(source.RevokedAt is null ? "可使用" : "已撤銷")</td><td class="timestamp">@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
                     @if (source.RevokedAt is null)
                     {
-                        <details><summary>撤銷來源</summary><EditForm Model="ConfirmRevocation" FormName="@($"source-revoke-{source.Id:N}")" method="post" OnValidSubmit="RevokeAsync">
-                            <label><InputCheckbox @bind-Value="ConfirmRevocation.Confirm" /> 我了解撤銷會立即停止該來源授權</label>
+                        <details><summary>撤銷來源</summary>
+                            <label><input type="checkbox" name="@($"revoke-{source.Id:N}")" value="true" /> 我了解撤銷會立即停止該來源授權</label>
                             <button type="submit" name="ConfirmRevocation.Id" value="@source.Id">撤銷來源</button>
-                        </EditForm></details>
+                        </details>
                     }
                 </td></tr>
             }
             </tbody></table></div>
         }
+        </EditForm>
         <nav aria-label="來源清單分頁"><span>第 @sourcePage 頁</span>
             @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">上一頁</a> }
             @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(candidatePage, sourcePage + 1)">下一頁</a> }
@@ -122,13 +125,13 @@
     private async Task ApproveAsync()
     {
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
-        if (!ConfirmApproval.Confirm || !Guid.TryParse(form["ConfirmApproval.Id"], out var id) || Actor() is not { } actor) { error = "請確認服務來源及環境。"; return; }
+        if (!Guid.TryParse(form["ConfirmApproval.Id"], out var id) || form[$"approve-{id:N}"] != "true" || Actor() is not { } actor) { error = "請確認服務來源及環境。"; return; }
         try
         {
             var result = await Approval.ApproveAsync(id, actor, HttpContext.RequestAborted);
             message = result.Status is ApprovalStatus.Approved or ApprovalStatus.AlreadyApproved ? "服務已加入，預設為私人；正式遙測接收尚未完成。" : null;
             if (message is null) error = "服務已過期或無法加入，請重新整理後確認。";
-            ConfirmApproval.Confirm = false; await LoadAsync();
+            await LoadAsync();
         }
         catch (Exception ex) { Logger.LogWarning("Cannot approve service: {ExceptionType}", ex.GetType().Name); error = "無法確認加入結果，請重新整理後檢查。"; }
     }
@@ -136,8 +139,8 @@
     private async Task RevokeAsync()
     {
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
-        if (!ConfirmRevocation.Confirm || !Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || Actor() is not { } actor) { error = "請確認撤銷來源的影響。"; return; }
-        try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = "來源已撤銷。"; else error = "找不到來源。"; ConfirmRevocation.Confirm = false; await LoadAsync(); }
+        if (!Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || form[$"revoke-{id:N}"] != "true" || Actor() is not { } actor) { error = "請確認撤銷來源的影響。"; return; }
+        try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = "來源已撤銷。"; else error = "找不到來源。"; await LoadAsync(); }
         catch (Exception ex) { Logger.LogWarning("Cannot revoke source: {ExceptionType}", ex.GetType().Name); error = "無法確認撤銷結果，請重新整理後檢查。"; }
     }
     private sealed class SourceForm { public string Name { get; set; } = ""; }

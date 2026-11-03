@@ -58,19 +58,40 @@ public sealed class AgentSettingsUiHttpTests
             Assert.Contains(other.SourceId.ToString("D"), text);
             Assert.DoesNotContain(secret, text);
             var candidate = (await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token)).Single(x => x.SourceId == sourceId);
-            var approve = await FieldsAsync(candidates, token, $"service-approve-{candidate.Id:N}");
-            approve["ConfirmApproval.Confirm"] = "true";
+            var otherCandidate = (await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token)).Single(x => x.SourceId == other.SourceId);
+            var approve = await FieldsAsync(candidates, token, "service-approve");
+            foreach (var key in approve.Keys.Where(x => x.StartsWith("approve-", StringComparison.Ordinal)).ToArray()) approve.Remove(key);
+            approve[$"approve-{candidate.Id:N}"] = "true";
+            approve["ConfirmApproval.Id"] = otherCandidate.Id.ToString("D");
+            using (var mismatched = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token))
+                Assert.Contains("請確認服務來源及環境", await BodyTextAsync(mismatched, token));
+            Assert.HasCount(2, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token));
+            approve["ConfirmApproval.Id"] = candidate.Id.ToString("D");
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Candidates] SET [LastSeen] = DATEADD(minute, -4, SYSUTCDATETIME()) WHERE [Id] = {candidate.Id}", token);
+            using (var expired = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token))
+                Assert.Contains("服務已過期或無法加入", await BodyTextAsync(expired, token));
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                Assert.AreEqual(0, await db.Services.CountAsync(token));
+            Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(sourceId, "orders", "prod", "Orders", token));
+            using var refreshed = await admin.GetAsync(url, token);
+            approve = await FieldsAsync(refreshed, token, "service-approve");
+            approve[$"approve-{candidate.Id:N}"] = "true";
             approve["ConfirmApproval.Id"] = candidate.Id.ToString("D");
             using var approved = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token);
             Assert.Contains("服務已加入", await BodyTextAsync(approved, token));
+            using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token))
+                Assert.Contains("服務已加入", await BodyTextAsync(repeated, token));
             var remaining = await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token);
             Assert.AreEqual(other.SourceId, remaining.Single().SourceId);
             using var sourcePage = await admin.GetAsync(url, token);
-            var revoke = await FieldsAsync(sourcePage, token, $"source-revoke-{sourceId:N}");
-            revoke["ConfirmRevocation.Confirm"] = "true";
+            var revoke = await FieldsAsync(sourcePage, token, "source-revoke");
+            revoke[$"revoke-{sourceId:N}"] = "true";
             revoke["ConfirmRevocation.Id"] = sourceId.ToString("D");
             using var revoked = await admin.PostAsync(url, new FormUrlEncodedContent(revoke), token);
             Assert.Contains("來源已撤銷", await BodyTextAsync(revoked, token));
+            using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(revoke), token))
+                Assert.Contains("來源已撤銷", await BodyTextAsync(repeated, token));
             Assert.IsNull(await credential.AuthenticateAsync(secret, token));
         }, TestContext.CancellationToken);
 
