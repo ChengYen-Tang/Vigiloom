@@ -9,6 +9,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 
 if (args.Length > 0)
 {
@@ -41,12 +42,14 @@ services.AddModuleSqlServer<ResourcesDbContext>(connectionString, "resources");
 services.AddModuleSqlServer<AgentManagementDbContext>(connectionString, "agent");
 services.AddModuleSqlServer<NetworkDbContext>(connectionString, "network");
 services.AddModuleSqlServer<SchedulingDbContext>(connectionString, "scheduling");
+services.AddModuleSqlServer<OperationsDbContext>(connectionString, "operations");
 using var provider = services.BuildServiceProvider();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<NetworkDbContext>>());
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>());
+await ApplyAsync(provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>());
 await RoleInitializer.InitializeAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
 await HangfireSchemaInstaller.InstallAsync(connectionString);
 Console.WriteLine("Module and Hangfire migrations and built-in role initialization completed.");

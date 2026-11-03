@@ -70,7 +70,17 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
-        Assert.AreEqual(4, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.indexes i
+            JOIN sys.tables t ON t.object_id = i.object_id
+            JOIN sys.schemas s ON s.schema_id = t.schema_id
+            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE s.name = 'resources' AND t.name = 'DeviceAudits' AND i.name = 'IX_DeviceAudits_OccurredAt_RowId'
+              AND ((ic.key_ordinal = 1 AND c.name = 'OccurredAt') OR (ic.key_ordinal = 2 AND c.name = 'RowId'))
+            """;
+        Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
         Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
     });
@@ -219,6 +229,8 @@ public sealed class ModuleMigrationTests
         }
         await using var db = Resources(connectionString);
         Assert.IsFalse((await db.Database.GetPendingMigrationsAsync(token)).Any());
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'operations.AuditEvents', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID(N'operations.AuditEvents') AND name = N'IX_AuditEvents_OccurredAt_RowId'").SingleAsync(token));
         await using var identity = new IdentityAccessDbContext(new DbContextOptionsBuilder<IdentityAccessDbContext>()
             .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "identity")).Options);
         Assert.AreEqual(2, await identity.Roles.CountAsync(token));

@@ -1,14 +1,16 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
+public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts, IOperationAuditWriter<OperationAudit> audit)
 {
-    public static bool Valid(SpeedSettingsInput input) => input.IntervalHours is >= 1 and <= 168 && input.MaxMiB is >= 2 and <= 2048 &&
-        input.TimeoutSeconds is >= SpeedSettingsLimits.MinTimeoutSeconds and <= SpeedSettingsLimits.MaxTimeoutSeconds;
+    public static bool Valid(SpeedSettingsInput input) => SpeedSettingsLimits.IsValid(input.IntervalHours, input.MaxMiB, input.TimeoutSeconds);
     public async Task<SpeedSettingsSnapshot> GetAsync(CancellationToken token)
     {
         await SpeedDatabase.EnsureAsync(contexts, token);
@@ -25,6 +27,8 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
         var setting = await SpeedDatabase.LockAsync(db, token);
         if (!string.Equals(Convert.ToBase64String(setting.Version), input.Version, StringComparison.Ordinal)) return null;
         var now = await SpeedDatabase.NowAsync(db, token);
+        var previous = Values(setting);
+        var previousVersion = Convert.ToBase64String(setting.Version);
         var changedSchedule = setting.Automatic != input.Automatic || setting.IntervalHours != input.IntervalHours;
         setting.Automatic = input.Automatic;
         setting.IntervalHours = input.IntervalHours; setting.MaxMiB = input.MaxMiB; setting.TimeoutSeconds = input.TimeoutSeconds;
@@ -41,10 +45,15 @@ public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts)
         setting.UpdatedAt = now; setting.UpdatedBy = actor;
         db.Entry(setting).Property(x => x.UpdatedAt).IsModified = true;
         await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actor, setting.Id, now, new SpeedSettingsChanged(previous, Values(setting), previousVersion,
+                Convert.ToBase64String(setting.Version))), token);
         var snapshot = await SnapshotAsync(db, setting, now, token);
         await transaction.CommitAsync(token);
         return snapshot;
     }
+    private static SpeedSettingsAuditValues Values(SpeedSetting setting) =>
+        new(setting.Automatic, setting.IntervalHours, setting.MaxMiB, setting.TimeoutSeconds);
     private static async Task<SpeedSettingsSnapshot> SnapshotAsync(NetworkDbContext db, SpeedSetting setting, DateTimeOffset now, CancellationToken token)
     {
         var reservations = db.SpeedRuns.Where(x => (x.StartedAt ?? x.RequestedAt) > now.AddHours(-24));

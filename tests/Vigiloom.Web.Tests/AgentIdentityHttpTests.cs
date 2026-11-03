@@ -151,6 +151,9 @@ public sealed class AgentIdentityHttpTests
             first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[0]);
             second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[1]);
             using (var heartbeat = await first.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var denied = await first.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            foreach (var source in new[] { "accounts", "api-credentials", "devices", "agent-identity", "agent-settings", "scheduling" })
+                using (var denied = await first.GetAsync($"/api/v1/operations/audit-feed/{source}?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             var now = DateTimeOffset.UtcNow;
             var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Test OS", "X64", ".NET 10");
             using (var batch = await first.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), now, [message]))), token))
@@ -375,6 +378,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
             }
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
+            using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
             using (var apiCannotReadMachineSettings = await api.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineSettings.StatusCode);
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
@@ -640,6 +645,8 @@ public sealed class AgentIdentityHttpTests
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);
             using (var apiAccess = await agent.GetAsync("/api/v1/access", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiAccess.StatusCode);
+            using (var agentCannotAudit = await agent.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, agentCannotAudit.StatusCode);
             using (var management = await agent.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, management.StatusCode);
             var nextSecret = RandomNumberGenerator.GetBytes(32);

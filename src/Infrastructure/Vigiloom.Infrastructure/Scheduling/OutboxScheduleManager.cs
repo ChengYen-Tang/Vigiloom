@@ -32,6 +32,19 @@ public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextF
         return new ScheduleSnapshot(minutes, setting is null ? "" : Convert.ToBase64String(setting.Version), applied);
     }
 
+    public async Task<ScheduleSnapshot> GetSnapshotAsync(CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        db.Database.SetCommandTimeout(TimeSpan.FromSeconds(5));
+        var setting = await db.ScheduleSettings.AsNoTracking().SingleOrDefaultAsync(record => record.Name == ScheduleId, token);
+        var minutes = setting?.IntervalMinutes ?? 1;
+        token.ThrowIfCancellationRequested();
+        using var connection = services.GetRequiredService<SchedulingReadStorage>().Storage.GetConnection();
+        var data = connection.GetAllEntriesFromHash($"recurring-job:{ScheduleId}");
+        var applied = setting is not null && data is not null && data.TryGetValue("Cron", out var cron) && cron == CronFor(minutes);
+        return new ScheduleSnapshot(minutes, setting is null ? "" : Convert.ToBase64String(setting.Version), applied);
+    }
+
     public void EnsureDefault()
     {
         using var connection = services.GetRequiredService<JobStorage>().GetConnection();

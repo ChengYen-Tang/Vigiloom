@@ -1,15 +1,18 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application;
 
-public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, TimeProvider clock)
+public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit> audit)
 {
-    public static bool Valid(PingSettingsInput input) => input.IntervalSeconds is >= 10 and <= 3600 && input.TimeoutSeconds is >= 1 and <= 10 &&
-        input.TimeoutSeconds < input.IntervalSeconds && input.FailureThreshold is >= 1 and <= 10 && input.SuccessThreshold is >= 1 and <= 10 && input.MaxConcurrency is >= 1 and <= 256;
+    public static bool Valid(PingSettingsInput input) => PingSettingsLimits.IsValid(input.IntervalSeconds, input.TimeoutSeconds,
+        input.FailureThreshold, input.SuccessThreshold, input.MaxConcurrency);
 
     public async Task<PingSettingsSnapshot> GetAsync(CancellationToken token)
     {
@@ -49,6 +52,8 @@ public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, T
             if (version.Length != 8) return null;
             db.Entry(setting).Property(x => x.Version).OriginalValue = version;
         }
+        var previous = Values(setting);
+        var previousVersion = Convert.ToBase64String(setting.Version);
         setting.IntervalSeconds = input.IntervalSeconds; setting.TimeoutSeconds = input.TimeoutSeconds;
         setting.FailureThreshold = input.FailureThreshold; setting.SuccessThreshold = input.SuccessThreshold;
         setting.MaxConcurrency = input.MaxConcurrency; setting.UpdatedAt = clock.GetUtcNow(); setting.UpdatedBy = actor;
@@ -60,10 +65,16 @@ public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, T
         var latestDue = clock.GetUtcNow().AddSeconds(input.IntervalSeconds);
         await db.PingTargets.Where(x => x.Enabled && x.DueAt > latestDue)
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.DueAt, latestDue), token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actor, setting.Id, setting.UpdatedAt, new PingSettingsChanged(previous, Values(setting), previousVersion,
+                Convert.ToBase64String(setting.Version))), token);
         await transaction.CommitAsync(token);
         return Map(setting);
     }
 
     public static PingSettingsSnapshot Map(PingSetting setting) => new(setting.IntervalSeconds, setting.TimeoutSeconds, setting.FailureThreshold,
         setting.SuccessThreshold, setting.MaxConcurrency, Convert.ToBase64String(setting.Version));
+
+    private static PingSettingsAuditValues Values(PingSetting setting) => new(setting.IntervalSeconds, setting.TimeoutSeconds,
+        setting.FailureThreshold, setting.SuccessThreshold, setting.MaxConcurrency);
 }

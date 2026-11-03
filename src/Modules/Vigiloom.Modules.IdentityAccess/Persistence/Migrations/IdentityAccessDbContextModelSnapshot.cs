@@ -245,6 +245,8 @@ namespace Vigiloom.Modules.IdentityAccess.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("OccurredAt", "RowId");
+
                     b.HasIndex("SubjectId", "OccurredAt", "RowId");
 
                     b.ToTable("AccountAuditEvents", "identity");
@@ -334,6 +336,8 @@ namespace Vigiloom.Modules.IdentityAccess.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("OccurredAt", "RowId");
 
                     b.HasIndex("CredentialId", "OccurredAt", "RowId");
 

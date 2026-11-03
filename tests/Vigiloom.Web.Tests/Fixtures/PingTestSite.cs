@@ -10,6 +10,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Web.Tests.Fixtures;
 
@@ -22,6 +23,7 @@ internal static class PingTestSite
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         var network = factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
         await using (var db = await network.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await RoleInitializer.InitializeAsync(identity, token);
         await using (var scope = factory.Services.CreateAsyncScope())
         {

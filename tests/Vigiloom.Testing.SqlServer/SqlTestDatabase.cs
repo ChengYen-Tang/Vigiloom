@@ -289,6 +289,18 @@ public sealed class SqlTestDatabase : IAsyncDisposable
     private static async Task DropOwnedAsync(TestDatabaseServer server, DatabaseManifest manifest, string manifestPath, CancellationToken cancellationToken)
     {
         ValidateManifest(server, manifest, manifestPath);
+        // Only clear this test database's pool; administrative connections remain unpooled.
+        using (var pooledConnection = new SqlConnection(server.ForDatabase(manifest.DatabaseName)))
+        {
+            SqlConnection.ClearPool(pooledConnection);
+        }
+        // SchedulingReadStorage uses the same owned database with a shorter connect timeout,
+        // which SqlClient treats as a separate pool. Clear only that exact owned pool too.
+        var managementConnection = new SqlConnectionStringBuilder(server.ForDatabase(manifest.DatabaseName)) { ConnectTimeout = 5 };
+        using (var pooledManagementConnection = new SqlConnection(managementConnection.ConnectionString))
+        {
+            SqlConnection.ClearPool(pooledManagementConnection);
+        }
         await using var connection = new SqlConnection(server.ConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
