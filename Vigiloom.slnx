@@ -35,6 +35,7 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Vigiloom.SpeedLab/Vigiloom.SpeedLab.csproj" />
+    <Project Path="tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Vigiloom.Agent.Core.Tests/Vigiloom.Agent.Core.Tests.csproj" />
