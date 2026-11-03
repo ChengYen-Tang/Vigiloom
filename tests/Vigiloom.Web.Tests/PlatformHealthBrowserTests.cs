@@ -55,7 +55,7 @@ public sealed class PlatformHealthBrowserTests(TestContext testContext)
         await page.GetByRole(AriaRole.Heading, new() { Name = "平台健康", Exact = true }).WaitForAsync();
         Assert.Contains("保留範圍內沒有成功批次紀錄", await page.Locator("main").InnerTextAsync());
         Assert.Contains("掃描逾時", await page.Locator("main").InnerTextAsync());
-        Assert.IsFalse(await page.GetByText("← 左右滑動查看完整表格 →").IsVisibleAsync());
+        await Assertions.Expect(page.GetByText("← 左右滑動查看完整表格 →")).ToBeHiddenAsync();
         var evidence = Environment.GetEnvironmentVariable("VIGILOOM_HEALTH_EVIDENCE_DIR")
             ?? Path.Combine(testContext.TestRunDirectory!, "platform-health-ui");
         Directory.CreateDirectory(evidence);
@@ -63,7 +63,7 @@ public sealed class PlatformHealthBrowserTests(TestContext testContext)
         testContext.AddResultFile(Path.Combine(evidence, "desktop.png"));
         await page.SetViewportSizeAsync(390, 844);
         await page.ReloadAsync();
-        Assert.IsTrue(await page.GetByText("← 左右滑動查看完整表格 →").IsVisibleAsync());
+        await Assertions.Expect(page.GetByText("← 左右滑動查看完整表格 →")).ToBeVisibleAsync();
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         var table = page.GetByRole(AriaRole.Region, new() { Name = "Worker 掃描摘要，可左右捲動" });
         await table.FocusAsync();
