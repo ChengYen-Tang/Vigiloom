@@ -2,6 +2,8 @@
 
 `SqlTestDatabase` provisions one uniquely named database per test on the shared Windows `(localdb)\MSSQLLocalDB` instance. Tests select the server explicitly with `TestDatabaseServer.FromEnvironment()`; use `ExecuteAsync` to preserve both test and cleanup errors. The helper does not read Web or Worker configuration. Administrative connections are not pooled; workload connections use a separate pool per test database, which is cleared during owned database cleanup. Stop and dispose hosts, background work, and connections before cleanup. `CompleteRun()` must be called from MSTest assembly cleanup.
 
+The bounded scheduling management reader uses a five-second connect timeout and therefore a second SqlClient pool. Cleanup clears that exact pool for the owned test database as well as its normal pool; it never clears unrelated pools.
+
 An isolated SQL Server can be supplied explicitly with `VIGILOOM_TEST_SQL_CONNECTION` (initial catalog must be `master`) and `VIGILOOM_TEST_SQL_ALLOW_SOURCE` (the exact data source). Provision a dedicated test server and account; do not point either setting at a development or production database. Neither setting is read from product configuration or written to the manifest. Missing LocalDB or an invalid test configuration fails the database tests.
 
 The database test category has been exercised on Windows LocalDB and on Linux with SQL Server 2022 in GitHub Actions; the Linux run executes all 15 tests rather than skipping platform-incompatible cases.

@@ -112,6 +112,8 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("OccurredAt", "RowId");
+
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("DeviceAudits", "resources");

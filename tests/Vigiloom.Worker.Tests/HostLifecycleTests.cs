@@ -14,6 +14,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -38,6 +39,78 @@ public sealed class HostLifecycleTests(TestContext testContext)
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = null });
         using var host = builder.Build();
         await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync(testContext.CancellationToken));
+    }
+
+    [TestMethod]
+    [TestCategory("Integration")]
+    [TestCategory("Database")]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Host_ScannerFailure_IsPersistedWithoutStoppingWorker() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        GlobalConfiguration.Configuration.UseNoOpLogProvider();
+        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
+        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+        // Omit the network schema: the real scanner must fail without terminating the host.
+        var builder = WorkerHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+        using var host = builder.Build();
+        Guid originalBoot = Guid.Empty;
+        Exception? firstFailure = null;
+        try
+        {
+            await host.StartAsync(token);
+            using var scope = host.Services.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<WorkerDiagnosticsStore>();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(45));
+            while (true)
+            {
+                var workers = await store.GetAsync(deadline.Token);
+                var failed = workers.SingleOrDefault(worker => worker.Observation.Ping.ConsecutiveFailures > 0 && worker.Observation.Speed.ConsecutiveFailures > 0);
+                if (failed is not null) { originalBoot = failed.BootId; break; }
+                await Task.Delay(250, deadline.Token);
+            }
+            Assert.IsFalse(host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
+        }
+        catch (Exception exception) { firstFailure = exception; throw; }
+        finally { await StopForCleanupAsync(host, firstFailure); }
+        await using (var db = new OperationsDbContext(operations))
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.WorkerDiagnosticSlots SET LeaseUntil = DATEADD(second, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE BootId = {originalBoot}", token);
+        var restartedBuilder = WorkerHost.CreateBuilder([]);
+        restartedBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+        using var restarted = restartedBuilder.Build();
+        Exception? restartFailure = null;
+        try
+        {
+            await restarted.StartAsync(token);
+            using var scope = restarted.Services.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<WorkerDiagnosticsStore>();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            while (true)
+            {
+                var snapshot = await store.GetSnapshotAsync(deadline.Token);
+                if (snapshot.Workers.Any(worker => worker.BootId != originalBoot && worker.LeaseUntil > snapshot.ObservedAt)) break;
+                await Task.Delay(250, deadline.Token);
+            }
+        }
+        catch (Exception exception) { restartFailure = exception; throw; }
+        finally { await StopForCleanupAsync(restarted, restartFailure); }
+    }, testContext.CancellationToken);
+
+    private static async Task StopForCleanupAsync(IHost host, Exception? original)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        try { await host.StopAsync(deadline.Token); }
+        catch (Exception cleanup) when (original is not null) { throw new AggregateException("Worker test and shutdown both failed.", original, cleanup); }
     }
 
     [TestMethod]
@@ -97,6 +170,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await using var db = new NetworkDbContext(network);
                 if (await db.PingSamples.AnyAsync(x => x.Succeeded && x.Target == "127.0.0.1", deadline.Token)) break;
                 await Task.Delay(100, deadline.Token);
+            }
+            using (var scope = second.Services.CreateScope())
+            {
+                var health = scope.ServiceProvider.GetRequiredService<SchedulingHealth>();
+                var heartbeats = await health.ReadAsync(deadline.Token);
+                Assert.IsTrue(heartbeats.Values.Any(heartbeat => heartbeat is { } value && value <= heartbeats.ObservedAt &&
+                    heartbeats.ObservedAt - value < TimeSpan.FromMinutes(1)));
             }
             await second.StopAsync(token);
         }

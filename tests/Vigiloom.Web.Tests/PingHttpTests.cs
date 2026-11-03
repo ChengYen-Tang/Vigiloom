@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -55,6 +56,27 @@ public sealed class PingHttpTests
             Assert.Contains("設定已儲存", await TextAsync(saved, token));
         using (var stale = await admin.PostAsync("/settings/ping", new FormUrlEncodedContent(fields), token))
             Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
+        var now = DateTimeOffset.UtcNow;
+        var auditUrl = $"/api/v1/operations/audit/ping?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        using (var denied = await anonymous.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var response = await admin.GetAsync(auditUrl, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            var audit = await response.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token);
+            Assert.IsNotNull(audit);
+            Assert.HasCount(1, audit.Items);
+            Assert.AreEqual(30, audit.Items[0].PingSettings!.Current.IntervalSeconds);
+        }
+        using (var response = await admin.GetAsync("/settings/audit?source=ping", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var auditText = await TextAsync(response, token);
+            Assert.Contains("Ping 設定", auditText);
+            Assert.Contains("並行上限", auditText);
+            Assert.Contains("已儲存", auditText);
+        }
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var settings = scope.ServiceProvider.GetRequiredService<PingSettings>();

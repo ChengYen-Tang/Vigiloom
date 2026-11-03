@@ -151,6 +151,9 @@ public sealed class AgentIdentityHttpTests
             first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[0]);
             second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[1]);
             using (var heartbeat = await first.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var denied = await first.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            foreach (var source in new[] { "accounts", "api-credentials", "devices", "agent-identity", "agent-settings", "scheduling" })
+                using (var denied = await first.GetAsync($"/api/v1/operations/audit-feed/{source}?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             var now = DateTimeOffset.UtcNow;
             var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Test OS", "X64", ".NET 10");
             using (var batch = await first.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), now, [message]))), token))

@@ -10,7 +10,11 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 
@@ -21,6 +25,55 @@ public sealed class PingSqlTests
 {
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    public Task PingSettingsAuditCommitsAndRollsBackWithSettings() => WithDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var actor = Guid.CreateVersion7();
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        var initial = await settings.GetAsync(token);
+        var input = new PingSettingsInput(20, 2, 2, 2, 8, initial.Version);
+        var saved = await settings.UpdateAsync(input, actor, token);
+        Assert.IsNotNull(saved);
+        await using var networkDb = network.CreateDbContext();
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(networkDb.Database.GetConnectionString()).Options;
+        var query = new OperationAuditQueryService(new Factory<OperationsDbContext>(() => new OperationsDbContext(options)));
+        var range = new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1));
+        var page = await query.QueryPingAsync(range, token);
+        Assert.HasCount(1, page.Items);
+        Assert.AreEqual(actor, page.Items[0].ActorId);
+        Assert.IsNotNull(page.Items[0].PingSettings);
+        Assert.AreEqual(initial.IntervalSeconds, page.Items[0].PingSettings!.Previous.IntervalSeconds);
+        Assert.AreEqual(20, page.Items[0].PingSettings!.Current.IntervalSeconds);
+        Assert.AreEqual(initial.Version, page.Items[0].PingSettings!.PreviousVersion);
+        Assert.AreEqual(saved.Version, page.Items[0].PingSettings!.CurrentVersion);
+        Assert.IsEmpty((await query.QueryAsync(range, token)).Items);
+        Assert.IsNull(await settings.UpdateAsync(input, actor, token));
+
+        await SeedAsync(resources, token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(saved, token);
+        var future = clock.Now.AddHours(1);
+        await networkDb.PingTargets.ExecuteUpdateAsync(update => update.SetProperty(x => x.DueAt, future), token);
+        var failing = new PingSettings(network, clock, new FailingAuditWriter());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.UpdateAsync(input with { IntervalSeconds = 30, Version = saved.Version }, actor, token));
+        var afterFailure = await settings.GetAsync(token);
+        Assert.AreEqual(saved, afterFailure);
+        Assert.HasCount(1, (await query.QueryPingAsync(range, token)).Items);
+        Assert.IsTrue(await networkDb.PingTargets.AllAsync(x => x.DueAt == future, token));
+
+        var concurrent = await Task.WhenAll(
+            settings.UpdateAsync(input with { IntervalSeconds = 40, Version = saved.Version }, actor, token),
+            settings.UpdateAsync(input with { IntervalSeconds = 50, Version = saved.Version }, actor, token));
+        Assert.AreEqual(1, concurrent.Count(x => x is not null));
+        Assert.HasCount(2, (await query.QueryPingAsync(range, token)).Items);
+
+        await networkDb.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.AuditEvents SET Details = {"{\"Current\":{}}"} WHERE Kind = 2", token);
+        var damaged = await query.QueryPingAsync(range, token);
+        Assert.HasCount(2, damaged.Items);
+        Assert.IsTrue(damaged.Items.All(x => x.PingSettings is null));
+    });
 
     [TestMethod]
     public Task PooledContext_ClosesConnectionsAfterPingClaimAndSpeedSettings() => WithDatabase(async (resources, network, token) =>
@@ -34,7 +87,7 @@ public sealed class PingSqlTests
         NetworkDbContext original;
         await using (var db = await pooled.CreateDbContextAsync(token)) original = db;
 
-        var settings = new PingSettings(pooled, TimeProvider.System);
+        var settings = new PingSettings(pooled, TimeProvider.System, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter());
         await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         var store = new PingStore(pooled, new DevicePingSource(resources), TimeProvider.System);
@@ -66,7 +119,7 @@ public sealed class PingSqlTests
         var (device, other) = await SeedAsync(resources, token);
         var source = new DevicePingSource(resources);
         var store = new PingStore(network, source, clock);
-        var settings = new PingSettings(network, clock);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter());
         await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         await store.ReconcileAsync(policy, token);
@@ -112,7 +165,7 @@ public sealed class PingSqlTests
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
-        var settings = new PingSettings(network, clock);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter());
         await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         await store.ReconcileAsync(policy, token); await DueAsync(network, token);
@@ -150,7 +203,7 @@ public sealed class PingSqlTests
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
-        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()); await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
         await store.ReconcileAsync(policy, token); await DueAsync(network, token);
@@ -180,7 +233,7 @@ public sealed class PingSqlTests
     {
         var clock = new TestClock();
         var (_, device) = await SeedAsync(resources, token);
-        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()); await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
         await store.ReconcileAsync(policy, token); await DueAsync(network, token);
@@ -215,7 +268,7 @@ public sealed class PingSqlTests
             current.Update(current.Name, "never-resolves.invalid", false, true, clock.Now);
             await db.SaveChangesAsync(token);
         }
-        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()); await settings.EnsureAsync(token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
         await store.ReconcileAsync(await settings.GetAsync(token), token); await DueAsync(network, token);
         var runner = new PingRunner(settings, store, new MixedProbe(), clock);
@@ -240,7 +293,7 @@ public sealed class PingSqlTests
             current.Update(current.Name, "0.0.0.0", false, true, clock.Now);
             await db.SaveChangesAsync(token);
         }
-        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()); await settings.EnsureAsync(token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
         await store.ReconcileAsync(await settings.GetAsync(token), token); await DueAsync(network, token);
         await new PingRunner(settings, store, new SystemPingProbe(), clock).RunOnceAsync(token);
@@ -257,7 +310,7 @@ public sealed class PingSqlTests
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
-        var settings = new PingSettings(network, clock); await settings.EnsureAsync(token);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter()); await settings.EnsureAsync(token);
         var policy = await settings.GetAsync(token);
         var store = new PingStore(network, new DevicePingSource(resources), clock);
         await store.ReconcileAsync(policy, token);
@@ -314,6 +367,9 @@ public sealed class PingSqlTests
             }
             await using (var db = resources.CreateDbContext()) await db.Database.MigrateAsync(token);
             await using (var db = network.CreateDbContext()) await db.Database.MigrateAsync(token);
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             await test(resources, network, token);
         }, TestContext.CancellationToken);
 
@@ -332,6 +388,11 @@ public sealed class PingSqlTests
         await db.Database.ExecuteSqlRawAsync("UPDATE network.PingTargets SET DueAt = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
     }
     private sealed class Factory<T>(Func<T> create) : IDbContextFactory<T> where T : DbContext { public T CreateDbContext() => create(); }
+    private sealed class FailingAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public Task AppendAsync(System.Data.Common.DbConnection connection, System.Data.Common.DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Simulated audit failure.");
+    }
     private sealed class TestClock : TimeProvider { public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class CountingProbe : IPingProbe
     {

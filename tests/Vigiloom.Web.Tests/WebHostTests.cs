@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
 namespace Vigiloom.Web.Tests;
@@ -124,6 +125,21 @@ public sealed class WebHostTests(TestContext testContext)
     }
 
     [TestMethod]
+    public async Task DatabaseHealth_WithoutConfiguredDatabase_IsUnhealthy()
+    {
+        using var factory = CreateFactory("Development");
+        using var client = CreateClient(factory);
+        var checks = factory.Services.GetRequiredService<HealthCheckService>();
+
+        var report = await checks.CheckHealthAsync(check => check.Tags.Contains("platform"), testContext.CancellationToken);
+
+        Assert.AreEqual(HealthStatus.Unhealthy, report.Status);
+        Assert.AreEqual(HealthStatus.Unhealthy, report.Entries["database"].Status);
+        using var live = await client.GetAsync("/health/live", testContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, live.StatusCode);
+    }
+
+    [TestMethod]
     public async Task OpenApi_InDevelopment_ReturnsDocument()
     {
         using var factory = CreateFactory("Development");
@@ -149,6 +165,18 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsFalse(auditSecurity[0].TryGetProperty("ApiBearer", out _));
         Assert.IsFalse(auditSecurity[0].TryGetProperty("AgentBearer", out _));
         Assert.Contains("Administrator", audit.GetProperty("description").GetString()!);
+        var feed = paths.GetProperty("/api/v1/operations/audit-feed/{source}").GetProperty("get");
+        var feedSecurity = feed.GetProperty("security");
+        Assert.AreEqual(1, feedSecurity.GetArrayLength());
+        Assert.IsTrue(feedSecurity[0].TryGetProperty("BrowserSession", out _));
+        Assert.Contains("Administrator", feed.GetProperty("description").GetString()!);
+        var platform = paths.GetProperty("/api/v1/operations/platform-status").GetProperty("get");
+        var platformSecurity = platform.GetProperty("security");
+        Assert.AreEqual(1, platformSecurity.GetArrayLength());
+        Assert.IsTrue(platformSecurity[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsFalse(platformSecurity[0].TryGetProperty("ApiBearer", out _));
+        Assert.IsFalse(platformSecurity[0].TryGetProperty("AgentBearer", out _));
+        Assert.Contains("Administrator", platform.GetProperty("description").GetString()!);
         var deviceRead = paths.GetProperty("/api/v1/devices").GetProperty("get");
         var deviceReadSecurity = deviceRead.GetProperty("security");
         Assert.IsTrue(deviceReadSecurity[0].TryGetProperty("BrowserSession", out _));

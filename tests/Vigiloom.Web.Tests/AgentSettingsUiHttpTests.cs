@@ -67,6 +67,14 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
                 Assert.Contains("設定已儲存", await BodyTextAsync(saved, token));
             }
+            using (var audit = await admin.GetAsync("/settings/audit?source=agent-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var text = await BodyTextAsync(audit, token);
+                Assert.Contains("變更 Agent 設定", text);
+                Assert.Contains("有效心跳：60 秒", text);
+                Assert.Contains("平台設定", text);
+            }
             using (var stale = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(platformFields), token))
                 Assert.Contains("設定已被其他操作變更", await BodyTextAsync(stale, token));
             var deviceUrl = $"/devices/{device.Id:D}/agent-settings";
