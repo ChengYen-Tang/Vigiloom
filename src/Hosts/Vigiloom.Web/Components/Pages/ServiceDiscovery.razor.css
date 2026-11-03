@@ -1,0 +1,13 @@
+.table-scroll { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; min-width: 900px; text-align: left; }
+th { background: #f0f5fb; color: #435778; font-weight: 600; }
+th, td { padding: 12px; border-bottom: 1px solid #e2e9f1; vertical-align: top; }
+td small { color: #536987; overflow-wrap: anywhere; }
+td form { min-width: 200px; }
+td form label { display: block; margin-bottom: 8px; }
+td details > summary { cursor: pointer; color: #075ee8; }
+td details[open] > summary { margin-bottom: 8px; }
+.environment, .timestamp { white-space: nowrap; }
+.scroll-hint { display: none; }
+nav[aria-label$="分頁"] { display: flex; gap: 1rem; padding-top: 1rem; }
+@media (max-width: 1000px) { .scroll-hint { display: block; color: #324f77; font-weight: 600; } }

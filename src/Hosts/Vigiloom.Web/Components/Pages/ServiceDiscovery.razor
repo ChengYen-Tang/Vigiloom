@@ -26,17 +26,21 @@
         else if (candidates.Count == 0) { <p>此頁沒有待加入的服務。</p> }
         else
         {
+            <p class="scroll-hint">表格可左右滑動以查看完整資訊。</p>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="服務候選清單，可左右滑動">
+            <table><thead><tr><th>服務名稱</th><th>環境</th><th>來源</th><th>最後回報（UTC）</th><th>操作</th></tr></thead><tbody>
             @foreach (var candidate in candidates)
             {
-                <div class="management-notice" @key="candidate.Id">
-                    <p><strong>@candidate.DisplayName</strong> · @candidate.Environment</p>
-                    <p>來源：@candidate.SourceName · 來源識別碼：@candidate.SourceId<br />服務識別：@candidate.ServiceKey<br />最後回報：@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</p>
+                <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>服務識別：@candidate.ServiceKey</small></td><td class="environment">@candidate.Environment</td>
+                <td>@candidate.SourceName<details><summary>來源識別碼</summary><small>@candidate.SourceId</small></details></td><td class="timestamp">@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
+                    <details><summary>加入服務</summary>
                     <EditForm Model="ConfirmApproval" FormName="@($"service-approve-{candidate.Id:N}")" method="post" OnValidSubmit="ApproveAsync">
                         <label><InputCheckbox @bind-Value="ConfirmApproval.Confirm" /> 我已確認來源及環境，並了解服務預設為私人</label>
                         <button type="submit" name="ConfirmApproval.Id" value="@candidate.Id">加入服務</button>
-                    </EditForm>
-                </div>
+                    </EditForm></details>
+                </td></tr>
             }
+            </tbody></table></div>
         }
         <nav aria-label="候選清單分頁"><span>第 @candidatePage 頁</span>
             @if (candidatePage > 1) { <a href="@PageUrl(candidatePage - 1, sourcePage)">上一頁</a> }
@@ -53,18 +57,22 @@
         else if (sources.Count == 0) { <p>此頁沒有來源。</p> }
         else
         {
+            <p class="scroll-hint">表格可左右滑動以查看完整資訊。</p>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="來源清單，可左右滑動">
+            <table><thead><tr><th>來源名稱</th><th>狀態</th><th>建立時間（UTC）</th><th>操作</th></tr></thead><tbody>
             @foreach (var source in sources)
             {
-                <div class="management-notice" @key="source.Id"><p><strong>@source.Name</strong> · @(source.RevokedAt is null ? "可使用" : "已撤銷")</p><p>來源識別碼：@source.Id<br />建立時間：@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+                <tr @key="source.Id"><td><strong>@source.Name</strong><details><summary>來源識別碼</summary><small>@source.Id</small></details></td><td>@(source.RevokedAt is null ? "可使用" : "已撤銷")</td><td class="timestamp">@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
                     @if (source.RevokedAt is null)
                     {
-                        <EditForm Model="ConfirmRevocation" FormName="@($"source-revoke-{source.Id:N}")" method="post" OnValidSubmit="RevokeAsync">
+                        <details><summary>撤銷來源</summary><EditForm Model="ConfirmRevocation" FormName="@($"source-revoke-{source.Id:N}")" method="post" OnValidSubmit="RevokeAsync">
                             <label><InputCheckbox @bind-Value="ConfirmRevocation.Confirm" /> 我了解撤銷會立即停止該來源授權</label>
                             <button type="submit" name="ConfirmRevocation.Id" value="@source.Id">撤銷來源</button>
-                        </EditForm>
+                        </EditForm></details>
                     }
-                </div>
+                </td></tr>
             }
+            </tbody></table></div>
         }
         <nav aria-label="來源清單分頁"><span>第 @sourcePage 頁</span>
             @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">上一頁</a> }
