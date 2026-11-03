@@ -143,6 +143,9 @@ public sealed class IdentityVault(string directory)
         internal Task<AgentAppliedSettings?> ReadSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentAppliedSettings>("settings.dat", token);
 
+        internal Task<AgentAppliedQueueCapacity?> ReadQueueCapacityAsync(CancellationToken token) =>
+            ReadFileAsync<AgentAppliedQueueCapacity>("queue-capacity.dat", token);
+
         private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token) where T : class
         {
             var path = Path.Combine(directory, fileName);
@@ -166,6 +169,9 @@ public sealed class IdentityVault(string directory)
 
         internal Task WriteSettingsAsync(AgentAppliedSettings settings, CancellationToken token) =>
             WriteFileAsync("settings.dat", settings, token);
+
+        internal Task WriteQueueCapacityAsync(AgentAppliedQueueCapacity settings, CancellationToken token) =>
+            WriteFileAsync("queue-capacity.dat", settings, token);
 
         private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token)
         {

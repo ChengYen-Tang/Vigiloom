@@ -19,8 +19,97 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentitySqlTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task QueueCapacity_InheritsOverridesAndAuditsAtomically(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("capacity server", "127.0.0.9", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var settings = new AgentQueueCapacityConfiguration(agents, source, identity, clock);
+        var actor = Guid.CreateVersion7();
+        var platform = await settings.GetAsync(null, token);
+        Assert.IsNotNull(platform);
+        Assert.AreEqual(AgentQueueCapacity.Default, platform.Effective.Capacity);
+        var edited = await settings.UpdateAsync(null, new(new(128L * 1024 * 1024, 5000), platform.Version), actor, token);
+        Assert.IsNotNull(edited);
+        var inherited = await settings.GetAsync(device.Id, token);
+        Assert.AreEqual(edited.Effective, inherited!.Effective);
+        var custom = await settings.UpdateAsync(device.Id, new(new(null, 100), inherited.Version), actor, token);
+        Assert.IsNotNull(custom);
+        Assert.AreEqual(128L * 1024 * 1024, custom.Effective.Capacity.PayloadBytes);
+        Assert.AreEqual(100, custom.Effective.Capacity.BatchCount);
+        Assert.IsNull(await settings.UpdateAsync(device.Id, new(new(null, 200), inherited.Version), actor, token));
+        var reset = await settings.UpdateAsync(device.Id, new(new(null, null), custom.Version), actor, token);
+        Assert.IsNotNull(reset);
+        Assert.AreEqual(edited.Effective, reset.Effective);
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        Assert.AreEqual(reset.Effective, await settings.GetForAgentAsync(credential, token));
+        Assert.IsNull(await settings.GetForAgentAsync("invalid", token));
+        var page = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentQueueCapacity,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.HasCount(3, page.Items);
+        var detail = page.Items.First(x => x.SubjectId == device.Id && x.QueueCapacity!.BatchCount == 100);
+        Assert.AreEqual(AuditFeedAction.AgentQueueCapacityChanged, detail.Action);
+        Assert.AreEqual(128L * 1024 * 1024, detail.QueueCapacity!.EffectivePayloadBytes);
+        Assert.AreEqual(100, detail.QueueCapacity.EffectiveBatchCount);
+        await using (var invalid = agents.CreateDbContext())
+        {
+            invalid.QueueCapacitySettings.Add(new AgentQueueCapacitySetting { DeviceId = Guid.CreateVersion7(), UpdatedAt = clock.Now, UpdatedBy = actor });
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(token));
+        }
+        await using (var invalid = agents.CreateDbContext())
+        {
+            var audit = await invalid.QueueCapacityAudits.FirstAsync(token);
+            audit.DeviceId = Guid.CreateVersion7();
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync(token));
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(3, await db.QueueCapacityAudits.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE agent.QueueCapacityAudits", token);
+        }
+        await Assert.ThrowsAsync<DbUpdateException>(() => settings.UpdateAsync(device.Id, new(new(null, 200), reset.Version), actor, token));
+        Assert.AreEqual(reset, await settings.GetAsync(device.Id, token), "A failed audit must roll back the setting change.");
+    }, snapshotReads);
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    [TestMethod]
+    public Task QueueCapacityStatus_DoesNotExposeOutdatedReportsDuringRollingUpgrade() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("capacity status", "127.0.0.10", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var monitor = new AgentQueueCapacityMonitoring(agents, source, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var epoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(null, epoch), token));
+        var applied = AgentQueueCapacitySnapshot.Create(AgentQueueCapacity.Default);
+        var queue = new AgentQueueSnapshot(0, 0, 0, applied.Capacity.PayloadBytes, applied.Capacity.BatchCount);
+        var report = new AgentQueueCapacityReport(applied, clock.Now, null);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 1, queue, CapacityConfiguration: report), token));
+        Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitor.GetAsync(device.Id, token))!.State);
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportSequence = {2L} WHERE Id = {registration.AgentId!.Value}", token);
+        Assert.IsNull((await monitor.GetAsync(device.Id, token))!.Applied, "A legacy node's newer queue report must hide the older capacity observation.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 3, queue, CapacityConfiguration: report), token));
+        Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitor.GetAsync(device.Id, token))!.State);
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportEpoch = {Guid.CreateVersion7()} WHERE Id = {registration.AgentId!.Value}", token);
+        Assert.IsNull((await monitor.GetAsync(device.Id, token))!.Applied, "A legacy node's replacement session must hide the older capacity observation.");
+    });
 
     [TestMethod]
     public Task Configuration_ReportsPendingAppliedFailureAndOfflineWithoutAcceptingStaleStatus() => WithDatabase(async (resources, agents, token) =>

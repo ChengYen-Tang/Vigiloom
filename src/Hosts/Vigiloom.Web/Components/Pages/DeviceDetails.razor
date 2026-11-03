@@ -15,6 +15,7 @@
 @inject PingStore Ping
 @inject AgentMonitoring AgentMonitoring
 @inject AgentSettingsMonitoring AgentSettingsMonitoring
+@inject AgentQueueCapacityMonitoring QueueCapacityMonitoring
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
@@ -42,6 +43,16 @@
         {
             <section class="device-panel">
                 <h2>Agent 本機傳送佇列</h2>
+                @if (capacityError) { <p class="device-alert" role="alert">無法讀取佇列容量設定狀態。</p> }
+                else if (capacityStatus is { } capacity)
+                {
+                    <dl class="device-details">
+                        <div><dt>容量設定狀態</dt><dd>@SettingsState(capacity.State)</dd></div>
+                        <div><dt>目標容量</dt><dd>@QueueBytes(capacity.Desired.Capacity.PayloadBytes)／@capacity.Desired.Capacity.BatchCount 批</dd></div>
+                        <div><dt>Agent 已套用容量</dt><dd>@(capacity.Applied is { } appliedCapacity ? $"{QueueBytes(appliedCapacity.Capacity.PayloadBytes)}／{appliedCapacity.Capacity.BatchCount} 批" : "尚無已套用回報")</dd></div>
+                    </dl>
+                    @if (capacity.Failure is { } capacityFailure) { <p class="device-alert" role="status">@SettingsFailure(capacityFailure)</p> }
+                }
                 @if (agentError) { <p role="alert">無法讀取傳送狀態，請稍後重新整理。</p> }
                 else
                 {
@@ -148,6 +159,8 @@
     private bool agentError;
     private AgentSettingsStatus? settingsStatus;
     private bool settingsError;
+    private AgentQueueCapacityStatus? capacityStatus;
+    private bool capacityError;
     private string? actionError;
     protected override async Task OnInitializedAsync()
     {
@@ -163,6 +176,8 @@
                 catch (Exception exception) { Logger.LogWarning("Could not load Agent status: {ExceptionType}", exception.GetType().Name); agentError = true; }
                 try { settingsStatus = await AgentSettingsMonitoring.GetAsync(Id, HttpContext.RequestAborted); }
                 catch (Exception exception) { Logger.LogWarning("Could not load Agent settings status: {ExceptionType}", exception.GetType().Name); settingsError = true; }
+                try { capacityStatus = await QueueCapacityMonitoring.GetAsync(Id, HttpContext.RequestAborted); }
+                catch (Exception exception) { Logger.LogWarning("Could not load Agent queue capacity status: {ExceptionType}", exception.GetType().Name); capacityError = true; }
             }
             if (device is { Archived: false, Enabled: true })
             {

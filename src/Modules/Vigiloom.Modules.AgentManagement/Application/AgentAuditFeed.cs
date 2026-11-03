@@ -10,7 +10,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
-        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings))
+        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity))
             throw new ArgumentException("Invalid audit source or range.");
         await using var db = await contexts.CreateDbContextAsync(token);
         var skip = (query.Page - 1) * AuditFeedLimits.PageSize;
@@ -33,6 +33,26 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
                     "RotationFinished" => AuditFeedAction.RotationFinished,
                     _ => AuditFeedAction.Unknown
                 }, AuditFeedOutcome.Recorded, AgentId: row.AgentId)).ToArray();
+        }
+        else if (source == AuditFeedSource.AgentQueueCapacity)
+        {
+            var rows = await db.QueueCapacityAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+                .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
+                .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.PayloadBytes, x.BatchCount,
+                    x.EffectivePayloadBytes, x.EffectiveBatchCount, x.EffectiveRevision, x.ChangeVersion }).ToArrayAsync(token);
+            more = rows.Length > AuditFeedLimits.PageSize;
+            entries = rows.Take(AuditFeedLimits.PageSize).Select(row =>
+            {
+                var effective = new AgentQueueCapacity(row.EffectivePayloadBytes, row.EffectiveBatchCount);
+                var valid = AgentQueueCapacityConfiguration.Valid(new(row.PayloadBytes, row.BatchCount)) && effective.IsValid() &&
+                    row.ChangeVersion.Length == 8 && (row.PayloadBytes is null || row.PayloadBytes == effective.PayloadBytes) &&
+                    (row.BatchCount is null || row.BatchCount == effective.BatchCount) &&
+                    new AgentQueueCapacitySnapshot(AgentQueueCapacitySnapshot.CurrentSchema, row.EffectiveRevision, effective).IsValid();
+                var details = valid ? new AgentQueueCapacityAuditDetails(row.PayloadBytes, row.BatchCount, row.EffectivePayloadBytes,
+                    row.EffectiveBatchCount, row.EffectiveRevision, Convert.ToBase64String(row.ChangeVersion)) : null;
+                return new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId,
+                    valid ? AuditFeedAction.AgentQueueCapacityChanged : AuditFeedAction.Unknown, AuditFeedOutcome.Recorded, QueueCapacity: details);
+            }).ToArray();
         }
         else
         {

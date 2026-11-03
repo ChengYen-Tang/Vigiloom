@@ -1,5 +1,6 @@
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -9,6 +10,75 @@ namespace Vigiloom.Agent.Core.Tests;
 [TestClass]
 public sealed class AgentSettingsStoreTests(TestContext testContext)
 {
+    [TestMethod]
+    public async Task QueueCapacity_AppliesToExistingQueueAndReductionPreservesPendingData()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsStoreTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = "unchanged" }, token);
+            var store = new AgentQueueCapacityStore(vault, server, id);
+            var low = AgentQueueCapacitySnapshot.Create(new(1024 * 1024, 10));
+            var high = AgentQueueCapacitySnapshot.Create(new(2 * 1024 * 1024, 10));
+            var saved = await store.SaveAsync(low, null, DateTimeOffset.UtcNow, token);
+            var queue = new DurableBatchQueue(vault, id);
+            var payload = new byte[700 * 1024];
+            var first = Guid.CreateVersion7();
+            var second = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(first, now, 1, payload, token));
+            Assert.AreEqual(EnqueueResult.Full, await queue.EnqueueAsync(second, now, 1, payload, token));
+            saved = await store.SaveAsync(high, saved.SaveToken, now, token);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(second, now, 1, payload, token));
+            await store.SaveAsync(low, saved.SaveToken, now, token);
+            Assert.AreEqual(2L, (await queue.GetStatusAsync(token)).TotalBatches);
+            Assert.AreEqual(EnqueueResult.Full, await queue.EnqueueAsync(Guid.CreateVersion7(), now, 1, new byte[1], token));
+            Assert.IsTrue(await queue.AcknowledgeAsync(first, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(Guid.CreateVersion7(), now, 1, new byte[1], token));
+            Assert.AreEqual(second, (await queue.PeekAsync(token))!.BatchId);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task QueueCapacity_IsIndependentAndFencesStaleResponsesAndOtherIdentities()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsStoreTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = "unchanged" }, token);
+            var scheduling = new AgentSettingsStore(vault, server, id);
+            var schedulingSaved = await scheduling.SaveAsync(AgentSettingsSnapshot.Create(AgentSettings.Default), null, DateTimeOffset.UtcNow, token);
+            var capacity = new AgentQueueCapacityStore(vault, server, id);
+            Assert.IsNull(await capacity.ReadAsync(token));
+            var a = AgentQueueCapacitySnapshot.Create(AgentQueueCapacity.Default);
+            var b = AgentQueueCapacitySnapshot.Create(AgentQueueCapacity.Default with { BatchCount = 50 });
+            var first = await capacity.SaveAsync(a, null, DateTimeOffset.UtcNow, token);
+            var second = await capacity.SaveAsync(b, first.SaveToken, DateTimeOffset.UtcNow, token);
+            var latest = await capacity.SaveAsync(a, second.SaveToken, DateTimeOffset.UtcNow, token);
+            Assert.AreNotEqual(first.SaveToken, latest.SaveToken);
+            await Assert.ThrowsAsync<AgentSettingsConflictException>(() => capacity.SaveAsync(b, first.SaveToken, DateTimeOffset.UtcNow, token));
+            var restarted = new AgentQueueCapacityStore(new IdentityVault(root), server, id);
+            Assert.AreEqual(latest, await restarted.ReadAsync(token));
+            await scheduling.SaveAsync(schedulingSaved.Snapshot, schedulingSaved.SaveToken, DateTimeOffset.UtcNow, token);
+            Assert.AreEqual(latest, await restarted.ReadAsync(token), "An older scheduling writer must not overwrite the independent capacity file.");
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = Guid.CreateVersion7(), MachineSecret = "new" }, token);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.ReadAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
     [TestMethod]
     public async Task SettingsOwnership_ExcludesAnotherSynchronizerWithoutBlockingIdentityOperations()
     {

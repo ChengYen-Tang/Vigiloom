@@ -7,6 +7,7 @@
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
 @inject AgentConfiguration Settings
+@inject AgentQueueCapacityConfiguration CapacitySettings
 @inject DeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
 
@@ -42,29 +43,89 @@
             </EditForm>
         }
     </section>
+    <section class="device-panel">
+        <h2>本機佇列容量</h2>
+        @if (capacityLoadError) { <p class="device-alert" role="alert">無法讀取佇列容量設定，請稍後重新整理。</p> }
+        else if (capacityCurrent is null) { <p role="alert">找不到此設備。</p> }
+        else
+        {
+            <div class="agent-settings-intro">
+                <p>留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。</p>
+                <p>這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。</p>
+            </div>
+            @if (capacityMessage is not null) { <p class="agent-settings-status" role="status">@capacityMessage</p> }
+            <EditForm Model="CapacityInput" FormName="agent-capacity" method="post" OnSubmit="SaveCapacityAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="CapacityInput.Version" />
+                <label for="agent-capacity-mib">批次內容容量（1～1024 MiB）</label>
+                <InputNumber id="agent-capacity-mib" @bind-Value="CapacityInput.PayloadMiB" min="1" max="1024" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.PayloadBytes / (1024 * 1024)} MiB")" />
+                <small class="agent-settings-hint">目前目標值：@(capacityCurrent.Effective.Capacity.PayloadBytes / (1024 * 1024)) MiB</small>
+                <label for="agent-capacity-batches">批次數量上限（1～100000 批）</label>
+                <InputNumber id="agent-capacity-batches" @bind-Value="CapacityInput.BatchCount" min="1" max="100000" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.BatchCount} 批")" />
+                <small class="agent-settings-hint">目前目標值：@capacityCurrent.Effective.Capacity.BatchCount 批</small>
+                <p>設定會由 Agent 定期同步；目標值不代表設備已套用。</p>
+                <div class="device-actions"><button type="submit">儲存佇列容量</button></div>
+            </EditForm>
+        }
+    </section>
 </main>
 
 @code {
     [Parameter] public Guid? Id { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-settings")] private SettingsForm Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-capacity")] private CapacityForm CapacityInput { get; set; } = default!;
     private AgentSettingsView? current;
+    private AgentQueueCapacityView? capacityCurrent;
     private string? deviceName;
     private bool loadError;
+    private bool capacityLoadError;
     private string? message;
+    private string? capacityMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        var submittedSettings = Input is not null;
+        var submittedCapacity = CapacityInput is not null;
         Input ??= new();
+        CapacityInput ??= new();
         try
         {
             if (Id is { } deviceId) deviceName = (await Devices.GetAsync(deviceId, HttpContext.RequestAborted))?.Name;
             current = await Settings.GetAsync(Id, HttpContext.RequestAborted);
-            if (current is not null && HttpMethods.IsGet(HttpContext.Request.Method))
+            if (current is not null && !submittedSettings)
                 Input = new() { HeartbeatSeconds = current.Overrides.HeartbeatSeconds, SettingsPollSeconds = current.Overrides.SettingsPollSeconds,
                     BatchIntervalSeconds = current.Overrides.BatchIntervalSeconds, Version = current.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read Agent settings: {ExceptionType}", exception.GetType().Name); loadError = true; }
+        try
+        {
+            capacityCurrent = await CapacitySettings.GetAsync(Id, HttpContext.RequestAborted);
+            if (capacityCurrent is not null && !submittedCapacity)
+                CapacityInput = new() { PayloadMiB = capacityCurrent.Overrides.PayloadBytes is { } bytes ? checked((int)(bytes / (1024 * 1024))) : null,
+                    BatchCount = capacityCurrent.Overrides.BatchCount, Version = capacityCurrent.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityLoadError = true; }
+    }
+
+    private async Task SaveCapacityAsync(EditContext context)
+    {
+        if (!context.Validate() || capacityCurrent is null) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new AgentQueueCapacityUpdate(new(CapacityInput.PayloadMiB is { } mib ? (long)mib * 1024 * 1024 : null,
+            CapacityInput.BatchCount), CapacityInput.Version ?? "");
+        if (!AgentQueueCapacityConfiguration.Valid(input.Overrides)) { capacityMessage = "請檢查佇列容量的允許範圍。"; return; }
+        try
+        {
+            if (await CapacitySettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                capacityCurrent = saved;
+                CapacityInput.Version = saved.Version;
+                capacityMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+            }
+            else capacityMessage = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityMessage = "無法確認儲存結果，請重新整理並檢查。"; }
     }
 
     private async Task SaveAsync(EditContext context)
@@ -91,6 +152,12 @@
         [Range(10, 300)] public int? HeartbeatSeconds { get; set; }
         [Range(60, 3600)] public int? SettingsPollSeconds { get; set; }
         [Range(1, 300)] public int? BatchIntervalSeconds { get; set; }
+        public string? Version { get; set; }
+    }
+    private sealed class CapacityForm
+    {
+        [Range(1, 1024)] public int? PayloadMiB { get; set; }
+        [Range(1, 100000)] public int? BatchCount { get; set; }
         public string? Version { get; set; }
     }
 }

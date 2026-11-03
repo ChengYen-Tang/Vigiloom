@@ -20,6 +20,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
     [DataRow("AgentHeartbeatClient")]
     [DataRow("AgentBatchClient")]
     [DataRow("AgentSettingsClient")]
+    [DataRow("AgentQueueCapacityClient")]
     public void AgentHttpTransport_DoesNotRedirectOrShareCookies(string name)
     {
         var builder = AgentHost.CreateBuilder([]);
@@ -75,6 +76,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             var clock = new ObservedTimeProvider();
             using var settingsHttp = new HttpClient(settingsHandler);
             using var heartbeatHttp = new HttpClient(heartbeatHandler);
+            using var capacityHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
             var builder = AgentHost.CreateBuilder([]);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -83,6 +85,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             });
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
@@ -133,6 +136,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             var handler = new SettingsHostHandler(next);
             var clock = new ObservedTimeProvider();
             using var http = new HttpClient(handler);
+            using var capacityHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
             var builder = AgentHost.CreateBuilder([]);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -142,6 +146,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             foreach (var name in new[] { "HeartbeatWorker", "BatchWorker" })
                 builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
             builder.Services.AddSingleton(new AgentSettingsClient(http, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try
@@ -164,6 +169,70 @@ public sealed class HostLifecycleTests(TestContext testContext)
             if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(15000, CooperativeCancellation = true)]
+    public async Task Host_RestoresCapacityOfflineAndAppliesServerUpdate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomCapacityHostTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var server = new Uri("https://example.test/");
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var old = AgentQueueCapacitySnapshot.Create(new(2L * 1024 * 1024, 20));
+            var next = AgentQueueCapacitySnapshot.Create(new(1024L * 1024, 10));
+            var store = new AgentQueueCapacityStore(vault, server, id);
+            await store.SaveAsync(old, null, DateTimeOffset.UtcNow, token);
+            var queue = new DurableBatchQueue(vault, id);
+            var clock = new ObservedTimeProvider();
+            using var settingsHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
+            using var capacityHttp = new HttpClient(new CapacityHostHandler(next));
+            var builder = AgentHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri });
+            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker" })
+                builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
+            builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await host.StartAsync(token);
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(old, (await store.ReadAsync(token))!.Snapshot);
+                clock.Advance(TimeSpan.FromSeconds(361));
+                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(next, (await store.ReadAsync(token))!.Snapshot);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(Guid.CreateVersion7(), DateTimeOffset.UtcNow, 1, new byte[1024 * 1024], token));
+                Assert.AreEqual(EnqueueResult.Full, await queue.EnqueueAsync(Guid.CreateVersion7(), DateTimeOffset.UtcNow, 1, new byte[1], token));
+            }
+            finally { await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomCapacityHostTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class CapacityHostHandler(AgentQueueCapacitySnapshot next) : HttpMessageHandler
+    {
+        private int requests;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref requests) == 1) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(next) };
+            response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue($"\"{next.Revision}\"");
+            return Task.FromResult(response);
         }
     }
 

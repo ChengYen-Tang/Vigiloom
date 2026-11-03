@@ -264,11 +264,20 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(expectedSettings.Effective, synchronized.Settings!.Snapshot);
                     var settingsReport = new AgentConfigurationReport(synchronized.Settings.Snapshot, synchronized.Settings.AppliedAt, null);
                     var observation = new AgentConfigurationObservation(new AgentSettingsOwner(recoveredId, server.AbsoluteUri, vault.StateDirectory), settingsReport);
+                    var capacityConfiguration = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityConfiguration>();
+                    var capacityMonitoring = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityMonitoring>();
+                    var expectedCapacity = (await capacityConfiguration.UpdateAsync(device.Id, new AgentQueueCapacityUpdate(new(1024L * 1024, 100), ""), Guid.CreateVersion7(), token))!;
+                    var capacityClient = new AgentQueueCapacityClient(settingsHttp, TimeProvider.System);
+                    var capacitySync = await capacityClient.SyncAsync(vault, server, token);
+                    Assert.AreEqual(AgentSettingsSyncStatus.Saved, capacitySync.Status);
+                    Assert.AreEqual(expectedCapacity.Effective, capacitySync.Settings!.Snapshot);
+                    Assert.AreEqual(AgentSettingsSyncStatus.Unchanged, (await capacityClient.SyncAsync(vault, server, token)).Status);
+                    var capacityObservation = new AgentQueueCapacityObservation(observation.Owner, null);
                     var heartbeatClient = new AgentHeartbeatClient(heartbeatHttp);
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, token));
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
                     var monitoring = scope.ServiceProvider.GetRequiredService<AgentMonitoring>();
                     Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue, "Lost session response still allows an empty heartbeat.");
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, token));
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
                     var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
                     Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
                     Assert.AreEqual(1L, queueStatus.Snapshot!.TotalBatches);
@@ -276,6 +285,10 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 0, 0), queueStatus.Quarantine,
                         "A real rejected batch must be reported through the Agent heartbeat.");
                     Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
+                    var capacityStatus = await capacityMonitoring.GetAsync(device.Id, token);
+                    Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
+                    Assert.AreEqual(expectedCapacity.Effective, capacityStatus.Applied);
+                    Assert.AreEqual(1024L * 1024, queueStatus.Snapshot.CapacityBytes);
                     var changedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), expectedSettings.Version), Guid.CreateVersion7(), token))!;
                     Assert.AreEqual(AgentSettingsApplyState.Pending, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
                     var updated = await settingsClient.SyncAsync(vault, server, token);
@@ -364,7 +377,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status" };
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -384,6 +397,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
             using (var apiCannotReadMachineSettings = await api.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineSettings.StatusCode);
+            using (var apiCannotReadMachineCapacity = await api.GetAsync("/api/v1/agent/queue-capacity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineCapacity.StatusCode);
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
             using (var apiCannotManage = await api.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotManage.StatusCode);
@@ -425,6 +439,12 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Forbidden, manageSettings.StatusCode);
                 using var changeSettings = await reader.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeSettings.StatusCode);
+                using var readCapacity = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-queue-capacity", token);
+                Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
+                using var manageCapacity = await reader.GetAsync("/api/v1/agent-management/queue-capacity/platform", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, manageCapacity.StatusCode);
+                using var changeCapacity = await reader.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, changeCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
@@ -438,6 +458,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
+            using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -481,6 +503,12 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Conflict, staleSettings.StatusCode);
             using (var invalidSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(1, null, null), configured.Version), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidSettings.StatusCode);
+            using (var saveCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.OK, saveCapacity.StatusCode);
+            using (var staleCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 200), ""), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleCapacity.StatusCode);
+            using (var invalidCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidCapacity.StatusCode);
             using var issued = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
             Assert.AreEqual(HttpStatusCode.OK, issued.StatusCode);
             Assert.IsTrue(issued.Headers.CacheControl?.NoStore);
