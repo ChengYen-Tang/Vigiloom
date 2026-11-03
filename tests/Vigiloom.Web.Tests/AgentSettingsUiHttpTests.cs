@@ -1,10 +1,14 @@
 using System.Net;
+using System.Net.Http.Json;
 using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -16,6 +20,62 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task CandidateApproval_RequiresAdministratorAndAntiforgery() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("source", token);
+            var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            var candidate = (await discovery.ListAsync(1, token)).Single();
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            await LoginAsync(admin, "admin", token);
+            await LoginAsync(reader, "reader", token);
+            const string list = "/api/v1/service-discovery/candidates/";
+            using (var denied = await anonymous.GetAsync(list, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync(list, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var allowed = await admin.GetAsync(list, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+                Assert.IsTrue(allowed.Headers.CacheControl?.NoStore);
+                var rows = await allowed.Content.ReadFromJsonAsync<CandidateSummary[]>(cancellationToken: token);
+                Assert.AreEqual(candidate.Id, rows!.Single().Id);
+            }
+            var approve = $"{list}{candidate.Id:D}/approve";
+            using (var denied = await reader.PostAsync(approve, null, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await admin.PostAsync(approve, null, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            Guid serviceId;
+            using (var allowed = await admin.PostAsync(approve, null, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+                serviceId = (await allowed.Content.ReadFromJsonAsync<ServiceApprovalResponse>(cancellationToken: token))!.ServiceId;
+            }
+            using (var repeated = await admin.PostAsync(approve, null, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, repeated.StatusCode);
+                Assert.AreEqual(serviceId, (await repeated.Content.ReadFromJsonAsync<ServiceApprovalResponse>(cancellationToken: token))!.ServiceId);
+            }
+            Assert.IsEmpty(await discovery.ListAsync(1, token));
+            var now = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit/service-approvals?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using var audit = await admin.GetAsync(auditUrl, token);
+            var history = await audit.Content.ReadFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(cancellationToken: token);
+            Assert.AreEqual(source.SourceId, history!.Items.Single().ServiceApproval!.SourceId);
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task AdministratorCanEditAndResetOverridesWhileReaderSeesStatusOnly() =>
