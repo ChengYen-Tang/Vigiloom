@@ -18,7 +18,7 @@ The implementation applies bounded fields, request size, rate and candidate limi
 
 Approval and concurrent discovery serialize on the same source/key/environment binding. In one SQL transaction, approval creates or selects the unique approved service, records its source authorization and start time, and removes it from the pending view. Repeated or concurrent approval cannot create duplicates. New services are Private. Service and source identities use the resource key policy in ADR-0001; source-supplied keys do not become central GUIDs.
 
-The metadata endpoint accepts at most 2 KiB; service key and display name are limited to 128 characters and environment to 64. Pending candidates are limited to 1,000 per source and 10,000 globally. The metadata endpoint has a separate configurable per-IP fixed-window rate limit (default 6,000 requests/minute); this is a limit, not a measured throughput guarantee. Full global-limit and clock edge case tests remain outstanding.
+The metadata endpoint accepts at most 2 KiB; service key and display name are limited to 128 characters and environment to 64. Pending candidates are limited to 1,000 per source and 10,000 globally. The metadata endpoint has a separate configurable per-IP fixed-window rate limit (default 6,000 requests/minute); this is a limit, not a measured throughput guarantee. SQL tests exercise the final global slot, capacity reuse after expiry and visibility/reset after a future timestamp; exact time-boundary and forced-interleaving cases require separate evidence.
 
 ## Formal reception boundary
 
