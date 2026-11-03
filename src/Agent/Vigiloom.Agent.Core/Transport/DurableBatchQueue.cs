@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Transport;
 
@@ -124,14 +125,30 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
 
     // The caller must hold the identity lease. This permits a heartbeat to obtain
     // its sequence and queue snapshot under the same cross-process lock.
-    internal QueueStatus ReadStatusLocked(IdentityVault.Session session)
+    internal QueueStatus ReadStatusLocked(IdentityVault.Session session) => ReadDiagnosticsLocked(session).Status;
+
+    internal (QueueStatus Status, AgentQuarantineBreakdown Quarantine) ReadDiagnosticsLocked(IdentityVault.Session session)
     {
         using var connection = Open(session.DirectoryPath);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT queued_bytes, queued_count, (SELECT count(*) FROM batches WHERE rejection IS NOT NULL) FROM queue_state WHERE singleton = 1";
+        command.CommandText = """
+            SELECT q.queued_bytes, q.queued_count, COUNT(b.rejection),
+                COALESCE(SUM(CASE WHEN b.rejection = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 2 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 3 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 4 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 5 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 6 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection IS NOT NULL AND b.rejection NOT BETWEEN 1 AND 6 THEN 1 ELSE 0 END), 0)
+            FROM queue_state AS q LEFT JOIN batches AS b ON b.rejection IS NOT NULL
+            WHERE q.singleton = 1 GROUP BY q.queued_bytes, q.queued_count
+            """;
         using var reader = command.ExecuteReader();
         if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
-        return new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+        var status = new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+        var breakdown = new AgentQuarantineBreakdown(reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5),
+            reader.GetInt64(6), reader.GetInt64(7), reader.GetInt64(8), reader.GetInt64(9));
+        return (status, breakdown);
     }
 
     /// <summary>Remove only a batch whose successful central commit has been acknowledged.</summary>

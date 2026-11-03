@@ -43,8 +43,7 @@ internal static class AgentHeartbeatEndpoint
                 if (!context.Request.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
                 try { report = JsonSerializer.Deserialize<AgentHeartbeatReport>(buffer.AsSpan(0, count), Options); }
                 catch (JsonException) { return Results.BadRequest(); }
-                if (report is null || report.Version != 1 || report.Epoch.Version != 7 || report.Sequence < 1 ||
-                    report.Queue is { } queue && !queue.IsValid() || report.Configuration is { } configuration && !configuration.IsValid()) return Results.BadRequest();
+                if (report is null || !report.IsValid()) return Results.BadRequest();
             }
             return await agents.RecordHeartbeatAsync(AgentEndpoints.Bearer(context), report, token) switch
             {
