@@ -22,6 +22,11 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom Agent credential",
             Description = "A registered Agent credential, distinct from third-party API and human credentials."
         };
+        document.Components.SecuritySchemes["ServiceSourceBearer"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom service source credential",
+            Description = "A dedicated service source credential, distinct from user, API and Agent credentials."
+        };
         document.Components.SecuritySchemes["BrowserSession"] = new OpenApiSecurityScheme
         {
             Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Cookie,
@@ -81,6 +86,11 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 else
                     operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
                         [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
+            }
+            else if (path.Equals("/api/v1/service-discovery/observations", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
+                operation.Description = "Accepts discovery metadata only; this endpoint does not receive telemetry.";
             }
             else if (path.StartsWith("/api/v1/service-discovery/candidates", StringComparison.OrdinalIgnoreCase))
             {

@@ -172,6 +172,10 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);
         var candidateList = paths.GetProperty("/api/v1/service-discovery/candidates").GetProperty("get");
+        var observation = paths.GetProperty("/api/v1/service-discovery/observations").GetProperty("post");
+        Assert.IsTrue(observation.GetProperty("security")[0].TryGetProperty("ServiceSourceBearer", out _));
+        Assert.IsTrue(observation.GetProperty("responses").TryGetProperty("413", out _));
+        Assert.IsTrue(observation.GetProperty("requestBody").GetProperty("content").TryGetProperty("application/json", out _));
         Assert.IsTrue(candidateList.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", candidateList.GetProperty("description").GetString()!);
         Assert.IsTrue(candidateList.GetProperty("responses").TryGetProperty("429", out _));

@@ -22,6 +22,58 @@ public sealed class AgentSettingsUiHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task ServiceObservation_AuthenticatesSourceAndAcceptsOnlyBoundedMetadata() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var credentials = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
+            var first = await credentials.IssueAsync("first", token);
+            var second = await credentials.IssueAsync("second", token);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var client = factory.CreateClient(options);
+            const string url = "/api/v1/service-discovery/observations";
+            const string body = "{\"serviceKey\":\"orders\",\"environment\":\"production\",\"displayName\":\"Orders\"}";
+            using (var denied = await client.PostAsJsonAsync(url, new { serviceKey = "orders" }, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", first.Secret);
+            using (var accepted = await client.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+            using (var duplicate = await client.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
+            using (var extra = await client.PostAsync(url, new StringContent(body[..^1] + ",\"logs\":[]}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, extra.StatusCode);
+            using (var duplicateProperty = await client.PostAsync(url, new StringContent(body[..^1] + ",\"serviceKey\":\"other\"}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, duplicateProperty.StatusCode);
+            using (var missingProperty = await client.PostAsync(url, new StringContent("{\"serviceKey\":\"orders\"}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, missingProperty.StatusCode);
+            using (var oversized = await client.PostAsync(url, new StringContent(new string('x', 2049), System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+            using (var chunked = new HttpRequestMessage(HttpMethod.Post, url))
+            {
+                chunked.Content = new StreamContent(new NonSeekableStream(new byte[2049]));
+                chunked.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                Assert.IsNull(chunked.Content.Headers.ContentLength);
+                chunked.Headers.TransferEncodingChunked = true;
+                using var oversized = await client.SendAsync(chunked, token);
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+            }
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", second.Secret);
+            using (var accepted = await client.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+            var rows = await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token);
+            Assert.HasCount(2, rows);
+            CollectionAssert.AreEquivalent(new[] { first.SourceId, second.SourceId }, rows.Select(row => row.SourceId).ToArray());
+            Assert.IsTrue(await credentials.RevokeAsync(second.SourceId, token));
+            using (var revoked = await client.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            using var insecure = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("http://localhost") });
+            insecure.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", first.Secret);
+            using var deniedHttp = await insecure.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"), token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, deniedHttp.StatusCode);
+        }, TestContext.CancellationToken);
+
+    private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override bool CanSeek => false;
+        public override long Length => throw new NotSupportedException();
+    }
+
+    [TestMethod]
     public Task CandidateApproval_RequiresAdministratorAndAntiforgery() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

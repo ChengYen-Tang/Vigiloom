@@ -121,6 +121,13 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    options.AddPolicy("service-discovery", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:ServiceDiscovery:RequestsPerMinute", 6000), 1, 100000),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
     options.AddPolicy("agent-transport", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "unverified", _ => new FixedWindowRateLimiterOptions
         {

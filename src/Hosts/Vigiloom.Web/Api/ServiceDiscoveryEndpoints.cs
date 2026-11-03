@@ -8,6 +8,11 @@ internal static class ServiceDiscoveryEndpoints
 {
     public static void MapServiceDiscoveryEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/v1/service-discovery/observations", ServiceObservationEndpoint.ReceiveAsync)
+            .RequireAuthorization("ServiceSource").RequireRateLimiting("service-discovery")
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(ServiceObservationEndpoint.MaximumBytes))
+            .Accepts<ServiceObservation>("application/json")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429).ProducesProblem(503);
         var admin = app.MapGroup("/api/v1/service-discovery/candidates")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         admin.MapGet("/", async (HttpContext context, CandidateDiscovery candidates, CancellationToken token, int page = 1) =>
