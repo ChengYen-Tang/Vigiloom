@@ -43,7 +43,9 @@ public sealed class AgentHeartbeatClientTests
     }
 
     [TestMethod]
-    public async Task Heartbeat_OlderPlatformReceivesQueueStatusWhenConfigurationFieldIsUnsupported()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Heartbeat_OlderPlatformReceivesCompatibleQueueStatus(bool rejectConfiguration)
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
         try
@@ -54,17 +56,58 @@ public sealed class AgentHeartbeatClientTests
             var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             await using (var session = vault.Acquire())
                 await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
-            var handler = new OlderConfigurationHandler();
+            var handler = new OlderConfigurationHandler(rejectConfiguration);
             using var http = new HttpClient(handler);
             var snapshot = AgentSettingsSnapshot.Create(AgentSettings.Default);
             var report = new AgentConfigurationReport(snapshot, DateTimeOffset.UtcNow, null);
             var observation = new AgentConfigurationObservation(new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory), report);
             Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://example.test/"), observation, token));
-            Assert.HasCount(2, handler.Reports);
+            Assert.HasCount(rejectConfiguration ? 3 : 2, handler.Reports);
             Assert.IsNotNull(handler.Reports[0].Configuration);
-            Assert.IsNull(handler.Reports[1].Configuration);
+            Assert.IsNotNull(handler.Reports[0].Quarantine);
+            Assert.IsNotNull(handler.Reports[1].Configuration);
+            Assert.IsNull(handler.Reports[1].Quarantine);
+            if (rejectConfiguration) Assert.IsNull(handler.Reports[2].Configuration);
             Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
             Assert.AreEqual(handler.Reports[0].Queue, handler.Reports[1].Queue);
+            Assert.IsTrue(handler.Reports.All(x => x.Sequence == handler.Reports[0].Sequence && x.Queue == handler.Reports[0].Queue));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Heartbeat_CapacityReportFallsBackForOlderPlatforms(bool rejectConfiguration)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            var observation = new AgentConfigurationObservation(owner, new(AgentSettingsSnapshot.Create(AgentSettings.Default), DateTimeOffset.UtcNow, null));
+            var handler = new OlderConfigurationHandler(rejectConfiguration);
+            using var http = new HttpClient(handler);
+            var capacity = new AgentQueueCapacityObservation(owner, null);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://example.test/"), observation, capacity, token));
+            Assert.HasCount(rejectConfiguration ? 4 : 3, handler.Reports);
+            Assert.IsNotNull(handler.Reports[0].CapacityConfiguration);
+            Assert.IsNull(handler.Reports[1].CapacityConfiguration);
+            Assert.IsNotNull(handler.Reports[1].Quarantine);
+            Assert.IsNull(handler.Reports[2].Quarantine);
+            if (rejectConfiguration) Assert.IsNull(handler.Reports[3].Configuration);
+            Assert.IsTrue(handler.Reports.All(x => x.Sequence == handler.Reports[0].Sequence && x.Queue == handler.Reports[0].Queue));
         }
         finally
         {
@@ -117,13 +160,28 @@ public sealed class AgentHeartbeatClientTests
             var batchId = Guid.CreateVersion7();
             await queue.EnqueueAsync(batchId, DateTimeOffset.UtcNow, 1, new byte[] { 1, 2, 3 }, token);
             await queue.QuarantineAsync(batchId, QueueRejection.Conflict, token);
+            var expiredId = Guid.CreateVersion7();
+            await queue.EnqueueAsync(expiredId, DateTimeOffset.UtcNow, 1, new byte[] { 4, 5, 6 }, token);
+            await queue.QuarantineAsync(expiredId, QueueRejection.Expired, token);
+            var unknownId = Guid.CreateVersion7();
+            await queue.EnqueueAsync(unknownId, DateTimeOffset.UtcNow, 1, new byte[] { 7, 8, 9 }, token);
+            await queue.QuarantineAsync(unknownId, QueueRejection.BadRequest, token);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand();
+                command.CommandText = "UPDATE batches SET rejection = 99 WHERE batch_id = $id";
+                command.Parameters.AddWithValue("$id", unknownId.ToString("D"));
+                Assert.AreEqual(1, command.ExecuteNonQuery());
+            }
             var handler = new CaptureHandler();
             using var http = new HttpClient(handler);
             var client = new AgentHeartbeatClient(http);
             Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, new Uri("https://example.test/"), token));
             var report = handler.Reports[0];
             Assert.AreEqual(1, report.Version);
-            Assert.AreEqual(new AgentQueueSnapshot(3, 1, 1, DurableBatchQueue.DefaultCapacityBytes, DurableBatchQueue.MaximumQueuedBatches), report.Queue);
+            Assert.AreEqual(new AgentQueueSnapshot(9, 3, 3, DurableBatchQueue.DefaultCapacityBytes, DurableBatchQueue.MaximumQueuedBatches), report.Queue);
+            Assert.AreEqual(new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 1, 1), report.Quarantine);
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
             {
                 db.Open();
@@ -132,6 +190,7 @@ public sealed class AgentHeartbeatClientTests
             Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, new Uri("https://example.test/"), token));
             Assert.HasCount(2, handler.Reports);
             Assert.IsNull(handler.Reports[1].Queue);
+            Assert.IsNull(handler.Reports[1].Quarantine);
         }
         finally
         {
@@ -276,7 +335,7 @@ public sealed class AgentHeartbeatClientTests
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
     }
 
-    private sealed class OlderConfigurationHandler : HttpMessageHandler
+    private sealed class OlderConfigurationHandler(bool rejectConfiguration) : HttpMessageHandler
     {
         public List<AgentHeartbeatReport> Reports { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -286,7 +345,9 @@ public sealed class AgentHeartbeatClientTests
                     ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
                     : new HttpResponseMessage(HttpStatusCode.NoContent);
             Reports.Add((await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!);
-            return new HttpResponseMessage(Reports.Count == 1 ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
+            var report = Reports[^1];
+            return new HttpResponseMessage(report.Quarantine is not null || rejectConfiguration && report.Configuration is not null
+                ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
         }
     }
 

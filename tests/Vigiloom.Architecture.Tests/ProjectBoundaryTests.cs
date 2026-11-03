@@ -11,6 +11,7 @@ public sealed class ProjectBoundaryTests
         "IdentityAccess", "Resources", "NetworkMonitoring", "AgentManagement",
         "ServiceObservability", "SecurityAnalysis", "Publishing", "AlertingOperations"
     ];
+    private static readonly string[] TestHelpers = ["Vigiloom.Testing.SqlServer", "Vigiloom.Testing.AgentHost"];
 
     [TestMethod]
     public void Solution_ContainsEverySourceAndTestProject()
@@ -33,19 +34,20 @@ public sealed class ProjectBoundaryTests
         var moduleNames = ModuleNames.Select(name => $"Vigiloom.Modules.{name}").ToArray();
 
         foreach (var project in projects.Values.Where(project => !project.Name.EndsWith(".Tests", StringComparison.Ordinal)
-            && project.Name != "Vigiloom.Testing.SqlServer"))
+            && !TestHelpers.Contains(project.Name, StringComparer.Ordinal)))
         {
             var allowed = AllowedReferences(project.Name, moduleNames);
             Assert.IsNotNull(allowed, $"Undocumented production project: {project.Name}");
             Assert.IsEmpty(project.References.Except(allowed),
                 $"Forbidden dependency in {project.Name}.");
-            Assert.DoesNotContain("Vigiloom.Testing.SqlServer", project.References,
+            Assert.IsEmpty(project.References.Intersect(TestHelpers),
                 $"Production project {project.Name} cannot reference test helpers.");
         }
 
         Assert.IsEmpty(moduleNames.Except(projects.Keys), "A planned module is missing.");
         Assert.DoesNotContain("Vigiloom.Agent", projects["Vigiloom.Updater"].References);
         Assert.DoesNotContain("Vigiloom.Updater", projects["Vigiloom.Agent"].References);
+        CollectionAssert.AreEquivalent(new[] { "Vigiloom.Agent" }, projects["Vigiloom.Testing.AgentHost"].References);
     }
 
     [TestMethod]

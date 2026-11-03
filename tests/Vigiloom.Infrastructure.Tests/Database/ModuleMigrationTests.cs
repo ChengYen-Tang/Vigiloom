@@ -15,6 +15,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Migrator.Installation;
 
 namespace Vigiloom.Infrastructure.Tests.Database;
 
@@ -190,42 +191,11 @@ public sealed class ModuleMigrationTests
     [TestMethod]
     public Task Migrator_DeploysAndCanBeRunAgain() => WithDatabase(async (connectionString, token) =>
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Vigiloom.slnx"))) directory = directory.Parent;
-        Assert.IsNotNull(directory);
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        var project = Path.Combine(directory.FullName, "src", "Hosts", "Vigiloom.Migrator", "Vigiloom.Migrator.csproj");
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            foreach (var argument in new[] { "run", "--no-build", "--configuration", configuration, "--project", project }) start.ArgumentList.Add(argument);
-            start.Environment["VIGILOOM_MIGRATION_SQL_CONNECTION"] = connectionString;
-            using var process = Process.Start(start)!;
-            Exception? failure = null;
-            try
-            {
-                var output = process.StandardOutput.ReadToEndAsync(token);
-                var error = process.StandardError.ReadToEndAsync(token);
-                await process.WaitForExitAsync(token);
-                Assert.AreEqual(0, process.ExitCode, await error);
-                Assert.Contains("completed", await output);
-            }
-            catch (Exception exception) { failure = exception; }
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await process.WaitForExitAsync(timeout.Token);
-                }
-            }
-            catch (Exception cleanupFailure)
-            {
-                if (failure is not null) throw new AggregateException(failure, cleanupFailure);
-                throw;
-            }
-            if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+            var result = await RunMigratorAsync(connectionString, null, token);
+            Assert.AreEqual(0, result.ExitCode, result.Error);
+            Assert.Contains("completed", result.Output);
         }
         await using var db = Resources(connectionString);
         Assert.IsFalse((await db.Database.GetPendingMigrationsAsync(token)).Any());
@@ -235,6 +205,230 @@ public sealed class ModuleMigrationTests
             .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "identity")).Options);
         Assert.AreEqual(2, await identity.Roles.CountAsync(token));
     });
+
+    [TestMethod]
+    public Task Migrator_FreshInstallEnforcesDefaultAndRefusesExistingDatabase() => WithDatabase(async (connectionString, token) =>
+    {
+        var fresh = await RunMigratorAsync(connectionString, "fresh-install", token);
+        Assert.AreEqual(0, fresh.ExitCode, fresh.Error);
+        await using var db = Resources(connectionString);
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicies] WHERE [Phase] = 2 AND [FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [ActivatedAt] = [EnforcedAt]").SingleAsync(token));
+        var repeat = await RunMigratorAsync(connectionString, "fresh-install", token);
+        Assert.AreEqual(0, repeat.ExitCode, repeat.Error);
+        var normal = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, normal.ExitCode, normal.Error);
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicies] WHERE [Phase] = 2 AND [FreshInstallation] = 1").SingleAsync(token));
+    });
+
+    [TestMethod]
+    public Task Migrator_DetectsTerminatedDeploymentLock() => WithDatabase(async (connectionString, token) =>
+    {
+        await using var lease = await InstallLease.AcquireAsync(connectionString);
+        await lease.VerifyAsync();
+        await using (var db = new SqlConnection(connectionString))
+        {
+            await db.OpenAsync(token);
+            await using var command = db.CreateCommand();
+            var session = lease.SessionId;
+            Assert.IsGreaterThan(0, session);
+            command.CommandText = $"KILL {session}";
+            await command.ExecuteNonQueryAsync(token);
+        }
+        await Assert.ThrowsAsync<SqlException>(() => lease.VerifyAsync());
+    });
+
+    [TestMethod]
+    public Task Migrator_ResumesPendingFreshInstallWithoutAllowingUpgrade() => WithDatabase(async (connectionString, token) =>
+    {
+        await using (var connection = new SqlConnection(connectionString))
+        {
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE dbo.VigiloomInstallIntent (Id uniqueidentifier NOT NULL PRIMARY KEY, FormatVersion int NOT NULL, CreatedAt datetimeoffset NOT NULL, Completed bit NOT NULL); INSERT INTO dbo.VigiloomInstallIntent VALUES (@id, 1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'), 0)";
+            command.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+            await command.ExecuteNonQueryAsync(token);
+        }
+        var upgrade = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreNotEqual(0, upgrade.ExitCode);
+        var resumed = await RunMigratorAsync(connectionString, "fresh-install", token);
+        Assert.AreEqual(0, resumed.ExitCode, resumed.Error);
+        await using var db = Resources(connectionString);
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicies] WHERE [Phase] = 2 AND [FreshInstallation] = 1").SingleAsync(token));
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM dbo.VigiloomInstallIntent WHERE [Completed] = 1").SingleAsync(token));
+    });
+
+    [TestMethod]
+    public Task Migrator_FreshCompletionRejectsConcurrentAgentRegistration() => WithDatabase(async (connectionString, token) =>
+    {
+        var deployed = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, deployed.ExitCode, deployed.Error);
+        var device = new Device("concurrent agent", "127.0.0.1", true, DateTimeOffset.UtcNow);
+        await using (var resources = Resources(connectionString)) { resources.Devices.Add(device); await resources.SaveChangesAsync(token); }
+        await using var lease = await InstallLease.AcquireAsync(connectionString);
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(token);
+        await using (var create = connection.CreateCommand())
+        {
+            create.CommandText = "CREATE TABLE dbo.VigiloomInstallIntent (Id uniqueidentifier NOT NULL PRIMARY KEY, FormatVersion int NOT NULL, CreatedAt datetimeoffset NOT NULL, Completed bit NOT NULL); INSERT INTO dbo.VigiloomInstallIntent VALUES (@id, 1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'), 0)";
+            create.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+            await create.ExecuteNonQueryAsync(token);
+        }
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO [agent].[Agents] (Id, DeviceId, DeviceGeneration, Verifier, CreatedAt, HeartbeatSafetyIntervalSeconds) VALUES (@id, @device, 0, @verifier, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'), 30)";
+            insert.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+            insert.Parameters.AddWithValue("@device", device.Id);
+            insert.Parameters.AddWithValue("@verifier", new byte[32]);
+            await insert.ExecuteNonQueryAsync(token);
+        }
+        var completion = lease.CompleteFreshAsync();
+        Exception? observationFailure = null;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            Assert.IsFalse(completion.IsCompleted, "Fresh completion must wait for the concurrent Agent transaction.");
+        }
+        catch (Exception ex) { observationFailure = ex; }
+        Exception? completionFailure = null;
+        try
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await transaction.CommitAsync(cleanup.Token);
+            var failure = await Assert.ThrowsAsync<SqlException>(() => completion.WaitAsync(cleanup.Token));
+            Assert.AreEqual(51000, failure.Number);
+        }
+        catch (Exception ex) { completionFailure = ex; }
+        if (observationFailure is not null && completionFailure is not null) throw new AggregateException(observationFailure, completionFailure);
+        if (observationFailure is not null) ExceptionDispatchInfo.Capture(observationFailure).Throw();
+        if (completionFailure is not null) ExceptionDispatchInfo.Capture(completionFailure).Throw();
+        await using var verify = Resources(connectionString);
+        Assert.AreEqual(1, await verify.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicies] WHERE [Phase] = 0").SingleAsync(token));
+        Assert.AreEqual(1, await verify.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM dbo.VigiloomInstallIntent WHERE [Completed] = 0").SingleAsync(token));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Migrator_FreshCompletionFencesNewAgentUntilCommit(bool snapshotReads) => WithDatabase(async (connectionString, token) =>
+    {
+        var deployed = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, deployed.ExitCode, deployed.Error);
+        await using var db = Resources(connectionString);
+        if (snapshotReads) await db.Database.ExecuteSqlRawAsync("ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE", token);
+        var device = new Device("fence probe", "127.0.0.1", true, DateTimeOffset.UtcNow);
+        db.Devices.Add(device); await db.SaveChangesAsync(token);
+        await db.Database.ExecuteSqlRawAsync("CREATE TABLE dbo.VigiloomInstallIntent (Id uniqueidentifier NOT NULL PRIMARY KEY, FormatVersion int NOT NULL, CreatedAt datetimeoffset NOT NULL, Completed bit NOT NULL); CREATE TABLE dbo.ReplayTestGate (Id int PRIMARY KEY); INSERT dbo.ReplayTestGate VALUES (1)", token);
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT dbo.VigiloomInstallIntent VALUES ({Guid.CreateVersion7()}, 1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'), 0)", token);
+        await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[ReplayTestPause] ON [agent].[ReplayPolicies] AFTER UPDATE AS BEGIN RAISERROR ('REPLAY_TEST_GATE', 0, 1) WITH NOWAIT; DECLARE @id int; SELECT @id = Id FROM dbo.ReplayTestGate WITH (UPDLOCK, HOLDLOCK) WHERE Id = 1; END", token);
+        await using var gate = new SqlConnection(connectionString);
+        await gate.OpenAsync(token);
+        await using var gateTransaction = (SqlTransaction)await gate.BeginTransactionAsync(token);
+        await using (var hold = gate.CreateCommand())
+        {
+            hold.Transaction = gateTransaction;
+            hold.CommandText = "UPDATE dbo.ReplayTestGate SET Id = Id WHERE Id = 1";
+            await hold.ExecuteNonQueryAsync(token);
+        }
+        await using var leaseConnection = new SqlConnection(new SqlConnectionStringBuilder(connectionString) { Pooling = false, ConnectRetryCount = 0 }.ConnectionString);
+        await leaseConnection.OpenAsync(token);
+        await using (var getLock = leaseConnection.CreateCommand())
+        {
+            getLock.CommandText = "DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.Migrator', @LockMode = 'Exclusive', @LockOwner = 'Session'; SELECT @r";
+            Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await getLock.ExecuteScalarAsync(token)));
+        }
+        await using var lease = new InstallLease(leaseConnection);
+        var completion = lease.CompleteFreshAsync();
+        Exception? failure = null;
+        try
+        {
+            await using (var observer = new SqlConnection(connectionString))
+            {
+                await observer.OpenAsync(token);
+                await using var wait = observer.CreateCommand();
+                wait.CommandText = "SELECT CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 OR HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') = 1 OR HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER PERFORMANCE STATE') = 1 THEN 1 ELSE 0 END";
+                Assert.AreEqual(1, Convert.ToInt32(await wait.ExecuteScalarAsync(token)), "The isolated test account needs permission to observe SQL sessions; see tests/Vigiloom.Testing.SqlServer/README.md.");
+                wait.CommandText = "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE session_id = @session AND blocking_session_id = @gate";
+                wait.Parameters.AddWithValue("@session", leaseConnection.ServerProcessId);
+                wait.Parameters.AddWithValue("@gate", gate.ServerProcessId);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                deadline.CancelAfter(TimeSpan.FromSeconds(10));
+                while (Convert.ToInt32(await wait.ExecuteScalarAsync(deadline.Token)) == 0)
+                {
+                    if (completion.IsCompleted) await completion;
+                    await Task.Delay(50, deadline.Token);
+                }
+            }
+            await using var probe = new SqlConnection(connectionString);
+            await probe.OpenAsync(token);
+            await using var insert = probe.CreateCommand();
+            insert.CommandText = "SET LOCK_TIMEOUT 0; INSERT INTO [agent].[Agents] (Id, DeviceId, DeviceGeneration, Verifier, CreatedAt, HeartbeatSafetyIntervalSeconds) VALUES (@id, @device, 0, @verifier, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'), 30)";
+            insert.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+            insert.Parameters.AddWithValue("@device", device.Id);
+            insert.Parameters.AddWithValue("@verifier", new byte[32]);
+            var blocked = await Assert.ThrowsAsync<SqlException>(() => insert.ExecuteNonQueryAsync(token));
+            Assert.AreEqual(1222, blocked.Number);
+            await gateTransaction.CommitAsync(token);
+            await completion.WaitAsync(TimeSpan.FromSeconds(10), token);
+            Assert.AreEqual(1, await insert.ExecuteNonQueryAsync(token));
+        }
+        catch (Exception ex) { failure = ex; }
+        try
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            if (gateTransaction.Connection is not null) await gateTransaction.RollbackAsync(cleanup.Token);
+            await completion.WaitAsync(cleanup.Token);
+            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[ReplayTestPause]", cleanup.Token);
+        }
+        catch (Exception cleanupFailure)
+        {
+            if (failure is not null) throw new AggregateException(failure, cleanupFailure);
+            throw;
+        }
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    });
+
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunMigratorAsync(string connectionString, string? mode, CancellationToken token)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Vigiloom.slnx"))) directory = directory.Parent;
+        Assert.IsNotNull(directory);
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+        var project = Path.Combine(directory.FullName, "src", "Hosts", "Vigiloom.Migrator", "Vigiloom.Migrator.csproj");
+        var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in new[] { "run", "--no-build", "--configuration", configuration, "--project", project }) start.ArgumentList.Add(argument);
+        if (mode is not null) { start.ArgumentList.Add("--"); start.ArgumentList.Add(mode); }
+        start.Environment["VIGILOOM_MIGRATION_SQL_CONNECTION"] = connectionString;
+        using var process = Process.Start(start)!;
+        Exception? failure = null;
+        (int ExitCode, string Output, string Error) result = default;
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync(token);
+            var error = process.StandardError.ReadToEndAsync(token);
+            await process.WaitForExitAsync(token);
+            result = (process.ExitCode, await output, await error);
+        }
+        catch (Exception exception) { failure = exception; }
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await process.WaitForExitAsync(timeout.Token);
+            }
+        }
+        catch (Exception cleanupFailure)
+        {
+            if (failure is not null) throw new AggregateException(failure, cleanupFailure);
+            throw;
+        }
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+        return result;
+    }
 
     [TestMethod]
     public Task IdentityRoles_InitializeConcurrentlyAndKeepIdsOnRestart() => WithDatabase(async (connectionString, token) =>

@@ -3,8 +3,14 @@
     margin: 8px 0 22px;
 }
 
+.agent-settings-intro p + p { margin-top: 8px; }
+.agent-settings-status { margin: 0 0 16px; line-height: 1.6; }
+
 .agent-settings-hint {
     color: var(--vigiloom-muted);
     font-size: .875rem;
     margin-bottom: 6px;
 }
+
+.replay-policy p { line-height: 1.6; margin: 10px 0; }
+.replay-policy label { display: flex; gap: 8px; align-items: baseline; line-height: 1.5; }

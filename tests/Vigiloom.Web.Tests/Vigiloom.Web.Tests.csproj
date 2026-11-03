@@ -10,6 +10,7 @@
     <ProjectReference Include="../../src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
     <ProjectReference Include="../../src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
+    <ProjectReference Include="../../tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" Aliases="AgentHarness" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />

@@ -7,6 +7,8 @@
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
 @inject AgentConfiguration Settings
+@inject AgentQueueCapacityConfiguration CapacitySettings
+@inject AgentReplayPolicyService ReplayPolicy
 @inject DeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
 
@@ -42,29 +44,152 @@
             </EditForm>
         }
     </section>
+    <section class="device-panel">
+        <h2>本機佇列容量</h2>
+        @if (capacityLoadError) { <p class="device-alert" role="alert">無法讀取佇列容量設定，請稍後重新整理。</p> }
+        else if (capacityCurrent is null) { <p role="alert">找不到此設備。</p> }
+        else
+        {
+            <div class="agent-settings-intro">
+                <p>留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。</p>
+                <p>這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。</p>
+            </div>
+            @if (capacityMessage is not null) { <p class="agent-settings-status" role="status">@capacityMessage</p> }
+            <EditForm Model="CapacityInput" FormName="agent-capacity" method="post" OnSubmit="SaveCapacityAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="CapacityInput.Version" />
+                <label for="agent-capacity-mib">批次內容容量（1～1024 MiB）</label>
+                <InputNumber id="agent-capacity-mib" @bind-Value="CapacityInput.PayloadMiB" min="1" max="1024" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.PayloadBytes / (1024 * 1024)} MiB")" />
+                <small class="agent-settings-hint">目前目標值：@(capacityCurrent.Effective.Capacity.PayloadBytes / (1024 * 1024)) MiB</small>
+                <label for="agent-capacity-batches">批次數量上限（1～100000 批）</label>
+                <InputNumber id="agent-capacity-batches" @bind-Value="CapacityInput.BatchCount" min="1" max="100000" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.BatchCount} 批")" />
+                <small class="agent-settings-hint">目前目標值：@capacityCurrent.Effective.Capacity.BatchCount 批</small>
+                <p>設定會由 Agent 定期同步；目標值不代表設備已套用。</p>
+                <div class="device-actions"><button type="submit">儲存佇列容量</button></div>
+            </EditForm>
+        }
+    </section>
+    @if (Id is null)
+    {
+        <section class="device-panel replay-policy" aria-labelledby="replay-policy-title">
+            <h2 id="replay-policy-title">離線資料補送</h2>
+            @if (replayLoadError) { <p class="device-alert" role="alert">無法讀取補送政策，請稍後重新整理。</p> }
+            else if (replay is not null)
+            {
+                <p>目前狀態：@(replay.Phase switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" })</p>
+                <p>期限啟用後，平台接受最近 24 小時內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。</p>
+                @if (replay.GraceUntil is { } deadline) { <p>過渡期結束時間（UTC）：@deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p> }
+                @if (replayMessage is not null) { <p role="status">@replayMessage</p> }
+                @if (replay.Phase is AgentReplayPhase.Disabled or AgentReplayPhase.Grace)
+                {
+                    <EditForm Model="ReplayInput" FormName="agent-replay" method="post" OnSubmit="SaveReplayAsync">
+                        <InputHidden @bind-Value="ReplayInput.Version" />
+                        <p>操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。</p>
+                        <label><InputCheckbox @bind-Value="ReplayInput.Confirmed" /> 我已確認所有接收節點完成更新</label>
+                        <div class="device-actions"><button type="submit">@(replay.Phase == AgentReplayPhase.Disabled ? "開始過渡期" : "啟用 24 小時期限")</button></div>
+                    </EditForm>
+                }
+            }
+        </section>
+    }
 </main>
 
 @code {
     [Parameter] public Guid? Id { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-settings")] private SettingsForm Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-capacity")] private CapacityForm CapacityInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-replay")] private ReplayForm ReplayInput { get; set; } = default!;
     private AgentSettingsView? current;
+    private AgentQueueCapacityView? capacityCurrent;
     private string? deviceName;
     private bool loadError;
+    private bool capacityLoadError;
     private string? message;
+    private string? capacityMessage;
+    private AgentReplayPolicyView? replay;
+    private bool replayLoadError;
+    private string? replayMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        var submittedSettings = Input is not null;
+        var submittedCapacity = CapacityInput is not null;
+        var submittedReplay = ReplayInput is not null;
         Input ??= new();
+        CapacityInput ??= new();
+        ReplayInput ??= new();
         try
         {
             if (Id is { } deviceId) deviceName = (await Devices.GetAsync(deviceId, HttpContext.RequestAborted))?.Name;
             current = await Settings.GetAsync(Id, HttpContext.RequestAborted);
-            if (current is not null && HttpMethods.IsGet(HttpContext.Request.Method))
+            if (current is not null && !submittedSettings)
                 Input = new() { HeartbeatSeconds = current.Overrides.HeartbeatSeconds, SettingsPollSeconds = current.Overrides.SettingsPollSeconds,
                     BatchIntervalSeconds = current.Overrides.BatchIntervalSeconds, Version = current.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read Agent settings: {ExceptionType}", exception.GetType().Name); loadError = true; }
+        try
+        {
+            capacityCurrent = await CapacitySettings.GetAsync(Id, HttpContext.RequestAborted);
+            if (capacityCurrent is not null && !submittedCapacity)
+                CapacityInput = new() { PayloadMiB = capacityCurrent.Overrides.PayloadBytes is { } bytes ? checked((int)(bytes / (1024 * 1024))) : null,
+                    BatchCount = capacityCurrent.Overrides.BatchCount, Version = capacityCurrent.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityLoadError = true; }
+        if (Id is null)
+        {
+            try
+            {
+                replay = await ReplayPolicy.GetAsync(HttpContext.RequestAborted);
+                if (!submittedReplay) ReplayInput.Version = replay.Version;
+            }
+            catch (Exception exception) { Logger.LogWarning("Could not read Agent replay policy: {ExceptionType}", exception.GetType().Name); replayLoadError = true; }
+        }
+    }
+
+    private async Task SaveReplayAsync(EditContext context)
+    {
+        if (Id is not null || replay is null || !ReplayInput.Confirmed) { replayMessage = "請先確認所有接收節點完成更新。"; return; }
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var target = replay.Phase == AgentReplayPhase.Disabled ? AgentReplayPhase.Grace : AgentReplayPhase.Enforced;
+        try
+        {
+            if (await ReplayPolicy.TransitionAsync(target, ReplayInput.Version ?? "", actor, HttpContext.RequestAborted) is { } saved)
+            {
+                replay = saved;
+                ReplayInput.Version = saved.Version;
+                ReplayInput.Confirmed = false;
+                replayMessage = target == AgentReplayPhase.Grace ? "過渡期已開始。請在結束後啟用期限。" : "24 小時補送期限已啟用。";
+            }
+            else replayMessage = "政策狀態已變更或過渡期尚未結束，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not change Agent replay policy: {ExceptionType}", exception.GetType().Name); replayMessage = "無法確認政策是否已儲存，請重新整理並檢查。"; }
+    }
+
+    private sealed class ReplayForm
+    {
+        public string? Version { get; set; }
+        public bool Confirmed { get; set; }
+    }
+
+    private async Task SaveCapacityAsync(EditContext context)
+    {
+        if (!context.Validate() || capacityCurrent is null) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new AgentQueueCapacityUpdate(new(CapacityInput.PayloadMiB is { } mib ? (long)mib * 1024 * 1024 : null,
+            CapacityInput.BatchCount), CapacityInput.Version ?? "");
+        if (!AgentQueueCapacityConfiguration.Valid(input.Overrides)) { capacityMessage = "請檢查佇列容量的允許範圍。"; return; }
+        try
+        {
+            if (await CapacitySettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                capacityCurrent = saved;
+                CapacityInput.Version = saved.Version;
+                capacityMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+            }
+            else capacityMessage = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityMessage = "無法確認儲存結果，請重新整理並檢查。"; }
     }
 
     private async Task SaveAsync(EditContext context)
@@ -91,6 +216,12 @@
         [Range(10, 300)] public int? HeartbeatSeconds { get; set; }
         [Range(60, 3600)] public int? SettingsPollSeconds { get; set; }
         [Range(1, 300)] public int? BatchIntervalSeconds { get; set; }
+        public string? Version { get; set; }
+    }
+    private sealed class CapacityForm
+    {
+        [Range(1, 1024)] public int? PayloadMiB { get; set; }
+        [Range(1, 100000)] public int? BatchCount { get; set; }
         public string? Version { get; set; }
     }
 }

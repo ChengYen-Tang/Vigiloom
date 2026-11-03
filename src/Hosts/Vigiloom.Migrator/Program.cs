@@ -1,4 +1,5 @@
 using Vigiloom.Migrator.Recovery;
+using Vigiloom.Migrator.Installation;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,10 +12,11 @@ using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
-if (args.Length > 0)
+var freshInstall = args is ["fresh-install"];
+if (args.Length > 0 && !freshInstall)
 {
     if (args.Length != 2 || args[0] != "recover-admin")
-        throw new ArgumentException("Usage: Vigiloom.Migrator [recover-admin <account-name>]");
+        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | recover-admin <account-name>]");
     await LocalRecoveryCommand.RunAsync(args[1]);
     return;
 }
@@ -36,6 +38,12 @@ await using (var connection = new SqlConnection(connectionString))
     if (compatibilityLevel < SqlServerRegistration.CompatibilityLevel)
         throw new InvalidOperationException($"Database compatibility level {compatibilityLevel} is below the required {SqlServerRegistration.CompatibilityLevel}.");
 }
+await using var install = await InstallLease.AcquireAsync(connectionString);
+if (await install.PrepareAsync(freshInstall))
+{
+    Console.WriteLine("Fresh installation already completed.");
+    return;
+}
 var services = new ServiceCollection();
 services.AddModuleSqlServer<IdentityAccessDbContext>(connectionString, "identity");
 services.AddModuleSqlServer<ResourcesDbContext>(connectionString, "resources");
@@ -45,13 +53,23 @@ services.AddModuleSqlServer<SchedulingDbContext>(connectionString, "scheduling")
 services.AddModuleSqlServer<OperationsDbContext>(connectionString, "operations");
 using var provider = services.BuildServiceProvider();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
+await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>());
+await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>());
+await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<NetworkDbContext>>());
+await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>());
+await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>());
+await install.VerifyAsync();
 await RoleInitializer.InitializeAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
+await install.VerifyAsync();
 await HangfireSchemaInstaller.InstallAsync(connectionString);
+await install.VerifyAsync();
+if (freshInstall)
+    await install.CompleteFreshAsync();
 Console.WriteLine("Module and Hangfire migrations and built-in role initialization completed.");
 
 static async Task ApplyAsync<TContext>(IDbContextFactory<TContext> factory) where TContext : DbContext

@@ -5,6 +5,7 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;
 
@@ -25,6 +26,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         {
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
+            AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             _ => throw new ArgumentException("Unsupported or invalid audit event details.", nameof(audit))
         };
         if (details.Length > 2048) throw new ArgumentException("Audit event details exceed the supported limit.", nameof(audit));
@@ -48,6 +50,14 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         PingSettingsLimits.IsValid(change.Current.IntervalSeconds, change.Current.TimeoutSeconds, change.Current.FailureThreshold,
             change.Current.SuccessThreshold, change.Current.MaxConcurrency) &&
         (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(AgentReplayPolicyChanged change) =>
+        change.ActivatedAt.Offset == TimeSpan.Zero && change.GraceUntil.Offset == TimeSpan.Zero &&
+        change.GraceUntil - change.ActivatedAt == TimeSpan.FromHours(24) + TimeSpan.FromMinutes(5) &&
+        ((change.Previous == AgentReplayPhase.Disabled && change.Current == AgentReplayPhase.Grace && change.EnforcedAt is null) ||
+         (change.Previous == AgentReplayPhase.Grace && change.Current == AgentReplayPhase.Enforced &&
+          change.EnforcedAt is { Offset: var offset } enforced && offset == TimeSpan.Zero && enforced >= change.GraceUntil)) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     private static bool IsVersion(string? value)
     {

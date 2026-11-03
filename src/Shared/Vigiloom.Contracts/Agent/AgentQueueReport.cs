@@ -5,7 +5,43 @@ namespace Vigiloom.Contracts.Agent;
 /// <summary>Current non-secret queue pressure. A null snapshot means it could not be read.</summary>
 public sealed record AgentHeartbeatReport([property: JsonRequired] int Version, [property: JsonRequired] Guid Epoch, [property: JsonRequired] long Sequence,
     [property: JsonRequired] AgentQueueSnapshot? Queue,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentConfigurationReport? Configuration = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentConfigurationReport? Configuration = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQuarantineBreakdown? Quarantine = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQueueCapacityReport? CapacityConfiguration = null)
+{
+    public bool IsValid() => Version == 1 && Epoch.Version == 7 && Sequence >= 1 &&
+        (Queue is null || Queue.IsValid()) && (Configuration is null || Configuration.IsValid()) &&
+        (Quarantine is null || Queue is not null && Quarantine.IsValid(Queue.QuarantinedBatches)) &&
+        (CapacityConfiguration is null || CapacityConfiguration.IsValid() &&
+            (CapacityConfiguration.Applied is null || Queue is not null &&
+                Queue.CapacityBytes == CapacityConfiguration.Applied.Capacity.PayloadBytes &&
+                Queue.CapacityBatches == CapacityConfiguration.Applied.Capacity.BatchCount));
+}
+
+/// <summary>Applied state of the independently versioned queue capacity group.</summary>
+public sealed record AgentQueueCapacityReport([property: JsonRequired] AgentQueueCapacitySnapshot? Applied,
+    [property: JsonRequired] DateTimeOffset? AppliedAt, [property: JsonRequired] AgentConfigurationFailure? Failure)
+{
+    public bool IsValid() => (Failure is null || Enum.IsDefined(Failure.Value)) &&
+        (Applied is null ? AppliedAt is null : Applied.IsValid() && AppliedAt is not null);
+}
+
+/// <summary>Counts of retained batches by fixed rejection reason, not discarded or lost data.</summary>
+public sealed record AgentQuarantineBreakdown([property: JsonRequired] long InvalidLocalBatch, [property: JsonRequired] long BadRequest,
+    [property: JsonRequired] long Conflict, [property: JsonRequired] long PayloadTooLarge,
+    [property: JsonRequired] long UnsupportedMediaType, [property: JsonRequired] long Expired, [property: JsonRequired] long Other)
+{
+    public bool IsValid(long total)
+    {
+        if (total < 0) return false;
+        foreach (var value in (ReadOnlySpan<long>)[InvalidLocalBatch, BadRequest, Conflict, PayloadTooLarge, UnsupportedMediaType, Expired, Other])
+        {
+            if (value < 0 || value > total) return false;
+            total -= value;
+        }
+        return total == 0;
+    }
+}
 
 /// <summary>Agent-observed transport settings status; null applied fields mean no remote settings have been applied.</summary>
 public sealed record AgentConfigurationReport(

@@ -16,6 +16,7 @@ internal sealed class AuditFeedReader(IdentityAuditFeed identity, DeviceAuditFee
         "devices" => AuditFeedSource.Devices,
         "agent-identity" => AuditFeedSource.AgentIdentity,
         "agent-settings" => AuditFeedSource.AgentSettings,
+        "agent-queue-capacity" => AuditFeedSource.AgentQueueCapacity,
         "scheduling" => AuditFeedSource.Scheduling,
         _ => null
     };
@@ -27,7 +28,7 @@ internal sealed class AuditFeedReader(IdentityAuditFeed identity, DeviceAuditFee
         {
             AuditFeedSource.Accounts or AuditFeedSource.ApiCredentials => await identity.QueryAsync(source, query, token),
             AuditFeedSource.Devices => await devices.QueryAsync(query, token),
-            AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity => await agent.QueryAsync(source, query, token),
             AuditFeedSource.Scheduling => Map(await scheduling.QueryAsync(query.From, query.To, query.Page, token)),
             _ => throw new ArgumentException("Unsupported audit source.", nameof(source))
         };

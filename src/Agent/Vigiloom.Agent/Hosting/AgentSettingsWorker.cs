@@ -5,7 +5,7 @@ using Vigiloom.Contracts.Agent;
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Restores local settings and periodically synchronizes them without blocking other workers.</summary>
-internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentSettingsRuntime runtime, IConfiguration configuration,
+internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, IConfiguration configuration,
     TimeProvider clock, ILogger<AgentSettingsWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -17,6 +17,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentSetti
             if (string.IsNullOrWhiteSpace(directory) || !Uri.TryCreate(server, UriKind.Absolute, out var uri))
             {
                 runtime.Bind(null);
+                capacity.Bind(null);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
                 continue;
             }
@@ -27,11 +28,13 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentSetti
                 AgentSettingsOwner? owner = null;
                 if (!IsCurrent(directory, server)) continue;
                 runtime.Bind(null);
+                capacity.Bind(null);
                 try
                 {
                     owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
                     if (!IsCurrent(directory, server)) continue;
                     runtime.Bind(owner);
+                    capacity.Bind(owner);
                     var saved = await client.LoadSavedAsync(vault, uri, stoppingToken);
                     if (IsCurrent(directory, server) && saved.Settings is not null) runtime.Publish(owner, saved.Settings);
                 }
@@ -47,6 +50,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentSetti
                         owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         runtime.Bind(owner);
+                        capacity.Bind(owner);
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Settings is not null) runtime.Publish(owner, result.Settings);
@@ -67,6 +71,26 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentSetti
                     {
                         runtime.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent configuration synchronization failed: {ErrorType}.", ex.GetType().Name);
+                    }
+                    try
+                    {
+                        if (!IsCurrent(directory, server)) break;
+                        var capacityResult = await capacityClient.SyncAsync(vault, uri, stoppingToken);
+                        if (!IsCurrent(directory, server)) break;
+                        if (capacityResult.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) capacity.Bind(null);
+                        else capacity.SetFailure(owner, capacityResult.Status switch
+                        {
+                            AgentSettingsSyncStatus.Unavailable => AgentConfigurationFailure.Unavailable,
+                            AgentSettingsSyncStatus.Invalid => AgentConfigurationFailure.Invalid,
+                            AgentSettingsSyncStatus.Unauthorized => AgentConfigurationFailure.Unauthorized,
+                            AgentSettingsSyncStatus.Conflict => AgentConfigurationFailure.Conflict,
+                            _ => null
+                        });
+                    }
+                    catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                    {
+                        capacity.SetFailure(owner, AgentConfigurationFailure.LocalStorage);
+                        logger.LogWarning("Agent queue capacity synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
                     var seconds = runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
                     if (!await DelayAsync(TimeSpan.FromSeconds(seconds), stoppingToken)) return;

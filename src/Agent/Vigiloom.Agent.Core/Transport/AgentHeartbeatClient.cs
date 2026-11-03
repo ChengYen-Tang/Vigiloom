@@ -21,7 +21,11 @@ public sealed class AgentHeartbeatClient(HttpClient http)
 
     public Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, CancellationToken token) => SendAsync(vault, server, null, token);
 
-    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration, CancellationToken token)
+    public Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration, CancellationToken token) =>
+        SendAsync(vault, server, configuration, null, token);
+
+    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
+        AgentQueueCapacityObservation? capacityObservation, CancellationToken token)
     {
         await gate.WaitAsync(token);
         try
@@ -31,6 +35,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             if (state is null) return mismatch ? HeartbeatResult.ServerMismatch : HeartbeatResult.NotRegistered;
             var id = state.AgentId!.Value;
             var settingsReport = configuration is not null && configuration.Owner.Matches(id, expected, vault) ? configuration.Report : null;
+            var capacityOwnerMatches = capacityObservation is not null && capacityObservation.Owner.Matches(id, expected, vault);
             if (agentId != id || serverUri != expected)
             {
                 agentId = id;
@@ -61,31 +66,42 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     if (current?.AgentId != id || !string.Equals(current.Server, expected.AbsoluteUri, StringComparison.Ordinal))
                         throw new InvalidOperationException("Agent identity changed during heartbeat preparation.");
                     AgentQueueSnapshot? snapshot = null;
+                    AgentQuarantineBreakdown? quarantine = null;
+                    AgentQueueCapacityReport? capacityReport = null;
                     try
                     {
-                        var status = new DurableBatchQueue(vault, id).ReadStatusLocked(lease);
+                        var (status, details) = new DurableBatchQueue(vault, id).ReadDiagnosticsLocked(lease);
+                        var appliedCapacity = await AgentQueueCapacityStore.ReadLockedAsync(lease, id, expected.AbsoluteUri, token);
+                        var capacity = appliedCapacity?.Snapshot.Capacity ?? AgentQueueCapacity.Default;
                         snapshot = new(status.TotalBytes, status.TotalBatches, status.QuarantinedBatches,
-                            DurableBatchQueue.DefaultCapacityBytes, DurableBatchQueue.MaximumQueuedBatches);
+                            capacity.PayloadBytes, capacity.BatchCount);
+                        quarantine = details;
+                        if (capacityOwnerMatches) capacityReport = new(appliedCapacity?.Snapshot, appliedCapacity?.AppliedAt, capacityObservation!.Failure);
                     }
                     catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                     {
-                        // Unavailable differs from an empty queue.
+                        // Unavailable differs from an empty queue; do not claim capacity was applied.
+                        if (capacityOwnerMatches) capacityReport = new(null, null, AgentConfigurationFailure.LocalStorage);
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
                     // Connectivity is still reported when local state cannot be read.
                 }
             }
-            using var response = await PostHeartbeatAsync(expected, credential, report, token);
-            if (report?.Configuration is not null && response.StatusCode == HttpStatusCode.BadRequest)
+            var candidate = report;
+            while (true)
             {
-                // A previous platform may understand the queue report but reject the new optional field.
-                using var prior = await PostHeartbeatAsync(expected, credential, report with { Configuration = null }, token);
-                return await HandleResponseAsync(prior, expected, credential, report, token);
+                using var response = await PostHeartbeatAsync(expected, credential, candidate, token);
+                if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
+                    return await HandleResponseAsync(response, expected, credential, candidate, token);
+                // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
+                if (candidate.CapacityConfiguration is not null) candidate = candidate with { CapacityConfiguration = null };
+                else if (candidate.Quarantine is not null) candidate = candidate with { Quarantine = null };
+                else if (candidate.Configuration is not null) candidate = candidate with { Configuration = null };
+                else return await HandleResponseAsync(response, expected, credential, candidate, token);
             }
-            return await HandleResponseAsync(response, expected, credential, report, token);
         }
         finally { gate.Release(); }
     }
