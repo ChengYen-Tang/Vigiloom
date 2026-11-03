@@ -13,3 +13,6 @@ public sealed class IdentityState
 
 /// <summary>Last valid configuration saved with the identity that owns it.</summary>
 public sealed record AgentAppliedSettings(Vigiloom.Contracts.Agent.AgentSettingsSnapshot Snapshot, DateTimeOffset AppliedAt, Guid SaveToken, Guid AgentId, string Server);
+
+/// <summary>Last valid independent queue capacity group saved for one Agent and server.</summary>
+public sealed record AgentAppliedQueueCapacity(Vigiloom.Contracts.Agent.AgentQueueCapacitySnapshot Snapshot, DateTimeOffset AppliedAt, Guid SaveToken, Guid AgentId, string Server);

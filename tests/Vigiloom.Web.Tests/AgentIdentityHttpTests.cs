@@ -16,7 +16,10 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.Resources.Domain;
@@ -223,13 +226,21 @@ public sealed class AgentIdentityHttpTests
                 {
                     var sender = new AgentBatchClient(batchHttp, TimeProvider.System);
                     await Assert.ThrowsAsync<HttpRequestException>(() => sender.SendNextAsync(vault, server, token));
-                    Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
+                    var restartedVault = new IdentityVault(root);
+                    var restartedQueue = new DurableBatchQueue(restartedVault, recoveredId);
+                    var pending = await restartedQueue.PeekAsync(token);
+                    Assert.AreEqual(batch.BatchId, pending!.BatchId);
+                    CollectionAssert.AreEqual(bytes, pending.Payload, "Reopening the queue must retain the exact original wire bytes.");
+                    var decoded = AgentBatchCodec.TryRead(pending.Payload, out var pendingBatch);
+                    Assert.IsTrue(decoded);
+                    Assert.AreEqual(report.MessageId, pendingBatch!.Items[0].MessageId);
                     await using (var db = await agents.CreateDbContextAsync(token))
                     {
                         Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
                         Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
                     }
-                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    var restartedSender = new AgentBatchClient(batchHttp, TimeProvider.System);
+                    Assert.AreEqual(BatchSendResult.Delivered, (await restartedSender.SendNextAsync(restartedVault, server, token)).Status);
                     Assert.IsNull(await queue.PeekAsync(token));
                     await using var dbAfter = await agents.CreateDbContextAsync(token);
                     Assert.AreEqual(1, await dbAfter.ReceivedBatches.CountAsync(token));
@@ -243,6 +254,10 @@ public sealed class AgentIdentityHttpTests
                     Assert.IsTrue(batchHandler.SawGzip);
                     Assert.AreEqual(2, await dbAfter.ReceivedBatches.CountAsync(token));
                     Assert.AreEqual(13, await dbAfter.RuntimeObservations.CountAsync(token));
+                    var ordered = await dbAfter.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == recoveredId && x.BatchId == compressedBatch.BatchId)
+                        .OrderBy(x => x.Ordinal).Select(x => new { x.Ordinal, x.MessageId }).ToArrayAsync(token);
+                    CollectionAssert.AreEqual(more.Select((x, ordinal) => (ordinal, x.MessageId)).ToArray(),
+                        ordered.Select(x => (x.Ordinal, x.MessageId)).ToArray(), "Message identity and ordinal survive retry and commit.");
                     var conflicting = AgentBatchCodec.Serialize(batch with { Items = [report with { RuntimeVersion = "different" }] });
                     Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, reportAt, 1, conflicting, token));
                     Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
@@ -264,16 +279,31 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(expectedSettings.Effective, synchronized.Settings!.Snapshot);
                     var settingsReport = new AgentConfigurationReport(synchronized.Settings.Snapshot, synchronized.Settings.AppliedAt, null);
                     var observation = new AgentConfigurationObservation(new AgentSettingsOwner(recoveredId, server.AbsoluteUri, vault.StateDirectory), settingsReport);
+                    var capacityConfiguration = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityConfiguration>();
+                    var capacityMonitoring = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityMonitoring>();
+                    var expectedCapacity = (await capacityConfiguration.UpdateAsync(device.Id, new AgentQueueCapacityUpdate(new(1024L * 1024, 100), ""), Guid.CreateVersion7(), token))!;
+                    var capacityClient = new AgentQueueCapacityClient(settingsHttp, TimeProvider.System);
+                    var capacitySync = await capacityClient.SyncAsync(vault, server, token);
+                    Assert.AreEqual(AgentSettingsSyncStatus.Saved, capacitySync.Status);
+                    Assert.AreEqual(expectedCapacity.Effective, capacitySync.Settings!.Snapshot);
+                    Assert.AreEqual(AgentSettingsSyncStatus.Unchanged, (await capacityClient.SyncAsync(vault, server, token)).Status);
+                    var capacityObservation = new AgentQueueCapacityObservation(observation.Owner, null);
                     var heartbeatClient = new AgentHeartbeatClient(heartbeatHttp);
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, token));
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
                     var monitoring = scope.ServiceProvider.GetRequiredService<AgentMonitoring>();
                     Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue, "Lost session response still allows an empty heartbeat.");
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, token));
+                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
                     var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
                     Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
                     Assert.AreEqual(1L, queueStatus.Snapshot!.TotalBatches);
                     Assert.AreEqual(1L, queueStatus.Snapshot.QuarantinedBatches);
+                    Assert.AreEqual(new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 0, 0), queueStatus.Quarantine,
+                        "A real rejected batch must be reported through the Agent heartbeat.");
                     Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
+                    var capacityStatus = await capacityMonitoring.GetAsync(device.Id, token);
+                    Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
+                    Assert.AreEqual(expectedCapacity.Effective, capacityStatus.Applied);
+                    Assert.AreEqual(1024L * 1024, queueStatus.Snapshot.CapacityBytes);
                     var changedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), expectedSettings.Version), Guid.CreateVersion7(), token))!;
                     Assert.AreEqual(AgentSettingsApplyState.Pending, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
                     var updated = await settingsClient.SyncAsync(vault, server, token);
@@ -336,6 +366,7 @@ public sealed class AgentIdentityHttpTests
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(identities, token);
             string apiCredential;
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -362,7 +393,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status" };
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -382,6 +413,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
             using (var apiCannotReadMachineSettings = await api.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineSettings.StatusCode);
+            using (var apiCannotReadMachineCapacity = await api.GetAsync("/api/v1/agent/queue-capacity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineCapacity.StatusCode);
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
             using (var apiCannotManage = await api.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotManage.StatusCode);
@@ -423,6 +455,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Forbidden, manageSettings.StatusCode);
                 using var changeSettings = await reader.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeSettings.StatusCode);
+                using var readCapacity = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-queue-capacity", token);
+                Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
+                using var manageCapacity = await reader.GetAsync("/api/v1/agent-management/queue-capacity/platform", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, manageCapacity.StatusCode);
+                using var manageReplay = await reader.GetAsync("/api/v1/agent-management/replay-policy/", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, manageReplay.StatusCode);
+                using var changeCapacity = await reader.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, changeCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
@@ -436,6 +476,15 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
+            using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
+            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
+            {
+                var replay = await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token);
+                Assert.AreEqual(AgentReplayPhase.Disabled, replay!.Phase);
+                using var forgedReplay = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedReplay.StatusCode);
+            }
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -463,6 +512,43 @@ public sealed class AgentIdentityHttpTests
                 using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
             }
+            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
+            {
+                var replay = (await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
+                using var unconfirmed = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, false), token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
+                using var activated = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.OK, activated.StatusCode);
+                var grace = (await activated.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
+                Assert.AreEqual(AgentReplayPhase.Grace, grace.Phase);
+                using var stale = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+                var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-1).ToString("O"));
+                var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(1).ToString("O"));
+                using var audit = await admin.GetAsync($"/api/v1/operations/audit/agent-replay?from={from}&to={to}", token);
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var records = (await audit.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token))!;
+                Assert.HasCount(1, records.Items);
+                Assert.AreEqual(AgentReplayPhase.Grace, records.Items[0].AgentReplayPolicy!.Current);
+                using var speedAudit = await admin.GetAsync($"/api/v1/operations/audit?from={from}&to={to}", token);
+                Assert.HasCount(0, (await speedAudit.Content.ReadFromJsonAsync<OperationAuditPage>(cancellationToken: token))!.Items);
+                using var settingsPage = await admin.GetAsync("/settings/agents", token);
+                Assert.AreEqual(HttpStatusCode.OK, settingsPage.StatusCode);
+                var settingsDoc = await new HtmlParser().ParseDocumentAsync(await settingsPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("過渡期間", settingsDoc.Body!.TextContent);
+                Assert.Contains("啟用 24 小時期限", settingsDoc.Body.TextContent);
+                var replayForm = settingsDoc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "agent-replay");
+                var fields = replayForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["ReplayInput.Confirmed"] = "true";
+                using var earlyEnforcement = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(fields), token);
+                var earlyDoc = await new HtmlParser().ParseDocumentAsync(await earlyEnforcement.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("過渡期尚未結束", earlyDoc.Body!.TextContent);
+                using var auditPage = await admin.GetAsync("/settings/audit?source=agent-replay", token);
+                Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+                var auditDoc = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 補送政策", auditDoc.Body!.TextContent);
+                Assert.Contains("過渡期間", auditDoc.Body.TextContent);
+            }
             AgentSettingsView configured;
             using (var initialSettings = await admin.GetAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", token))
             {
@@ -479,6 +565,12 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Conflict, staleSettings.StatusCode);
             using (var invalidSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(1, null, null), configured.Version), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidSettings.StatusCode);
+            using (var saveCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.OK, saveCapacity.StatusCode);
+            using (var staleCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 200), ""), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleCapacity.StatusCode);
+            using (var invalidCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1, 100), ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidCapacity.StatusCode);
             using var issued = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
             Assert.AreEqual(HttpStatusCode.OK, issued.StatusCode);
             Assert.IsTrue(issued.Headers.CacheControl?.NoStore);
@@ -529,7 +621,8 @@ public sealed class AgentIdentityHttpTests
             using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, queueEpoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             var settingsReport = new AgentConfigurationReport(configured.Effective, DateTimeOffset.UtcNow, null);
-            var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport);
+            var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport,
+                new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0));
             using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
             using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings-status", token))
@@ -541,6 +634,16 @@ public sealed class AgentIdentityHttpTests
             }
             using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Queue = queueReport.Queue! with { QuarantinedBatches = 6 } }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Quarantine = queueReport.Quarantine! with { Conflict = -1 } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = null }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                var status = await statusResponse.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
+                Assert.AreEqual(queueReport.Queue, status!.Queue!.Snapshot);
+                Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
+            }
             using (var wrongVersion = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Version = 2 }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
             using (var duplicate = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes("{\"version\":1,\"version\":1,\"queue\":null}"u8.ToArray()), token))
@@ -600,7 +703,11 @@ public sealed class AgentIdentityHttpTests
                 var status = await connected.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
                 Assert.AreEqual(AgentConnectionState.Online, status!.State);
                 Assert.AreEqual(queueReport.Queue, status.Queue!.Snapshot);
+                Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
                 Assert.IsNotNull(status.LastHeartbeatAt);
+                Assert.IsNotNull(status.LastCommittedBatchAt);
+                Assert.AreEqual(1L, status.ReceiptCapacity!.RetainedBatches);
+                Assert.AreEqual(batchBytes.Length, status.ReceiptCapacity.OriginalPayloadBytes);
             }
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
@@ -610,6 +717,9 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual("3 批", fields["等待傳送"]);
                 Assert.AreEqual("2 批", fields["已隔離"]);
                 Assert.AreEqual("5 / 10 批", fields["批次容量"]);
+                Assert.AreNotEqual("保留範圍內無資料", fields["目前 Agent 最後提交批次（UTC）"]);
+                Assert.Contains("不代表 Agent 已收到確認", page.Body!.TextContent);
+                Assert.Contains("批次內容衝突：2 批", page.Body.TextContent);
                 Assert.Contains("可能不是目前狀態", page.Body!.TextContent);
             }
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
@@ -618,6 +728,24 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("等待傳送", page.Body!.TextContent);
                 Assert.Contains("3 批", page.Body.TextContent);
+                Assert.Contains("中央收據容量", page.Body.TextContent);
+                Assert.Contains("不代表 SQL 磁碟用量", page.Body.TextContent);
+                Assert.DoesNotContain("入列時間，比平台記錄的接收時間超前", page.Body.TextContent);
+            }
+            var futureBatch = batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddMinutes(6), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
+            using (var futureResult = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(futureBatch)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, futureResult.StatusCode);
+            using (var futureStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
+            {
+                var status = await futureStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
+                Assert.IsTrue(status!.LastBatchTime!.EnqueuedAheadOfReceipt);
+                Assert.AreEqual(futureBatch.EnqueuedAt, status.LastBatchTime.EnqueuedAt);
+            }
+            using (var futurePage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await futurePage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("入列時間，比平台記錄的接收時間超前超過 5 分鐘", page.Body!.TextContent);
+                Assert.Contains("歷史批次觀察，不代表目前時鐘狀態", page.Body.TextContent);
             }
             clock.Now += TimeSpan.FromMinutes(4);
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -635,12 +763,62 @@ public sealed class AgentIdentityHttpTests
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("佇列已達容量", page.Body!.TextContent);
             }
-            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null }, token))
+            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null, Quarantine = null }, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, unreadable.StatusCode);
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 無法讀取佇列，資料狀態未知", page.Body!.TextContent);
+            }
+            using (var legacy = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 4, Quarantine = null }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, legacy.StatusCode);
+            using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("隔離原因摘要尚未提供", page.Body!.TextContent);
+                Assert.DoesNotContain("批次內容衝突：2 批", page.Body.TextContent);
+            }
+            // Synthetic retained receipts exercise the byte limit without transferring 256 MiB.
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            {
+                for (var i = 0; i < 256; i++)
+                    db.ReceivedBatches.Add(new ReceivedBatch(result.AgentId, Guid.CreateVersion7(), new byte[32], clock.Now, clock.Now, 1, 1024 * 1024));
+                await db.SaveChangesAsync(token);
+            }
+            using (var capacityPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await capacityPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("中央新批次接收已達限制", page.Body!.TextContent);
+                Assert.Contains("既有收據仍可確認重送", page.Body.TextContent);
+            }
+            using (var newBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(futureBatch with { BatchId = Guid.CreateVersion7() })), token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, newBatch.StatusCode);
+            using (var duplicateAtCapacity = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, duplicateAtCapacity.StatusCode);
+            var previousSettings = AgentSettingsSnapshot.Create(AgentSettings.Default);
+            var failedReport = queueReport with { Sequence = 5, Configuration = new(previousSettings, clock.Now, AgentConfigurationFailure.Invalid) };
+            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("同步失敗", page.Body!.TextContent);
+                Assert.Contains("收到的設定無法套用，Agent 會保留上次設定", page.Body.TextContent);
+            }
+            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport with { Sequence = 6, Configuration = new(previousSettings, clock.Now, null) }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("待同步", page.Body!.TextContent);
+                Assert.Contains("期望心跳間隔", page.Body.TextContent);
+            }
+            clock.Now += TimeSpan.FromMinutes(10);
+            using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Agent 已失聯", page.Body!.TextContent);
+                Assert.Contains("Ping", page.Body.TextContent);
             }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
                 Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == result.AgentId, token)).LastHeartbeatAt);

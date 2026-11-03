@@ -15,7 +15,7 @@ internal static class AgentBatchEndpoints
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
             .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentBatchCodec.MaximumBytes))
             .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
-            .ProducesProblem(413).ProducesProblem(415).ProducesProblem(429).ProducesProblem(503)
+            .ProducesProblem(410).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Commit an authenticated, validated Agent runtime batch");
     }
 
@@ -63,7 +63,8 @@ internal static class AgentBatchEndpoints
                 BatchReceiptStatus.Unauthorized => Results.Unauthorized(),
                 BatchReceiptStatus.Invalid => Results.BadRequest(),
                 BatchReceiptStatus.Conflict => Results.Conflict(),
-                BatchReceiptStatus.CapacityExceeded => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
+                BatchReceiptStatus.Expired => Results.StatusCode(StatusCodes.Status410Gone),
+                BatchReceiptStatus.CapacityExceeded or BatchReceiptStatus.ClockUncertain or BatchReceiptStatus.TimestampAhead => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
                 _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
             };
         }

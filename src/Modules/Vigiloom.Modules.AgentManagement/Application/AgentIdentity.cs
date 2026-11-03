@@ -125,8 +125,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
 
     public async Task<AgentIdentityStatus> RecordHeartbeatAsync(string? credential, AgentHeartbeatReport? report, CancellationToken token)
     {
-        if (report is not null && (report.Version != 1 || report.Epoch.Version != 7 || report.Sequence < 1 ||
-            report.Queue is { } snapshot && !snapshot.IsValid() || report.Configuration is { } configuration && !configuration.IsValid()))
+        if (report is not null && !report.IsValid())
             throw new ArgumentException("Invalid Agent heartbeat report.", nameof(report));
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
@@ -135,8 +134,11 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         var now = clock.GetUtcNow();
         agent.RecordHeartbeat(now);
         var staleSession = report is not null && agent.QueueReportEpoch != report.Epoch;
-        if (report is not null && !staleSession && agent.RecordQueueStatus(report.Sequence, report.Queue, now) && report.Configuration is { } settings)
-            agent.RecordConfigurationStatus(settings, now);
+        if (report is not null && !staleSession && agent.RecordQueueStatus(report.Sequence, report.Queue, report.Quarantine, now))
+        {
+            if (report.Configuration is { } settings) agent.RecordConfigurationStatus(settings, now);
+            if (report.CapacityConfiguration is { } capacity) agent.RecordQueueCapacityStatus(capacity, report.Sequence, now);
+        }
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return staleSession ? AgentIdentityStatus.Conflict : AgentIdentityStatus.Success;

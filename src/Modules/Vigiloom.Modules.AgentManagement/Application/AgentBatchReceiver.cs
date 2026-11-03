@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded }
+public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded, ClockUncertain, Expired, TimestampAhead }
 
 /// <summary>Commits a validated batch receipt and all supported observations atomically.</summary>
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
@@ -28,19 +29,47 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         if (previous is not null)
             return CryptographicOperations.FixedTimeEquals(previous.Digest, digest) ? BatchReceiptStatus.AlreadyAccepted : BatchReceiptStatus.Conflict;
 
+        var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (HOLDLOCK) WHERE [Scope] = 1")
+            .AsNoTracking().SingleAsync(token);
+        // All Web nodes use the same database clock, and AuthenticateForWriteAsync
+        // holds the device lock until commit. Existing acknowledgments remain valid
+        // even if the platform clock has moved backwards.
+        var policyTime = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        if (agent.ReplayClockFloor is { } floor && policyTime < floor ||
+            policy.ActivatedAt is { } activated && policyTime < activated ||
+            policy.EnforcedAt is { } enforced && policyTime < enforced)
+        {
+            agent.RecordReplayIssue(AgentReplayIssue.ClockUncertain, policyTime);
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return BatchReceiptStatus.ClockUncertain;
+        }
+        if (policy.Phase == AgentReplayPhase.Enforced)
+        {
+            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime);
+            if (rejection is { } reason)
+            {
+                agent.AdvanceReplayClock(policyTime);
+                agent.RecordReplayIssue(reason == BatchReceiptStatus.Expired ? AgentReplayIssue.Expired : AgentReplayIssue.TimestampAhead, policyTime);
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
+                return reason;
+            }
+        }
+
         var itemIds = batch!.Items.Select(item => item.MessageId).ToArray();
         var existing = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
         foreach (var item in batch.Items)
             if (existing.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
 
-        var receipts = db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agent.Id);
-        var count = await receipts.CountAsync(token);
-        var bytes = await receipts.SumAsync(x => (long?)x.ByteCount, token) ?? 0;
-        if (count >= maximumBatches || payload.Length > capacityBytes - bytes)
+        var usage = await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
+        if (usage.Count >= maximumBatches || payload.Length > capacityBytes - usage.Bytes)
             return BatchReceiptStatus.CapacityExceeded;
 
         var receivedAt = clock.GetUtcNow();
+        agent.AdvanceReplayClock(policyTime);
+        agent.ClearReplayIssue();
         db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
         {

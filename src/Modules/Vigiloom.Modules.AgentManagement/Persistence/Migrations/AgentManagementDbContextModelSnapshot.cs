@@ -67,17 +67,75 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int?>("LastReplayIssue")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("LastReplayIssueAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("PendingUntil")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<byte[]>("PendingVerifier")
                         .HasColumnType("binary(32)");
 
+                    b.Property<long?>("QuarantineBadRequest")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineConflict")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineExpired")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineInvalidLocal")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineOther")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("QuarantineReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QuarantineReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineTooLarge")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineUnsupported")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueCapacityAppliedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("QueueCapacityAppliedBatches")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("QueueCapacityAppliedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("QueueCapacityAppliedRevision")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int?>("QueueCapacityBatches")
                         .HasColumnType("int");
 
                     b.Property<long?>("QueueCapacityBytes")
                         .HasColumnType("bigint");
+
+                    b.Property<int?>("QueueCapacityFailure")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("QueueCapacityReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QueueCapacityReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueCapacityReportedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<long?>("QueueQuarantinedBatches")
                         .HasColumnType("bigint");
@@ -96,6 +154,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<long?>("QueueTotalBytes")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ReplayClockFloor")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
@@ -128,6 +189,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                             t.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
 
                             t.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
                         });
                 });
 
@@ -167,6 +230,167 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("AgentAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacityAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("BatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("ChangeVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EffectiveBatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<long>("EffectivePayloadBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("EffectiveRevision")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("PayloadBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("SettingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SettingId");
+
+                    b.HasIndex("OccurredAt", "RowId");
+
+                    b.HasIndex("DeviceId", "OccurredAt", "RowId");
+
+                    b.ToTable("QueueCapacityAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacitySetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("BatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("PayloadBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("QueueCapacitySettings", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_QueueCapacitySettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EnforcedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("FreshInstallation")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("GraceUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Phase")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Scope")
+                        .IsUnique();
+
+                    b.ToTable("ReplayPolicies", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
+                        });
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSetting", b =>
@@ -435,6 +659,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AgentId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacityAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacitySetting", null)
+                        .WithMany()
+                        .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSettingAudit", b =>

@@ -1,11 +1,12 @@
 using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Agent.Core.Configuration;
 
 namespace Vigiloom.Agent.Core.Transport;
 
 /// <summary>A persistent, bounded queue of immutable wire payloads belonging to one Agent identity.</summary>
-public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long capacityBytes = DurableBatchQueue.DefaultCapacityBytes,
-    int maximumBatches = DurableBatchQueue.MaximumQueuedBatches)
+public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? capacityBytes = null, int? maximumBatches = null)
 {
     public const int MaximumBatchBytes = 1024 * 1024;
     public const int MaximumBatchRecords = 1000;
@@ -22,15 +23,18 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
         if (batchId.Version != 7) throw new ArgumentException("A version 7 batch ID is required.", nameof(batchId));
         if (recordCount is < 1 or > MaximumBatchRecords) throw new ArgumentOutOfRangeException(nameof(recordCount));
         if (payload.Length is < 1 or > MaximumBatchBytes) throw new ArgumentOutOfRangeException(nameof(payload));
-        if (capacityBytes < 1) throw new InvalidOperationException("Queue capacity must be positive.");
+        if (capacityBytes is < 1) throw new InvalidOperationException("Queue capacity must be positive.");
         if (maximumBatches is < 1 or > MaximumQueuedBatches) throw new InvalidOperationException("Queue batch limit is outside the supported range.");
         await gate.WaitAsync(token);
         try
         {
             token.ThrowIfCancellationRequested();
-            var snapshot = payload.ToArray();
             await using var session = await vault.AcquireForTransportAsync(token);
             token.ThrowIfCancellationRequested();
+            var effective = capacityBytes is null || maximumBatches is null
+                ? await AgentQueueCapacityStore.ReadEffectiveLockedAsync(session, agentId, token) : AgentQueueCapacity.Default;
+            var byteLimit = capacityBytes ?? effective.PayloadBytes;
+            var batchLimit = maximumBatches ?? effective.BatchCount;
             using var connection = Open(session.DirectoryPath);
             using var transaction = connection.BeginTransaction();
             using (var existing = connection.CreateCommand())
@@ -42,7 +46,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
                 if (reader.Read())
                 {
                     var same = reader.GetInt64(0) == enqueuedAt.UtcTicks && reader.GetInt32(1) == recordCount &&
-                        snapshot.AsSpan().SequenceEqual((byte[])reader[2]);
+                        payload.Span.SequenceEqual((byte[])reader[2]);
                     return same ? EnqueueResult.AlreadyQueued : EnqueueResult.ConflictingBatch;
                 }
             }
@@ -52,7 +56,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
                 size.CommandText = "SELECT queued_bytes, queued_count FROM queue_state WHERE singleton = 1";
                 using var reader = size.ExecuteReader();
                 if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
-                if (payload.Length > capacityBytes - reader.GetInt64(0) || reader.GetInt64(1) >= maximumBatches) return EnqueueResult.Full;
+                if (payload.Length > byteLimit - reader.GetInt64(0) || reader.GetInt64(1) >= batchLimit) return EnqueueResult.Full;
             }
             using (var insert = connection.CreateCommand())
             {
@@ -62,7 +66,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
                 insert.Parameters.AddWithValue("$created", enqueuedAt.UtcTicks);
                 insert.Parameters.AddWithValue("$count", recordCount);
                 insert.Parameters.AddWithValue("$bytes", payload.Length);
-                insert.Parameters.Add("$payload", SqliteType.Blob).Value = snapshot;
+                insert.Parameters.Add("$payload", SqliteType.Blob).Value = payload.ToArray();
                 insert.ExecuteNonQuery();
             }
             token.ThrowIfCancellationRequested();
@@ -124,14 +128,30 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long ca
 
     // The caller must hold the identity lease. This permits a heartbeat to obtain
     // its sequence and queue snapshot under the same cross-process lock.
-    internal QueueStatus ReadStatusLocked(IdentityVault.Session session)
+    internal QueueStatus ReadStatusLocked(IdentityVault.Session session) => ReadDiagnosticsLocked(session).Status;
+
+    internal (QueueStatus Status, AgentQuarantineBreakdown Quarantine) ReadDiagnosticsLocked(IdentityVault.Session session)
     {
         using var connection = Open(session.DirectoryPath);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT queued_bytes, queued_count, (SELECT count(*) FROM batches WHERE rejection IS NOT NULL) FROM queue_state WHERE singleton = 1";
+        command.CommandText = """
+            SELECT q.queued_bytes, q.queued_count, COUNT(b.rejection),
+                COALESCE(SUM(CASE WHEN b.rejection = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 2 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 3 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 4 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 5 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection = 6 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN b.rejection IS NOT NULL AND b.rejection NOT BETWEEN 1 AND 6 THEN 1 ELSE 0 END), 0)
+            FROM queue_state AS q LEFT JOIN batches AS b ON b.rejection IS NOT NULL
+            WHERE q.singleton = 1 GROUP BY q.queued_bytes, q.queued_count
+            """;
         using var reader = command.ExecuteReader();
         if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
-        return new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+        var status = new QueueStatus(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+        var breakdown = new AgentQuarantineBreakdown(reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5),
+            reader.GetInt64(6), reader.GetInt64(7), reader.GetInt64(8), reader.GetInt64(9));
+        return (status, breakdown);
     }
 
     /// <summary>Remove only a batch whose successful central commit has been acknowledged.</summary>

@@ -6,12 +6,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence;
 public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbContext> options) : DbContext(options)
 {
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<AgentReplayPolicy> ReplayPolicies => Set<AgentReplayPolicy>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<AgentAudit> Audits => Set<AgentAudit>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<AgentSetting> Settings => Set<AgentSetting>();
     public DbSet<AgentSettingAudit> SettingAudits => Set<AgentSettingAudit>();
+    public DbSet<AgentQueueCapacitySetting> QueueCapacitySettings => Set<AgentQueueCapacitySetting>();
+    public DbSet<AgentQueueCapacityAudit> QueueCapacityAudits => Set<AgentQueueCapacityAudit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -21,6 +24,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         {
             table.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
             table.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
+            table.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
         });
         agent.HasKey(x => x.Id).IsClustered(false);
         agent.Property(x => x.Id).ValueGeneratedNever();
@@ -30,7 +34,22 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         agent.Property(x => x.PendingVerifier).HasColumnType("binary(32)");
         agent.Property(x => x.HeartbeatSafetyIntervalSeconds).HasDefaultValue(30);
         agent.Property(x => x.AppliedConfigurationRevision).HasMaxLength(64);
+        agent.Property(x => x.QueueCapacityAppliedRevision).HasMaxLength(64);
         agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
+
+        var replay = modelBuilder.Entity<AgentReplayPolicy>();
+        replay.ToTable("ReplayPolicies", table =>
+        {
+            table.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
+            table.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
+        });
+        replay.HasKey(x => x.Id).IsClustered(false);
+        replay.Property(x => x.Id).ValueGeneratedNever();
+        replay.Property(x => x.RowId).UseIdentityColumn();
+        replay.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        replay.HasIndex(x => x.Scope).IsUnique();
+        replay.Property(x => x.Version).IsRowVersion();
 
         var enrollment = modelBuilder.Entity<Enrollment>();
         enrollment.ToTable("Enrollments", table => table.HasCheckConstraint("CK_Enrollments_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
@@ -89,5 +108,24 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         settingAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
         settingAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
         settingAudit.HasOne<AgentSetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
+
+        var capacity = modelBuilder.Entity<AgentQueueCapacitySetting>();
+        capacity.ToTable("QueueCapacitySettings", table => table.HasCheckConstraint("CK_QueueCapacitySettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        capacity.HasKey(x => x.Id).IsClustered(false);
+        capacity.Property(x => x.Id).ValueGeneratedNever();
+        capacity.Property(x => x.RowId).UseIdentityColumn();
+        capacity.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        capacity.HasIndex(x => x.DeviceId).IsUnique().HasFilter(null);
+        capacity.Property(x => x.Version).IsRowVersion();
+
+        var capacityAudit = modelBuilder.Entity<AgentQueueCapacityAudit>();
+        capacityAudit.ToTable("QueueCapacityAudits");
+        capacityAudit.HasKey(x => x.RowId).IsClustered();
+        capacityAudit.Property(x => x.RowId).UseIdentityColumn();
+        capacityAudit.Property(x => x.EffectiveRevision).HasMaxLength(64).IsRequired();
+        capacityAudit.Property(x => x.ChangeVersion).HasColumnType("binary(8)").IsRequired();
+        capacityAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        capacityAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
+        capacityAudit.HasOne<AgentQueueCapacitySetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
     }
 }

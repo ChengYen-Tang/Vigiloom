@@ -1,5 +1,6 @@
 using Vigiloom.BuildingBlocks.Identifiers;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Devices;
 
 namespace Vigiloom.Modules.AgentManagement.Domain;
 
@@ -26,6 +27,9 @@ public sealed class Agent
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
+    public DateTimeOffset? ReplayClockFloor { get; private set; }
+    public AgentReplayIssue? LastReplayIssue { get; private set; }
+    public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
     public DateTimeOffset? QueueReportedAt { get; private set; }
     public Guid? QueueReportEpoch { get; private set; }
@@ -35,6 +39,23 @@ public sealed class Agent
     public long? QueueQuarantinedBatches { get; private set; }
     public long? QueueCapacityBytes { get; private set; }
     public int? QueueCapacityBatches { get; private set; }
+    public long? QuarantineInvalidLocal { get; private set; }
+    public long? QuarantineBadRequest { get; private set; }
+    public long? QuarantineConflict { get; private set; }
+    public long? QuarantineTooLarge { get; private set; }
+    public long? QuarantineUnsupported { get; private set; }
+    public long? QuarantineExpired { get; private set; }
+    public long? QuarantineOther { get; private set; }
+    public Guid? QuarantineReportEpoch { get; private set; }
+    public long? QuarantineReportSequence { get; private set; }
+    public Guid? QueueCapacityReportEpoch { get; private set; }
+    public long? QueueCapacityReportSequence { get; private set; }
+    public DateTimeOffset? QueueCapacityReportedAt { get; private set; }
+    public string? QueueCapacityAppliedRevision { get; private set; }
+    public long? QueueCapacityAppliedBytes { get; private set; }
+    public int? QueueCapacityAppliedBatches { get; private set; }
+    public DateTimeOffset? QueueCapacityAppliedAt { get; private set; }
+    public AgentConfigurationFailure? QueueCapacityFailure { get; private set; }
     public DateTimeOffset? ConfigurationReportedAt { get; private set; }
     public string? AppliedConfigurationRevision { get; private set; }
     public int? AppliedHeartbeatSeconds { get; private set; }
@@ -44,6 +65,18 @@ public sealed class Agent
     public AgentConfigurationFailure? ConfigurationFailure { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
+    public void AdvanceReplayClock(DateTimeOffset now)
+    {
+        var utc = now.ToUniversalTime();
+        if (ReplayClockFloor is null || utc > ReplayClockFloor) ReplayClockFloor = utc;
+    }
+    public void RecordReplayIssue(AgentReplayIssue issue, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(issue)) throw new ArgumentOutOfRangeException(nameof(issue));
+        LastReplayIssue = issue;
+        LastReplayIssueAt = now.ToUniversalTime();
+    }
+    public void ClearReplayIssue() { LastReplayIssue = null; LastReplayIssueAt = null; }
     public void RecordHeartbeat(DateTimeOffset now)
     {
         var utc = now.ToUniversalTime();
@@ -54,7 +87,7 @@ public sealed class Agent
         if (intervalSeconds is < 10 or > 300) throw new ArgumentOutOfRangeException(nameof(intervalSeconds));
         HeartbeatSafetyIntervalSeconds = Math.Max(HeartbeatSafetyIntervalSeconds, intervalSeconds);
     }
-    public bool RecordQueueStatus(long sequence, AgentQueueSnapshot? snapshot, DateTimeOffset now)
+    public bool RecordQueueStatus(long sequence, AgentQueueSnapshot? snapshot, AgentQuarantineBreakdown? quarantine, DateTimeOffset now)
     {
         if (QueueReportSequence >= sequence) return false;
         QueueReportSequence = sequence;
@@ -64,6 +97,15 @@ public sealed class Agent
         QueueQuarantinedBatches = snapshot?.QuarantinedBatches;
         QueueCapacityBytes = snapshot?.CapacityBytes;
         QueueCapacityBatches = snapshot?.CapacityBatches;
+        QuarantineInvalidLocal = quarantine?.InvalidLocalBatch;
+        QuarantineBadRequest = quarantine?.BadRequest;
+        QuarantineConflict = quarantine?.Conflict;
+        QuarantineTooLarge = quarantine?.PayloadTooLarge;
+        QuarantineUnsupported = quarantine?.UnsupportedMediaType;
+        QuarantineExpired = quarantine?.Expired;
+        QuarantineOther = quarantine?.Other;
+        QuarantineReportEpoch = quarantine is null ? null : QueueReportEpoch;
+        QuarantineReportSequence = quarantine is null ? null : sequence;
         return true;
     }
     public void RecordConfigurationStatus(AgentConfigurationReport report, DateTimeOffset now)
@@ -76,6 +118,17 @@ public sealed class Agent
         ConfigurationAppliedAt = report.AppliedAt?.ToUniversalTime();
         ConfigurationFailure = report.Failure;
     }
+    public void RecordQueueCapacityStatus(AgentQueueCapacityReport report, long sequence, DateTimeOffset now)
+    {
+        QueueCapacityReportEpoch = QueueReportEpoch;
+        QueueCapacityReportSequence = sequence;
+        QueueCapacityReportedAt = now.ToUniversalTime();
+        QueueCapacityAppliedRevision = report.Applied?.Revision;
+        QueueCapacityAppliedBytes = report.Applied?.Capacity.PayloadBytes;
+        QueueCapacityAppliedBatches = report.Applied?.Capacity.BatchCount;
+        QueueCapacityAppliedAt = report.AppliedAt?.ToUniversalTime();
+        QueueCapacityFailure = report.Failure;
+    }
     public void BeginQueueSession(Guid epoch)
     {
         QueueReportEpoch = epoch;
@@ -86,6 +139,23 @@ public sealed class Agent
         QueueQuarantinedBatches = null;
         QueueCapacityBytes = null;
         QueueCapacityBatches = null;
+        QuarantineInvalidLocal = null;
+        QuarantineBadRequest = null;
+        QuarantineConflict = null;
+        QuarantineTooLarge = null;
+        QuarantineUnsupported = null;
+        QuarantineExpired = null;
+        QuarantineOther = null;
+        QuarantineReportEpoch = null;
+        QuarantineReportSequence = null;
+        QueueCapacityReportEpoch = null;
+        QueueCapacityReportSequence = null;
+        QueueCapacityReportedAt = null;
+        QueueCapacityAppliedRevision = null;
+        QueueCapacityAppliedBytes = null;
+        QueueCapacityAppliedBatches = null;
+        QueueCapacityAppliedAt = null;
+        QueueCapacityFailure = null;
         ConfigurationReportedAt = null;
         AppliedConfigurationRevision = null;
         AppliedHeartbeatSeconds = null;
