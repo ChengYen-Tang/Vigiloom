@@ -259,11 +259,14 @@ public sealed class AgentIdentitySqlTests
     {
         var clock = new TestClock();
         var device = new Device("batch server", "127.0.0.1", true, clock.Now);
-        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var otherDevice = new Device("other batch server", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(device, otherDevice); await db.SaveChangesAsync(token); }
         var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
         var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
         var secret = RandomNumberGenerator.GetBytes(32);
         var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var otherIssued = await identity.IssueAsync(otherDevice.Id, Guid.CreateVersion7(), token);
+        await identity.RedeemAsync(otherIssued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
         var credential = Credential(registered.AgentId!.Value, secret);
         var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "Windows test", "X64", ".NET 10");
         var other = item with { MessageId = Guid.CreateVersion7(), OperatingSystem = "Linux test" };
@@ -271,19 +274,25 @@ public sealed class AgentIdentitySqlTests
         var payload = AgentBatchCodec.Serialize(batch);
         var receiver = new AgentBatchReceiver(agents, identity, clock);
         var receiverHealth = new AgentReceiverMonitoring(agents);
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
         Assert.IsNull(await receiverHealth.LastCommittedBatchAsync(token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
         Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
+        Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.IsNull((await monitoring.GetAsync(otherDevice.Id, token))!.LastCommittedBatchAt);
         clock.Now = clock.Now.AddMinutes(1);
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(clock.Now.AddMinutes(-1), await receiverHealth.LastCommittedBatchAsync(token));
+        Assert.AreEqual(clock.Now.AddMinutes(-1), (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
             AgentBatchCodec.Serialize(batch with { Items = [item with { RuntimeVersion = "different" }, other] }), token));
         var anotherBatch = batch with { BatchId = Guid.CreateVersion7(), Items = [item] };
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(anotherBatch), token));
         Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
+        Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         var newMessage = other with { MessageId = Guid.CreateVersion7() };
         var conflictingMessage = anotherBatch with { BatchId = Guid.CreateVersion7(), Items = [newMessage, item with { RuntimeVersion = "different" }] };
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(conflictingMessage), token));
@@ -296,6 +305,12 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(item.MessageId, observations[0].MessageId);
         Assert.AreEqual(other.MessageId, observations[1].MessageId);
         Assert.AreEqual(".NET 10", observations[0].RuntimeVersion);
+        var administrator = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(registered.AgentId.Value, administrator, token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        var replacement = await identity.IssueAsync(device.Id, administrator, token);
+        await identity.RedeemAsync(replacement.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt, "A new Agent must not inherit the old identity's receipt history.");
     }, snapshotReads);
 
     [TestMethod]

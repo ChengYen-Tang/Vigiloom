@@ -601,6 +601,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentConnectionState.Online, status!.State);
                 Assert.AreEqual(queueReport.Queue, status.Queue!.Snapshot);
                 Assert.IsNotNull(status.LastHeartbeatAt);
+                Assert.IsNotNull(status.LastCommittedBatchAt);
             }
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
@@ -610,6 +611,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual("3 批", fields["等待傳送"]);
                 Assert.AreEqual("2 批", fields["已隔離"]);
                 Assert.AreEqual("5 / 10 批", fields["批次容量"]);
+                Assert.AreNotEqual("保留範圍內無資料", fields["目前 Agent 最後提交批次（UTC）"]);
+                Assert.Contains("不代表 Agent 已收到確認", page.Body!.TextContent);
                 Assert.Contains("可能不是目前狀態", page.Body!.TextContent);
             }
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
