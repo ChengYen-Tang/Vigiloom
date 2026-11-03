@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Time.Testing;
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
@@ -15,6 +16,85 @@ namespace Vigiloom.Agent.Tests;
 [TestClass]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task AgentProcess_OfflineRestartRetainsOriginalBatch()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomAgentProcessTests", Path.GetRandomFileName());
+        Exception? primaryFailure = null;
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://127.0.0.1:1/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test", "test", "test");
+            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
+            var bytes = AgentBatchCodec.Serialize(batch);
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token));
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add(typeof(AgentHost).Assembly.Location);
+                start.Environment["Vigiloom__Agent__StateDirectory"] = root;
+                start.Environment["Vigiloom__Agent__Server"] = server.AbsoluteUri;
+                using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the Agent process.");
+                var errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
+                Exception? processFailure = null;
+                try
+                {
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    deadline.CancelAfter(TimeSpan.FromSeconds(20));
+                    string? line;
+                    do
+                    {
+                        line = await process.StandardOutput.ReadLineAsync(deadline.Token);
+                        if (line is null) Assert.Fail($"Agent process exited before retry: {await errors.WaitAsync(TimeSpan.FromSeconds(10), deadline.Token)}");
+                    } while (!line.Contains("Agent batch transport: Retry", StringComparison.Ordinal));
+                }
+                catch (Exception error) { processFailure = error; throw; }
+                finally
+                {
+                    try
+                    {
+                        if (!process.HasExited) process.Kill(entireProcessTree: true);
+                        if (!process.WaitForExit(TimeSpan.FromSeconds(10))) throw new TimeoutException("The Agent did not terminate during cleanup.");
+                        await errors.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+                    }
+                    catch (Exception cleanupError) when (processFailure is not null)
+                    {
+                        throw new AggregateException("The Agent process test and cleanup both failed.", processFailure, cleanupError);
+                    }
+                }
+                var reopened = new DurableBatchQueue(new IdentityVault(root), id);
+                var pending = await reopened.PeekAsync(token);
+                Assert.IsNotNull(pending);
+                Assert.AreEqual(batch.BatchId, pending.BatchId);
+                CollectionAssert.AreEqual(bytes, pending.Payload);
+            }
+        }
+        catch (Exception error) { primaryFailure = error; throw; }
+        finally
+        {
+            try
+            {
+                var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomAgentProcessTests")) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch (Exception cleanupError) when (primaryFailure is not null)
+            {
+                throw new AggregateException("The test and its cleanup both failed.", primaryFailure, cleanupError);
+            }
+        }
+    }
+
     [TestMethod]
     [DataRow("IdentityClient")]
     [DataRow("AgentHeartbeatClient")]
