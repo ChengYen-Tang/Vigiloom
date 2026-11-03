@@ -20,6 +20,37 @@ public sealed class DiscoverySchemaTests(TestContext context)
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
     [TestMethod]
+    public Task SourceAdministration_AuditFailureRollsBackIssuanceAndRevocation() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var actor = Guid.CreateVersion7();
+            var failing = new SourceAdministration(factory, new FailingAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.IssueAsync("source", actor, token));
+            await using (var check = new ServiceObservabilityDbContext(options)) Assert.AreEqual(0, await check.Sources.CountAsync(token));
+            var admin = new SourceAdministration(factory, new OperationAuditWriter());
+            var issued = await admin.IssueAsync("source", actor, token);
+            var credentials = new SourceCredentials(factory, TimeProvider.System);
+            Assert.AreEqual(issued.SourceId, await credentials.AuthenticateAsync(issued.Secret, token));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.RevokeAsync(issued.SourceId, actor, token));
+            Assert.AreEqual(issued.SourceId, await credentials.AuthenticateAsync(issued.Secret, token));
+            var results = await Task.WhenAll(admin.RevokeAsync(issued.SourceId, actor, token), admin.RevokeAsync(issued.SourceId, actor, token));
+            Assert.IsTrue(results.All(x => x));
+            Assert.IsNull(await credentials.AuthenticateAsync(issued.Secret, token));
+            var query = new OperationAuditQuery(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1));
+            var history = await new OperationAuditQueryService(new OperationsFactory(operations)).QueryServiceSourcesAsync(query, token);
+            Assert.HasCount(2, history.Items);
+            CollectionAssert.AreEquivalent(new[] { ServiceSourceAction.Issued, ServiceSourceAction.Revoked }, history.Items.Select(x => x.ServiceSource!.Action).ToArray());
+            Assert.IsTrue(history.Items.All(x => x.ActorId == actor && x.ResourceId == issued.SourceId));
+        }, context.CancellationToken);
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task Approval_ConcurrentClicksAreIdempotentAndAuditIsAtomic(bool snapshotReads) =>

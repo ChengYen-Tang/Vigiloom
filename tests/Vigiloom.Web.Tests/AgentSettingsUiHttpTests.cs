@@ -22,6 +22,54 @@ public sealed class AgentSettingsUiHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task ServiceSourceManagement_RequiresAdministratorAndAuditsChanges() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            await LoginAsync(reader, "reader", token);
+            await LoginAsync(admin, "admin", token);
+            const string url = "/api/v1/service-discovery/sources/";
+            using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await reader.PostAsJsonAsync(url, new ServiceSourceRequest("source"), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await admin.PostAsJsonAsync(url, new ServiceSourceRequest("source"), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            ServiceSourceCredential issued;
+            using (var response = await admin.PostAsJsonAsync(url, new ServiceSourceRequest("source"), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+                issued = (await response.Content.ReadFromJsonAsync<ServiceSourceCredential>(cancellationToken: token))!;
+            }
+            using (var list = await admin.GetAsync(url, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, list.StatusCode);
+                var text = await list.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain(issued.Secret, text);
+                Assert.Contains(issued.SourceId.ToString("D"), text);
+                Assert.IsTrue(list.Headers.CacheControl?.NoStore);
+            }
+            using (var response = await admin.PostAsync($"{url}{issued.SourceId:D}/revoke", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            var now = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit/service-sources?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using var audit = await admin.GetAsync(auditUrl, token);
+            var history = await audit.Content.ReadFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(cancellationToken: token);
+            Assert.HasCount(2, history!.Items);
+            Assert.IsTrue(history.Items.All(x => x.ResourceId == issued.SourceId));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task ServiceObservation_AuthenticatesSourceAndAcceptsOnlyBoundedMetadata() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
