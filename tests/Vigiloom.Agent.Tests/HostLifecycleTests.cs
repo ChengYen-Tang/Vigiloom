@@ -304,6 +304,73 @@ public sealed class HostLifecycleTests(TestContext testContext)
         }
     }
 
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task Host_ChangesHeartbeatIntervalAfterSettingsAreSaved()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomLiveSettingsTests", Path.GetRandomFileName());
+        var token = testContext.CancellationToken;
+        var clock = new LiveSettingsClock();
+        var heartbeat = new LiveHeartbeatHandler();
+        var settings = new LiveSettingsHandler();
+        using var heartbeatHttp = new HttpClient(heartbeat);
+        using var settingsHttp = new HttpClient(settings);
+        using var capacityHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
+        try
+        {
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var builder = AgentHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root,
+                ["Vigiloom:Agent:Server"] = server.AbsoluteUri
+            });
+            builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
+            builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await host.StartAsync(token);
+                await heartbeat.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                await settings.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(30, host.Services.GetRequiredService<AgentSettingsRuntime>().Current.HeartbeatSeconds);
+                settings.Release.TrySetResult();
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.AreEqual(90, host.Services.GetRequiredService<AgentSettingsRuntime>().Current.HeartbeatSeconds);
+                Assert.AreEqual(90, (await new AgentSettingsStore(vault, server, id).ReadAsync(token))!.Snapshot.Settings.HeartbeatSeconds);
+                heartbeat.ReleaseFirst.TrySetResult();
+                await clock.HeartbeatChanged.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromSeconds(89));
+                Assert.IsFalse(heartbeat.SecondStarted.Task.IsCompleted);
+                clock.Advance(TimeSpan.FromSeconds(1));
+                await heartbeat.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                clock.Advance(TimeSpan.FromSeconds(180));
+            }
+            finally
+            {
+                settings.Release.TrySetResult();
+                heartbeat.ReleaseFirst.TrySetResult();
+                heartbeat.ReleaseSecond.TrySetResult();
+                await host.StopAsync(CancellationToken.None);
+            }
+            Assert.AreEqual(1, heartbeat.MaximumConcurrent);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomLiveSettingsTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class CapacityHostHandler(AgentQueueCapacitySnapshot next) : HttpMessageHandler
     {
         private int requests;
@@ -992,6 +1059,79 @@ public sealed class HostLifecycleTests(TestContext testContext)
             response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue($"\"{next.Revision}\"");
             Updated.TrySetResult();
             return Task.FromResult(response);
+        }
+    }
+
+    private sealed class LiveSettingsHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.AreEqual("/api/v1/agent/settings", request.RequestUri!.AbsolutePath);
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(token);
+            var snapshot = AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 90 });
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(snapshot) };
+            response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue($"\"{snapshot.Revision}\"");
+            return response;
+        }
+    }
+
+    private sealed class LiveHeartbeatHandler : HttpMessageHandler
+    {
+        private int count, active, maximumConcurrent;
+        public int MaximumConcurrent => Volatile.Read(ref maximumConcurrent);
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SecondStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseFirst { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseSecond { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            Assert.AreEqual("/api/v1/agent/heartbeat", request.RequestUri.AbsolutePath);
+            var concurrent = Interlocked.Increment(ref active);
+            if (concurrent > 1) Interlocked.Exchange(ref maximumConcurrent, concurrent);
+            else Interlocked.CompareExchange(ref maximumConcurrent, 1, 0);
+            try
+            {
+                var number = Interlocked.Increment(ref count);
+                if (number == 1) { FirstStarted.TrySetResult(); await ReleaseFirst.Task.WaitAsync(token); }
+                if (number == 2) { SecondStarted.TrySetResult(); await ReleaseSecond.Task.WaitAsync(token); }
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            finally { Interlocked.Decrement(ref active); }
+        }
+    }
+
+    private sealed class LiveSettingsClock : TimeProvider
+    {
+        private readonly FakeTimeProvider inner = new();
+        public TaskCompletionSource SettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource HeartbeatChanged { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Advance(TimeSpan amount) => inner.Advance(amount);
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+        public override long GetTimestamp() => inner.GetTimestamp();
+        public override long TimestampFrequency => inner.TimestampFrequency;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = inner.CreateTimer(callback, state, dueTime, period);
+            if (dueTime >= TimeSpan.FromSeconds(240) && dueTime <= TimeSpan.FromSeconds(360)) SettingsScheduled.TrySetResult();
+            return period == TimeSpan.FromSeconds(30) ? new ObservedTimer(timer, HeartbeatChanged) : timer;
+        }
+        private sealed class ObservedTimer(ITimer inner, TaskCompletionSource changed) : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                var result = inner.Change(dueTime, period);
+                if (result && period == TimeSpan.FromSeconds(90)) changed.TrySetResult();
+                return result;
+            }
+            public void Dispose() => inner.Dispose();
+            public ValueTask DisposeAsync() => inner.DisposeAsync();
         }
     }
 
