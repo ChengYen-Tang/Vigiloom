@@ -1,0 +1,137 @@
+@page "/settings/service-discovery"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@inject CandidateDiscovery Discovery
+@inject ServiceApproval Approval
+@inject SourceAdministration Sources
+@inject ILogger<ServiceDiscovery> Logger
+
+<PageTitle>待加入服務 - Vigiloom</PageTitle>
+<main class="device-page service-discovery">
+    <header class="device-heading"><div><h1>待加入服務</h1><p>查看最近三分鐘仍有回報的服務；應用服務不需要綁定設備。</p></div></header>
+    <p class="management-notice">加入後預設為私人。正式遙測接收管線尚未完成，加入不代表已開始收集或服務正常。</p>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (secret is not null)
+    {
+        <section class="device-panel"><h2>立即保存來源憑證</h2><p>憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時請撤銷後重新建立。</p>
+            <textarea readonly rows="3" aria-label="來源憑證">@secret</textarea></section>
+    }
+    <section class="device-panel"><h2>服務候選清單</h2>
+        <p>請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。</p>
+        @if (loadError) { <p role="alert">無法讀取清單，請重新整理後再試。</p> }
+        else if (candidates.Count == 0) { <p>此頁沒有待加入的服務。</p> }
+        else
+        {
+            @foreach (var candidate in candidates)
+            {
+                <div class="management-notice" @key="candidate.Id">
+                    <p><strong>@candidate.DisplayName</strong> · @candidate.Environment</p>
+                    <p>來源：@candidate.SourceName · 來源識別碼：@candidate.SourceId<br />服務識別：@candidate.ServiceKey<br />最後回報：@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</p>
+                    <EditForm Model="ConfirmApproval" FormName="@($"service-approve-{candidate.Id:N}")" method="post" OnValidSubmit="ApproveAsync">
+                        <label><InputCheckbox @bind-Value="ConfirmApproval.Confirm" /> 我已確認來源及環境，並了解服務預設為私人</label>
+                        <button type="submit" name="ConfirmApproval.Id" value="@candidate.Id">加入服務</button>
+                    </EditForm>
+                </div>
+            }
+        }
+        <nav aria-label="候選清單分頁"><span>第 @candidatePage 頁</span>
+            @if (candidatePage > 1) { <a href="@PageUrl(candidatePage - 1, sourcePage)">上一頁</a> }
+            @if (candidates.Count == 50 && candidatePage < 200) { <a href="@PageUrl(candidatePage + 1, sourcePage)">下一頁</a> }
+        </nav>
+    </section>
+    <section class="device-panel"><h2>來源憑證管理</h2>
+        <p>來源憑證可讓應用來源回報待加入服務的基本資訊。撤銷後，該來源會立即失去回報授權。</p>
+        <EditForm Model="CreateSource" FormName="source-create" method="post" OnValidSubmit="CreateAsync">
+            <label for="source-name">來源名稱</label><InputText id="source-name" @bind-Value="CreateSource.Name" maxlength="128" required />
+            <button type="submit">建立來源</button>
+        </EditForm>
+        @if (loadError) { <p role="alert">無法讀取來源，請重新整理後再試。</p> }
+        else if (sources.Count == 0) { <p>此頁沒有來源。</p> }
+        else
+        {
+            @foreach (var source in sources)
+            {
+                <div class="management-notice" @key="source.Id"><p><strong>@source.Name</strong> · @(source.RevokedAt is null ? "可使用" : "已撤銷")</p><p>來源識別碼：@source.Id<br />建立時間：@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+                    @if (source.RevokedAt is null)
+                    {
+                        <EditForm Model="ConfirmRevocation" FormName="@($"source-revoke-{source.Id:N}")" method="post" OnValidSubmit="RevokeAsync">
+                            <label><InputCheckbox @bind-Value="ConfirmRevocation.Confirm" /> 我了解撤銷會立即停止該來源授權</label>
+                            <button type="submit" name="ConfirmRevocation.Id" value="@source.Id">撤銷來源</button>
+                        </EditForm>
+                    }
+                </div>
+            }
+        }
+        <nav aria-label="來源清單分頁"><span>第 @sourcePage 頁</span>
+            @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">上一頁</a> }
+            @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(candidatePage, sourcePage + 1)">下一頁</a> }
+        </nav>
+    </section>
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "candidates")] public int? CandidatePage { get; set; }
+    [SupplyParameterFromQuery(Name = "sources")] public int? SourcePage { get; set; }
+    [SupplyParameterFromForm(FormName = "source-create")] private SourceForm CreateSource { get; set; } = default!;
+    [SupplyParameterFromForm] private ConfirmForm ConfirmRevocation { get; set; } = default!;
+    [SupplyParameterFromForm] private ConfirmForm ConfirmApproval { get; set; } = default!;
+    private IReadOnlyList<CandidateSummary> candidates = [];
+    private IReadOnlyList<ServiceSourceSummary> sources = [];
+    private string? error, message, secret;
+    private bool loadError;
+    private int candidatePage, sourcePage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CreateSource ??= new(); ConfirmRevocation ??= new(); ConfirmApproval ??= new();
+        candidatePage = Math.Clamp(CandidatePage ?? 1, 1, 200); sourcePage = Math.Clamp(SourcePage ?? 1, 1, 200);
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try { candidates = await Discovery.ListAsync(candidatePage, HttpContext.RequestAborted); sources = await Sources.ListAsync(sourcePage, HttpContext.RequestAborted); }
+        catch (Exception ex) { Logger.LogWarning("Cannot load service discovery: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ? actor : null;
+    private static string PageUrl(int candidates, int sources) => $"/settings/service-discovery?candidates={candidates}&sources={sources}";
+
+    private async Task CreateAsync()
+    {
+        if (!HttpContext.Request.IsHttps) { error = "建立憑證需要安全連線（HTTPS）。"; return; }
+        if (string.IsNullOrWhiteSpace(CreateSource.Name) || CreateSource.Name.Length > 128 || Actor() is not { } actor) { error = "請輸入 1 至 128 字的來源名稱。"; return; }
+        try { var result = await Sources.IssueAsync(CreateSource.Name, actor, HttpContext.RequestAborted); secret = result.Secret; CreateSource.Name = ""; await LoadAsync(); }
+        catch (Exception ex) { Logger.LogWarning("Cannot issue source: {ExceptionType}", ex.GetType().Name); error = "無法確認建立結果，請重新整理並檢查來源。"; }
+    }
+
+    private async Task ApproveAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!ConfirmApproval.Confirm || !Guid.TryParse(form["ConfirmApproval.Id"], out var id) || Actor() is not { } actor) { error = "請確認服務來源及環境。"; return; }
+        try
+        {
+            var result = await Approval.ApproveAsync(id, actor, HttpContext.RequestAborted);
+            message = result.Status is ApprovalStatus.Approved or ApprovalStatus.AlreadyApproved ? "服務已加入，預設為私人；正式遙測接收尚未完成。" : null;
+            if (message is null) error = "服務已過期或無法加入，請重新整理後確認。";
+            ConfirmApproval.Confirm = false; await LoadAsync();
+        }
+        catch (Exception ex) { Logger.LogWarning("Cannot approve service: {ExceptionType}", ex.GetType().Name); error = "無法確認加入結果，請重新整理後檢查。"; }
+    }
+
+    private async Task RevokeAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!ConfirmRevocation.Confirm || !Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || Actor() is not { } actor) { error = "請確認撤銷來源的影響。"; return; }
+        try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = "來源已撤銷。"; else error = "找不到來源。"; ConfirmRevocation.Confirm = false; await LoadAsync(); }
+        catch (Exception ex) { Logger.LogWarning("Cannot revoke source: {ExceptionType}", ex.GetType().Name); error = "無法確認撤銷結果，請重新整理後檢查。"; }
+    }
+    private sealed class SourceForm { public string Name { get; set; } = ""; }
+    private sealed class ConfirmForm { public bool Confirm { get; set; } }
+}
