@@ -93,6 +93,33 @@ public sealed class AgentSettingsUiHttpTests
             using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(revoke), token))
                 Assert.Contains("來源已撤銷", await BodyTextAsync(repeated, token));
             Assert.IsNull(await credential.AuthenticateAsync(secret, token));
+            using (var audit = await admin.GetAsync("/settings/audit?source=service-approvals", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var auditText = await BodyTextAsync(audit, token);
+                Assert.Contains("加入服務", auditText);
+                Assert.Contains(sourceId.ToString("D"), auditText);
+                Assert.DoesNotContain(secret, auditText);
+            }
+            using (var audit = await admin.GetAsync("/settings/audit?source=service-sources", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
+                var auditText = await BodyTextAsync(audit, token);
+                Assert.Contains("建立來源", auditText);
+                Assert.Contains("撤銷來源", auditText);
+                Assert.Contains(sourceId.ToString("D"), auditText);
+                Assert.DoesNotContain(secret, auditText);
+            }
+            using (var denied = await reader.GetAsync("/settings/audit?source=service-sources", token)) Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<Vigiloom.Modules.AlertingOperations.Persistence.OperationsDbContext>>().CreateDbContextAsync(token))
+                await db.Database.ExecuteSqlRawAsync("UPDATE [operations].[AuditEvents] SET [Details] = N'{{}}' WHERE [Kind] = 5", token);
+            using (var damaged = await admin.GetAsync("/settings/audit?source=service-sources", token))
+            {
+                var auditText = await BodyTextAsync(damaged, token);
+                Assert.Contains("未支援的紀錄", auditText);
+                Assert.Contains("未知", auditText);
+                Assert.DoesNotContain("已儲存", auditText);
+            }
         }, TestContext.CancellationToken);
 
     [TestMethod]
