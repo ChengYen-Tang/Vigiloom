@@ -55,3 +55,9 @@ final result: passed
 - In the revised page, keyboard testing confirmed Enter submits the query, Tab moves from the query button to the scroll region and then to the version disclosure, and Enter expands the disclosure. At a 390 px viewport, the right arrow moved the focused table's horizontal scroll position from 0 to 40 px. A screen-reader pass is still outstanding.
 
 final result: blocked
+
+## REQ-24 health settings — latest review
+
+See `docs/design/req-24/design-qa.md` for the feature reference, normalized full-view and focused comparisons, desktop and narrow captures, iteration history, fidelity surfaces, and tested interactions. Its P2 findings were corrected and independently re-reviewed.
+
+final result: passed
