@@ -27,7 +27,7 @@
             <form method="get" action="@($"/groups/{Id:D}")" class="device-filters">
                 <input type="hidden" name="serviceSearch" value="@ServiceSearch" />
                 <input type="hidden" name="serviceFilter" value="@ServiceFilter" />
-                <input type="hidden" name="servicePage" value="@ServicePage" />
+                <input type="hidden" name="servicePage" value="@Math.Max(1, ServicePage)" />
                 <label>搜尋名稱或目標 <input name="search" value="@Search" maxlength="256" /></label>
                 <label>範圍 <select name="filter"><option value="members" selected="@(Filter is null or "members")">群組設備</option><option value="available" selected="@(Filter == "available")">可加入設備</option><option value="all" selected="@(Filter == "all")">全部設備</option></select></label>
                 <button type="submit">搜尋</button>
@@ -39,13 +39,17 @@
                     <InputHidden @bind-Value="Selection.Version" />
                     @if (devices.Items.Count == 0) { <p class="device-empty">沒有符合條件的設備。</p> }
                     else {
+                    <p class="group-scroll-hint">左右滑動查看完整表格。</p>
                     <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>主要目標</th><th>監控模式</th><th>群組歸屬</th></tr></thead><tbody>
                     @foreach (var device in devices.Items)
                     {
                         <tr @key="device.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="deviceIds" value="@device.Id" aria-label="選取 @device.Name" /></td></Authorized></AuthorizeView><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td><td>@(device.IsMember ? "已加入" : "未加入")</td></tr>
                     }
                     </tbody></table></div>
-                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions"><button type="submit" name="operation" value="add">加入所選設備</button><button type="submit" name="operation" value="remove">移出所選設備</button></div></Authorized></AuthorizeView>
+                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">
+                        @if (Filter is "available" or "all") { <button type="submit" name="operation" value="add">加入所選設備</button> }
+                        @if (Filter is not "available") { <button type="submit" name="operation" value="remove">移出所選設備</button> }
+                    </div></Authorized></AuthorizeView>
                     }
                 </EditForm>
                 @if (devices.Total > 0 || devices.Page > 1) { <nav class="device-pagination" aria-label="設備分頁">
@@ -59,7 +63,7 @@
             <form method="get" action="@($"/groups/{Id:D}")" class="device-filters">
                 <input type="hidden" name="search" value="@Search" />
                 <input type="hidden" name="filter" value="@Filter" />
-                <input type="hidden" name="page" value="@Page" />
+                <input type="hidden" name="page" value="@Math.Max(1, Page)" />
                 <label>搜尋服務或環境 <input name="serviceSearch" value="@ServiceSearch" maxlength="256" /></label>
                 <label>範圍 <select name="serviceFilter"><option value="members" selected="@(ServiceFilter is null or "members")">群組服務</option><option value="available" selected="@(ServiceFilter == "available")">可加入服務</option><option value="all" selected="@(ServiceFilter == "all")">全部服務</option></select></label>
                 <button type="submit">搜尋</button>
@@ -71,13 +75,17 @@
                     <InputHidden @bind-Value="ServiceSelection.Version" />
                     @if (serviceList.Items.Count == 0) { <p class="device-empty">沒有符合條件的服務。</p> }
                     else {
+                    <p class="group-scroll-hint">左右滑動查看完整表格。</p>
                     <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>環境</th><th>群組歸屬</th></tr></thead><tbody>
                     @foreach (var service in serviceList.Items)
                     {
                         <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td>@service.Name</td><td>@service.Environment</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
                     }
                     </tbody></table></div>
-                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions"><button type="submit" name="serviceOperation" value="add">加入所選服務</button><button type="submit" name="serviceOperation" value="remove">移出所選服務</button></div></Authorized></AuthorizeView>
+                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">
+                        @if (ServiceFilter is "available" or "all") { <button type="submit" name="serviceOperation" value="add">加入所選服務</button> }
+                        @if (ServiceFilter is not "available") { <button type="submit" name="serviceOperation" value="remove">移出所選服務</button> }
+                    </div></Authorized></AuthorizeView>
                     }
                 </EditForm>
                 @if (serviceList.Total > 0 || serviceList.Page > 1) { <nav class="device-pagination" aria-label="服務分頁">
@@ -193,8 +201,8 @@
         catch (Exception exception) { Logger.LogWarning("Could not delete group: {ExceptionType}", exception.GetType().Name); deleteError = "無法確認操作結果，請重新整理並檢查。"; }
         if (deleted) Navigation.NavigateTo("/groups", forceLoad: true);
     }
-    private string PageUrl(int page) => QueryUrl(page, ServicePage);
-    private string ServicePageUrl(int page) => QueryUrl(Page, page);
+    private string PageUrl(int page) => QueryUrl(page, Math.Max(1, ServicePage));
+    private string ServicePageUrl(int page) => QueryUrl(Math.Max(1, Page), page);
     private string QueryUrl(int page, int servicePage) => Navigation.GetUriWithQueryParameters($"/groups/{Id:D}", new Dictionary<string, object?>
         { ["search"] = Search, ["filter"] = Filter, ["page"] = page, ["serviceSearch"] = ServiceSearch, ["serviceFilter"] = ServiceFilter, ["servicePage"] = servicePage });
     private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) && actor != Guid.Empty ? actor : null;
