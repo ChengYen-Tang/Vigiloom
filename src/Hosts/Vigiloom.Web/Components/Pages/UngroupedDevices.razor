@@ -18,6 +18,7 @@
         else if (result is not null)
         {
             <p class="device-count">共 @result.Total 台設備</p>
+            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
             <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>主要目標</th><th>監控模式</th></tr></thead><tbody>
                 @foreach (var device in result.Items) { <tr @key="device.Id"><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td></tr> }
             </tbody></table></div>
