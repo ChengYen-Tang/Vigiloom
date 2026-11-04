@@ -79,6 +79,41 @@ public sealed class DiscoverySchemaTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Approval_ConcurrentObservationKeepsOneApprovedService(bool snapshotReads) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            var candidate = (await discovery.ListAsync(1, token)).Single();
+            var approval = new ServiceApproval(factory, new OperationAuditWriter());
+
+            var approve = approval.ApproveAsync(candidate.Id, Guid.CreateVersion7(), token);
+            var observe = discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token);
+            await Task.WhenAll(approve, observe);
+            Assert.AreEqual(ApprovalStatus.Approved, (await approve).Status);
+            Assert.IsTrue((await observe) is CandidateObservation.Recorded or CandidateObservation.AlreadyApproved);
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            Assert.IsEmpty(await discovery.ListAsync(1, token));
+            await using var check = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(1, await check.Services.CountAsync(token));
+            Assert.AreEqual(0, await check.Candidates.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task CandidateDiscovery_GlobalCapacityIsSerializedAndExpiredCapacityIsReused() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
