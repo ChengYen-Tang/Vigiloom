@@ -19,18 +19,8 @@
     @if (loadError) { <p class="device-alert" role="alert">無法讀取設定，請重新整理後再試。</p> }
     else
     {
-        <section class="device-panel" aria-labelledby="health-networks-title">
-            <h2 id="health-networks-title">允許檢查的網段</h2>
-            <p>Worker 只會連線至下列位址或網段。每行輸入一個 IP 位址（例如 192.168.1.10）或 CIDR 網段（例如 10.0.0.0/8）；空白表示不執行檢查。</p>
-            @if (networkEmpty) { <p class="device-alert" role="status">尚未設定允許網段，健康檢查目前不會執行。</p> }
-            <EditForm Model="NetworkForm" FormName="health-networks" method="post" OnValidSubmit="SaveNetworksAsync">
-                <div class="health-field"><label for="health-networks">允許網段</label><InputTextArea id="health-networks" @bind-Value="NetworkForm.Text" rows="4" maxlength="4608" /></div>
-                <InputText type="hidden" @bind-Value="NetworkForm.Version" />
-                <p>移除網段會中止使用舊政策的檢查；已保存的歷史紀錄不會被刪除。</p>
-                <button type="submit">儲存網段</button>
-            </EditForm>
-        </section>
-        <section class="device-panel" aria-labelledby="health-services-title">
+        <div class="health-layout @(selectedService is not null ? "has-selection" : "")">
+        <section class="device-panel health-services" aria-labelledby="health-services-title">
             <h2 id="health-services-title">選擇服務</h2>
             @if (services.Count == 0) { <p>此頁沒有已加入的服務。請先到<a href="/settings/service-discovery">待加入服務</a>核准來源。</p> }
             else
@@ -51,7 +41,7 @@
         @if (selectedService is { } selectedInfo)
         {
             var selected = selectedInfo.Id;
-            <section class="device-panel" aria-labelledby="health-targets-title">
+            <section class="device-panel health-targets" aria-labelledby="health-targets-title">
                 <h2 id="health-targets-title">檢查清單</h2>
                 <p>服務：@selectedInfo.Name（@selectedInfo.Environment），來源：@selectedInfo.SourceName。</p>
                 <details><summary>服務與來源識別碼</summary><small>服務：@selectedInfo.Id　來源：@selectedInfo.SourceId</small></details>
@@ -59,6 +49,7 @@
                 @if (targets.Count == 0) { <p>此頁沒有健康檢查，可使用下方表單新增。</p> }
                 else
                 {
+                    <p class="health-scroll-hint">左右滑動查看完整檢查資訊。</p>
                     <div class="table-scroll" role="region" tabindex="0" aria-label="健康檢查清單，可左右捲動">
                         <table><thead><tr><th scope="col">檢查對象</th><th scope="col">檢查網址</th><th scope="col">設定</th><th scope="col">最後記錄（UTC）</th><th scope="col">操作</th></tr></thead><tbody>
                         @foreach (var target in targets)
@@ -77,7 +68,7 @@
                     @if (targets.Count == 50 && targetPage < 1000) { <a href="@ServiceUrl(selected, servicePage, targetPage + 1, instancePage)">下一頁</a> }
                 </nav>
             </section>
-            <section class="device-panel" aria-labelledby="health-form-title">
+            <section class="device-panel health-form" aria-labelledby="health-form-title">
                 <h2 id="health-form-title">@(TargetForm.Id is null ? "新增健康檢查" : "編輯健康檢查")</h2>
                 <p>支援 ASP.NET Core 預設的純文字健康回應；請勿將密碼或 token 寫進網址。</p>
                 <EditForm Model="TargetForm" FormName="health-target" method="post" OnValidSubmit="SaveTargetAsync">
@@ -111,5 +102,17 @@
                 </EditForm>
             </section>
         }
+        <section class="device-panel health-networks" aria-labelledby="health-networks-title">
+            <h2 id="health-networks-title">允許檢查的網段</h2>
+            <p>此政策適用於所有服務的健康檢查。Worker 只會連線至下列位址或網段。每行輸入一個 IP 位址（例如 192.168.1.10）或 CIDR 網段（例如 10.0.0.0/8）；空白表示不執行檢查。</p>
+            @if (networkEmpty) { <p class="device-alert" role="status">尚未設定允許網段，健康檢查目前不會執行。</p> }
+            <EditForm Model="NetworkForm" FormName="health-networks" method="post" OnValidSubmit="SaveNetworksAsync">
+                <div class="health-field"><label for="health-networks">允許網段</label><InputTextArea id="health-networks" @bind-Value="NetworkForm.Text" rows="4" maxlength="4608" /></div>
+                <InputText type="hidden" @bind-Value="NetworkForm.Version" />
+                <p>移除網段會中止使用舊政策的檢查；已保存的歷史紀錄不會被刪除。</p>
+                <button type="submit">儲存網段</button>
+            </EditForm>
+        </section>
+        </div>
     }
 </main>
