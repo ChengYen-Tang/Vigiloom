@@ -14,6 +14,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 
 namespace Vigiloom.Web.Tests;
 
@@ -23,6 +24,84 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task LogQuota_SettingsRequireAdministratorAndRecordChanges() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            await LoginAsync(reader, "reader", token);
+            await LoginAsync(admin, "admin", token);
+            using (var denied = await anonymous.GetAsync("/api/v1/log-quota/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync("/api/v1/log-quota/", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await reader.GetAsync("/settings/log-quota", token)) Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
+            var initial = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/log-quota/", token);
+            Assert.IsNotNull(initial);
+            Assert.AreEqual(20, initial.SourceRate);
+            using (var denied = await admin.PutAsJsonAsync("/api/v1/log-quota/", initial, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using var page = await admin.GetAsync("/settings/log-quota", token);
+            var fields = await FieldsAsync(page, token, "log-quota");
+            fields["Form.SourceRate"] = "35";
+            using var saved = await admin.PostAsync("/settings/log-quota", new FormUrlEncodedContent(fields), token);
+            Assert.Contains("Log 配額設定已儲存", await BodyTextAsync(saved, token));
+            var latest = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/log-quota/", token);
+            Assert.IsNotNull(latest);
+            Assert.AreEqual(35, latest.SourceRate);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            using (var stale = await admin.PutAsJsonAsync("/api/v1/log-quota/", initial with { SourceRate = 40 }, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            using (var invalid = await admin.PutAsJsonAsync("/api/v1/log-quota/", latest with { SourceRate = 0 }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var updated = await admin.PutAsJsonAsync("/api/v1/log-quota/", latest with { SourceRate = 40 }, token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            using (var staleExisting = await admin.PutAsJsonAsync("/api/v1/log-quota/", latest with { SourceRate = 45 }, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleExisting.StatusCode);
+            var at = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit/log-quota?from={Uri.EscapeDataString(at.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(at.AddHours(1).ToString("O"))}";
+            using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            var audit = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(auditUrl, token);
+            Assert.IsNotNull(audit);
+            Assert.HasCount(2, audit.Items);
+            Assert.AreEqual(40, audit.Items[0].LogQuota!.Current.SourceRate);
+            using (var denied = await reader.GetAsync("/api/v1/trace-quota/", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using var tracePage = await admin.GetAsync("/settings/trace-quota", token);
+            var traceFields = await FieldsAsync(tracePage, token, "log-quota");
+            Assert.AreEqual("200", traceFields["Form.SourceRate"]);
+            traceFields["Form.SourceRate"] = "250";
+            using var traceSaved = await admin.PostAsync("/settings/trace-quota", new FormUrlEncodedContent(traceFields), token);
+            Assert.Contains("Trace 配額設定已儲存", await BodyTextAsync(traceSaved, token));
+            var trace = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/trace-quota/", token);
+            Assert.IsNotNull(trace);
+            Assert.AreEqual(250, trace.SourceRate);
+            using var traceSlashPage = await admin.GetAsync("/settings/trace-quota/", token);
+            var slashFields = await FieldsAsync(traceSlashPage, token, "log-quota");
+            Assert.AreEqual("250", slashFields["Form.SourceRate"]);
+            slashFields["Form.SourceRate"] = "275";
+            using var slashSaved = await admin.PostAsync("/settings/trace-quota/", new FormUrlEncodedContent(slashFields), token);
+            Assert.Contains("Trace 配額設定已儲存", await BodyTextAsync(slashSaved, token));
+            var traceAfterSlash = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/trace-quota/", token);
+            Assert.AreEqual(275, traceAfterSlash!.SourceRate);
+            var logAfterTrace = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/log-quota/", token);
+            Assert.AreEqual(40, logAfterTrace!.SourceRate);
+            var traceAuditUrl = $"/api/v1/operations/audit/trace-quota?from={Uri.EscapeDataString(at.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(at.AddHours(1).ToString("O"))}";
+            var traceAudit = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(traceAuditUrl, token);
+            Assert.IsNotNull(traceAudit);
+            Assert.HasCount(2, traceAudit.Items);
+            Assert.AreEqual(275, traceAudit.Items[0].TraceQuota!.Current.SourceRate);
+            using var auditPage = await admin.GetAsync("/settings/audit?source=log-quota", token);
+            Assert.Contains("Log 配額", await BodyTextAsync(auditPage, token));
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task ServiceInstancePage_PolicyAndLifecycleRequireAdminAndRemainUsableAcrossPosts() =>
@@ -159,9 +238,34 @@ public sealed class AgentSettingsUiHttpTests
             var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
             using var admin = factory.CreateClient(options);
             using var reader = factory.CreateClient(options);
+            using var anonymous = factory.CreateClient(options);
             await LoginAsync(admin, "admin", token);
             await LoginAsync(reader, "reader", token);
             const string url = "/settings/service-discovery";
+            using (var deniedReports = await reader.GetAsync("/settings/collector-reports", token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedReports.StatusCode);
+            using (var deniedReports = await anonymous.GetAsync("/settings/collector-reports", token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedReports.StatusCode);
+            const string templateUrl = "/api/v1/service-reception/collector-template";
+            using (var deniedTemplate = await anonymous.GetAsync(templateUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedTemplate.StatusCode);
+            using (var deniedTemplate = await reader.GetAsync(templateUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedTemplate.StatusCode);
+            using (var template = await admin.GetAsync(templateUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, template.StatusCode);
+                Assert.AreEqual("application/yaml", template.Content.Headers.ContentType!.MediaType);
+                Assert.IsTrue(template.Headers.CacheControl!.NoStore);
+                var expectedPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../deploy/collector/isolated-sources.example.yaml"));
+                Assert.AreEqual(await File.ReadAllTextAsync(expectedPath, token), await template.Content.ReadAsStringAsync(token));
+            }
+            const string applicationTemplateUrl = "/api/v1/service-reception/application-template";
+            using (var deniedTemplate = await anonymous.GetAsync(applicationTemplateUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedTemplate.StatusCode);
+            using (var deniedTemplate = await reader.GetAsync(applicationTemplateUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedTemplate.StatusCode);
+            using (var template = await admin.GetAsync(applicationTemplateUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, template.StatusCode);
+                Assert.AreEqual("text/plain", template.Content.Headers.ContentType!.MediaType);
+                Assert.IsTrue(template.Headers.CacheControl!.NoStore);
+                var expectedPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../deploy/collector/application.env.example"));
+                Assert.AreEqual(await File.ReadAllTextAsync(expectedPath, token), await template.Content.ReadAsStringAsync(token));
+            }
             using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
             using var page = await admin.GetAsync(url, token);
             Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
@@ -210,16 +314,92 @@ public sealed class AgentSettingsUiHttpTests
             using var approved = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token);
             var approvedText = await BodyTextAsync(approved, token);
             Assert.Contains("服務已加入", approvedText);
+            Guid monitoredServiceId;
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             {
                 var service = await db.Services.SingleAsync(x => x.SourceId == sourceId, token);
+                monitoredServiceId = service.Id;
                 Assert.Contains(service.Id.ToString("D"), approvedText);
             }
+            var observationUrl = $"/api/v1/service-reception/collector-observations/{monitoredServiceId:D}";
+            using (var reportPage = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, reportPage.StatusCode);
+                Assert.Contains("此頁沒有可辨識的執行個體", await BodyTextAsync(reportPage, token));
+            }
+            using (var deniedObservation = await anonymous.GetAsync(observationUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedObservation.StatusCode);
+            using (var deniedObservation = await reader.GetAsync(observationUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedObservation.StatusCode);
+            using (var observation = await admin.GetAsync(observationUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, observation.StatusCode);
+                var result = await observation.Content.ReadFromJsonAsync<CollectorObservationPage>(cancellationToken: token);
+                Assert.IsNotNull(result);
+                Assert.AreEqual(sourceId, result.SourceId);
+                Assert.IsEmpty(result.Instances);
+            }
+            using (var invalidPage = await admin.GetAsync(observationUrl + "?page=2001", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPage.StatusCode);
+            var collectorAdmin = scope.ServiceProvider.GetRequiredService<CollectorAdministration>();
+            var registration = await collectorAdmin.RegisterAsync("test collector", monitoredServiceId, true, Guid.CreateVersion7(), token);
+            Assert.AreEqual(CollectorChangeStatus.Updated, registration.Status);
+            var mappingsUrl = $"/settings/collectors/{registration.CollectorId:D}/sources";
+            using (var deniedMappings = await reader.GetAsync(mappingsUrl, token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedMappings.StatusCode);
+            using (var deniedMappings = await anonymous.GetAsync(mappingsUrl, token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedMappings.StatusCode);
+            var countersUrl = $"/settings/collectors/{registration.CollectorId:D}/instances/{Guid.CreateVersion7():D}/counters";
+            using (var deniedCounters = await reader.GetAsync(countersUrl, token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedCounters.StatusCode);
+            using (var deniedCounters = await anonymous.GetAsync(countersUrl, token)) Assert.AreEqual(HttpStatusCode.Redirect, deniedCounters.StatusCode);
+            using (var counters = await admin.GetAsync(countersUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, counters.StatusCode);
+                Assert.Contains("尚未設定來源對應", await BodyTextAsync(counters, token));
+            }
+            using (var noToken = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(new Dictionary<string, string> { ["_handler"] = "collector-route-add" }), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, noToken.StatusCode);
+            using var mappingPage = await admin.GetAsync(mappingsUrl, token);
+            var addMapping = await HiddenFieldsAsync(mappingPage, token, "collector-route-add");
+            addMapping["AddForm.SourceId"] = other.SourceId.ToString("D");
+            addMapping["AddForm.Exporter"] = "otlp_http/source-b";
+            using (var readerPage = await reader.GetAsync("/account/change-password", token))
+            {
+                var readerDocument = await new HtmlParser().ParseDocumentAsync(await readerPage.Content.ReadAsStringAsync(token), token);
+                var readerToken = readerDocument.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+                var readerMutation = new Dictionary<string, string>(addMapping) { ["__RequestVerificationToken"] = readerToken };
+                using var forbiddenMutation = await reader.PostAsync(mappingsUrl, new FormUrlEncodedContent(readerMutation), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, forbiddenMutation.StatusCode);
+            }
+            using var mapped = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token);
+            Assert.Contains("來源對應已加入", await BodyTextAsync(mapped, token));
+            using (var staleMapping = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token))
+                Assert.Contains("資料已變更", await BodyTextAsync(staleMapping, token));
+            var removeMapping = await HiddenFieldsAsync(mapped, token, "collector-route-remove");
+            removeMapping["RemoveForm.SourceId"] = other.SourceId.ToString("D");
+            using (var missingConfirmation = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(removeMapping), token))
+                Assert.Contains("請確認移除來源對應的影響", await BodyTextAsync(missingConfirmation, token));
+            removeMapping[$"remove-{Guid.CreateVersion7():N}"] = "true";
+            using (var wrongConfirmation = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(removeMapping), token))
+                Assert.Contains("請確認移除來源對應的影響", await BodyTextAsync(wrongConfirmation, token));
+            removeMapping[$"remove-{other.SourceId:N}"] = "true";
+            using (var removedMapping = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(removeMapping), token))
+                Assert.Contains("來源對應已移除", await BodyTextAsync(removedMapping, token));
+            using (var repeatedRemoval = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(removeMapping), token))
+                Assert.Contains("資料已變更", await BodyTextAsync(repeatedRemoval, token));
+            Assert.IsEmpty(await collectorAdmin.RoutesAsync(registration.CollectorId!.Value, token));
             using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(approve), token))
                 Assert.Contains("服務已加入", await BodyTextAsync(repeated, token));
             var remaining = await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ListAsync(1, token);
             Assert.AreEqual(other.SourceId, remaining.Single().SourceId);
             using var sourcePage = await admin.GetAsync(url, token);
+            var rotate = await FieldsAsync(sourcePage, token, "source-rotate");
+            var sourceSummary = (await scope.ServiceProvider.GetRequiredService<SourceAdministration>().ListAsync(1, token)).Single(x => x.Id == sourceId);
+            rotate["RotateSource.Selection"] = $"{sourceId:D}:{sourceSummary.Version}";
+            rotate["RotateSource.Confirm"] = "true";
+            using var rotated = await admin.PostAsync(url, new FormUrlEncodedContent(rotate), token);
+            var rotatedDoc = await new HtmlParser().ParseDocumentAsync(await rotated.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("來源憑證已更換", rotatedDoc.Body!.TextContent);
+            var replacementSecret = rotatedDoc.QuerySelector("textarea[aria-label='來源憑證']")!.TextContent;
+            Assert.IsNull(await credential.AuthenticateAsync(secret, token));
+            Assert.AreEqual(sourceId, await credential.AuthenticateAsync(replacementSecret, token));
+            using (var conflict = await admin.PostAsync(url, new FormUrlEncodedContent(rotate), token))
+                Assert.Contains("來源已變更", await BodyTextAsync(conflict, token));
             var revoke = await FieldsAsync(sourcePage, token, "source-revoke");
             revoke[$"revoke-{sourceId:N}"] = "true";
             revoke["ConfirmRevocation.Id"] = sourceId.ToString("D");
@@ -228,6 +408,10 @@ public sealed class AgentSettingsUiHttpTests
             using (var repeated = await admin.PostAsync(url, new FormUrlEncodedContent(revoke), token))
                 Assert.Contains("來源已撤銷", await BodyTextAsync(repeated, token));
             Assert.IsNull(await credential.AuthenticateAsync(secret, token));
+            Assert.IsNull(await credential.AuthenticateAsync(replacementSecret, token));
+            Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<SourceAdministration>().RevokeAsync(other.SourceId, Guid.CreateVersion7(), token));
+            using (var revokedBeforeRotation = await admin.PostAsync(url, new FormUrlEncodedContent(rotate), token))
+                Assert.Contains("來源已變更", await BodyTextAsync(revokedBeforeRotation, token));
             using (var audit = await admin.GetAsync("/settings/audit?source=service-approvals", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);
@@ -544,6 +728,13 @@ public sealed class AgentSettingsUiHttpTests
         var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
         var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == formName);
         return form.QuerySelectorAll("input[name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+    }
+
+    private static async Task<Dictionary<string, string>> HiddenFieldsAsync(HttpResponseMessage response, CancellationToken token, string formName)
+    {
+        var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+        var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == formName);
+        return form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
     }
 
     private static async Task<string> BodyTextAsync(HttpResponseMessage response, CancellationToken token) =>

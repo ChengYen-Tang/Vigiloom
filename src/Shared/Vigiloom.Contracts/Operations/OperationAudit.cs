@@ -24,17 +24,25 @@ public sealed record AgentReplayPolicyChanged(AgentReplayPhase Previous, AgentRe
 /// <summary>Approval references only the trusted source; names and credentials are not recorded.</summary>
 public sealed record ServiceApproved(Guid SourceId) : OperationAuditDetails;
 
-public enum ServiceSourceAction { Issued = 1, Revoked = 2 }
+public enum ServiceSourceAction { Issued = 1, Revoked = 2, CredentialRotated = 3 }
 /// <summary>Records only the action; the credential and source name are never audited.</summary>
 public sealed record ServiceSourceChanged(ServiceSourceAction Action) : OperationAuditDetails;
 
 public sealed record InstancePolicyValues(int PerService, int Total);
 public sealed record InstancePolicyChanged(InstancePolicyValues Previous, InstancePolicyValues Current,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
+public sealed record LogQuotaAuditValues(int SourceRate, int SourceBurst, int GlobalRate, int GlobalBurst);
+public sealed record LogQuotaChanged(LogQuotaAuditValues Previous, LogQuotaAuditValues Current,
+    string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
+public sealed record TraceQuotaChanged(LogQuotaAuditValues Previous, LogQuotaAuditValues Current,
+    string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 public enum ServiceInstanceAction { Retired = 1, Restored = 2 }
 public sealed record ServiceInstanceChanged(ServiceInstanceAction Action, Guid ServiceId) : OperationAuditDetails;
 public enum ServiceCollectionAction { Stopped = 1, Resumed = 2 }
 public sealed record ServiceCollectionChanged(ServiceCollectionAction Action) : OperationAuditDetails;
+public enum CollectorAction { Registered = 1, RouteAdded = 2, RouteRemoved = 3 }
+/// <summary>Records identifiers only, never credentials or arbitrary exporter text.</summary>
+public sealed record CollectorChanged(CollectorAction Action, Guid MonitoringServiceId, Guid? SourceId) : OperationAuditDetails;
 
 public enum GroupAction { Created = 1, Updated = 2, Deleted = 3, DevicesChanged = 4, ServicesChanged = 5 }
 /// <summary>Records a group operation without names, addresses or service metadata.</summary>
@@ -47,7 +55,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);

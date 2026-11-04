@@ -16,12 +16,13 @@ public static class ServiceInstanceResolver
     /// <remarks>
     /// The source comes from credential authentication, not telemetry. Keep this connection and
     /// transaction through the write and commit; end it before discovery or network operations.
-    /// A transaction must process only one logical service, including all resolver calls: multiple
-    /// services in one transaction can acquire admission and service locks in conflicting order.
+    /// Ordinarily a transaction must process only one logical service. A batch coordinator may
+    /// process multiple services only after locking the instance policy and all participating
+    /// service locks in a consistent order, before any resolver obtains global instance admission.
     /// No result authorizes an event older than the returned service's approval time.
     /// </remarks>
-    public static async Task<InstanceResolution> ResolveAsync(DbConnection connection, DbTransaction transaction,
-        Guid authenticatedSourceId, string serviceKey, string environment, string? externalId, CancellationToken token)
+    internal static async Task<InstanceResolution> ResolveAsync(DbConnection connection, DbTransaction transaction,
+        Guid authenticatedSourceId, string serviceKey, string environment, string? externalId, CancellationToken token, string? serviceNamespace = null)
     {
         byte[]? key = null;
         if (!string.IsNullOrEmpty(externalId))
@@ -31,7 +32,7 @@ public static class ServiceInstanceResolver
             catch (EncoderFallbackException ex) { throw new ArgumentException("Instance ID must be valid Unicode.", nameof(externalId), ex); }
         }
 
-        var service = await ServiceReceptionAuthorization.LockAsync(connection, transaction, authenticatedSourceId, serviceKey, environment, token);
+        var service = await ServiceReceptionAuthorization.LockAsync(connection, transaction, authenticatedSourceId, serviceKey, environment, token, serviceNamespace);
         if (service is null) return new(InstanceResolutionStatus.Unauthorized, null, null);
         if (key is null) return new(InstanceResolutionStatus.Unidentified, service, null);
 

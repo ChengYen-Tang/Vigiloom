@@ -23,6 +23,84 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.CollectorRegistration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("MonitoringServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("MonitoringServiceId")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("Collectors", "service");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.CollectorRoute", b =>
+                {
+                    b.Property<Guid>("CollectorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Exporter")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("ExporterBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [Exporter])", true);
+
+                    b.HasKey("CollectorId", "SourceId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("CollectorId", "SourceId"));
+
+                    b.HasIndex("SourceId");
+
+                    b.HasIndex("CollectorId", "ExporterBytes")
+                        .IsUnique();
+
+                    b.ToTable("CollectorRoutes", "service");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.InstancePolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -123,6 +201,20 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasColumnType("nvarchar(128)")
                         .UseCollation("Latin1_General_100_BIN2");
 
+                    b.Property<string>("ServiceNamespace")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("ServiceNamespaceBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", true);
+
                     b.Property<Guid>("SourceId")
                         .HasColumnType("uniqueidentifier");
 
@@ -148,7 +240,7 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
 
-                    b.HasIndex("SourceId", "ServiceKey", "Environment")
+                    b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
                         .IsUnique();
 
                     b.ToTable("Services", "service");
@@ -191,6 +283,20 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasColumnType("nvarchar(128)")
                         .UseCollation("Latin1_General_100_BIN2");
 
+                    b.Property<string>("ServiceNamespace")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("ServiceNamespaceBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", true);
+
                     b.Property<Guid>("SourceId")
                         .HasColumnType("uniqueidentifier");
 
@@ -208,7 +314,7 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
 
-                    b.HasIndex("SourceId", "ServiceKey", "Environment")
+                    b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
                         .IsUnique();
 
                     b.ToTable("Candidates", "service");
@@ -307,6 +413,12 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("binary(32)");
 
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("Id");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
@@ -317,6 +429,348 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
 
                     b.ToTable("Sources", "service");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogContext", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("ResourcePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ResourceSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<byte[]>("ScopePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ScopeSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ServiceId");
+
+                    b.ToTable("LogContexts", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_LogContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("ContextId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RecordPayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("SpanId")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("TraceId")
+                        .HasColumnType("binary(16)");
+
+                    b.Property<bool>("UsedObservedTime")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsedReceivedTime")
+                        .HasColumnType("bit");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ContextId", "ServiceId");
+
+                    b.HasIndex("InstanceId", "ServiceId");
+
+                    b.HasIndex("ServiceId", "ReceivedAt");
+
+                    b.HasIndex("ServiceId", "OccurredAt", "RowId");
+
+                    b.HasIndex("ServiceId", "TraceId", "OccurredAt")
+                        .HasFilter("[TraceId] IS NOT NULL");
+
+                    b.ToTable("LogRecords", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_LogRecords_Payload", "DATALENGTH([RecordPayload]) <= 262144");
+
+                            t.HasCheckConstraint("CK_LogRecords_Utc", "DATEPART(TZOFFSET, [OccurredAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricContext", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("MetricName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("MetricNameBytes")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(512)")
+                        .HasComputedColumnSql("CONVERT(varbinary(512), [MetricName])", true);
+
+                    b.Property<byte[]>("MetricPayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("ResourcePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ResourceSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<byte[]>("ScopePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ScopeSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ServiceId", "MetricNameBytes");
+
+                    b.ToTable("MetricContexts", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_MetricContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536 AND DATALENGTH([MetricPayload]) <= 65536");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricPoint", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("ContextId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("PointPayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ContextId", "ServiceId");
+
+                    b.HasIndex("InstanceId", "ServiceId");
+
+                    b.HasIndex("ServiceId", "ReceivedAt");
+
+                    b.HasIndex("ContextId", "ReceivedAt", "RowId");
+
+                    b.HasIndex("ServiceId", "OccurredAt", "RowId");
+
+                    b.ToTable("MetricPoints", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_MetricPoints_Kind", "[Kind] BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("CK_MetricPoints_Payload", "DATALENGTH([PointPayload]) <= 262144");
+
+                            t.HasCheckConstraint("CK_MetricPoints_Utc", "DATEPART(TZOFFSET, [OccurredAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("ResourcePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ResourceSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<byte[]>("ScopePayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ScopeSchemaUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ServiceId");
+
+                    b.ToTable("TraceContexts", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_TraceContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("ContextId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("EndedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ParentSpanId")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("SpanId")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("SpanPayload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("TraceId")
+                        .IsRequired()
+                        .HasColumnType("binary(16)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ContextId", "ServiceId");
+
+                    b.HasIndex("InstanceId", "ServiceId");
+
+                    b.HasIndex("ServiceId", "ReceivedAt");
+
+                    b.HasIndex("ServiceId", "StartedAt", "RowId");
+
+                    b.HasIndex("ServiceId", "TraceId", "StartedAt", "RowId");
+
+                    b.ToTable("TraceSpans", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_TraceSpans_Payload", "DATALENGTH([SpanPayload]) <= 262144");
+
+                            t.HasCheckConstraint("CK_TraceSpans_Times", "[EndedAt] >= [StartedAt]");
+
+                            t.HasCheckConstraint("CK_TraceSpans_Utc", "DATEPART(TZOFFSET, [StartedAt]) = 0 AND DATEPART(TZOFFSET, [EndedAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.CollectorRegistration", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("MonitoringServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.CollectorRoute", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.CollectorRegistration", null)
+                        .WithMany()
+                        .HasForeignKey("CollectorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", b =>
@@ -345,6 +799,105 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasPrincipalKey("Id", "SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogContext", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogRecord", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogContext", "Context")
+                        .WithMany()
+                        .HasForeignKey("ContextId", "ServiceId")
+                        .HasPrincipalKey("RowId", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ServiceId")
+                        .HasPrincipalKey("Id", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Context");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricContext", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricPoint", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricContext", "Context")
+                        .WithMany()
+                        .HasForeignKey("ContextId", "ServiceId")
+                        .HasPrincipalKey("RowId", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ServiceId")
+                        .HasPrincipalKey("Id", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Context");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", "Context")
+                        .WithMany()
+                        .HasForeignKey("ContextId", "ServiceId")
+                        .HasPrincipalKey("RowId", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ServiceId")
+                        .HasPrincipalKey("Id", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Context");
                 });
 #pragma warning restore 612, 618
         }
