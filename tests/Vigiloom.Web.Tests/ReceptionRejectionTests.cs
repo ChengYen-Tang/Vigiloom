@@ -44,8 +44,8 @@ public sealed class ReceptionRejectionTests(TestContext context)
             var credentials = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
             var firstSource = await credentials.IssueAsync("first", token);
             var secondSource = await credentials.IssueAsync("second", token);
-            var first = new ReceptionRejectionDiagnostics(dbFactory, NullLogger<ReceptionRejectionDiagnostics>.Instance);
-            var second = new ReceptionRejectionDiagnostics(dbFactory, NullLogger<ReceptionRejectionDiagnostics>.Instance);
+            var first = new ReceptionRejectionDiagnostics(() => dbFactory, NullLogger<ReceptionRejectionDiagnostics>.Instance);
+            var second = new ReceptionRejectionDiagnostics(() => dbFactory, NullLogger<ReceptionRejectionDiagnostics>.Instance);
             for (var i = 0; i < 1000; i++) first.Record(ReceptionRejectionKind.SourceUnavailable, ReceptionIngress.Otlp, firstSource.SourceId);
             var producer = Task.Run(() => Parallel.For(0, 10000, _ => first.Record(ReceptionRejectionKind.SourceUnavailable, ReceptionIngress.Otlp, firstSource.SourceId)), token);
             for (var i = 0; i < 1000; i++) second.Record(ReceptionRejectionKind.SourceUnavailable, ReceptionIngress.Discovery, secondSource.SourceId);

@@ -14,7 +14,7 @@ internal enum ReceptionIngress : byte { Discovery = 1, Otlp = 2 }
 
 /// <summary>Fixed-size, best-effort diagnostic aggregation; no request content is retained.</summary>
 internal sealed class ReceptionRejectionDiagnostics(
-    IDbContextFactory<ServiceObservabilityDbContext> contexts,
+    Func<IDbContextFactory<ServiceObservabilityDbContext>> contexts,
     ILogger<ReceptionRejectionDiagnostics> logger) : BackgroundService
 {
     private readonly Bucket[] buckets = [new(), new(), new()];
@@ -61,7 +61,7 @@ internal sealed class ReceptionRejectionDiagnostics(
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 deadline.CancelAfter(TimeSpan.FromSeconds(2));
-                await using var db = await contexts.CreateDbContextAsync(deadline.Token);
+                await using var db = await contexts().CreateDbContextAsync(deadline.Token);
                 var kind = (byte)(i + 1);
                 var affected = await db.Database.ExecuteSqlInterpolatedAsync($"""
                     UPDATE [service].[ReceptionRejections]
