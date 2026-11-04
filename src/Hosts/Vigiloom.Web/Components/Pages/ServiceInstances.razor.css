@@ -1,0 +1,17 @@
+.instance-management ::deep .policy-form { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+.policy-field { display: grid; gap: .35rem; min-width: 12rem; flex: 1 1 12rem; }
+.policy-field input { width: 100%; box-sizing: border-box; }
+.instance-management ul { padding-left: 1.3rem; }
+.instance-management li { margin: .6rem 0; overflow-wrap: anywhere; }
+.instance-management li details { margin-top: .2rem; }
+.instance-management summary { cursor: pointer; }
+.instance-management small { overflow-wrap: anywhere; }
+.table-scroll { max-width: 100%; overflow-x: auto; }
+.table-scroll table { min-width: 42rem; width: 100%; table-layout: fixed; border-collapse: collapse; }
+.table-scroll th, .table-scroll td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid #dfe7ef; }
+.table-scroll th { background: #edf4fc; color: #26466b; }
+.table-scroll td:first-child { overflow-wrap: anywhere; max-width: 16rem; }
+.table-scroll td:last-child { overflow-wrap: anywhere; }
+.table-scroll td:last-child p { white-space: normal; }
+.scroll-hint { color: #355b83; }
+.instance-management nav { display: flex; align-items: center; gap: 1rem; margin-top: .75rem; }

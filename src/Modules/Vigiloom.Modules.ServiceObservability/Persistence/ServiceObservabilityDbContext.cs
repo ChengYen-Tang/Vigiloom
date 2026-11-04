@@ -9,6 +9,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<ServiceCandidate> Candidates => Set<ServiceCandidate>();
     public DbSet<MonitoredService> Services => Set<MonitoredService>();
     public DbSet<ServiceInstance> Instances => Set<ServiceInstance>();
+    public DbSet<InstancePolicy> InstancePolicies => Set<InstancePolicy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +42,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         service.HasKey(x => x.Id).IsClustered(false);
         service.Property(x => x.Id).ValueGeneratedNever();
         service.Property(x => x.RowId).UseIdentityColumn();
+        service.Property(x => x.Version).IsRowVersion();
         service.HasIndex(x => x.RowId).IsUnique().IsClustered();
         service.Property(x => x.ServiceKey).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
         service.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
@@ -55,6 +57,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         instance.HasKey(x => x.Id).IsClustered(false);
         instance.Property(x => x.Id).ValueGeneratedNever();
         instance.Property(x => x.RowId).UseIdentityColumn();
+        instance.Property(x => x.Version).IsRowVersion();
         instance.HasIndex(x => x.RowId).IsUnique().IsClustered();
         instance.Property(x => x.ExternalInstanceId).HasMaxLength(256).IsRequired();
         instance.Property(x => x.ExternalInstanceIdBytes)
@@ -67,5 +70,19 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         instance.HasOne<MonitoredService>().WithMany()
             .HasForeignKey(x => new { x.ServiceId, x.SourceScopeId })
             .HasPrincipalKey(x => new { x.Id, x.SourceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var policy = modelBuilder.Entity<InstancePolicy>();
+        policy.ToTable("InstancePolicies", table =>
+        {
+            table.HasCheckConstraint("CK_InstancePolicies_Central", "[Name] = 'central'");
+            table.HasCheckConstraint("CK_InstancePolicies_Limits", "[PerService] > 0 AND [Total] > 0");
+        });
+        policy.HasKey(x => x.Id).IsClustered(false);
+        policy.Property(x => x.Id).ValueGeneratedNever();
+        policy.Property(x => x.RowId).UseIdentityColumn();
+        policy.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        policy.Property(x => x.Name).HasMaxLength(32).IsRequired();
+        policy.HasIndex(x => x.Name).IsUnique();
+        policy.Property(x => x.Version).IsRowVersion();
     }
 }

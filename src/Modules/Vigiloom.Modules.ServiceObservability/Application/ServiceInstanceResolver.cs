@@ -8,14 +8,10 @@ public enum InstanceResolutionStatus { Resolved, Unidentified, Unauthorized, Ret
 
 public sealed record InstanceResolution(InstanceResolutionStatus Status, ServiceReceptionBinding? Service, Guid? InstanceId);
 
-/// <summary>Central, trusted admission policy; never populate from a telemetry request.</summary>
-public sealed record InstanceAdmissionLimits(int PerService = 1_000, int Total = 100_000);
-
 /// <summary>Resolves instance identity within an authenticated receiver's write transaction.</summary>
 public static class ServiceInstanceResolver
 {
     private static readonly Encoding StrictUnicode = new UnicodeEncoding(false, false, true);
-    private static readonly InstanceAdmissionLimits DefaultLimits = new();
 
     /// <remarks>
     /// The source comes from credential authentication, not telemetry. Keep this connection and
@@ -25,11 +21,8 @@ public static class ServiceInstanceResolver
     /// No result authorizes an event older than the returned service's approval time.
     /// </remarks>
     public static async Task<InstanceResolution> ResolveAsync(DbConnection connection, DbTransaction transaction,
-        Guid authenticatedSourceId, string serviceKey, string environment, string? externalId, CancellationToken token,
-        InstanceAdmissionLimits? limits = null)
+        Guid authenticatedSourceId, string serviceKey, string environment, string? externalId, CancellationToken token)
     {
-        limits ??= DefaultLimits;
-        if (limits.PerService <= 0 || limits.Total <= 0) throw new ArgumentOutOfRangeException(nameof(limits));
         byte[]? key = null;
         if (!string.IsNullOrEmpty(externalId))
         {
@@ -42,9 +35,21 @@ public static class ServiceInstanceResolver
         if (service is null) return new(InstanceResolutionStatus.Unauthorized, null, null);
         if (key is null) return new(InstanceResolutionStatus.Unidentified, service, null);
 
+        // Keep the effective policy stable until commit, including when the default has not yet
+        // been saved. The policy is central database state, never supplied by telemetry callers.
+        var serviceLimit = 1_000;
+        var totalLimit = 100_000;
+        await using (var policy = connection.CreateCommand())
+        {
+            policy.Transaction = transaction;
+            policy.CommandText = "SELECT [PerService], [Total] FROM [service].[InstancePolicies] WITH (HOLDLOCK) WHERE [Name] = N'central'";
+            await using var reader = await policy.ExecuteReaderAsync(token);
+            if (await reader.ReadAsync(token)) { serviceLimit = reader.GetInt32(0); totalLimit = reader.GetInt32(1); }
+        }
+
         // All instance mutations must use this same order: authorization, service lock, global
         // admission lock only for creation. Existing instances do not take the global lock.
-        if (!await LockAsync(connection, transaction, $"Vigiloom.ServiceInstances.{service.ServiceId:D}", token))
+        if (!await LockServiceAsync(connection, transaction, service.ServiceId, token))
             return new(InstanceResolutionStatus.Busy, service, null);
 
         await using (var find = connection.CreateCommand())
@@ -79,8 +84,8 @@ public static class ServiceInstanceResolver
         Add(insert, "@service", DbType.Guid, service.ServiceId);
         Add(insert, "@source", DbType.Guid, authenticatedSourceId);
         Add(insert, "@external", DbType.String, externalId!, 256);
-        Add(insert, "@serviceLimit", DbType.Int32, limits.PerService);
-        Add(insert, "@totalLimit", DbType.Int32, limits.Total);
+        Add(insert, "@serviceLimit", DbType.Int32, serviceLimit);
+        Add(insert, "@totalLimit", DbType.Int32, totalLimit);
         var inserted = await insert.ExecuteScalarAsync(token);
         return inserted is Guid created ? new(InstanceResolutionStatus.Resolved, service, created) : new(InstanceResolutionStatus.CapacityReached, service, null);
     }
@@ -93,6 +98,9 @@ public static class ServiceInstanceResolver
         Add(command, "@resource", DbType.String, resource, 255);
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) >= 0;
     }
+
+    internal static Task<bool> LockServiceAsync(DbConnection connection, DbTransaction transaction, Guid serviceId, CancellationToken token) =>
+        LockAsync(connection, transaction, $"Vigiloom.ServiceInstances.{serviceId:D}", token);
 
     private static void Add(DbCommand command, string name, DbType type, object value, int size = 0)
     {

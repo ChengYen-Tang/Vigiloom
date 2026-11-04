@@ -62,5 +62,22 @@ internal static class ServiceDiscoveryEndpoints
                 };
             }, allowApiCredential: false);
         }).Produces<ServiceApprovalResponse>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429).ProducesProblem(503);
+
+        var services = app.MapGroup("/api/v1/service-discovery/services").RequireAuthorization(AccessPolicies.Administrator)
+            .RequireRateLimiting("api-client");
+        services.MapPost("/{serviceId:guid}/{action}", async (Guid serviceId, string action, ServiceInstanceUpdate request,
+            HttpContext context, ServiceCollectionAdministration management, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                if (serviceId.Version != 7 || action is not ("stop" or "resume")) return Results.BadRequest();
+                return await management.SetStoppedAsync(serviceId, request.Version, action == "stop", actor, token) switch
+                {
+                    ServiceCollectionStatus.Updated => Results.NoContent(),
+                    ServiceCollectionStatus.NotFound => Results.NotFound(),
+                    _ => Results.Conflict()
+                };
+            }, allowApiCredential: false))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429);
     }
 }

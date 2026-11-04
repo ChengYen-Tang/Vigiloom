@@ -170,6 +170,7 @@ public sealed class ServiceInstanceTests(TestContext context)
                 await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.AddRange(first, second);
+                db.InstancePolicies.Add(new InstancePolicy { PerService = 10, Total = 1, CreatedAt = now, UpdatedAt = now });
                 await db.SaveChangesAsync(token);
             }
             async Task<InstanceResolution> Resolve(string key)
@@ -177,7 +178,7 @@ public sealed class ServiceInstanceTests(TestContext context)
                 await using var db = new ServiceObservabilityDbContext(options);
                 await using var tx = await db.Database.BeginTransactionAsync(token);
                 var result = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
-                    source.Id, key, "prod", "node", token, new InstanceAdmissionLimits(10, 1));
+                    source.Id, key, "prod", "node", token);
                 await tx.CommitAsync(token);
                 return result;
             }

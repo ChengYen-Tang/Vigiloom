@@ -17,7 +17,9 @@ public sealed class ServiceApproval(IDbContextFactory<ServiceObservabilityDbCont
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         if (!await DiscoveryTransaction.TryLockAsync(db, transaction, token)) return new(ApprovalStatus.Busy);
         var existing = await db.Services.AsNoTracking().SingleOrDefaultAsync(x => x.CandidateId == candidateId, token);
-        if (existing is not null) return new(ApprovalStatus.AlreadyApproved, existing.Id);
+        if (existing is not null) return existing.RevokedAt is null
+            ? new(ApprovalStatus.AlreadyApproved, existing.Id)
+            : new(ApprovalStatus.SourceUnavailable);
         var candidate = await db.Candidates.SingleOrDefaultAsync(x => x.Id == candidateId, token);
         if (candidate is null) return new(ApprovalStatus.NotFound);
         var source = await db.Sources.FromSqlInterpolated($"SELECT * FROM [service].[Sources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {candidate.SourceId}")

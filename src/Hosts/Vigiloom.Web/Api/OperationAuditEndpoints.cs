@@ -9,6 +9,24 @@ internal static class OperationAuditEndpoints
 {
     public static void MapOperationAuditEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/operations/audit/service-collections", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+        {
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryServiceCollectionsAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
+        app.MapGet("/api/v1/operations/audit/instance-policy", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+        {
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryInstancePoliciesAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
+        app.MapGet("/api/v1/operations/audit/service-instances", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+        {
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryServiceInstancesAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit-feed/{source}", async (string source, DateTimeOffset from, DateTimeOffset to,
             AuditFeedReader feeds, CancellationToken token, int page = 1) =>
         {

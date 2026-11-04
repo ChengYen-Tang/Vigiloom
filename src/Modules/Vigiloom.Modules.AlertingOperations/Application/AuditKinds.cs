@@ -9,4 +9,7 @@ internal static class AuditKinds
     public const short ServiceApprovedV1 = 4;
     public const short ServiceSourceChangedV1 = 5;
     public const short GroupChangedV1 = 6;
+    public const short InstancePolicyChangedV1 = 7;
+    public const short ServiceInstanceChangedV1 = 8;
+    public const short ServiceCollectionChangedV1 = 9;
 }
