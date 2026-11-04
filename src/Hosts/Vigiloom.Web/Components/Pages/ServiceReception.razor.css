@@ -1,4 +1,8 @@
 .reception-page { --vigiloom-muted: #536987; }
+.rejection-help { margin: 8px 0 12px; }
+.rejection-summary { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; margin: 0; }
+.rejection-summary li { flex: 1 1 200px; background: #f0f5fb; border: 1px solid #dce6f2; border-radius: 6px; padding: 12px; }
+.rejection-summary li span { display: block; margin-top: 4px; }
 .reception-unknown { background: #eef4fb; border: 1px solid #cddcf0; border-radius: 8px; color: #2c466b; padding: 14px 16px; }
 .table-scroll { overflow-x: auto; max-width: 100%; }
 table { border-collapse: collapse; width: 100%; min-width: 860px; text-align: left; }

@@ -9,7 +9,7 @@ using Admission = Vigiloom.Infrastructure.LogAdmission.LogAdmission;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 public enum ExportStatus { Complete, Partial, Retry, Invalid, BatchTooLarge, Unauthorized }
-public sealed record ExportResult(ExportStatus Status, long Rejected, TimeSpan? RetryAfter = null);
+public sealed record ExportResult(ExportStatus Status, long Rejected, TimeSpan? RetryAfter = null, bool ServiceNotAuthorized = false);
 
 /// <summary>Atomically commits all accepted groups in an OTLP Log request.</summary>
 internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, CandidateDiscovery candidates)
@@ -66,11 +66,14 @@ internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext>
 
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var accepted = 0;
+        var serviceNotAuthorized = false;
         foreach (var group in groups)
         {
             var key = ServiceKey.From(group.Identity);
             var binding = bindings[key];
-            if (binding is null || LogIngestion.CheckTimes(group.Scope, binding.ApprovedAt, received) != LogIngestionStatus.Accepted)
+            if (binding is null)
+            { rejected += group.Scope.LogRecords.Count; serviceNotAuthorized = true; continue; }
+            if (LogIngestion.CheckTimes(group.Scope, binding.ApprovedAt, received) != LogIngestionStatus.Accepted)
             { rejected += group.Scope.LogRecords.Count; continue; }
             var instance = await ServiceInstanceResolver.ResolveAsync(connection, transaction, authenticatedSourceId,
                 key.Name, key.Environment, group.Identity.InstanceId, token, key.Namespace);
@@ -88,6 +91,6 @@ internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext>
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
         }
-        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected);
+        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected, ServiceNotAuthorized: serviceNotAuthorized);
     }
 }
