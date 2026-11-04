@@ -142,6 +142,8 @@ public sealed class GroupManagementTests
         using (var available = await adminClient.GetAsync($"/groups/{group2.Id:D}?serviceFilter=available", token))
         {
             var serviceForm = await FormAsync(available, "group-services", token);
+            Assert.IsNotNull(serviceForm.QuerySelector("button[value='add']"));
+            Assert.IsNull(serviceForm.QuerySelector("button[value='remove']"));
             var serviceFields = Hidden(serviceForm);
             serviceFields["serviceIds"] = serviceId.ToString();
             serviceFields["serviceOperation"] = "add";
@@ -152,6 +154,8 @@ public sealed class GroupManagementTests
         using (var membersPage = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
         {
             var memberForm = await FormAsync(membersPage, "group-services", token);
+            Assert.IsNull(memberForm.QuerySelector("button[value='add']"));
+            Assert.IsNotNull(memberForm.QuerySelector("button[value='remove']"));
             var memberFields = Hidden(memberForm);
             memberFields["serviceIds"] = serviceId.ToString();
             memberFields["serviceOperation"] = "remove";
