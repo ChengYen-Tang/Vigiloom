@@ -25,6 +25,7 @@ using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
+using Vigiloom.Web.Groups;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -56,6 +57,8 @@ builder.Services.AddVigiloomIdentity();
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddScoped<GroupManagement>();
+builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
@@ -185,7 +188,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/speed-tests"))
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/groups") || context.Request.Path.StartsWithSegments("/speed-tests"))
         context.Response.Headers.CacheControl = "no-store";
     await next();
 });
@@ -213,6 +216,7 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 }).AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
+app.MapGroupEndpoints();
 app.MapAgentEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentQueueCapacityEndpoints();
