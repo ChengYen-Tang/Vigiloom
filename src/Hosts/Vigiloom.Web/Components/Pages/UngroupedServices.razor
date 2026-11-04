@@ -1,0 +1,44 @@
+@page "/groups/ungrouped-services"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Groups
+@using Vigiloom.Web.Groups
+@inject ServiceMembership Services
+@inject NavigationManager Navigation
+@inject ILogger<UngroupedServices> Logger
+
+<PageTitle>未分組服務 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="/groups">← 返回群組</a>
+    <header class="device-heading"><div><h1>未分組服務</h1><p>尚未加入任何群組的應用服務。</p></div></header>
+    <section class="device-panel">
+        <form method="get" action="/groups/ungrouped-services" class="device-filters"><label>搜尋服務或環境 <input name="search" value="@Search" maxlength="256" /></label><button type="submit">搜尋</button></form>
+        @if (error) { <p class="device-alert" role="alert">無法載入服務，請稍後再試。</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">沒有符合條件的未分組服務。</p> }
+        else if (result is not null)
+        {
+            <p class="device-count">共 @result.Total 個服務</p>
+            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
+            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>環境</th></tr></thead><tbody>
+                @foreach (var service in result.Items) { <tr @key="service.Id"><td>@service.Name</td><td>@service.Environment</td></tr> }
+            </tbody></table></div>
+            <nav class="device-pagination" aria-label="服務分頁">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
+                <span>第 @result.Page 頁</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            </nav>
+        }
+    </section>
+</main>
+@code {
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
+    private GroupServicePage? result;
+    private bool error;
+    protected override async Task OnInitializedAsync()
+    {
+        try { result = await Services.ListAsync(null, true, null, Search is { Length: <= 256 } ? Search : null, Page, CancellationToken.None); }
+        catch (Exception exception) { Logger.LogWarning("Could not load ungrouped services: {ExceptionType}", exception.GetType().Name); error = true; }
+    }
+    private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/groups/ungrouped-services", new Dictionary<string, object?> { ["search"] = Search, ["page"] = page });
+}

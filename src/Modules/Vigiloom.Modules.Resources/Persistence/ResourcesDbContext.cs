@@ -8,6 +8,7 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
+    public DbSet<ServiceGroup> ServiceGroups => Set<ServiceGroup>();
     public DbSet<DeviceTarget> DeviceTargets => Set<DeviceTarget>();
     public DbSet<DeviceAudit> DeviceAudits => Set<DeviceAudit>();
 
@@ -48,6 +49,8 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         group.Property(x => x.RowId).UseIdentityColumn();
         group.HasIndex(x => x.RowId).IsUnique().IsClustered();
         group.Property(x => x.Name).HasMaxLength(256).IsRequired();
+        group.HasIndex(x => x.Name).IsUnique();
+        group.Property(x => x.Description).HasMaxLength(1024);
         group.Property(x => x.Version).IsRowVersion();
 
         var membership = modelBuilder.Entity<DeviceGroup>();
@@ -56,5 +59,11 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         membership.HasIndex(x => new { x.DeviceId, x.GroupId });
         membership.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.NoAction);
         membership.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.NoAction);
+
+        var serviceMembership = modelBuilder.Entity<ServiceGroup>();
+        serviceMembership.ToTable("ServiceGroups");
+        serviceMembership.HasKey(x => new { x.GroupId, x.ServiceId }).IsClustered();
+        serviceMembership.HasIndex(x => new { x.ServiceId, x.GroupId });
+        serviceMembership.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.NoAction);
     }
 }

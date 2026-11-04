@@ -1,0 +1,44 @@
+@page "/groups/ungrouped"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Groups
+@using Vigiloom.Modules.Resources.Application
+@inject GroupManagement GroupsService
+@inject NavigationManager Navigation
+@inject ILogger<UngroupedDevices> Logger
+
+<PageTitle>未分組設備 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="/groups">← 返回群組</a>
+    <header class="device-heading"><div><h1>未分組設備</h1><p>尚未加入任何群組的設備。</p></div></header>
+    <section class="device-panel">
+        <form method="get" action="/groups/ungrouped" class="device-filters"><label>搜尋名稱或目標 <input name="search" value="@Search" maxlength="256" /></label><button type="submit">搜尋</button></form>
+        @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後再試。</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">沒有符合條件的未分組設備。</p> }
+        else if (result is not null)
+        {
+            <p class="device-count">共 @result.Total 台設備</p>
+            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
+            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>主要目標</th><th>監控模式</th></tr></thead><tbody>
+                @foreach (var device in result.Items) { <tr @key="device.Id"><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td></tr> }
+            </tbody></table></div>
+            <nav class="device-pagination" aria-label="設備分頁">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
+                <span>第 @result.Page 頁</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            </nav>
+        }
+    </section>
+</main>
+@code {
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
+    private GroupDevicePage? result;
+    private bool error;
+    protected override async Task OnInitializedAsync()
+    {
+        try { result = await GroupsService.ListDevicesAsync(null, true, null, Search is { Length: <= 256 } ? Search : null, Page, CancellationToken.None); }
+        catch (Exception exception) { Logger.LogWarning("Could not load ungrouped devices: {ExceptionType}", exception.GetType().Name); error = true; }
+    }
+    private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/groups/ungrouped", new Dictionary<string, object?> { ["search"] = Search, ["page"] = page });
+}
