@@ -5,6 +5,7 @@ using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Web.Telemetry;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -76,6 +77,10 @@ public sealed class ServiceReceptionBrowserTests(TestContext context)
                 Assert.AreEqual(MetricIngestionStatus.Accepted, await ingest.WriteAsync(monitoringSourceId, resource, new OpenTelemetry.Proto.Metrics.V1.ScopeMetrics(), metric, token));
             }
         }
+        var rejections = factory.Services.GetRequiredService<ReceptionRejectionDiagnostics>();
+        rejections.Record(ReceptionRejectionKind.CredentialRejected, ReceptionIngress.Discovery);
+        rejections.Record(ReceptionRejectionKind.ServiceNotAuthorized, ReceptionIngress.Otlp, monitoringSourceId);
+        await rejections.FlushAsync(token);
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var browserContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1024 } });
@@ -87,6 +92,10 @@ public sealed class ServiceReceptionBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "管線接入", Exact = true }).WaitForAsync();
         Assert.Contains("Collector 健康狀態：未知", await page.Locator("main").InnerTextAsync());
+        Assert.Contains("代表來源：demo-collector", await page.Locator("main").InnerTextAsync());
+        await page.GetByText("如何解讀這些數字？").ClickAsync();
+        Assert.Contains("總次數包含所有來源", await page.Locator("main").InnerTextAsync());
+        await page.GetByText("如何解讀這些數字？").ClickAsync();
         Assert.IsTrue(await page.GetByRole(AriaRole.Link, new() { Name = "下載 Collector 設定範例" }).IsVisibleAsync());
         Assert.IsTrue(await page.GetByRole(AriaRole.Link, new() { Name = "下載應用程式 SDK 設定範例" }).IsVisibleAsync());
         var evidence = Environment.GetEnvironmentVariable("VIGILOOM_RECEPTION_EVIDENCE_DIR") ?? Path.Combine(context.TestRunDirectory!, "service-reception-ui");

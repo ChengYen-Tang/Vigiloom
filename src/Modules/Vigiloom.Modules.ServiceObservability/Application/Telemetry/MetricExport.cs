@@ -63,11 +63,14 @@ internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbConte
         if (bindings is null) return new(ExportStatus.Retry, 0);
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var accepted = 0;
+        var serviceNotAuthorized = false;
         foreach (var group in groups)
         {
             var key = ServiceKey.From(group.Identity);
             var binding = bindings[key];
-            if (binding is null || MetricIngestion.CheckTimes(group.Data, binding.ApprovedAt, received) != MetricIngestionStatus.Accepted)
+            if (binding is null)
+            { rejected += group.Data.Points.Count; serviceNotAuthorized = true; continue; }
+            if (MetricIngestion.CheckTimes(group.Data, binding.ApprovedAt, received) != MetricIngestionStatus.Accepted)
             { rejected += group.Data.Points.Count; continue; }
             var instance = await ServiceInstanceResolver.ResolveAsync(connection, transaction, authenticatedSourceId,
                 key.Name, key.Environment, group.Identity.InstanceId, token, key.Namespace);
@@ -82,7 +85,7 @@ internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbConte
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
         }
-        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected);
+        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected, ServiceNotAuthorized: serviceNotAuthorized);
     }
 
     private static int Count(Metric metric) => metric.DataCase switch

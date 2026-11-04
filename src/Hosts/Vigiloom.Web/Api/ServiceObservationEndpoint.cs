@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Telemetry;
 
 namespace Vigiloom.Web.Api;
 
@@ -20,7 +21,7 @@ internal static class ServiceObservationEndpoint
         MaxDepth = 4
     };
 
-    public static async Task<IResult> ReceiveAsync(HttpContext context, CandidateDiscovery candidates, CancellationToken token)
+    public static async Task<IResult> ReceiveAsync(HttpContext context, CandidateDiscovery candidates, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null)
     {
         if (context.Request.Headers.ContainsKey("Content-Encoding") || !context.Request.HasJsonContentType())
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
@@ -53,6 +54,7 @@ internal static class ServiceObservationEndpoint
             try
             {
                 var result = await candidates.ObserveAsync(source, observation.ServiceKey, observation.Environment, observation.DisplayName, token, observation.ServiceNamespace);
+                if (result == CandidateObservation.SourceUnavailable) diagnostics?.Record(ReceptionRejectionKind.SourceUnavailable, ReceptionIngress.Discovery, source.SourceId);
                 if (result is CandidateObservation.CapacityReached or CandidateObservation.Busy)
                     context.Response.Headers.RetryAfter = "60";
                 return result switch

@@ -3,11 +3,12 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Web.Telemetry;
 
 namespace Vigiloom.Web.Authentication;
 
 internal sealed class ServiceSourceCredentialHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger,
-    UrlEncoder encoder, SourceCredentials sources) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    UrlEncoder encoder, SourceCredentials sources, ReceptionRejectionDiagnostics diagnostics) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "VigiloomServiceSource";
     private const string VersionClaim = "vigiloom:source-version";
@@ -26,10 +27,11 @@ internal sealed class ServiceSourceCredentialHandler(IOptionsMonitor<Authenticat
     {
         var header = Request.Headers.Authorization.ToString();
         const string prefix = "Bearer ";
-        if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return AuthenticateResult.NoResult();
-        if (!Request.IsHttps) return AuthenticateResult.Fail("A secure connection is required.");
+        var ingress = Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix) ? ReceptionIngress.Otlp : ReceptionIngress.Discovery;
+        if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ingress); return AuthenticateResult.NoResult(); }
+        if (!Request.IsHttps) { diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ingress); return AuthenticateResult.Fail("A secure connection is required."); }
         var source = await sources.AuthenticateVersionedAsync(header[prefix.Length..], Context.RequestAborted);
-        if (source is null || source.Version.Length != 8) return AuthenticateResult.Fail("Invalid credential.");
+        if (source is null || source.Version.Length != 8) { diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ingress); return AuthenticateResult.Fail("Invalid credential."); }
         var identity = new ClaimsIdentity(
         [
             new Claim(ClaimTypes.NameIdentifier, source.SourceId.ToString("D")),
