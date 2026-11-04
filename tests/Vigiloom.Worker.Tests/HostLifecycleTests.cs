@@ -176,7 +176,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             else
             {
                 if (attempt == 1) receivedSecond.TrySetResult(); else receivedThird.TrySetResult();
-                Assert.AreEqual(0, await stream.ReadAsync(new byte[1], token));
+                try { Assert.AreEqual(0, await stream.ReadAsync(new byte[1], token)); }
+                catch (IOException) { /* A reset also proves that the client closed the connection. */ }
             }
         }
     }
