@@ -1,0 +1,82 @@
+@page "/settings/log-quota"
+@page "/settings/trace-quota"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Infrastructure.LogAdmission
+@using Vigiloom.Web.LogQuota
+@inject LogQuotaSettings Settings
+@inject TraceQuotaSettings TraceSettings
+@inject ILogger<LogQuota> Logger
+
+<PageTitle>@Signal 收集配額 - Vigiloom</PageTitle>
+<main class="device-page">
+    <header class="device-heading"><div><h1>@Signal 收集配額</h1><p>設定各來源與平台共同使用的收集速率。</p></div></header>
+    <p class="management-notice">@Signal 接收功能尚未完成；設定會在接收功能啟用後套用。</p>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (!loadError)
+    {
+        <section class="device-panel"><h2>收集上限</h2>
+            <p>@(IsTrace ? "每來源指經認證的應用來源與服務組合；" : "來源是經認證的主機或應用來源；")平台上限由所有來源共用。突發上限是短時間可接收的最大筆數。</p>
+            <EditForm Model="Form" class="policy-form" FormName="log-quota" method="post" OnValidSubmit="SaveAsync">
+                <ValidationSummary />
+                <div class="policy-field"><label for="source-rate">每來源速率（筆／秒）</label><InputNumber id="source-rate" @bind-Value="Form.SourceRate" min="1" required /></div>
+                <div class="policy-field"><label for="source-burst">每來源突發上限（筆）</label><InputNumber id="source-burst" @bind-Value="Form.SourceBurst" min="1" required /></div>
+                <div class="policy-field"><label for="global-rate">全平台速率（筆／秒）</label><InputNumber id="global-rate" @bind-Value="Form.GlobalRate" min="1" required /></div>
+                <div class="policy-field"><label for="global-burst">全平台突發上限（筆）</label><InputNumber id="global-burst" @bind-Value="Form.GlobalBurst" min="1" required /></div>
+                <InputText type="hidden" @bind-Value="Form.Version" />
+                <button type="submit">儲存設定</button>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "log-quota")] private PolicyForm Form { get; set; } = default!;
+    private string? error, message;
+    private bool loadError;
+    private bool IsTrace => string.Equals(HttpContext.Request.Path.Value?.TrimEnd('/'), "/settings/trace-quota", StringComparison.OrdinalIgnoreCase);
+    private string Signal => IsTrace ? "Trace" : "Log";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Form ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var current = IsTrace ? await TraceSettings.GetAsync(HttpContext.RequestAborted) : await Settings.GetAsync(HttpContext.RequestAborted);
+            var posted = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType &&
+                (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] == "log-quota";
+            if (!posted) Form = new() { SourceRate = current.Values.SourceRate, SourceBurst = current.Values.SourceBurst,
+                GlobalRate = current.Values.GlobalRate, GlobalBurst = current.Values.GlobalBurst, Version = current.Version };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load log quota: {ExceptionType}", ex.GetType().Name); error = "無法讀取設定，請重新整理後再試。"; loadError = true; }
+    }
+
+    private async Task SaveAsync()
+    {
+        var values = new LogQuotaValues(Form.SourceRate, Form.SourceBurst, Form.GlobalRate, Form.GlobalBurst);
+        if (!values.IsValid || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor))
+        { error = "請輸入大於零的數值。"; return; }
+        try
+        {
+            var saved = IsTrace ? await TraceSettings.UpdateAsync(values, Form.Version, actor, HttpContext.RequestAborted) : await Settings.UpdateAsync(values, Form.Version, actor, HttpContext.RequestAborted);
+            if (saved is null) error = "設定已被其他人修改，請重新整理並確認。";
+            else { Form.Version = saved.Version; message = $"{Signal} 配額設定已儲存。"; }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot save log quota: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+    }
+
+    private sealed class PolicyForm
+    {
+        public int SourceRate { get; set; }
+        public int SourceBurst { get; set; }
+        public int GlobalRate { get; set; }
+        public int GlobalBurst { get; set; }
+        public string Version { get; set; } = "";
+    }
+}
