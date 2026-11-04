@@ -125,6 +125,7 @@ public sealed class ServiceReceptionBrowserTests(TestContext context)
         var reportRegion = page.GetByRole(AriaRole.Region, new() { Name = "Collector 執行個體回報，可左右滑動" });
         await reportRegion.FocusAsync();
         await reportRegion.PressAsync("ArrowRight");
+        await page.WaitForFunctionAsync("() => document.querySelector('[aria-label=\"Collector 執行個體回報，可左右滑動\"]').scrollLeft > 0");
         Assert.IsGreaterThan(0, await reportRegion.EvaluateAsync<int>("e => e.scrollLeft"));
         await reportRegion.EvaluateAsync("e => { e.scrollLeft = 0; }");
         await reportRegion.EvaluateAsync("e => e.blur()");
