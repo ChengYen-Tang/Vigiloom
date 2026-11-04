@@ -36,11 +36,21 @@ final result: passed
 
 final result: blocked
 
+## REQ-23 pipeline reception
+
+- Source: `docs/design/req-23-pipeline-concept.png` (1487 × 1058 pixels); implementation: `docs/design/evidence/req-23/template/desktop-contrast.png` (1440 × 1339 pixels, full page, 1440 × 1024 CSS viewport, device scale 1). Both show the Administrator reception overview with synthetic sources. Source names/order, example URL and navigation differ; those placeholders are not product requirements.
+- Compared source and implementation in one normalized input at `docs/design/evidence/req-23/template/comparison-contrast.png`, with a focused table and guidance crop in `docs/design/evidence/req-23/template/focused-contrast.png`. The 390 × 844 CSS viewport capture is `docs/design/evidence/req-23/template/mobile-contrast.png`.
+- Iteration: the initial comparison found overly tall rows and weak endpoint/security hierarchy. Compact identifiers, credential labels and separate guidance panels addressed these. A later review found normal explanatory text insufficiently contrasted; the local muted color was darkened to #536987 (5.62:1 on white, 5.13:1 on #f0f5fb). The captures above are after that fix.
+- Typography hierarchy, card spacing, colors, status labels, icons and explanatory copy were inspected in the combined views. Source placeholder data and shell differences were not treated as missing functionality. The mobile browser test covers overflow, horizontal table scrolling and keyboard focus. A screen-reader pass was not performed.
+- The Collector reports and per-source counters are separate extension screens, not implementations of the reception mockup. Their `reports/comparison.png` and `counters/style-comparison.png` compare shared style across different screens, not same-screen fidelity. Browser checks cover responsive use, source identification and table keyboard scrolling. The UI explicitly reports unknown overall Collector health and explains that deployment requires configuration; counters are not represented as application health.
+
+final result: passed
+
 # REQ-38 preliminary design QA
 
 - Source: `docs/design/req-38-audit-concept.png`, generated from the selected Vigiloom style. Its sample content is illustrative; the current slice only records speed-settings changes and retains the existing navigation.
 - Implementation: the actual Administrator audit page on an isolated LocalDB/Kestrel test site, viewed in the in-app browser at its desktop size and at 390 × 844 CSS px. The date-range error and a real saved test setting change were observed. The narrow table can scroll horizontally; a labelled keyboard-focusable region and explanatory text were subsequently added and still require visual and keyboard verification.
-- The images have not yet been saved and normalized into a joint comparison input. The in-app browser rejected the local data-URL comparison under its URL security policy; no alternative route around that restriction was attempted. Focused visual comparison, keyboard/accessibility testing and console review remain outstanding; this preliminary inspection is not completed design QA.
+- At this preliminary stage, the images had not yet been saved and normalized into a joint comparison input. The earlier claim of a browser security rejection is unsupported by verified tool output. Focused visual comparison, keyboard/accessibility testing and console review remained outstanding at that stage.
 - The user independently compared the initial rendered page with the reference and accepted the overall style and page structure. They checked the normal, invalid-date, empty and 390 px states and requested more specific date errors, clearer table hierarchy, a stronger horizontal-scroll hint and no redundant pagination on the first empty page. Those changes were implemented; the revised page has not yet had a post-fix comparison with the reference.
 - In the revised page, keyboard testing confirmed Enter submits the query, Tab moves from the query button to the scroll region and then to the version disclosure, and Enter expands the disclosure. At a 390 px viewport, the right arrow moved the focused table's horizontal scroll position from 0 to 40 px. A screen-reader pass is still outstanding.
 

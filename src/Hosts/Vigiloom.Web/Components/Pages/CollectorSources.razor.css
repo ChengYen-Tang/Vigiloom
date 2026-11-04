@@ -1,0 +1,6 @@
+.source-options { box-sizing: border-box; width: 100%; max-height: 24rem; overflow-y: auto; border: 1px solid #dce6f2; border-radius: 6px; }
+.source-choice { display: flex; align-items: start; gap: 10px; padding: 10px 4px; border-bottom: 1px solid #e2e9f1; }
+.source-choice:last-child { border-bottom: 0; }
+.source-choice span, .route-list li { overflow-wrap: anywhere; }
+.route-list li { margin: 0 0 16px; }
+.collector-sources nav { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
