@@ -2,6 +2,7 @@ using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using System.Threading.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
@@ -81,7 +82,9 @@ builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<CollectorAdministration>();
 builder.Services.AddSingleton<OtlpConcurrency>();
-builder.Services.AddSingleton<ReceptionRejectionDiagnostics>();
+builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
+    () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+    provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
 builder.Services.AddScoped<ServiceApproval>();
 builder.Services.AddScoped<ServiceInstanceAdministration>();

@@ -9,11 +9,29 @@ namespace Vigiloom.Web.Tests;
 public sealed class ReceptionRejectionBufferTests
 {
     [TestMethod]
+    public async Task MissingFactoryConfiguration_DoesNotStopDiagnosticsOrReplay()
+    {
+        var attempts = 0;
+        var logger = new CaptureLogger();
+        var diagnostics = new ReceptionRejectionDiagnostics(() =>
+        {
+            attempts++;
+            throw new InvalidOperationException("sensitive configuration");
+        }, logger);
+        diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ReceptionIngress.Otlp);
+        await diagnostics.FlushAsync(CancellationToken.None);
+        await diagnostics.FlushAsync(CancellationToken.None);
+        Assert.AreEqual(1, attempts);
+        Assert.HasCount(1, logger.Messages);
+        Assert.DoesNotContain("sensitive configuration", logger.Messages[0]);
+    }
+
+    [TestMethod]
     public async Task FailedFlush_DoesNotRetryAnUncertainDelta()
     {
         var factory = new FailingFactory();
         var logger = new CaptureLogger();
-        var diagnostics = new ReceptionRejectionDiagnostics(factory, logger);
+        var diagnostics = new ReceptionRejectionDiagnostics(() => factory, logger);
         Assert.Throws<ArgumentException>(() => diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ReceptionIngress.Otlp, Guid.CreateVersion7()));
         diagnostics.Record(ReceptionRejectionKind.CredentialRejected, ReceptionIngress.Otlp);
         await diagnostics.FlushAsync(CancellationToken.None);
