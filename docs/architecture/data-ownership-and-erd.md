@@ -84,18 +84,20 @@ erDiagram
 
 ## 參照、交易與刪除
 
-- 同一模組的必要參照由 SQL FK／unique constraint 強制。跨模組採以下 SQL FK，皆引用資源 Guid 主鍵、`NO ACTION`，不得 cascade 修改另一模組；依序先建立目標表，再由來源擁有者的 migration 建約束。跨模組讀寫仍經各模組契約。
+- 同一模組的必要參照由 SQL FK／unique constraint 強制。跨模組原則上採以下 SQL FK，皆引用資源 Guid 主鍵、`NO ACTION`，不得 cascade 修改另一模組；依序先建立目標表，再由來源擁有者的 migration 建約束。ServiceGroup 的例外及交易約束見下方。跨模組讀寫仍經各模組契約。
 
 | 來源欄位（migration 擁有者） | 目標 | 建立順序 |
 |---|---|---|
 | Resources.DeviceGroup.DeviceId／GroupId（Resources） | Resources.Device／Group | 目標先，關聯表後 |
-| Resources.ServiceGroup.ServiceId（Resources） | Services.Service | Resources 基礎與 Services 先，Resources 後續 migration 建關聯 |
+| Resources.ServiceGroup.ServiceId（Resources） | Services.Service | 目前以共同交易驗證，暫不建立跨模組 SQL FK；見下方例外 |
 | Resources.DeploymentLink.DeviceId／ServiceInstanceId（Resources） | Resources.Device／Services.ServiceInstance | 兩個目標先，Resources 後續 migration 建關聯 |
 | Agents.Agent.DeviceId（AgentManagement） | Resources.Device | Resources 基礎先，AgentManagement 後 |
 | Network.PingSample.DeviceId（NetworkMonitoring） | Resources.Device | Resources 基礎先，NetworkMonitoring 後 |
 | Publishing.DevicePublication.DeviceId（Publishing） | Resources.Device | Resources 基礎先，Publishing 後 |
 | Publishing.ServicePublication.ServiceId（Publishing） | Services.Service | Services 先，Publishing 後 |
 | Security.SecurityEvent.DeviceId（SecurityAnalysis） | Resources.Device | Resources 基礎先，SecurityAnalysis 後 |
+
+**ServiceGroup 例外：** 服務目前沒有實體刪除功能，Resources 保持可獨立遷移，故 ServiceId 暫不建立跨 schema FK。所有正式加入均由協調器在同一 SQL 連線與交易中鎖定群組、驗證服務身分並持有必要鎖；群組側 FK、複合唯一鍵與反向索引仍由 SQL 強制。服務及來源撤銷不刪除身分或群組關聯。未來增加服務實體刪除或移除 Service schema 前，必須先設計並驗證關聯清理及並行控制，或建立 FK；不得假設可直接刪除。此例外避免尚無實體刪除入口時，令 Resources 的新安裝和隔離測試依賴 Service schema。
 
 模組內的 ServiceInstance→Service、訊號→Service／可選 instance、HealthInterval→Service、DevicePublication→可選 PublicTemplate、AlertEvent→Alert、UserRole→User／Role、IngestReceipt.ProducerId→Agent.Id 均由各自模組的 SQL FK 強制；收據參照 Agent 使用 `NO ACTION`。HealthInterval、AppLog、MetricPoint、SpanRecord 的 instance 關聯為可選；若指定 instance，實作須以組合 FK／唯一鍵確保其所屬 Service 一致。Alert 的多型來源（Device 或 Service）以明確類型與 Guid 表示，不虛構無法強制的單一 SQL FK；來源建立與封存由應用契約與 Outbox 處理，顯示歷史時容忍已封存來源。
 

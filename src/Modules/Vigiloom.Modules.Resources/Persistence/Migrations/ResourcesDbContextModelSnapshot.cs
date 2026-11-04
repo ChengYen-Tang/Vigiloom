@@ -160,6 +160,10 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -184,6 +188,9 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.HasIndex("RowId")
                         .IsUnique();
 
@@ -193,6 +200,23 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_Groups_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.ServiceGroup", b =>
+                {
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("GroupId", "ServiceId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("GroupId", "ServiceId"));
+
+                    b.HasIndex("ServiceId", "GroupId");
+
+                    b.ToTable("ServiceGroups", "resources");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.DeviceAudit", b =>
@@ -224,6 +248,15 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.Resources.Domain.Device", null)
                         .WithMany()
                         .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.ServiceGroup", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

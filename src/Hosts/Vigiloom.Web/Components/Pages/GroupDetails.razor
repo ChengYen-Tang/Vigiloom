@@ -1,0 +1,211 @@
+@page "/groups/{Id:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Groups
+@using Microsoft.AspNetCore.Components.Authorization
+@using GroupDto = Vigiloom.Contracts.Groups.GroupDetails
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.IdentityAccess.Domain
+@using Vigiloom.Web.Groups
+@using System.Security.Claims
+@inject GroupManagement GroupsService
+@inject ServiceMembership ServiceMembers
+@inject NavigationManager Navigation
+@inject ILogger<GroupDetails> Logger
+
+<PageTitle>群組詳情 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="/groups">← 返回群組</a>
+    @if (loadError) { <section class="device-panel"><p role="alert">無法載入群組，請稍後再試。</p></section> }
+    else if (group is null) { <section class="device-panel"><h1>找不到群組</h1><p>此群組不存在。</p></section> }
+    else
+    {
+        <header class="device-heading"><div><h1>@group.Name</h1><p>@(group.Description ?? "尚無說明")</p></div>
+            <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><a class="device-primary" href="@($"/groups/{Id:D}/edit")">編輯群組</a></Authorized></AuthorizeView>
+        </header>
+        <section class="device-panel"><h2>設備</h2><p>群組中有 @group.DeviceCount 台設備。 @if (group.ArchivedDeviceCount > 0) { <span>另有 @group.ArchivedDeviceCount 台已封存。</span> }</p>
+            <form method="get" action="@($"/groups/{Id:D}")" class="device-filters">
+                <input type="hidden" name="serviceSearch" value="@ServiceSearch" />
+                <input type="hidden" name="serviceFilter" value="@ServiceFilter" />
+                <input type="hidden" name="servicePage" value="@Math.Max(1, ServicePage)" />
+                <label>搜尋名稱或目標 <input name="search" value="@Search" maxlength="256" /></label>
+                <label>範圍 <select name="filter"><option value="members" selected="@(Filter is null or "members")">群組設備</option><option value="available" selected="@(Filter == "available")">可加入設備</option><option value="all" selected="@(Filter == "all")">全部設備</option></select></label>
+                <button type="submit">搜尋</button>
+            </form>
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            @if (devices is not null)
+            {
+                <EditForm Model="Selection" FormName="group-members" method="post" OnSubmit="ChangeMembersAsync">
+                    <InputHidden @bind-Value="Selection.Version" />
+                    @if (devices.Items.Count == 0) { <p class="device-empty">沒有符合條件的設備。</p> }
+                    else {
+                    <p class="group-scroll-hint">左右滑動查看完整表格。</p>
+                    <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>主要目標</th><th>監控模式</th><th>群組歸屬</th></tr></thead><tbody>
+                    @foreach (var device in devices.Items)
+                    {
+                        <tr @key="device.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="deviceIds" value="@device.Id" aria-label="選取 @device.Name" /></td></Authorized></AuthorizeView><td><a href="@($"/devices/{device.Id:D}")">@device.Name</a></td><td>@device.Address</td><td>@(device.DeepMonitoring ? "深入監控" : "僅 Ping")</td><td>@(device.IsMember ? "已加入" : "未加入")</td></tr>
+                    }
+                    </tbody></table></div>
+                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">
+                        @if (Filter is "available" or "all") { <button type="submit" name="operation" value="add">加入所選設備</button> }
+                        @if (Filter is not "available") { <button type="submit" name="operation" value="remove">移出所選設備</button> }
+                    </div></Authorized></AuthorizeView>
+                    }
+                </EditForm>
+                @if (devices.Total > 0 || devices.Page > 1) { <nav class="device-pagination" aria-label="設備分頁">
+                    @if (devices.Page > 1) { <a href="@PageUrl(devices.Page - 1)">上一頁</a> }
+                    <span>第 @devices.Page 頁</span>
+                    @if ((long)devices.Page * devices.PageSize < devices.Total) { <a href="@PageUrl(devices.Page + 1)">下一頁</a> }
+                </nav> }
+            }
+        </section>
+        <section class="device-panel"><h2>應用服務</h2><p>群組中有 @group.ServiceCount 個服務。</p>
+            <form method="get" action="@($"/groups/{Id:D}")" class="device-filters">
+                <input type="hidden" name="search" value="@Search" />
+                <input type="hidden" name="filter" value="@Filter" />
+                <input type="hidden" name="page" value="@Math.Max(1, Page)" />
+                <label>搜尋服務或環境 <input name="serviceSearch" value="@ServiceSearch" maxlength="256" /></label>
+                <label>範圍 <select name="serviceFilter"><option value="members" selected="@(ServiceFilter is null or "members")">群組服務</option><option value="available" selected="@(ServiceFilter == "available")">可加入服務</option><option value="all" selected="@(ServiceFilter == "all")">全部服務</option></select></label>
+                <button type="submit">搜尋</button>
+            </form>
+            @if (serviceMessage is not null) { <p class="device-alert" role="alert">@serviceMessage</p> }
+            @if (serviceList is not null)
+            {
+                <EditForm Model="ServiceSelection" FormName="group-services" method="post" OnSubmit="ChangeServicesAsync">
+                    <InputHidden @bind-Value="ServiceSelection.Version" />
+                    @if (serviceList.Items.Count == 0) { <p class="device-empty">沒有符合條件的服務。</p> }
+                    else {
+                    <p class="group-scroll-hint">左右滑動查看完整表格。</p>
+                    <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>環境</th><th>群組歸屬</th></tr></thead><tbody>
+                    @foreach (var service in serviceList.Items)
+                    {
+                        <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td>@service.Name</td><td>@service.Environment</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
+                    }
+                    </tbody></table></div>
+                    <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">
+                        @if (ServiceFilter is "available" or "all") { <button type="submit" name="serviceOperation" value="add">加入所選服務</button> }
+                        @if (ServiceFilter is not "available") { <button type="submit" name="serviceOperation" value="remove">移出所選服務</button> }
+                    </div></Authorized></AuthorizeView>
+                    }
+                </EditForm>
+                @if (serviceList.Total > 0 || serviceList.Page > 1) { <nav class="device-pagination" aria-label="服務分頁">
+                    @if (serviceList.Page > 1) { <a href="@ServicePageUrl(serviceList.Page - 1)">上一頁</a> }
+                    <span>第 @serviceList.Page 頁</span>
+                    @if ((long)serviceList.Page * serviceList.PageSize < serviceList.Total) { <a href="@ServicePageUrl(serviceList.Page + 1)">下一頁</a> }
+                </nav> }
+            }
+        </section>
+        <AuthorizeView Policy="Administrator"><Authorized Context="administrator">
+            <section class="device-panel"><h2>刪除群組</h2>
+                <p>將移除 @group.DeviceCount 台設備、@group.ServiceCount 個服務的群組歸屬。 @if (group.ArchivedDeviceCount > 0) { <span>另有 @group.ArchivedDeviceCount 台已封存設備的歸屬也會移除。</span> } 不會刪除資源或歷史，也不會變更監控或公開設定。</p>
+                @if (deleteError is not null) { <p class="device-alert" role="alert">@deleteError</p> }
+                <EditForm Model="Deletion" FormName="group-delete" method="post" OnSubmit="DeleteAsync">
+                    <InputHidden @bind-Value="Deletion.Version" />
+                    <label><InputCheckbox @bind-Value="Deletion.Confirm" /> 我了解以上影響</label>
+                    <button type="submit" class="device-danger">確認刪除群組</button>
+                </EditForm>
+            </section>
+        </Authorized></AuthorizeView>
+    }
+</main>
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "filter")] public string? Filter { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
+    [SupplyParameterFromQuery(Name = "serviceSearch")] public string? ServiceSearch { get; set; }
+    [SupplyParameterFromQuery(Name = "serviceFilter")] public string? ServiceFilter { get; set; }
+    [SupplyParameterFromQuery(Name = "servicePage")] public int ServicePage { get; set; } = 1;
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "group-members")] private SelectionForm Selection { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "group-delete")] private DeletionForm Deletion { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "group-services")] private SelectionForm ServiceSelection { get; set; } = default!;
+    private GroupDto? group;
+    private GroupDevicePage? devices;
+    private GroupServicePage? serviceList;
+    private bool loadError;
+    private string? message, deleteError, serviceMessage;
+    protected override async Task OnInitializedAsync()
+    {
+        Selection ??= new(); Deletion ??= new(); ServiceSelection ??= new();
+        try
+        {
+            group = await GroupsService.GetAsync(Id, HttpContext.RequestAborted);
+            if (group is null) return;
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Selection.Version = Deletion.Version = ServiceSelection.Version = group.Version;
+            else if (HttpMethods.IsPost(HttpContext.Request.Method))
+            {
+                var handler = (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"].ToString();
+                if (handler != "group-members") Selection.Version = group.Version;
+                if (handler != "group-services") ServiceSelection.Version = group.Version;
+                if (handler != "group-delete") Deletion.Version = group.Version;
+            }
+            bool? member = Filter switch { "available" => false, "all" => null, _ => true };
+            devices = await GroupsService.ListDevicesAsync(Id, false, member, Search is { Length: <= 256 } ? Search : null, Page, HttpContext.RequestAborted);
+            bool? serviceMember = ServiceFilter switch { "available" => false, "all" => null, _ => true };
+            serviceList = await ServiceMembers.ListAsync(Id, false, serviceMember, ServiceSearch is { Length: <= 256 } ? ServiceSearch : null, ServicePage, HttpContext.RequestAborted);
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not load group: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+    private async Task ChangeServicesAsync()
+    {
+        if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || group is null || Actor() is not { } actor) return;
+        var changed = false;
+        try
+        {
+            var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+            var raw = form["serviceIds"];
+            if (raw.Count == 0) { serviceMessage = "請先選取服務。"; return; }
+            if (raw.Count > GroupManagement.MaxBatchSize || raw.Any(value => !Guid.TryParse(value, out _))) { serviceMessage = "選取的服務無效或超過數量上限。"; return; }
+            var ids = raw.Select(value => Guid.Parse(value!)).ToArray();
+            var operation = form["serviceOperation"].ToString();
+            if (operation is not ("add" or "remove")) { serviceMessage = "請選擇要加入或移出的操作。"; return; }
+            var result = await ServiceMembers.ChangeAsync(Id, new(ServiceSelection.Version, operation == "add" ? ids : [], operation == "remove" ? ids : []), actor, HttpContext.RequestAborted);
+            if (result.Status == GroupResultStatus.Success) changed = true;
+            else serviceMessage = result.Status == GroupResultStatus.Invalid ? string.Join(" ", result.Errors!.Values.SelectMany(x => x)) : "群組已變更或不存在，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not change service members: {ExceptionType}", exception.GetType().Name); serviceMessage = "無法確認操作結果，請重新整理並檢查。"; }
+        if (changed) Navigation.NavigateTo($"/groups/{Id:D}", forceLoad: true);
+    }
+    private async Task ChangeMembersAsync()
+    {
+        if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || group is null || Actor() is not { } actor) return;
+        var changed = false;
+        try
+        {
+            var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+            var raw = form["deviceIds"];
+            if (raw.Count == 0) { message = "請先選取設備。"; return; }
+            if (raw.Count > GroupManagement.MaxBatchSize || raw.Any(value => !Guid.TryParse(value, out _))) { message = "選取的設備無效或超過數量上限。"; return; }
+            var ids = raw.Select(value => Guid.Parse(value!)).ToArray();
+            var operation = form["operation"].ToString();
+            if (operation is not ("add" or "remove")) { message = "請選擇要加入或移出的操作。"; return; }
+            var result = await GroupsService.ChangeMembersAsync(Id, new(Selection.Version, operation == "add" ? ids : [], operation == "remove" ? ids : []), actor, HttpContext.RequestAborted);
+            if (result.Status == GroupResultStatus.Success) changed = true;
+            else message = result.Status == GroupResultStatus.Invalid ? string.Join(" ", result.Errors!.Values.SelectMany(x => x)) : "群組已變更或不存在，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not change group members: {ExceptionType}", exception.GetType().Name); message = "無法確認操作結果，請重新整理並檢查。"; }
+        if (changed) Navigation.NavigateTo($"/groups/{Id:D}", forceLoad: true);
+    }
+    private async Task DeleteAsync()
+    {
+        if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || group is null || Actor() is not { } actor) return;
+        if (!Deletion.Confirm) { deleteError = "請先確認操作影響。"; return; }
+        var deleted = false;
+        try
+        {
+            var result = await GroupsService.DeleteAsync(Id, Deletion.Version, actor, HttpContext.RequestAborted);
+            if (result.Status == GroupResultStatus.Success) deleted = true;
+            else deleteError = "群組已變更或不存在，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not delete group: {ExceptionType}", exception.GetType().Name); deleteError = "無法確認操作結果，請重新整理並檢查。"; }
+        if (deleted) Navigation.NavigateTo("/groups", forceLoad: true);
+    }
+    private string PageUrl(int page) => QueryUrl(page, Math.Max(1, ServicePage));
+    private string ServicePageUrl(int page) => QueryUrl(Math.Max(1, Page), page);
+    private string QueryUrl(int page, int servicePage) => Navigation.GetUriWithQueryParameters($"/groups/{Id:D}", new Dictionary<string, object?>
+        { ["search"] = Search, ["filter"] = Filter, ["page"] = page, ["serviceSearch"] = ServiceSearch, ["serviceFilter"] = ServiceFilter, ["servicePage"] = servicePage });
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) && actor != Guid.Empty ? actor : null;
+    private sealed class SelectionForm { public string? Version { get; set; } }
+    private sealed class DeletionForm { public string? Version { get; set; } public bool Confirm { get; set; } }
+}

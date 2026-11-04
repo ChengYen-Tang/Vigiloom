@@ -1,0 +1,68 @@
+@page "/groups/new"
+@page "/groups/{Id:guid}/edit"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Groups
+@using Vigiloom.Modules.Resources.Application
+@using System.Security.Claims
+@inject GroupManagement GroupsService
+@inject NavigationManager Navigation
+@inject ILogger<GroupEdit> Logger
+
+<PageTitle>@(isNew ? "新增群組" : "編輯群組") - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <a href="@(isNew ? "/groups" : $"/groups/{Id:D}")">← 返回</a>
+    <header class="device-heading"><div><h1>@(isNew ? "新增群組" : "編輯群組")</h1><p>使用群組整理資源，不影響公開或監控設定。</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">無法載入群組，請返回清單確認。</p></section> }
+    else
+    {
+        <section class="device-panel">
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="group-edit" method="post" OnSubmit="SaveAsync">
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="group-name">群組名稱</label><InputText id="group-name" @bind-Value="Input.Name" maxlength="256" />
+                @if (errors.TryGetValue("name", out var nameErrors)) { <p class="device-field-error">@string.Join(" ", nameErrors)</p> }
+                <label for="group-description">說明（選填）</label><InputTextArea id="group-description" @bind-Value="Input.Description" maxlength="1024" rows="4" />
+                @if (errors.TryGetValue("description", out var descriptionErrors)) { <p class="device-field-error">@string.Join(" ", descriptionErrors)</p> }
+                <div class="device-actions"><button type="submit">儲存群組</button><a href="@(isNew ? "/groups" : $"/groups/{Id:D}")">取消</a></div>
+            </EditForm>
+        </section>
+    }
+</main>
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "group-edit")] private GroupForm Input { get; set; } = default!;
+    private bool isNew, loadError;
+    private string? message;
+    private Dictionary<string, string[]> errors = [];
+    protected override async Task OnInitializedAsync()
+    {
+        isNew = Id == Guid.Empty;
+        Input ??= new();
+        if (isNew) return;
+        try
+        {
+            var group = await GroupsService.GetAsync(Id, HttpContext.RequestAborted);
+            if (group is null) { loadError = true; return; }
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { Name = group.Name, Description = group.Description, Version = group.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not load group: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+    private async Task SaveAsync()
+    {
+        if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty) { message = "請重新登入後再試。"; return; }
+        Guid? saved = null;
+        try
+        {
+            var input = new GroupInput(Input.Name, Input.Description, Input.Version);
+            var result = isNew ? await GroupsService.CreateAsync(input, actor, HttpContext.RequestAborted) : await GroupsService.UpdateAsync(Id, input, actor, HttpContext.RequestAborted);
+            if (result.Status == GroupResultStatus.Success) saved = result.Group!.Id;
+            else if (result.Status == GroupResultStatus.Invalid) { errors = result.Errors!.ToDictionary(x => x.Key, x => x.Value); if (errors.ContainsKey("version")) message = "資料已過期，請重新整理。"; }
+            else message = "群組已變更或不存在，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save group: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請返回清單確認後再試。"; }
+        if (saved is { } id) Navigation.NavigateTo($"/groups/{id:D}", forceLoad: true);
+    }
+    private sealed class GroupForm { public string? Name { get; set; } public string? Description { get; set; } public string? Version { get; set; } }
+}

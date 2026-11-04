@@ -90,6 +90,9 @@ h1:focus {
 .device-heading h1 { margin: 0 0 8px; font-size: 1.8rem; }.device-heading p, .device-panel p { color: var(--vigiloom-muted); }
 .device-panel { margin: 16px 0; padding: 24px; border: 1px solid var(--vigiloom-border); border-radius: 8px; background: var(--vigiloom-surface); }
 .device-primary, .device-page button { background: var(--vigiloom-primary); color: white !important; border: 0; border-radius: 6px; padding: 10px 16px; font: inherit; cursor: pointer; }
+.device-page button.device-danger { background: #b42318; }
+.group-scroll-hint { display: none; }
+@media (max-width: 700px) { .group-scroll-hint { display: block; color: #294c79; font-weight: 600; } }
 .device-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; }.device-filters label { display: grid; gap: 6px; }.device-filters label:has(input[type=checkbox]) { display: flex; align-items: center; }
 .device-page input:not([type=checkbox]):not([type=radio]), .device-page select, .device-page textarea { box-sizing: border-box; border: 1px solid #b7c6da; border-radius: 5px; padding: 10px 12px; font: inherit; }
 .device-table-wrap { overflow-x: auto; }.device-page table { width: 100%; border-collapse: collapse; text-align: left; }.device-page th, .device-page td { padding: 12px; border-bottom: 1px solid var(--vigiloom-border); }.device-page th { color: var(--vigiloom-muted); }
