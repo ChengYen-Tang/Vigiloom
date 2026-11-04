@@ -12,4 +12,7 @@ internal static class AuditKinds
     public const short InstancePolicyChangedV1 = 7;
     public const short ServiceInstanceChangedV1 = 8;
     public const short ServiceCollectionChangedV1 = 9;
+    public const short LogQuotaChangedV1 = 10;
+    public const short TraceQuotaChangedV1 = 11;
+    public const short CollectorChangedV1 = 12;
 }

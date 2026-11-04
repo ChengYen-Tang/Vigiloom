@@ -1,0 +1,26 @@
+.reception-page { --vigiloom-muted: #536987; }
+.reception-unknown { background: #eef4fb; border: 1px solid #cddcf0; border-radius: 8px; color: #2c466b; padding: 14px 16px; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; min-width: 860px; text-align: left; }
+thead th { background: #f0f5fb; color: #435778; font-weight: 600; }
+th, td { padding: 12px; border-bottom: 1px solid #e2e9f1; text-align: left; vertical-align: top; }
+tbody th { overflow-wrap: anywhere; }
+tbody details { display: inline-block; margin-left: 4px; font-weight: normal; }
+tbody summary { color: #075ee8; cursor: pointer; }
+tbody small { display: block; color: #536987; }
+td { white-space: nowrap; }
+.status-active, .status-revoked { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+.status-active { background: #edf3fb; color: #324f77; }
+.status-revoked { background: #fff0ef; color: #a12720; }
+.scroll-hint { display: none; }
+nav[aria-label="來源接收分頁"] { display: flex; gap: 1rem; padding-top: 1rem; }
+.onboarding li { margin: 0 0 12px; padding-left: 4px; }
+.onboarding code { overflow-wrap: anywhere; }
+.guide-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 24px; align-items: start; }
+.endpoint, .security-guide { background: #f0f5fb; border: 1px solid #dce6f2; border-radius: 6px; padding: 12px; }
+.endpoint { margin-top: 8px; }
+.endpoint span, .endpoint code { display: block; }
+.endpoint span { color: #435778; font-size: .9em; }
+.security-guide p { margin-bottom: 0; }
+@media (max-width: 1000px) { .scroll-hint { display: block; color: #324f77; font-weight: 600; } }
+@media (max-width: 720px) { .guide-layout { grid-template-columns: 1fr; gap: 4px; } }

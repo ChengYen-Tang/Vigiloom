@@ -31,18 +31,29 @@ public sealed class SourceCredentials(IDbContextFactory<ServiceObservabilityDbCo
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
 
+    internal static (byte[] Verifier, string Credential) CreateFor(Guid sourceId)
+    {
+        var secret = RandomNumberGenerator.GetBytes(SecretLength);
+        try { return (SHA256.HashData(secret), $"{Prefix}{sourceId:D}.{Base64Url(secret)}"); }
+        finally { CryptographicOperations.ZeroMemory(secret); }
+    }
+
     /// <summary>Returns the source identity only; write transactions must independently revalidate revocation.</summary>
-    public async Task<Guid?> AuthenticateAsync(string? credential, CancellationToken token)
+    internal async Task<Guid?> AuthenticateAsync(string? credential, CancellationToken token) =>
+        (await AuthenticateVersionedAsync(credential, token))?.SourceId;
+
+    /// <summary>Reads verifier and version together so rotation cannot issue an old credential a new version.</summary>
+    public async Task<AuthenticatedSource?> AuthenticateVersionedAsync(string? credential, CancellationToken token)
     {
         if (!TryParse(credential, out var sourceId, out var secret)) return null;
         try
         {
             await using var db = await contexts.CreateDbContextAsync(token);
             var source = await db.Sources.AsNoTracking().Where(x => x.Id == sourceId && x.RevokedAt == null)
-                .Select(x => new { x.Id, x.Verifier }).SingleOrDefaultAsync(token);
+                .Select(x => new { x.Id, x.Verifier, x.Version }).SingleOrDefaultAsync(token);
             if (source is null) return null;
             var verifier = SHA256.HashData(secret);
-            return CryptographicOperations.FixedTimeEquals(verifier, source.Verifier) ? source.Id : null;
+            return CryptographicOperations.FixedTimeEquals(verifier, source.Verifier) ? new(source.Id, source.Version) : null;
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
     }
@@ -82,3 +93,5 @@ public sealed class SourceCredentials(IDbContextFactory<ServiceObservabilityDbCo
 }
 
 public sealed record SourceCredentialIssue(Guid SourceId, string Secret);
+/// <summary>A source identity and its authenticated database version; the version is not a credential.</summary>
+public sealed record AuthenticatedSource(Guid SourceId, byte[] Version);

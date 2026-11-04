@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
 
@@ -43,11 +44,15 @@ internal static class ServiceObservationEndpoint
             ServiceObservation? observation;
             try { observation = JsonSerializer.Deserialize<ServiceObservation>(buffer.AsSpan(0, count), Options); }
             catch (JsonException) { return Results.BadRequest(); }
-            if (observation is null || !Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var sourceId))
+            var source = ServiceSourceCredentialHandler.FromPrincipal(context.User);
+            if (observation is null || source is null)
                 return Results.BadRequest();
+            // Remain compatible with older nodes until namespaced ingestion is deliberately enabled
+            // after all nodes have been upgraded. See the OTLP deployment guidance.
+            if (!string.IsNullOrEmpty(observation.ServiceNamespace)) return Results.BadRequest();
             try
             {
-                var result = await candidates.ObserveAsync(sourceId, observation.ServiceKey, observation.Environment, observation.DisplayName, token);
+                var result = await candidates.ObserveAsync(source, observation.ServiceKey, observation.Environment, observation.DisplayName, token, observation.ServiceNamespace);
                 if (result is CandidateObservation.CapacityReached or CandidateObservation.Busy)
                     context.Response.Headers.RetryAfter = "60";
                 return result switch

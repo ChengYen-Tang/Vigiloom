@@ -9,6 +9,18 @@ internal static class OperationAuditEndpoints
 {
     public static void MapOperationAuditEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/operations/audit/trace-quota", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+        {
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryTraceQuotaAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
+        app.MapGet("/api/v1/operations/audit/log-quota", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+        {
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryLogQuotaAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/service-collections", async (DateTimeOffset from, DateTimeOffset to,
             OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
         {

@@ -12,6 +12,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 
 var freshInstall = args is ["fresh-install"];
 if (args.Length > 0 && !freshInstall)
@@ -53,6 +54,7 @@ services.AddModuleSqlServer<ServiceObservabilityDbContext>(connectionString, "se
 services.AddModuleSqlServer<NetworkDbContext>(connectionString, "network");
 services.AddModuleSqlServer<SchedulingDbContext>(connectionString, "scheduling");
 services.AddModuleSqlServer<OperationsDbContext>(connectionString, "operations");
+services.AddModuleSqlServer<LogAdmissionDbContext>(connectionString, "logquota");
 using var provider = services.BuildServiceProvider();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
 await install.VerifyAsync();
@@ -67,6 +69,8 @@ await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>());
 await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>());
+await install.VerifyAsync();
+await ApplyAsync(provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>());
 await install.VerifyAsync();
 await RoleInitializer.InitializeAsync(provider.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>());
 await install.VerifyAsync();

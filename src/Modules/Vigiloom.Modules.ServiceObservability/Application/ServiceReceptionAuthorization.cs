@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Text;
 using Vigiloom.Modules.ServiceObservability.Domain;
 
 namespace Vigiloom.Modules.ServiceObservability.Application;
@@ -15,8 +16,16 @@ public static class ServiceReceptionAuthorization
     /// across transactions. Parse bounded input before taking locks; do not hold them during network IO.
     /// This method does not authenticate credentials.
     /// </summary>
-    public static async Task<ServiceReceptionBinding?> LockAsync(DbConnection connection, DbTransaction transaction,
-        Guid authenticatedSourceId, string serviceKey, string environment, CancellationToken token)
+    public static Task<ServiceReceptionBinding?> LockAsync(DbConnection connection, DbTransaction transaction,
+        AuthenticatedSource source, string serviceKey, string environment, CancellationToken token, string? serviceNamespace = null) =>
+        source.Version is { Length: 8 } ? LockCoreAsync(connection, transaction, source.SourceId, source.Version, serviceKey, environment, token, serviceNamespace) : Task.FromResult<ServiceReceptionBinding?>(null);
+
+    internal static Task<ServiceReceptionBinding?> LockAsync(DbConnection connection, DbTransaction transaction,
+        Guid sourceId, string serviceKey, string environment, CancellationToken token, string? serviceNamespace = null) =>
+        LockCoreAsync(connection, transaction, sourceId, null, serviceKey, environment, token, serviceNamespace);
+
+    private static async Task<ServiceReceptionBinding?> LockCoreAsync(DbConnection connection, DbTransaction transaction,
+        Guid authenticatedSourceId, byte[]? version, string serviceKey, string environment, CancellationToken token, string? serviceNamespace)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(transaction);
@@ -25,20 +34,23 @@ public static class ServiceReceptionAuthorization
         if (authenticatedSourceId.Version != 7) return null;
         serviceKey = ServiceCandidate.ValidText(serviceKey, 128, nameof(serviceKey));
         environment = ServiceCandidate.ValidText(environment, 64, nameof(environment));
+        var namespaceBytes = Encoding.Unicode.GetBytes(ServiceCandidate.ValidNamespace(serviceNamespace));
 
         // Lock the source first, matching discovery/approval/revocation order. HOLDLOCK retains
         // the lock until this same transaction commits or rolls back, including under RCSI.
         await using (var source = connection.CreateCommand())
         {
             source.Transaction = transaction;
-            source.CommandText = "SELECT [Id] FROM [service].[Sources] WITH (HOLDLOCK) WHERE [Id] = @source AND [RevokedAt] IS NULL";
+            source.CommandText = "SELECT [Id] FROM [service].[Sources] WITH (HOLDLOCK) WHERE [Id] = @source AND [RevokedAt] IS NULL" + (version is null ? "" : " AND [Version] = @version");
             Add(source, "@source", DbType.Guid, authenticatedSourceId);
+            if (version is not null) Add(source, "@version", DbType.Binary, version, 8);
             if (await source.ExecuteScalarAsync(token) is null) return null;
         }
         await using var service = connection.CreateCommand();
         service.Transaction = transaction;
-        service.CommandText = "SELECT [Id], [ApprovedAt] FROM [service].[Services] WITH (HOLDLOCK) WHERE [SourceId] = @source AND [ServiceKey] = @key AND [Environment] = @environment AND [RevokedAt] IS NULL";
+        service.CommandText = "SELECT [Id], [ApprovedAt] FROM [service].[Services] WITH (HOLDLOCK) WHERE [SourceId] = @source AND [ServiceNamespaceBytes] = @namespace AND [ServiceKey] = @key AND [Environment] = @environment AND [RevokedAt] IS NULL";
         Add(service, "@source", DbType.Guid, authenticatedSourceId);
+        Add(service, "@namespace", DbType.Binary, namespaceBytes, 256);
         Add(service, "@key", DbType.String, serviceKey, 128);
         Add(service, "@environment", DbType.String, environment, 64);
         await using var reader = await service.ExecuteReaderAsync(token);

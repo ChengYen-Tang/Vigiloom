@@ -1,0 +1,156 @@
+@page "/settings/collectors/{CollectorId:guid}/sources"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@inject CollectorAdministration Collectors
+@inject SourceAdministration Sources
+@inject ILogger<CollectorSources> Logger
+
+<PageTitle>Collector 來源對應 - Vigiloom</PageTitle>
+<main class="device-page collector-sources">
+    <header class="device-heading"><div><h1>Collector 來源對應</h1><p>記錄此 Collector 的轉送設定，協助辨識各來源的管線。</p></div></header>
+    <p class="management-notice">此對應只供管理與查詢，不會修改 Collector 設定或授予資料接收權限。請確認轉送元件名稱與實際設定一致。</p>
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取資料，請重新整理後再試。</p> }
+    else if (collector is null) { <p role="alert">找不到此 Collector。</p> }
+    else
+    {
+        <section class="device-panel"><h2>@collector.Name</h2>
+            <p>監控服務：@collector.MonitoringServiceId<br />監控來源：@collector.MonitoringSourceId</p>
+            @if (collector.MonitoringSourceRevokedAt is not null) { <p role="status">監控來源憑證已撤銷。</p> }
+            @if (collector.MonitoringServiceStoppedAt is not null) { <p role="status">監控服務已停收。</p> }
+        </section>
+    }
+    <EditForm Model="RemoveForm" FormName="collector-route-remove" method="post" OnValidSubmit="RemoveAsync">
+        @if (!loadError && collector is not null)
+        {
+            <section class="device-panel"><h2>目前來源對應</h2>
+                <input type="hidden" name="RemoveForm.Version" value="@collector.Version" />
+                @if (routes.Count == 0) { <p>尚未加入來源對應。</p> }
+                else
+                {
+                    <ul class="route-list">
+                    @foreach (var route in routes)
+                    {
+                        <li @key="route.SourceId"><strong>@route.SourceName</strong> @if (route.SourceRevokedAt is not null) { <span>（來源已撤銷）</span> }
+                            <br /><small>來源：@route.SourceId<br />轉送元件：@route.Exporter</small>
+                            <details><summary>移除對應</summary><label><input type="checkbox" name="@($"remove-{route.SourceId:N}")" value="true" /> 我了解此操作不會變更 Collector 設定</label>
+                                <button type="submit" name="RemoveForm.SourceId" value="@route.SourceId">移除</button></details>
+                        </li>
+                    }
+                    </ul>
+                }
+            </section>
+        }
+    </EditForm>
+    <EditForm Model="AddForm" FormName="collector-route-add" method="post" OnValidSubmit="AddAsync">
+        @if (!loadError && collector is not null)
+        {
+            <section class="device-panel"><h2>加入來源對應</h2>
+                <input type="hidden" name="AddForm.Version" value="@collector.Version" />
+                <p>選擇業務來源並輸入 Collector 設定中的 exporter 名稱，例如 <code>otlp_http/source-a</code>。監控來源本身不能作為業務來源。</p>
+                @if (sources.Count == 0) { <p>@(sourcePage > 1 ? "此頁沒有來源。" : "沒有可選來源。")</p> }
+                else
+                {
+                    <fieldset class="source-options"><legend>選擇來源</legend>
+                        @foreach (var source in sources)
+                        {
+                            <label class="source-choice"><input type="radio" name="AddForm.SourceId" value="@source.Id" disabled="@(source.RevokedAt is not null || source.Id == collector.MonitoringSourceId || routes.Any(x => x.SourceId == source.Id))" required />
+                                <span><strong>@source.Name</strong> @(source.RevokedAt is not null ? "（已撤銷）" : source.Id == collector.MonitoringSourceId ? "（監控來源）" : routes.Any(x => x.SourceId == source.Id) ? "（已對應）" : "")<br /><small>@source.Id</small></span></label>
+                        }
+                    </fieldset>
+                    <label for="exporter">轉送元件名稱</label><InputText id="exporter" @bind-Value="AddForm.Exporter" maxlength="128" required />
+                    <button type="submit">加入對應</button>
+                }
+                @if (sources.Count > 0 || sourcePage > 1)
+                {
+                    <nav aria-label="來源選擇分頁"><span>第 @sourcePage 頁</span>
+                        @if (sourcePage > 1) { <a href="@PageUrl(sourcePage - 1)">上一頁來源</a> }
+                        @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(sourcePage + 1)">下一頁來源</a> }
+                    </nav>
+                }
+            </section>
+        }
+    </EditForm>
+    <p><a href="/settings/collector-reports">返回 Collector 回報</a></p>
+</main>
+
+@code {
+    [Parameter] public Guid CollectorId { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "page")] public int? RequestedPage { get; set; }
+    [SupplyParameterFromForm(FormName = "collector-route-add")] private RouteInput AddForm { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "collector-route-remove")] private RouteInput RemoveForm { get; set; } = default!;
+    private CollectorSummary? collector;
+    private IReadOnlyList<CollectorRouteSummary> routes = [];
+    private IReadOnlyList<ServiceSourceSummary> sources = [];
+    private bool loadError;
+    private int sourcePage;
+    private string? error, message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AddForm ??= new(); RemoveForm ??= new();
+        sourcePage = Math.Clamp(RequestedPage ?? 1, 1, 200);
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            collector = await Collectors.GetAsync(CollectorId, HttpContext.RequestAborted);
+            if (collector is not null)
+            {
+                routes = await Collectors.RoutesAsync(CollectorId, HttpContext.RequestAborted);
+                sources = await Sources.ListAsync(sourcePage, HttpContext.RequestAborted);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load Collector mappings: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private async Task AddAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!Guid.TryParse(form["AddForm.SourceId"], out var source) || source.Version != 7 ||
+            string.IsNullOrWhiteSpace(AddForm.Exporter) || AddForm.Exporter.Length > 128 || Actor() is not { } actor)
+        { error = "請選擇來源並輸入轉送元件名稱。"; return; }
+        await ChangeAsync(source, form["AddForm.Version"].ToString(), AddForm.Exporter, true, actor);
+    }
+
+    private async Task RemoveAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!Guid.TryParse(form["RemoveForm.SourceId"], out var source) || source.Version != 7 ||
+            form[$"remove-{source:N}"] != "true" || Actor() is not { } actor)
+        { error = "請確認移除來源對應的影響。"; return; }
+        await ChangeAsync(source, form["RemoveForm.Version"].ToString(), null, false, actor);
+    }
+
+    private async Task ChangeAsync(Guid source, string version, string? exporter, bool add, Guid actor)
+    {
+        CollectorChangeStatus status;
+        try { status = await Collectors.SetRouteAsync(CollectorId, source, version, exporter, add, actor, HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot change Collector mapping: {ExceptionType}", ex.GetType().Name); error = "無法確認操作結果，請重新整理後檢查。"; return; }
+        if (status == CollectorChangeStatus.Updated) { message = add ? "來源對應已加入。" : "來源對應已移除。"; if (add) AddForm.Exporter = ""; }
+        else error = status switch
+        {
+            CollectorChangeStatus.Conflict => "資料已變更，或來源與轉送元件已被使用；請重新整理後確認。",
+            CollectorChangeStatus.SourceUnavailable => "此來源已撤銷、無法使用，或是 Collector 自身的監控來源。",
+            CollectorChangeStatus.LimitReached => "來源對應已達上限。",
+            _ => "找不到 Collector 或來源對應，請重新整理後確認。"
+        };
+        await LoadAsync();
+        if (loadError) error = "無法更新清單，請重新整理。";
+    }
+
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    private string PageUrl(int page) => $"/settings/collectors/{CollectorId:D}/sources?page={page}";
+    private sealed class RouteInput { public string Exporter { get; set; } = ""; }
+}

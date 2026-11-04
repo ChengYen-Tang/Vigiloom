@@ -1,0 +1,30 @@
+.device-panel > p {
+    margin: .5rem 0 1.25rem;
+    line-height: 1.6;
+}
+
+.device-panel ::deep .policy-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 1rem;
+    max-width: 45rem;
+}
+
+.policy-field {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+
+.policy-field label {
+    font-weight: 600;
+}
+
+.policy-field ::deep input {
+    width: 100%;
+}
+
+.device-panel ::deep .policy-form button {
+    justify-self: start;
+    align-self: end;
+}

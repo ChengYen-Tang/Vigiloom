@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -17,6 +18,39 @@ namespace Vigiloom.Modules.ServiceObservability.Tests;
 [TestCategory("Database")]
 public sealed class DiscoverySchemaTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Discovery_NamespacesRemainDistinctThroughApprovalAndAuthorization() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var discovery = new CandidateDiscovery(factory);
+            foreach (var ns in new[] { "", "A", "A ", "B" })
+                Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, ns));
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "A/api", "prod", "API", token));
+            var candidates = await discovery.ListAsync(1, token);
+            Assert.HasCount(5, candidates);
+            var approval = new ServiceApproval(factory, new OperationAuditWriter());
+            var a = candidates.Single(x => x.ServiceNamespace == "A" && x.ServiceKey == "api");
+            var approved = await approval.ApproveAsync(a.Id, Guid.CreateVersion7(), token);
+            Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, "A"));
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, "B"));
+            await using var dbCheck = new ServiceObservabilityDbContext(options);
+            await using var tx = await dbCheck.Database.BeginTransactionAsync(token);
+            var accepted = await ServiceReceptionAuthorization.LockAsync(dbCheck.Database.GetDbConnection(), tx.GetDbTransaction(), source.SourceId, "api", "prod", token, "A");
+            var rejected = await ServiceReceptionAuthorization.LockAsync(dbCheck.Database.GetDbConnection(), tx.GetDbTransaction(), source.SourceId, "api", "prod", token, "B");
+            Assert.AreEqual(approved.ServiceId, accepted!.ServiceId);
+            Assert.IsNull(rejected);
+        }, context.CancellationToken);
+
     [AssemblyCleanup]
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
@@ -242,6 +276,87 @@ public sealed class DiscoverySchemaTests(TestContext context)
             Assert.HasCount(2, history.Items);
             CollectionAssert.AreEquivalent(new[] { ServiceSourceAction.Issued, ServiceSourceAction.Revoked }, history.Items.Select(x => x.ServiceSource!.Action).ToArray());
             Assert.IsTrue(history.Items.All(x => x.ActorId == actor && x.ResourceId == issued.SourceId));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task SourceRotation_PreservesIdentityRejectsOldVersionAndRollsBackWithAudit(bool snapshotReads) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var actor = Guid.CreateVersion7();
+            var admin = new SourceAdministration(factory, new OperationAuditWriter());
+            var issued = await admin.IssueAsync("source", actor, token);
+            var credentials = new SourceCredentials(factory, TimeProvider.System);
+            var old = await credentials.AuthenticateVersionedAsync(issued.Secret, token);
+            Assert.IsNotNull(old);
+            var now = DateTimeOffset.UtcNow;
+            var service = new MonitoredService(new ServiceCandidate(issued.SourceId, "orders", "prod", "Orders", now), now);
+            await using (var db = new ServiceObservabilityDbContext(options)) { db.Services.Add(service); await db.SaveChangesAsync(token); }
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(old, "orders", "prod", "Orders", token));
+            Guid? instanceId;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var instance = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), old.SourceId, "orders", "prod", "node", token);
+                Assert.AreEqual(InstanceResolutionStatus.Resolved, instance.Status);
+                instanceId = instance.InstanceId;
+                await tx.CommitAsync(token);
+            }
+            // A formally authorized write holds the source lock until its transaction ends;
+            // an update like rotation cannot pass it, including with snapshot reads enabled.
+            await using (var writer = new ServiceObservabilityDbContext(options))
+            await using (var tx = await writer.Database.BeginTransactionAsync(token))
+            await using (var contender = new ServiceObservabilityDbContext(options))
+            {
+                Assert.IsNotNull(await ServiceReceptionAuthorization.LockAsync(writer.Database.GetDbConnection(), tx.GetDbTransaction(), old, "orders", "prod", token));
+                await contender.Database.OpenConnectionAsync(token);
+                await contender.Database.ExecuteSqlRawAsync("SET LOCK_TIMEOUT 250", token);
+                var exception = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() =>
+                    contender.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Sources] SET [UpdatedAt] = {now} WHERE [Id] = {old.SourceId}", token));
+                Assert.AreEqual(1222, exception.Number);
+                await tx.CommitAsync(token);
+            }
+            var failing = new SourceAdministration(factory, new FailingAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.RotateAsync(issued.SourceId, old.Version, actor, token));
+            Assert.IsNotNull(await credentials.AuthenticateVersionedAsync(issued.Secret, token));
+            var attempts = await Task.WhenAll(admin.RotateAsync(issued.SourceId, old.Version, actor, token), admin.RotateAsync(issued.SourceId, old.Version, actor, token));
+            Assert.HasCount(1, attempts.Where(x => x.Status == SourceRotationStatus.Rotated));
+            Assert.HasCount(1, attempts.Where(x => x.Status == SourceRotationStatus.Conflict));
+            var replacement = attempts.Single(x => x.Status == SourceRotationStatus.Rotated);
+            Assert.IsNull(await credentials.AuthenticateVersionedAsync(issued.Secret, token));
+            var current = await credentials.AuthenticateVersionedAsync(replacement.Credential, token);
+            Assert.IsNotNull(current);
+            Assert.AreEqual(old.SourceId, current.SourceId);
+            Assert.AreEqual(CandidateObservation.SourceUnavailable, await discovery.ObserveAsync(old, "orders", "prod", "Orders", token));
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(current, "orders", "prod", "Orders", token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var keys = new[] { new ServiceKey("orders", "prod", "") };
+                Assert.IsTrue((await BatchAuthorization.LockAsync(db, tx, old.SourceId, keys, token, old.Version)).SourceUnavailable);
+                Assert.IsFalse((await BatchAuthorization.LockAsync(db, tx, current.SourceId, keys, token, current.Version)).SourceUnavailable);
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), old, "orders", "prod", token));
+                Assert.AreEqual(service.Id, (await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), current, "orders", "prod", token))!.ServiceId);
+                var instance = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), current.SourceId, "orders", "prod", "node", token);
+                Assert.AreEqual(instanceId, instance.InstanceId);
+            }
+            var query = new OperationAuditQuery(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1));
+            var history = await new OperationAuditQueryService(new OperationsFactory(operations)).QueryServiceSourcesAsync(query, token);
+            Assert.HasCount(2, history.Items);
+            Assert.IsTrue(history.Items.Any(x => x.ServiceSource!.Action == ServiceSourceAction.CredentialRotated));
         }, context.CancellationToken);
 
     [TestMethod]

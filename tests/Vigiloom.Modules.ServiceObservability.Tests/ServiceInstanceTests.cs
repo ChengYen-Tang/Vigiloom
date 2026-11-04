@@ -13,6 +13,45 @@ namespace Vigiloom.Modules.ServiceObservability.Tests;
 public sealed class ServiceInstanceTests(TestContext context)
 {
     [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Resolver_NamespacesSeparateApprovalAndInstances() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var empty = new MonitoredService(new ServiceCandidate(source.Id, "api", "prod", "API", now), now);
+            var a = new MonitoredService(new ServiceCandidate(source.Id, "api", "prod", "API A", now, "A"), now);
+            var aSpace = new MonitoredService(new ServiceCandidate(source.Id, "api", "prod", "API A space", now, "A "), now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source);
+                db.Services.AddRange(empty, a, aSpace);
+                await db.SaveChangesAsync(token);
+            }
+            async Task<InstanceResolution> Resolve(string? ns)
+            {
+                await using var db = new ServiceObservabilityDbContext(options);
+                await using var tx = await db.Database.BeginTransactionAsync(token);
+                var result = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
+                    source.Id, "api", "prod", "same-node", token, ns);
+                await tx.CommitAsync(token);
+                return result;
+            }
+            var one = await Resolve(null);
+            var two = await Resolve("A");
+            var three = await Resolve("A ");
+            Assert.AreEqual(empty.Id, one.Service!.ServiceId);
+            Assert.AreEqual(a.Id, two.Service!.ServiceId);
+            Assert.AreEqual(aSpace.Id, three.Service!.ServiceId);
+            Assert.AreNotEqual(one.InstanceId, two.InstanceId);
+            Assert.AreNotEqual(two.InstanceId, three.InstanceId);
+            Assert.AreEqual(InstanceResolutionStatus.Unauthorized, (await Resolve("B")).Status);
+        }, context.CancellationToken);
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
