@@ -18,6 +18,7 @@
         else if (result is not null)
         {
             <p class="device-count">共 @result.Total 個服務</p>
+            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
             <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>環境</th></tr></thead><tbody>
                 @foreach (var service in result.Items) { <tr @key="service.Id"><td>@service.Name</td><td>@service.Environment</td></tr> }
             </tbody></table></div>

@@ -24,6 +24,7 @@
         else if (result is not null)
         {
             <p class="device-count">共 @result.Total 個群組</p>
+            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
             <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>說明</th><th>設備</th><th>應用服務</th><th></th></tr></thead><tbody>
             @foreach (var group in result.Items)
             {
