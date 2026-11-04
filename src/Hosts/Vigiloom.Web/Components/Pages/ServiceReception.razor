@@ -4,6 +4,7 @@
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry
 @inject ReceptionOverview Overview
+@inject ReceptionRejectionReader Rejections
 @inject ILogger<ServiceReception> Logger
 
 <PageTitle>管線接入 - Vigiloom</PageTitle>
@@ -11,6 +12,27 @@
     <header class="device-heading"><div><h1>管線接入</h1><p>查看應用來源的接收情況，並取得接入資訊。</p></div></header>
     <p class="management-notice">接收狀態不等於應用服務健康；沒有資料也不一定表示來源離線。</p>
     <p class="reception-unknown"><strong>Collector 健康狀態：未知</strong><br />可<a href="/settings/collector-reports">查看 Collector 自身回報</a>；單一回報無法判斷所有管線是否正常運作。</p>
+    <section class="device-panel" aria-labelledby="rejections-heading">
+        <h2 id="rejections-heading">接收拒絕摘要</h2>
+        <p>資料每 30 秒彙整，可能有遺漏；未核准也可能是正常接入。</p>
+        <details class="rejection-help"><summary>如何解讀這些數字？</summary><p>重新啟動或儲存失敗可能遺失部分記錄，不能代表完整次數或攻擊次數。入口及來源是最近一次成功彙整的代表例子，總次數包含所有來源，並非逐筆紀錄。未驗證的憑證不會被歸屬給任何來源。</p></details>
+        @if (rejectionError)
+        {
+            <p class="device-alert" role="alert">無法讀取接收拒絕摘要，請稍後重新整理。</p>
+        }
+        else
+        {
+            <ul class="rejection-summary">
+                @foreach (var item in rejections)
+                {
+                    <li @key="item.Kind"><strong>@RejectionLabel(item.Kind)</strong><span>全部來源：@item.Count 次</span><span>最近記錄：@DisplayRejectionTime(item.LastRecordedAt)</span>
+                        @if (item.ExampleIngress is not null) { <span>代表入口：@IngressLabel(item.ExampleIngress)</span> }
+                        @if (item.ExampleSourceId is not null) { <span>代表來源：@(item.ExampleSourceName ?? "來源已移除")</span><details><summary>來源識別碼</summary><small>@item.ExampleSourceId</small></details> }
+                    </li>
+                }
+            </ul>
+        }
+    </section>
     <section class="device-panel" aria-labelledby="reception-heading">
         <h2 id="reception-heading">接收概覽</h2>
         <p>顯示各來源已核准服務最後一次成功保存的資料時間（UTC）。刪除歷史資料後，時間可能改變或不再顯示。</p>
@@ -75,7 +97,9 @@
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromQuery(Name = "page")] public int? RequestedPage { get; set; }
     private IReadOnlyList<SourceReceptionSummary> sources = [];
+    private IReadOnlyList<ReceptionRejectionCount> rejections = [];
     private bool loadError;
+    private bool rejectionError;
     private int page;
 
     protected override async Task OnInitializedAsync()
@@ -85,8 +109,14 @@
         try { sources = await Overview.ListAsync(page, HttpContext.RequestAborted); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { Logger.LogWarning("Cannot load source reception overview: {ExceptionType}", ex.GetType().Name); loadError = true; }
+        try { rejections = await Rejections.ListAsync(HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load reception rejection summaries: {ExceptionType}", ex.GetType().Name); rejectionError = true; }
     }
 
     private static string Display(DateTimeOffset? value) => value is null ? "尚無資料" : value.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    private static string DisplayRejectionTime(DateTimeOffset? value) => value is null ? "尚無資料" : $"{Display(value)} UTC";
+    private static string RejectionLabel(byte kind) => kind switch { 1 => "來源憑證未通過", 2 => "來源授權已失效", 3 => "服務未核准或已停收", _ => "未知" };
+    private static string IngressLabel(byte? ingress) => ingress switch { 1 => "服務發現", 2 => "OTLP", _ => "未知" };
     private static string PageUrl(int number) => $"/settings/service-reception?page={number}";
 }

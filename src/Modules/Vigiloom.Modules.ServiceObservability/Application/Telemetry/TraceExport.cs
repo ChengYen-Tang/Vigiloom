@@ -55,11 +55,14 @@ internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContex
         if (bindings is null) return new(ExportStatus.Retry, 0);
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var quota = new List<TraceSource>();
+        var serviceNotAuthorized = false;
         foreach (var group in groups)
         {
             var key = ServiceKey.From(group.Identity);
             var binding = bindings[key];
-            if (binding is null || TraceIngestion.CheckTimes(group.Scope, binding.ApprovedAt, received) != TraceIngestionStatus.Accepted)
+            if (binding is null)
+            { rejected += group.Scope.Spans.Count; serviceNotAuthorized = true; continue; }
+            if (TraceIngestion.CheckTimes(group.Scope, binding.ApprovedAt, received) != TraceIngestionStatus.Accepted)
             { rejected += group.Scope.Spans.Count; continue; }
             var instance = await ServiceInstanceResolver.ResolveAsync(connection, transaction, authenticatedSourceId,
                 key.Name, key.Environment, group.Identity.InstanceId, token, key.Namespace);
@@ -77,6 +80,6 @@ internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContex
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
         }
-        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected);
+        return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected, ServiceNotAuthorized: serviceNotAuthorized);
     }
 }

@@ -246,6 +246,47 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.ToTable("Services", "service");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ReceptionRejectionSummary", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte?>("ExampleIngress")
+                        .HasColumnType("tinyint");
+
+                    b.Property<Guid?>("ExampleSourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("FirstRecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTimeOffset?>("LastRecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("ObservedCount")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ExampleSourceId");
+
+                    b.HasIndex("Kind")
+                        .IsUnique();
+
+                    b.ToTable("ReceptionRejections", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReceptionRejections_Kind", "[Kind] IN (1, 2, 3)");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceCandidate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -780,6 +821,14 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ReceptionRejectionSummary", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", null)
+                        .WithMany()
+                        .HasForeignKey("ExampleSourceId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceCandidate", b =>
