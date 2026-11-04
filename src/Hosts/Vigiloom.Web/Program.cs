@@ -88,6 +88,9 @@ builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
 builder.Services.AddScoped<ServiceApproval>();
 builder.Services.AddScoped<ServiceInstanceAdministration>();
+builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
+builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
+builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthObservationReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
 builder.Services.AddScoped<SourceCredentials>();
@@ -268,6 +271,7 @@ app.MapServiceDiscoveryEndpoints();
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapServiceInstanceEndpoints();
+app.MapHealthTargetEndpoints();
 app.MapLogQuotaEndpoints();
 app.MapPingEndpoints();
 app.MapSpeedTestEndpoints();

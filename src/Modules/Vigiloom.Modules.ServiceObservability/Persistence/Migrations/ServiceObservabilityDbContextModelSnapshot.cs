@@ -101,6 +101,346 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.ToTable("CollectorRoutes", "service");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthNetworkPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("NetworksJson")
+                        .IsRequired()
+                        .HasMaxLength(4608)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("HealthNetworkPolicies", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_HealthNetworkPolicies_Central", "[Name] = 'central'");
+
+                            t.HasCheckConstraint("CK_HealthNetworkPolicies_Generation", "[Generation] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthNetworkRevision", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("NetworksJson")
+                        .IsRequired()
+                        .HasMaxLength(4608)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("PolicyId", "Generation")
+                        .IsUnique();
+
+                    b.ToTable("HealthNetworkRevisions", "service");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthObservation", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("InstanceVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("tinyint");
+
+                    b.Property<long>("LeaseGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("NetworkGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("NetworkVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("ServiceVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("SourceVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("TargetVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TargetId", "LeaseGeneration")
+                        .IsUnique();
+
+                    b.HasIndex("TargetId", "ObservedAt", "RowId");
+
+                    b.ToTable("HealthObservations", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_HealthObservations_Values", "[LeaseGeneration] > 0 AND [NetworkGeneration] > 0 AND [Kind] BETWEEN 1 AND 7");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthSchedule", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("DueAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("EvidenceAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("InstanceVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<DateTimeOffset?>("LastEvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("LeaseOwner")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("NetworkVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("ServiceVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("SourceVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte>("State")
+                        .HasColumnType("tinyint");
+
+                    b.Property<byte>("Streak")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTimeOffset?>("StreakAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("StreakCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("TargetVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TargetId")
+                        .IsUnique();
+
+                    b.HasIndex("Enabled", "DueAt", "RowId");
+
+                    b.ToTable("HealthSchedules", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_HealthSchedules_Generation", "[Generation] >= 0");
+
+                            t.HasCheckConstraint("CK_HealthSchedules_State", "[State] BETWEEN 0 AND 3 AND [Streak] BETWEEN 0 AND 3 AND [StreakCount] BETWEEN 0 AND 10 AND (([State] = 0 AND [EvidenceAt] IS NULL) OR ([State] > 0 AND [EvidenceAt] IS NOT NULL)) AND (([Streak] = 0 AND [StreakCount] = 0 AND [StreakAt] IS NULL) OR ([Streak] > 0 AND [StreakCount] > 0 AND [StreakAt] IS NOT NULL))");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthStateInterval", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte>("Reason")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte>("State")
+                        .HasColumnType("tinyint");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TargetId")
+                        .IsUnique()
+                        .HasFilter("[EndedAt] IS NULL");
+
+                    b.HasIndex("TargetId", "StartedAt", "RowId");
+
+                    b.ToTable("HealthStateIntervals", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_HealthStateIntervals_Values", "[State] BETWEEN 0 AND 4 AND [Reason] BETWEEN 0 AND 9 AND ([EndedAt] IS NULL OR [EndedAt] >= [StartedAt])");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<int>("FailureThreshold")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("IntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RecoveryThreshold")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("InstanceId", "ServiceId");
+
+                    b.HasIndex("ServiceId", "InstanceId");
+
+                    b.ToTable("HealthTargets", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_HealthTargets_Settings", "[IntervalSeconds] BETWEEN 5 AND 3600 AND [TimeoutSeconds] BETWEEN 1 AND 60 AND [TimeoutSeconds] <= [IntervalSeconds] AND [FailureThreshold] BETWEEN 1 AND 10 AND [RecoveryThreshold] BETWEEN 1 AND 10");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.InstancePolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -812,6 +1152,57 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthNetworkRevision", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthNetworkPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthObservation", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget", null)
+                        .WithMany()
+                        .HasForeignKey("TargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthSchedule", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget", null)
+                        .WithMany()
+                        .HasForeignKey("TargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthStateInterval", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget", null)
+                        .WithMany()
+                        .HasForeignKey("TargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ServiceId")
+                        .HasPrincipalKey("Id", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", b =>

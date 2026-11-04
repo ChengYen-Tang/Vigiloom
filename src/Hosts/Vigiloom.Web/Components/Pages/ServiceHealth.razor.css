@@ -1,0 +1,8 @@
+.health-settings .health-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
+.health-settings .health-wide { grid-column: 1 / -1; }
+.health-settings .health-field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; margin-block: .75rem; }
+.health-settings .health-field input, .health-settings .health-field select, .health-settings .health-field textarea { width: 100%; box-sizing: border-box; }
+.health-settings .health-service-list { list-style: none; margin: .75rem 0; padding: 0; }
+.health-settings .health-service-list li { padding: .6rem 0; border-bottom: 1px solid #e1e8f3; display: flex; justify-content: space-between; gap: 1rem; }
+.health-settings nav { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }
+.health-settings .table-scroll td:first-child { overflow-wrap: anywhere; }

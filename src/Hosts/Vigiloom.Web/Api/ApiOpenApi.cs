@@ -109,6 +109,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.StartsWith("/api/v1/service-discovery/sources", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-discovery/services", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-instances", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/service-health/targets", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/service-health/networks", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/service-reception", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/service-reception/collector-template", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/service-reception/application-template", StringComparison.OrdinalIgnoreCase) ||
@@ -132,6 +134,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/operations/audit/trace-quota", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-instances", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-collections", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/health-targets", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/health-networks", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/operations/audit-feed/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/platform-status", StringComparison.OrdinalIgnoreCase))
             {
