@@ -151,6 +151,64 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.ToTable("Candidates", "service");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ExternalInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("ExternalInstanceIdBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(512)")
+                        .HasComputedColumnSql("CONVERT(varbinary(512), [ExternalInstanceId])", true);
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Id", "ServiceId")
+                        .IsUnique();
+
+                    b.HasIndex("ServiceId", "SourceScopeId", "ExternalInstanceIdBytes")
+                        .IsUnique()
+                        .HasFilter("[RetiredAt] IS NULL");
+
+                    b.HasIndex("ServiceId", "SourceScopeId", "ExternalInstanceIdBytes", "RetiredAt");
+
+                    b.ToTable("Instances", "service");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", b =>
                 {
                     b.Property<Guid>("Id")
@@ -206,6 +264,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", null)
                         .WithMany()
                         .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId", "SourceScopeId")
+                        .HasPrincipalKey("Id", "SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
