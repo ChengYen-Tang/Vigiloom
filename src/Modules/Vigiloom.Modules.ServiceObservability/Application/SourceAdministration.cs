@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Services;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Application;
@@ -35,6 +36,7 @@ public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityD
         if (source is null) return false;
         if (source.RevokedAt is not null) return true;
         var now = await DiscoveryTransaction.NowAsync(db, token);
+        await InvalidateHealthAsync(db, sourceId, now, token);
         source.Revoke(now);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
@@ -66,6 +68,7 @@ public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityD
         if (source.RevokedAt is not null) return new(SourceRotationStatus.Revoked);
         if (!source.Version.AsSpan().SequenceEqual(expectedVersion)) return new(SourceRotationStatus.Conflict);
         var now = await DiscoveryTransaction.NowAsync(db, token);
+        await InvalidateHealthAsync(db, sourceId, now, token);
         var (verifier, credential) = SourceCredentials.CreateFor(source.Id);
         source.ReplaceVerifier(verifier, now);
         await db.SaveChangesAsync(token);
@@ -73,6 +76,13 @@ public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityD
             new OperationAudit(actorId, source.Id, now, new ServiceSourceChanged(ServiceSourceAction.CredentialRotated)), token);
         await transaction.CommitAsync(token);
         return new(SourceRotationStatus.Rotated, credential);
+    }
+
+    private static async Task InvalidateHealthAsync(ServiceObservabilityDbContext db, Guid sourceId, DateTimeOffset now, CancellationToken token)
+    {
+        var serviceIds = await db.Services.AsNoTracking().Where(x => x.SourceId == sourceId)
+            .OrderBy(x => x.RowId).Select(x => x.Id).ToArrayAsync(token);
+        foreach (var serviceId in serviceIds) await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
     }
 }
 

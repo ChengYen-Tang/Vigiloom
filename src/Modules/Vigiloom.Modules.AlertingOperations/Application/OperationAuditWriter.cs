@@ -36,6 +36,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             LogQuotaChanged change when IsValid(change) => (AuditKinds.LogQuotaChangedV1, JsonSerializer.Serialize(change)),
             TraceQuotaChanged change when IsValid(change) => (AuditKinds.TraceQuotaChangedV1, JsonSerializer.Serialize(change)),
             CollectorChanged change when IsValid(change) => (AuditKinds.CollectorChangedV1, JsonSerializer.Serialize(change)),
+            HealthTargetChanged change when IsValid(change) => (AuditKinds.HealthTargetChangedV1, JsonSerializer.Serialize(change)),
+            HealthNetworkPolicyChanged change when IsValid(change) => (AuditKinds.HealthNetworkPolicyChangedV1, JsonSerializer.Serialize(change)),
             _ => throw new ArgumentException("Unsupported or invalid audit event details.", nameof(audit))
         };
         if (details.Length > 2048) throw new ArgumentException("Audit event details exceed the supported limit.", nameof(audit));
@@ -66,6 +68,16 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(ServiceInstanceChanged change) => change.ServiceId.Version == 7 &&
         change.Action is ServiceInstanceAction.Retired or ServiceInstanceAction.Restored;
     internal static bool IsValid(ServiceCollectionChanged change) => change.Action is ServiceCollectionAction.Stopped or ServiceCollectionAction.Resumed;
+    internal static bool IsValid(HealthTargetChanged change) => change.ServiceId.Version == 7 && ValidHealthTarget(change.Current) &&
+        IsVersion(change.CurrentVersion) && (change.Action == HealthTargetAction.Created
+            ? change.Previous is null && change.PreviousVersion == ""
+            : change.Action == HealthTargetAction.Updated && ValidHealthTarget(change.Previous) && IsVersion(change.PreviousVersion));
+    private static bool ValidHealthTarget(HealthTargetAuditValues? value) => value is not null &&
+        value.IntervalSeconds is >= 5 and <= 3600 && value.TimeoutSeconds is >= 1 and <= 60 && value.TimeoutSeconds <= value.IntervalSeconds &&
+        value.FailureThreshold is >= 1 and <= 10 && value.RecoveryThreshold is >= 1 and <= 10;
+    internal static bool IsValid(HealthNetworkPolicyChanged change) => change.PreviousGeneration >= 0 &&
+        change.PreviousGeneration < long.MaxValue && change.CurrentGeneration == change.PreviousGeneration + 1 &&
+        (change.PreviousGeneration == 0 ? change.PreviousVersion == "" : IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
     internal static bool IsValid(CollectorChanged change) => change.MonitoringServiceId.Version == 7 &&
         (change.Action == CollectorAction.Registered ? change.SourceId is null :
             change.Action is CollectorAction.RouteAdded or CollectorAction.RouteRemoved && change.SourceId?.Version == 7);

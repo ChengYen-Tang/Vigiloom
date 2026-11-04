@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Application;
@@ -32,6 +33,7 @@ public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObs
         if (!service.Version.AsSpan().SequenceEqual(expected) || (service.RevokedAt is not null) == stopped) return ServiceCollectionStatus.Conflict;
         if (!stopped && source.RevokedAt is not null) return ServiceCollectionStatus.SourceUnavailable;
         var now = await DiscoveryTransaction.NowAsync(db, token);
+        await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
         if (stopped) service.Revoke(now); else service.Resume(now);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 
 namespace Vigiloom.Modules.ServiceObservability.Persistence;
@@ -20,10 +21,94 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<CollectorRegistration> Collectors => Set<CollectorRegistration>();
     public DbSet<CollectorRoute> CollectorRoutes => Set<CollectorRoute>();
     public DbSet<ReceptionRejectionSummary> ReceptionRejections => Set<ReceptionRejectionSummary>();
+    public DbSet<HealthTarget> HealthTargets => Set<HealthTarget>();
+    public DbSet<HealthNetworkPolicy> HealthNetworkPolicies => Set<HealthNetworkPolicy>();
+    public DbSet<HealthNetworkRevision> HealthNetworkRevisions => Set<HealthNetworkRevision>();
+    public DbSet<HealthSchedule> HealthSchedules => Set<HealthSchedule>();
+    public DbSet<HealthObservation> HealthObservations => Set<HealthObservation>();
+    public DbSet<HealthStateInterval> HealthStateIntervals => Set<HealthStateInterval>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("service");
+
+        var healthNetworkPolicy = modelBuilder.Entity<HealthNetworkPolicy>();
+        healthNetworkPolicy.ToTable("HealthNetworkPolicies", table =>
+        {
+            table.HasCheckConstraint("CK_HealthNetworkPolicies_Central", "[Name] = 'central'");
+            table.HasCheckConstraint("CK_HealthNetworkPolicies_Generation", "[Generation] > 0");
+        });
+        healthNetworkPolicy.HasKey(x => x.Id).IsClustered(false);
+        healthNetworkPolicy.Property(x => x.Id).ValueGeneratedNever();
+        healthNetworkPolicy.Property(x => x.RowId).UseIdentityColumn();
+        healthNetworkPolicy.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        healthNetworkPolicy.Property(x => x.Name).HasMaxLength(16).IsRequired();
+        healthNetworkPolicy.HasIndex(x => x.Name).IsUnique();
+        healthNetworkPolicy.Property(x => x.NetworksJson).HasMaxLength(4608).IsRequired();
+        healthNetworkPolicy.Property(x => x.Version).IsRowVersion();
+
+        var healthNetworkRevision = modelBuilder.Entity<HealthNetworkRevision>();
+        healthNetworkRevision.ToTable("HealthNetworkRevisions");
+        healthNetworkRevision.HasKey(x => x.RowId).IsClustered();
+        healthNetworkRevision.Property(x => x.RowId).UseIdentityColumn();
+        healthNetworkRevision.Property(x => x.NetworksJson).HasMaxLength(4608).IsRequired();
+        healthNetworkRevision.HasIndex(x => new { x.PolicyId, x.Generation }).IsUnique();
+        healthNetworkRevision.HasOne<HealthNetworkPolicy>().WithMany().HasForeignKey(x => x.PolicyId).OnDelete(DeleteBehavior.Restrict);
+
+        var healthTarget = modelBuilder.Entity<HealthTarget>();
+        healthTarget.ToTable("HealthTargets", table => table.HasCheckConstraint("CK_HealthTargets_Settings",
+            "[IntervalSeconds] BETWEEN 5 AND 3600 AND [TimeoutSeconds] BETWEEN 1 AND 60 AND [TimeoutSeconds] <= [IntervalSeconds] AND [FailureThreshold] BETWEEN 1 AND 10 AND [RecoveryThreshold] BETWEEN 1 AND 10"));
+        healthTarget.HasKey(x => x.Id).IsClustered(false);
+        healthTarget.Property(x => x.Id).ValueGeneratedNever();
+        healthTarget.Property(x => x.RowId).UseIdentityColumn();
+        healthTarget.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        healthTarget.Property(x => x.Endpoint).HasMaxLength(2048).IsRequired();
+        healthTarget.Property(x => x.Version).IsRowVersion();
+        healthTarget.HasIndex(x => new { x.ServiceId, x.InstanceId });
+        healthTarget.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+        healthTarget.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var healthSchedule = modelBuilder.Entity<HealthSchedule>();
+        healthSchedule.ToTable("HealthSchedules", table =>
+        {
+            table.HasCheckConstraint("CK_HealthSchedules_Generation", "[Generation] >= 0");
+            table.HasCheckConstraint("CK_HealthSchedules_State", "[State] BETWEEN 0 AND 3 AND [Streak] BETWEEN 0 AND 3 AND [StreakCount] BETWEEN 0 AND 10 AND (([State] = 0 AND [EvidenceAt] IS NULL) OR ([State] > 0 AND [EvidenceAt] IS NOT NULL)) AND (([Streak] = 0 AND [StreakCount] = 0 AND [StreakAt] IS NULL) OR ([Streak] > 0 AND [StreakCount] > 0 AND [StreakAt] IS NOT NULL))");
+        });
+        healthSchedule.HasKey(x => x.RowId).IsClustered();
+        healthSchedule.Property(x => x.RowId).UseIdentityColumn();
+        healthSchedule.Property(x => x.Version).IsRowVersion();
+        healthSchedule.Property(x => x.SourceVersion).HasColumnType("binary(8)");
+        healthSchedule.Property(x => x.ServiceVersion).HasColumnType("binary(8)");
+        healthSchedule.Property(x => x.InstanceVersion).HasColumnType("binary(8)");
+        healthSchedule.Property(x => x.TargetVersion).HasColumnType("binary(8)");
+        healthSchedule.Property(x => x.NetworkVersion).HasColumnType("binary(8)");
+        healthSchedule.HasIndex(x => x.TargetId).IsUnique();
+        healthSchedule.HasIndex(x => new { x.Enabled, x.DueAt, x.RowId });
+        healthSchedule.HasOne<HealthTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Restrict);
+
+        var healthInterval = modelBuilder.Entity<HealthStateInterval>();
+        healthInterval.ToTable("HealthStateIntervals", table => table.HasCheckConstraint("CK_HealthStateIntervals_Values",
+            "[State] BETWEEN 0 AND 4 AND [Reason] BETWEEN 0 AND 9 AND ([EndedAt] IS NULL OR [EndedAt] >= [StartedAt])"));
+        healthInterval.HasKey(x => x.RowId).IsClustered();
+        healthInterval.Property(x => x.RowId).UseIdentityColumn();
+        healthInterval.HasIndex(x => x.TargetId).IsUnique().HasFilter("[EndedAt] IS NULL");
+        healthInterval.HasIndex(x => new { x.TargetId, x.StartedAt, x.RowId });
+        healthInterval.HasOne<HealthTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Restrict);
+
+        var healthObservation = modelBuilder.Entity<HealthObservation>();
+        healthObservation.ToTable("HealthObservations", table => table.HasCheckConstraint("CK_HealthObservations_Values",
+            "[LeaseGeneration] > 0 AND [NetworkGeneration] > 0 AND [Kind] BETWEEN 1 AND 7"));
+        healthObservation.HasKey(x => x.RowId).IsClustered();
+        healthObservation.Property(x => x.RowId).UseIdentityColumn();
+        healthObservation.Property(x => x.SourceVersion).HasColumnType("binary(8)").IsRequired();
+        healthObservation.Property(x => x.ServiceVersion).HasColumnType("binary(8)").IsRequired();
+        healthObservation.Property(x => x.InstanceVersion).HasColumnType("binary(8)");
+        healthObservation.Property(x => x.TargetVersion).HasColumnType("binary(8)").IsRequired();
+        healthObservation.Property(x => x.NetworkVersion).HasColumnType("binary(8)").IsRequired();
+        healthObservation.HasIndex(x => new { x.TargetId, x.ObservedAt, x.RowId });
+        healthObservation.HasIndex(x => new { x.TargetId, x.LeaseGeneration }).IsUnique();
+        healthObservation.HasOne<HealthTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Restrict);
 
         var rejections = modelBuilder.Entity<ReceptionRejectionSummary>();
         rejections.ToTable("ReceptionRejections", table => table.HasCheckConstraint("CK_ReceptionRejections_Kind", "[Kind] IN (1, 2, 3)"));
