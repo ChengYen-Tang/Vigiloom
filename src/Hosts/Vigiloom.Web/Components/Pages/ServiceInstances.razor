@@ -1,0 +1,186 @@
+@page "/settings/service-instances"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@inject InstancePolicyAdministration Policies
+@inject ServiceInstanceAdministration Instances
+@inject ServiceCollectionAdministration Collections
+@inject ILogger<ServiceInstances> Logger
+
+<PageTitle>服務執行個體 - Vigiloom</PageTitle>
+<main class="device-page instance-management">
+    <header class="device-heading"><div><h1>服務執行個體</h1><p>管理已識別的服務執行個體與平台容量。</p></div></header>
+    <p class="management-notice">正式遙測接收尚未完成；此處不代表服務健康狀態。</p>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取資料，請重新整理後再試。</p> }
+    else
+    {
+        <section class="device-panel"><h2>執行個體容量</h2>
+            <p>包含已退役的執行個體。降低上限不會刪除既有資料；達到上限時不再新增身分，既有身分仍可辨識。</p>
+            <EditForm Model="PolicyForm" class="policy-form" FormName="instance-policy" method="post" OnValidSubmit="SavePolicyAsync">
+                <ValidationSummary />
+                <div class="policy-field"><label for="instance-per-service">每個服務上限</label><InputNumber id="instance-per-service" @bind-Value="PolicyForm.PerService" min="1" max="2147483647" required /></div>
+                <div class="policy-field"><label for="instance-total">全平台上限</label><InputNumber id="instance-total" @bind-Value="PolicyForm.Total" min="1" max="2147483647" required /></div>
+                <InputText type="hidden" @bind-Value="PolicyForm.Version" />
+                <button type="submit">儲存設定</button>
+            </EditForm>
+        </section>
+        <section class="device-panel"><h2>服務管理</h2>
+            <p>服務停收後不再授權接收新資料；恢復後只接受新授權期間的資料。</p>
+            <EditForm Model="ServiceForm" FormName="service-collection" method="post" OnValidSubmit="ChangeServiceAsync">
+            @if (services.Count == 0) { <p>此頁沒有已加入的服務。</p> }
+            else
+            {
+                <ul>
+                @foreach (var service in services)
+                {
+                    <li><a href="@ServiceUrl(service.Id, servicePage, 1)">@service.Name（@service.Environment）</a> — @(service.StoppedAt is null ? "已核准" : "已停收")
+                        <details><summary>來源識別碼</summary><small>@service.SourceId</small></details>
+                        <details><summary>@(service.StoppedAt is null ? "停止收集" : "恢復收集")</summary>
+                            <p>@(service.StoppedAt is null ? "停止後立即拒絕此服務的新資料，並保留既有資料。" : "恢復只接受新授權期間的資料，來源必須仍可使用。")</p>
+                            <label><input type="checkbox" name="@($"service-confirm-{service.Id:N}")" value="true" /> 我已確認影響</label>
+                            <input type="hidden" name="@($"service-version-{service.Id:N}")" value="@service.Version" />
+                            <input type="hidden" name="@($"service-stop-{service.Id:N}")" value="@(service.StoppedAt is null ? "true" : "false")" />
+                            <button type="submit" name="ServiceForm.Id" value="@service.Id">@(service.StoppedAt is null ? "確認停收" : "確認恢復收集")</button>
+                        </details>
+                    </li>
+                }
+                </ul>
+            }
+            </EditForm>
+            <nav aria-label="服務清單分頁">
+                @if (servicePage > 1) { <a href="@ServiceUrl(SelectedService, servicePage - 1, 1)">上一頁</a> }
+                <span>第 @servicePage 頁</span>
+                @if (services.Count == 50 && servicePage < 1000) { <a href="@ServiceUrl(SelectedService, servicePage + 1, 1)">下一頁</a> }
+            </nav>
+        </section>
+        @if (SelectedService is { } selected && selected.Version == 7)
+        {
+            <section class="device-panel"><h2>執行個體清單</h2><p>所選服務：@(services.FirstOrDefault(x => x.Id == selected)?.Name ?? selected.ToString("D"))</p>
+                <p>退役後不會自動恢復；恢復保留原本的執行個體識別碼，也不會改變服務收集設定。</p>
+                <EditForm Model="InstanceForm" FormName="instance-action" method="post" OnValidSubmit="ChangeInstanceAsync">
+                @if (instances.Count == 0) { <p>此頁沒有執行個體。</p> }
+                else
+                {
+                    <p class="scroll-hint">表格可左右滑動以查看完整資訊。</p>
+                    <div class="table-scroll" tabindex="0" role="region" aria-label="服務執行個體清單，可左右滑動">
+                    <table><thead><tr><th>來源識別值</th><th>狀態</th><th>建立時間（UTC）</th><th>操作</th></tr></thead><tbody>
+                    @foreach (var instance in instances)
+                    {
+                        <tr @key="instance.Id"><td>@instance.ExternalInstanceId<details><summary>平台識別碼</summary><small>@instance.Id</small></details></td>
+                            <td>@(instance.RetiredAt is null ? "未退役" : "已退役")</td><td class="timestamp">@instance.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
+                            <details><summary>@(instance.RetiredAt is null ? "退役" : "恢復")</summary>
+                                <p>@(instance.RetiredAt is null ? "退役後不會自動恢復，也不會停止整個服務的收集。" : "恢復原本的身分；來源仍須通過授權。")</p>
+                                <label><input type="checkbox" name="@($"confirm-{instance.Id:N}")" value="true" /> 我已確認影響</label>
+                                <input type="hidden" name="@($"version-{instance.Id:N}")" value="@instance.Version" />
+                                <button type="submit" name="InstanceForm.Id" value="@instance.Id">@(instance.RetiredAt is null ? "確認退役" : "確認恢復")</button>
+                                <input type="hidden" name="@($"retire-{instance.Id:N}")" value="@(instance.RetiredAt is null ? "true" : "false")" />
+                            </details></td></tr>
+                    }
+                    </tbody></table></div>
+                }
+                </EditForm>
+                <nav aria-label="執行個體分頁">
+                    @if (instancePage > 1) { <a href="@ServiceUrl(selected, servicePage, instancePage - 1)">上一頁</a> }
+                    <span>第 @instancePage 頁</span>
+                    @if (instances.Count == 50 && instancePage < 1000) { <a href="@ServiceUrl(selected, servicePage, instancePage + 1)">下一頁</a> }
+                </nav>
+            </section>
+        }
+    }
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "service")] public Guid? SelectedService { get; set; }
+    [SupplyParameterFromQuery(Name = "services")] public int? ServicePage { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? InstancePage { get; set; }
+    [SupplyParameterFromForm(FormName = "instance-policy")] private PolicyInput PolicyForm { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "instance-action")] private ActionInput InstanceForm { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "service-collection")] private ActionInput ServiceForm { get; set; } = default!;
+    private IReadOnlyList<ManagedServiceSummary> services = [];
+    private IReadOnlyList<ServiceInstanceSummary> instances = [];
+    private string? error, message;
+    private bool loadError;
+    private int servicePage, instancePage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        PolicyForm ??= new(); InstanceForm ??= new(); ServiceForm ??= new();
+        servicePage = Math.Clamp(ServicePage ?? 1, 1, 1000); instancePage = Math.Clamp(InstancePage ?? 1, 1, 1000);
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var policy = await Policies.GetAsync(HttpContext.RequestAborted);
+            var isPolicyPost = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType &&
+                (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] == "instance-policy";
+            if (!isPolicyPost) PolicyForm = new() { PerService = policy.PerService, Total = policy.Total, Version = policy.Version };
+            services = await Instances.ListServicesAsync(servicePage, HttpContext.RequestAborted);
+            if (SelectedService is { } id && id.Version == 7) instances = await Instances.ListAsync(id, instancePage, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load service instances: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ? actor : null;
+    private static string ServiceUrl(Guid? id, int services, int page) => $"/settings/service-instances?service={id:D}&services={services}&page={page}";
+
+    private async Task SavePolicyAsync()
+    {
+        if (PolicyForm.PerService <= 0 || PolicyForm.Total <= 0 || Actor() is not { } actor) { error = "請輸入大於零的上限。"; return; }
+        try
+        {
+            var result = await Policies.UpdateAsync(new(PolicyForm.PerService, PolicyForm.Total, PolicyForm.Version), actor, HttpContext.RequestAborted);
+            if (result is null) error = "設定已被其他人修改，請重新整理並確認。";
+            else { PolicyForm.Version = result.Version; message = "容量設定已儲存。"; }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot save instance policy: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+        await LoadAsync();
+    }
+
+    private async Task ChangeInstanceAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!Guid.TryParse(form["InstanceForm.Id"], out var id) || id.Version != 7 || form[$"confirm-{id:N}"] != "true" ||
+            !bool.TryParse(form[$"retire-{id:N}"], out var retired) || Actor() is not { } actor)
+        { error = "請確認操作影響。"; return; }
+        try
+        {
+            var result = await Instances.SetRetiredAsync(id, form[$"version-{id:N}"].ToString(), retired, actor, HttpContext.RequestAborted);
+            if (result == InstanceChangeStatus.Updated) message = retired ? "執行個體已退役。" : "執行個體已恢復。";
+            else error = result == InstanceChangeStatus.Conflict ? "資料已變更，請重新整理後再操作。" : "無法完成操作，請重新整理後再試。";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot change instance: {ExceptionType}", ex.GetType().Name); error = "無法確認操作結果，請重新整理後檢查。"; }
+        await LoadAsync();
+    }
+
+    private async Task ChangeServiceAsync()
+    {
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!Guid.TryParse(form["ServiceForm.Id"], out var id) || id.Version != 7 || form[$"service-confirm-{id:N}"] != "true" ||
+            !bool.TryParse(form[$"service-stop-{id:N}"], out var stopped) || Actor() is not { } actor)
+        { error = "請確認操作影響。"; return; }
+        try
+        {
+            var result = await Collections.SetStoppedAsync(id, form[$"service-version-{id:N}"].ToString(), stopped, actor, HttpContext.RequestAborted);
+            if (result == ServiceCollectionStatus.Updated) message = stopped ? "服務已停收。" : "服務已恢復授權。";
+            else error = result == ServiceCollectionStatus.SourceUnavailable ? "來源已撤銷，無法恢復收集。" : "服務已變更或無法操作，請重新整理後再試。";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot change service collection: {ExceptionType}", ex.GetType().Name); error = "無法確認操作結果，請重新整理後檢查。"; }
+        await LoadAsync();
+    }
+
+    private sealed class PolicyInput { public int PerService { get; set; } public int Total { get; set; } public string Version { get; set; } = ""; }
+    private sealed class ActionInput { public Guid Id { get; set; } }
+}

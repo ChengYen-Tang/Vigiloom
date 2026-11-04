@@ -29,9 +29,17 @@ public sealed class MonitoredService
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public bool IsPublic { get; private set; }
+    public byte[] Version { get; private set; } = [];
     public void Revoke(DateTimeOffset now)
     {
         if (RevokedAt is not null) return;
         RevokedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Resume(DateTimeOffset now)
+    {
+        if (RevokedAt is null) return;
+        RevokedAt = null;
+        ApprovedAt = UpdatedAt = now.ToUniversalTime();
     }
 }

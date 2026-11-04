@@ -1,0 +1,184 @@
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Services;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Testing.SqlServer;
+
+namespace Vigiloom.Modules.ServiceObservability.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+public sealed class InstanceManagementTests(TestContext context)
+{
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServiceCollection_StopAndResumeFenceReceptionAndAudit() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            var other = new MonitoredService(new ServiceCandidate(source.Id, "billing", "prod", "Billing", now), now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source); db.Services.AddRange(service, other); await db.SaveChangesAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options); var actor = Guid.CreateVersion7();
+            var admin = new ServiceCollectionAdministration(factory, new OperationAuditWriter());
+            var list = new ServiceInstanceAdministration(factory, TimeProvider.System, new OperationAuditWriter());
+            var initial = (await list.ListServicesAsync(1, token)).Single(x => x.Id == service.Id);
+            var failing = new ServiceCollectionAdministration(factory, new FailAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.SetStoppedAsync(service.Id, initial.Version, true, actor, token));
+            Assert.IsNull((await list.ListServicesAsync(1, token)).Single(x => x.Id == service.Id).StoppedAt);
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetStoppedAsync(service.Id, initial.Version, true, actor, token));
+            Assert.AreEqual(ServiceCollectionStatus.Conflict, await admin.SetStoppedAsync(service.Id, initial.Version, false, actor, token));
+            Assert.AreEqual(ApprovalStatus.SourceUnavailable, (await new ServiceApproval(factory, new OperationAuditWriter()).ApproveAsync(service.CandidateId!.Value, actor, token)).Status);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", token));
+                Assert.IsNotNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "billing", "prod", token));
+            }
+            var stopped = (await list.ListServicesAsync(1, token)).Single(x => x.Id == service.Id);
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetStoppedAsync(service.Id, stopped.Version, false, actor, token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var binding = await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", token);
+                Assert.IsNotNull(binding); Assert.IsGreaterThan(now, binding.ApprovedAt);
+            }
+            var active = (await list.ListServicesAsync(1, token)).Single(x => x.Id == service.Id);
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetStoppedAsync(service.Id, active.Version, true, actor, token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                var storedSource = await db.Sources.SingleAsync(x => x.Id == source.Id, token);
+                storedSource.Revoke(DateTimeOffset.UtcNow); await db.SaveChangesAsync(token);
+            }
+            stopped = (await list.ListServicesAsync(1, token)).Single(x => x.Id == service.Id);
+            Assert.AreEqual(ServiceCollectionStatus.SourceUnavailable, await admin.SetStoppedAsync(service.Id, stopped.Version, false, actor, token));
+            var audit = new OperationAuditQueryService(new OperationsFactory(operations));
+            Assert.HasCount(3, (await audit.QueryServiceCollectionsAsync(new(now.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token)).Items);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Migration_AddsVersionsWithoutLosingExistingInstances() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            var id = Guid.CreateVersion7();
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.GetService<IMigrator>().MigrateAsync("20261104010918_ServiceInstances", token);
+                db.Sources.Add(source); await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Services] ([Id],[SourceId],[ServiceKey],[Environment],[DisplayName],[ApprovedAt],[CreatedAt],[UpdatedAt],[IsPublic]) VALUES ({service.Id},{source.Id},{"orders"},{"prod"},{"Orders"},{now},{now},{now},{false})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({id},{service.Id},{source.Id},{"node"},{now},{now})", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using var verify = new ServiceObservabilityDbContext(options);
+            var existing = await verify.Instances.AsNoTracking().SingleAsync(token);
+            Assert.AreEqual(id, existing.Id);
+            Assert.AreEqual("node", existing.ExternalInstanceId);
+            Assert.HasCount(8, existing.Version);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Management_PolicyAndRetirementAreVersionedAndAuditedAtomically() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source);
+                db.Services.Add(service);
+                await db.SaveChangesAsync(token);
+            }
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var actor = Guid.CreateVersion7();
+            var failingPolicy = new InstancePolicyAdministration(factory, TimeProvider.System, new FailAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failingPolicy.UpdateAsync(new(2, 5, ""), actor, token));
+            var policies = new InstancePolicyAdministration(factory, TimeProvider.System, new OperationAuditWriter());
+            var initial = await policies.GetAsync(token);
+            Assert.AreEqual(1000, initial.PerService);
+            var saved = await policies.UpdateAsync(new(2, 5, initial.Version), actor, token);
+            Assert.IsNotNull(saved);
+            Assert.IsNull(await policies.UpdateAsync(new(3, 6, initial.Version), actor, token));
+            Assert.AreEqual(2, (await policies.GetAsync(token)).PerService);
+
+            Guid instanceId;
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var resolved = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", "node", token);
+                Assert.AreEqual(InstanceResolutionStatus.Resolved, resolved.Status);
+                instanceId = resolved.InstanceId!.Value;
+                await tx.CommitAsync(token);
+            }
+            var admin = new ServiceInstanceAdministration(factory, TimeProvider.System, new OperationAuditWriter());
+            var item = (await admin.ListAsync(service.Id, 1, token)).Single();
+            var failing = new ServiceInstanceAdministration(factory, TimeProvider.System, new FailAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.SetRetiredAsync(instanceId, item.Version, true, actor, token));
+            Assert.IsNull((await admin.ListAsync(service.Id, 1, token)).Single().RetiredAt);
+            Assert.AreEqual(InstanceChangeStatus.Updated, await admin.SetRetiredAsync(instanceId, item.Version, true, actor, token));
+            Assert.AreEqual(InstanceChangeStatus.Conflict, await admin.SetRetiredAsync(instanceId, item.Version, false, actor, token));
+            var retired = (await admin.ListAsync(service.Id, 1, token)).Single();
+            Assert.IsNotNull(retired.RetiredAt);
+            Assert.AreEqual(InstanceChangeStatus.Updated, await admin.SetRetiredAsync(instanceId, retired.Version, false, actor, token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var resolved = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", "node", token);
+                Assert.AreEqual(instanceId, resolved.InstanceId);
+            }
+            var audit = new OperationAuditQueryService(new OperationsFactory(operations));
+            var query = new OperationAuditQuery(now.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
+            Assert.HasCount(1, (await audit.QueryInstancePoliciesAsync(query, token)).Items);
+            Assert.HasCount(2, (await audit.QueryServiceInstancesAsync(query, token)).Items);
+        }, context.CancellationToken);
+
+    private sealed class Factory(DbContextOptions<ServiceObservabilityDbContext> options) : IDbContextFactory<ServiceObservabilityDbContext>
+    {
+        public ServiceObservabilityDbContext CreateDbContext() => new(options);
+    }
+    private sealed class OperationsFactory(DbContextOptions<OperationsDbContext> options) : IDbContextFactory<OperationsDbContext>
+    {
+        public OperationsDbContext CreateDbContext() => new(options);
+    }
+    private sealed class FailAudit : IOperationAuditWriter<OperationAudit>
+    {
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit value, CancellationToken token)
+        {
+            await new OperationAuditWriter().AppendAsync(connection, transaction, value, token);
+            throw new InvalidOperationException("Injected failure after audit insertion.");
+        }
+    }
+}
