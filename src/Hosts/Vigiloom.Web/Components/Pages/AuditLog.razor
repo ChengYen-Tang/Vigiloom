@@ -23,7 +23,10 @@
         <form method="get" action="/settings/audit">
             <div class="audit-date-field"><label for="audit-source">紀錄來源</label><select id="audit-source" name="source">
                 <option value="instance-policy" selected="@(sourceText == "instance-policy")">執行個體容量</option><option value="service-instances" selected="@(sourceText == "service-instances")">服務執行個體</option>
+                <option value="log-quota" selected="@(sourceText == "log-quota")">Log 配額</option>
+                <option value="trace-quota" selected="@(sourceText == "trace-quota")">Trace 配額</option>
                 <option value="service-collections" selected="@(sourceText == "service-collections")">服務收集</option>
+                <option value="collectors" selected="@(sourceText == "collectors")">Collector 管理</option>
                 <option value="speed" selected="@(sourceText == "speed")">網路測速設定</option><option value="ping" selected="@(sourceText == "ping")">Ping 設定</option><option value="accounts" selected="@(sourceText == "accounts")">帳號</option><option value="api-credentials" selected="@(sourceText == "api-credentials")">API 憑證</option>
                 <option value="devices" selected="@(sourceText == "devices")">設備</option><option value="groups" selected="@(sourceText == "groups")">群組</option><option value="agent-identity" selected="@(sourceText == "agent-identity")">Agent 身分</option><option value="agent-settings" selected="@(sourceText == "agent-settings")">Agent 設定</option><option value="agent-queue-capacity" selected="@(sourceText == "agent-queue-capacity")">Agent 佇列容量</option><option value="agent-replay" selected="@(sourceText == "agent-replay")">Agent 補送政策</option><option value="service-approvals" selected="@(sourceText == "service-approvals")">服務核准</option><option value="service-sources" selected="@(sourceText == "service-sources")">服務來源憑證</option><option value="scheduling" selected="@(sourceText == "scheduling")">背景工作</option>
             </select></div>
@@ -40,7 +43,7 @@
     {
         <section class="audit-panel" aria-labelledby="audit-results-title">
             <h2 id="audit-results-title">查詢結果</h2>
-            <p>此來源收錄成功儲存的@(sourceText switch { "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "instance-policy" => "執行個體容量設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
+            <p>此來源收錄成功儲存的@(sourceText switch { "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "collectors" => "Collector 管理", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
             @if (actorLookupFailed) { <p role="status">目前無法取得帳號名稱，改以帳號 ID 顯示。</p> }
             @if (result.Items.Count == 0) { <p>@(result.Page > 1 ? "此頁沒有紀錄，請返回上一頁。" : "此日期範圍沒有稽核紀錄。")</p> }
             else
@@ -53,7 +56,7 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@Operation(entry)</span></td>
-                            <td>@(entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.ServiceInstance is not null ? "服務執行個體" : "未知")</td>
+                            <td>@(entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
                             <td>
                                 @if (entry.SpeedSettings is { } change)
                                 {
@@ -101,7 +104,20 @@
                                 {
                                     <div>服務識別碼：@instance.ServiceId</div><div>執行個體識別碼：@entry.ResourceId</div>
                                 }
+                                else if (entry.LogQuota is { } quota)
+                                {
+                                    <div>每來源：@quota.Previous.SourceRate → @quota.Current.SourceRate 筆／秒，突發 @quota.Previous.SourceBurst → @quota.Current.SourceBurst 筆</div>
+                                    <div>全平台：@quota.Previous.GlobalRate → @quota.Current.GlobalRate 筆／秒，突發 @quota.Previous.GlobalBurst → @quota.Current.GlobalBurst 筆</div>
+                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(quota.PreviousVersion) ? "初始設定" : quota.PreviousVersion) → @quota.CurrentVersion</span></details>
+                                }
+                                else if (entry.TraceQuota is { } traceQuota)
+                                {
+                                    <div>每服務來源：@traceQuota.Previous.SourceRate → @traceQuota.Current.SourceRate 筆／秒，突發 @traceQuota.Previous.SourceBurst → @traceQuota.Current.SourceBurst 筆</div>
+                                    <div>全平台：@traceQuota.Previous.GlobalRate → @traceQuota.Current.GlobalRate 筆／秒，突發 @traceQuota.Previous.GlobalBurst → @traceQuota.Current.GlobalBurst 筆</div>
+                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(traceQuota.PreviousVersion) ? "初始設定" : traceQuota.PreviousVersion) → @traceQuota.CurrentVersion</span></details>
+                                }
                                 else if (entry.ServiceCollection is not null) { <div>服務識別碼：@entry.ResourceId</div> }
+                                else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>來源識別碼：@sourceId</div> } }
                                 else { <span>無法顯示此紀錄的內容。</span> }
                             </td>
                             <td>@if (Operation(entry) == "未支援的紀錄") { <span>未知</span> } else { <span class="audit-badge audit-badge-success">已儲存</span> }</td>
@@ -184,7 +200,7 @@
         var today = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime);
         sourceText = Source ?? "speed";
         var selected = AuditFeedReader.Parse(sourceText);
-        if (sourceText is not ("speed" or "ping" or "agent-replay" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "service-instances" or "service-collections") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
+        if (sourceText is not ("speed" or "ping" or "agent-replay" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "collectors") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
         fromText = From ?? today.AddDays(-6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         toText = To ?? today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (!DateOnly.TryParseExact(fromText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
@@ -202,7 +218,7 @@
         try
         {
             Guid[] ids;
-            if (sourceText is "speed" or "ping" or "agent-replay" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "service-instances" or "service-collections")
+            if (sourceText is "speed" or "ping" or "agent-replay" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "collectors")
             {
                 result = sourceText switch
                 {
@@ -212,8 +228,11 @@
                     "service-sources" => await Audit.QueryServiceSourcesAsync(query, HttpContext.RequestAborted),
                     "groups" => await Audit.QueryGroupsAsync(query, HttpContext.RequestAborted),
                     "instance-policy" => await Audit.QueryInstancePoliciesAsync(query, HttpContext.RequestAborted),
+                    "log-quota" => await Audit.QueryLogQuotaAsync(query, HttpContext.RequestAborted),
+                    "trace-quota" => await Audit.QueryTraceQuotaAsync(query, HttpContext.RequestAborted),
                     "service-instances" => await Audit.QueryServiceInstancesAsync(query, HttpContext.RequestAborted),
                     "service-collections" => await Audit.QueryServiceCollectionsAsync(query, HttpContext.RequestAborted),
+                    "collectors" => await Audit.QueryCollectorsAsync(query, HttpContext.RequestAborted),
                     _ => await Audit.QueryAsync(query, HttpContext.RequestAborted)
                 };
                 ids = result.Items.Select(x => x.ActorId).Distinct().ToArray();
@@ -248,11 +267,15 @@
     {
         ServiceSourceAction.Issued => "建立來源",
         ServiceSourceAction.Revoked => "撤銷來源",
+        ServiceSourceAction.CredentialRotated => "更換來源憑證",
         _ when entry.ServiceInstance?.Action == ServiceInstanceAction.Retired => "退役",
         _ when entry.ServiceInstance?.Action == ServiceInstanceAction.Restored => "恢復",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Stopped => "停止收集",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Resumed => "恢復收集",
-        _ when entry.SpeedSettings is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.InstancePolicy is not null => "更新",
+        _ when entry.Collector?.Action == CollectorAction.Registered => "登記 Collector",
+        _ when entry.Collector?.Action == CollectorAction.RouteAdded => "加入來源對應",
+        _ when entry.Collector?.Action == CollectorAction.RouteRemoved => "移除來源對應",
+        _ when entry.SpeedSettings is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.InstancePolicy is not null || entry.LogQuota is not null || entry.TraceQuota is not null => "更新",
         _ => "未支援的紀錄"
     };
     private static string ReplayPhase(AgentReplayPhase value) => value switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" };

@@ -31,6 +31,11 @@ using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Hangfire;
 using Hangfire.Dashboard;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Web.LogQuota;
+using Vigiloom.Web.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +50,11 @@ builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
 builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
+builder.Services.AddModuleSqlServer<LogAdmissionDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "logquota");
+builder.Services.AddScoped<PolicyAdministration>();
+builder.Services.AddScoped<TracePolicyAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
+builder.Services.AddScoped<TraceQuotaSettings>();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<IdentityAuditFeed>();
@@ -63,6 +73,13 @@ builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddScoped<CandidateDiscovery>();
+builder.Services.AddScoped<TelemetryExports>();
+builder.Services.AddScoped<TelemetryHistory>();
+builder.Services.AddScoped<ReceptionOverview>();
+builder.Services.AddScoped<CollectorObservations>();
+builder.Services.AddScoped<CollectorCounters>();
+builder.Services.AddScoped<CollectorAdministration>();
+builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddScoped<ServiceApproval>();
 builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
@@ -167,7 +184,22 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), api =>
         await next();
     });
     api.UseExceptionHandler();
-    api.UseStatusCodePages();
+    api.UseWhen(context => !context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix), other => other.UseStatusCodePages());
+    api.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix), otlp =>
+    {
+        otlp.Use(async (context, next) =>
+        {
+            try { await next(); }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { throw; }
+            catch (Exception) when (!context.Response.HasStarted)
+            {
+                await OtlpResponse.Failure(StatusCodes.Status503ServiceUnavailable, "Telemetry receiver is unavailable; retry later.").ExecuteAsync(context);
+                return;
+            }
+            if (!context.Response.HasStarted && context.Response.StatusCode >= 400 && context.Response.ContentLength is null)
+                await OtlpResponse.Failure(context.Response.StatusCode, "Telemetry request was rejected.").ExecuteAsync(context);
+        });
+    });
 });
 
 if (app.Environment.IsDevelopment())
@@ -186,6 +218,7 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !cont
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseMiddleware<OtlpTransportGuard>();
 app.UseMiddleware<AgentTransportGuard>();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -226,7 +259,10 @@ app.MapAgentQueueCapacityEndpoints();
 app.MapAgentReplayPolicyEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapServiceDiscoveryEndpoints();
+app.MapOtlpHttpEndpoints();
+app.MapTelemetryHistoryEndpoints();
 app.MapServiceInstanceEndpoints();
+app.MapLogQuotaEndpoints();
 app.MapPingEndpoints();
 app.MapSpeedTestEndpoints();
 app.MapOperationAuditEndpoints();

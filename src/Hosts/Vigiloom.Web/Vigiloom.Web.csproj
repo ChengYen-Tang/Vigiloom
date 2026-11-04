@@ -5,6 +5,9 @@
   <ItemGroup>
     <!-- Reject truncated compressed request bodies before acknowledging batches. -->
     <RuntimeHostConfigurationOption Include="System.IO.Compression.UseStrictValidation" Value="true" />
+    <InternalsVisibleTo Include="Vigiloom.Web.Tests" />
+    <EmbeddedResource Include="../../../deploy/collector/isolated-sources.example.yaml" LogicalName="Vigiloom.Collector.IsolatedSources.yaml" />
+    <EmbeddedResource Include="../../../deploy/collector/application.env.example" LogicalName="Vigiloom.Collector.Application.env" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />
@@ -19,6 +22,7 @@
     <ProjectReference Include="../../Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Google.Api.CommonProtos" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />

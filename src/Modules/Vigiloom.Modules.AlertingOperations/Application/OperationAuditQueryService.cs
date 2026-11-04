@@ -47,13 +47,22 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryServiceCollectionsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.ServiceCollectionChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryLogQuotaAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.LogQuotaChangedV1, cancellationToken);
+
+    public async Task<OperationAuditPage> QueryTraceQuotaAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.TraceQuotaChangedV1, cancellationToken);
+
+    public async Task<OperationAuditPage> QueryCollectorsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.CollectorChangedV1, cancellationToken);
+
     private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, short kind, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
                 (kind != 0 ? x.Kind == kind :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1))
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -66,7 +75,10 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.GroupChangedV1 ? ReadGroup(x.Details) : null,
             x.Kind == AuditKinds.InstancePolicyChangedV1 ? ReadInstancePolicy(x.Details) : null,
             x.Kind == AuditKinds.ServiceInstanceChangedV1 ? ReadServiceInstance(x.Details) : null,
-            x.Kind == AuditKinds.ServiceCollectionChangedV1 ? ReadServiceCollection(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.ServiceCollectionChangedV1 ? ReadServiceCollection(x.Details) : null,
+            x.Kind == AuditKinds.LogQuotaChangedV1 ? ReadLogQuota(x.Details) : null,
+            x.Kind == AuditKinds.TraceQuotaChangedV1 ? ReadTraceQuota(x.Details) : null,
+            x.Kind == AuditKinds.CollectorChangedV1 ? ReadCollector(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -76,6 +88,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedSettingsChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static CollectorChanged? ReadCollector(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<CollectorChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
@@ -116,7 +138,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceSourceChanged>(details, Options);
-            return value?.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked ? value : null;
+            return value?.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -156,6 +178,26 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceCollectionChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static LogQuotaChanged? ReadLogQuota(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<LogQuotaChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static TraceQuotaChanged? ReadTraceQuota(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<TraceQuotaChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

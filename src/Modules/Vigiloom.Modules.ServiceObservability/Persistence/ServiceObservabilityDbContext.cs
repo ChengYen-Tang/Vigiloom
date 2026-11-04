@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 
 namespace Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -10,6 +11,14 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<MonitoredService> Services => Set<MonitoredService>();
     public DbSet<ServiceInstance> Instances => Set<ServiceInstance>();
     public DbSet<InstancePolicy> InstancePolicies => Set<InstancePolicy>();
+    public DbSet<LogRecord> LogRecords => Set<LogRecord>();
+    public DbSet<LogContext> LogContexts => Set<LogContext>();
+    public DbSet<TraceContext> TraceContexts => Set<TraceContext>();
+    public DbSet<TraceSpan> TraceSpans => Set<TraceSpan>();
+    public DbSet<MetricContext> MetricContexts => Set<MetricContext>();
+    public DbSet<MetricPoint> MetricPoints => Set<MetricPoint>();
+    public DbSet<CollectorRegistration> Collectors => Set<CollectorRegistration>();
+    public DbSet<CollectorRoute> CollectorRoutes => Set<CollectorRoute>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +32,28 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         source.HasIndex(x => x.RowId).IsUnique().IsClustered();
         source.Property(x => x.Name).HasMaxLength(128).IsRequired();
         source.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
+        source.Property(x => x.Version).IsRowVersion();
+
+        var collector = modelBuilder.Entity<CollectorRegistration>();
+        collector.ToTable("Collectors");
+        collector.HasKey(x => x.Id).IsClustered(false);
+        collector.Property(x => x.Id).ValueGeneratedNever();
+        collector.Property(x => x.RowId).UseIdentityColumn();
+        collector.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        collector.Property(x => x.Name).HasMaxLength(128).IsRequired();
+        collector.Property(x => x.Version).IsRowVersion();
+        collector.HasIndex(x => x.MonitoringServiceId).IsUnique();
+        collector.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.MonitoringServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        var route = modelBuilder.Entity<CollectorRoute>();
+        route.ToTable("CollectorRoutes");
+        route.HasKey(x => new { x.CollectorId, x.SourceId }).IsClustered();
+        route.Property(x => x.Exporter).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        route.Property(x => x.ExporterBytes).HasColumnType("varbinary(256)")
+            .HasComputedColumnSql("CONVERT(varbinary(256), [Exporter])", stored: true);
+        route.HasIndex(x => new { x.CollectorId, x.ExporterBytes }).IsUnique();
+        route.HasOne<CollectorRegistration>().WithMany().HasForeignKey(x => x.CollectorId).OnDelete(DeleteBehavior.Cascade);
+        route.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
 
         var candidate = modelBuilder.Entity<ServiceCandidate>();
         candidate.ToTable("Candidates");
@@ -31,9 +62,11 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         candidate.Property(x => x.RowId).UseIdentityColumn();
         candidate.HasIndex(x => x.RowId).IsUnique().IsClustered();
         candidate.Property(x => x.ServiceKey).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        candidate.Property(x => x.ServiceNamespace).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").HasDefaultValue("").IsRequired();
+        candidate.Property(x => x.ServiceNamespaceBytes).HasColumnType("varbinary(256)").HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", stored: true);
         candidate.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
         candidate.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
-        candidate.HasIndex(x => new { x.SourceId, x.ServiceKey, x.Environment }).IsUnique();
+        candidate.HasIndex(x => new { x.SourceId, x.ServiceNamespaceBytes, x.ServiceKey, x.Environment }).IsUnique();
         candidate.HasIndex(x => x.LastSeen);
         candidate.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
 
@@ -45,9 +78,11 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         service.Property(x => x.Version).IsRowVersion();
         service.HasIndex(x => x.RowId).IsUnique().IsClustered();
         service.Property(x => x.ServiceKey).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        service.Property(x => x.ServiceNamespace).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").HasDefaultValue("").IsRequired();
+        service.Property(x => x.ServiceNamespaceBytes).HasColumnType("varbinary(256)").HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", stored: true);
         service.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
         service.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
-        service.HasIndex(x => new { x.SourceId, x.ServiceKey, x.Environment }).IsUnique();
+        service.HasIndex(x => new { x.SourceId, x.ServiceNamespaceBytes, x.ServiceKey, x.Environment }).IsUnique();
         service.HasIndex(x => x.CandidateId).IsUnique();
         service.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
         service.HasAlternateKey(x => new { x.Id, x.SourceId });
@@ -84,5 +119,104 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         policy.Property(x => x.Name).HasMaxLength(32).IsRequired();
         policy.HasIndex(x => x.Name).IsUnique();
         policy.Property(x => x.Version).IsRowVersion();
+
+        var logContext = modelBuilder.Entity<LogContext>();
+        logContext.ToTable("LogContexts", table => table.HasCheckConstraint("CK_LogContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536"));
+        logContext.HasKey(x => x.RowId).IsClustered();
+        logContext.Property(x => x.RowId).UseIdentityColumn();
+        logContext.HasAlternateKey(x => new { x.RowId, x.ServiceId });
+        logContext.Property(x => x.ResourcePayload).HasColumnType("varbinary(max)").IsRequired();
+        logContext.Property(x => x.ScopePayload).HasColumnType("varbinary(max)").IsRequired();
+        logContext.Property(x => x.ResourceSchemaUrl).HasMaxLength(2048).IsRequired();
+        logContext.Property(x => x.ScopeSchemaUrl).HasMaxLength(2048).IsRequired();
+        logContext.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        var log = modelBuilder.Entity<LogRecord>();
+        log.ToTable("LogRecords", table =>
+        {
+            table.HasCheckConstraint("CK_LogRecords_Utc", "DATEPART(TZOFFSET, [OccurredAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+            table.HasCheckConstraint("CK_LogRecords_Payload", "DATALENGTH([RecordPayload]) <= 262144");
+        });
+        log.HasKey(x => x.RowId).IsClustered();
+        log.Property(x => x.RowId).UseIdentityColumn();
+        log.Property(x => x.TraceId).HasColumnType("binary(16)");
+        log.Property(x => x.SpanId).HasColumnType("binary(8)");
+        log.Property(x => x.RecordPayload).HasColumnType("varbinary(max)").IsRequired();
+        log.HasIndex(x => new { x.ServiceId, x.OccurredAt, x.RowId });
+        log.HasIndex(x => new { x.ServiceId, x.ReceivedAt });
+        log.HasIndex(x => new { x.ServiceId, x.TraceId, x.OccurredAt }).HasFilter("[TraceId] IS NOT NULL");
+        log.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+        log.HasOne(x => x.Context).WithMany().HasForeignKey(x => new { x.ContextId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+        log.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var traceContext = modelBuilder.Entity<TraceContext>();
+        traceContext.ToTable("TraceContexts", table => table.HasCheckConstraint("CK_TraceContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536"));
+        traceContext.HasKey(x => x.RowId).IsClustered();
+        traceContext.Property(x => x.RowId).UseIdentityColumn();
+        traceContext.HasAlternateKey(x => new { x.RowId, x.ServiceId });
+        traceContext.Property(x => x.ResourcePayload).HasColumnType("varbinary(max)").IsRequired();
+        traceContext.Property(x => x.ScopePayload).HasColumnType("varbinary(max)").IsRequired();
+        traceContext.Property(x => x.ResourceSchemaUrl).HasMaxLength(2048).IsRequired();
+        traceContext.Property(x => x.ScopeSchemaUrl).HasMaxLength(2048).IsRequired();
+        traceContext.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        var span = modelBuilder.Entity<TraceSpan>();
+        span.ToTable("TraceSpans", table =>
+        {
+            table.HasCheckConstraint("CK_TraceSpans_Utc", "DATEPART(TZOFFSET, [StartedAt]) = 0 AND DATEPART(TZOFFSET, [EndedAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+            table.HasCheckConstraint("CK_TraceSpans_Times", "[EndedAt] >= [StartedAt]");
+            table.HasCheckConstraint("CK_TraceSpans_Payload", "DATALENGTH([SpanPayload]) <= 262144");
+        });
+        span.HasKey(x => x.RowId).IsClustered();
+        span.Property(x => x.RowId).UseIdentityColumn();
+        span.Property(x => x.TraceId).HasColumnType("binary(16)").IsRequired();
+        span.Property(x => x.SpanId).HasColumnType("binary(8)").IsRequired();
+        span.Property(x => x.ParentSpanId).HasColumnType("binary(8)");
+        span.Property(x => x.SpanPayload).HasColumnType("varbinary(max)").IsRequired();
+        span.HasIndex(x => new { x.ServiceId, x.StartedAt, x.RowId });
+        span.HasIndex(x => new { x.ServiceId, x.ReceivedAt });
+        span.HasIndex(x => new { x.ServiceId, x.TraceId, x.StartedAt, x.RowId });
+        span.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+        span.HasOne(x => x.Context).WithMany().HasForeignKey(x => new { x.ContextId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+        span.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var metricContext = modelBuilder.Entity<MetricContext>();
+        metricContext.ToTable("MetricContexts", table => table.HasCheckConstraint("CK_MetricContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536 AND DATALENGTH([MetricPayload]) <= 65536"));
+        metricContext.HasKey(x => x.RowId).IsClustered();
+        metricContext.Property(x => x.RowId).UseIdentityColumn();
+        metricContext.HasAlternateKey(x => new { x.RowId, x.ServiceId });
+        metricContext.Property(x => x.ResourcePayload).HasColumnType("varbinary(max)").IsRequired();
+        metricContext.Property(x => x.ScopePayload).HasColumnType("varbinary(max)").IsRequired();
+        metricContext.Property(x => x.MetricPayload).HasColumnType("varbinary(max)").IsRequired();
+        metricContext.Property(x => x.MetricName).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2");
+        metricContext.Property(x => x.MetricNameBytes).HasColumnType("varbinary(512)")
+            .HasComputedColumnSql("CONVERT(varbinary(512), [MetricName])", stored: true);
+        metricContext.HasIndex(x => new { x.ServiceId, x.MetricNameBytes });
+        metricContext.Property(x => x.ResourceSchemaUrl).HasMaxLength(2048).IsRequired();
+        metricContext.Property(x => x.ScopeSchemaUrl).HasMaxLength(2048).IsRequired();
+        metricContext.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        var point = modelBuilder.Entity<MetricPoint>();
+        point.ToTable("MetricPoints", table =>
+        {
+            table.HasCheckConstraint("CK_MetricPoints_Utc", "DATEPART(TZOFFSET, [OccurredAt]) = 0 AND DATEPART(TZOFFSET, [ReceivedAt]) = 0");
+            table.HasCheckConstraint("CK_MetricPoints_Kind", "[Kind] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_MetricPoints_Payload", "DATALENGTH([PointPayload]) <= 262144");
+        });
+        point.HasKey(x => x.RowId).IsClustered();
+        point.Property(x => x.RowId).UseIdentityColumn();
+        point.Property(x => x.PointPayload).HasColumnType("varbinary(max)").IsRequired();
+        point.HasIndex(x => new { x.ServiceId, x.OccurredAt, x.RowId });
+        point.HasIndex(x => new { x.ServiceId, x.ReceivedAt });
+        point.HasIndex(x => new { x.ContextId, x.ReceivedAt, x.RowId });
+        point.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+        point.HasOne(x => x.Context).WithMany().HasForeignKey(x => new { x.ContextId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+        point.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
     }
 }

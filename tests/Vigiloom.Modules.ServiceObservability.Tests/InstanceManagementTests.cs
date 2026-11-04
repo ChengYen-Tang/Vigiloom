@@ -22,6 +22,38 @@ public sealed class InstanceManagementTests(TestContext context)
 {
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task Migration_ServiceNamespacePreservesExistingIdentityAndRejectsUnsafeRollback() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = Guid.CreateVersion7();
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.GetService<IMigrator>().MigrateAsync("20261104014140_ServiceCollectionVersion", token);
+                // Seed the historical schema explicitly; the current EF model has newer columns.
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Sources] ([Id],[Name],[Verifier],[CreatedAt],[UpdatedAt]) VALUES ({source.Id},{source.Name},{source.Verifier},{now},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Services] ([Id],[SourceId],[ServiceKey],[Environment],[DisplayName],[ApprovedAt],[CreatedAt],[UpdatedAt],[IsPublic]) VALUES ({service},{source.Id},{"api"},{"prod"},{"API"},{now},{now},{now},{false})", token);
+                await db.Database.MigrateAsync(token);
+            }
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                var existing = await db.Services.AsNoTracking().SingleAsync(token);
+                Assert.AreEqual(service, existing.Id);
+                Assert.AreEqual("", existing.ServiceNamespace);
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Services] SET [ServiceNamespace] = {" "} WHERE [Id] = {service}", token);
+                await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261104014140_ServiceCollectionVersion", token));
+            }
+            await using var check = new ServiceObservabilityDbContext(options);
+            var saved = await check.Services.AsNoTracking().SingleAsync(token);
+            Assert.AreEqual(service, saved.Id);
+            Assert.AreEqual(" ", saved.ServiceNamespace);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task ServiceCollection_StopAndResumeFenceReceptionAndAudit() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -90,7 +122,7 @@ public sealed class InstanceManagementTests(TestContext context)
             await using (var db = new ServiceObservabilityDbContext(options))
             {
                 await db.GetService<IMigrator>().MigrateAsync("20261104010918_ServiceInstances", token);
-                db.Sources.Add(source); await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Sources] ([Id],[Name],[Verifier],[CreatedAt],[UpdatedAt]) VALUES ({source.Id},{source.Name},{source.Verifier},{now},{now})", token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Services] ([Id],[SourceId],[ServiceKey],[Environment],[DisplayName],[ApprovedAt],[CreatedAt],[UpdatedAt],[IsPublic]) VALUES ({service.Id},{source.Id},{"orders"},{"prod"},{"Orders"},{now},{now},{now},{false})", token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({id},{service.Id},{source.Id},{"node"},{now},{now})", token);
                 await db.Database.MigrateAsync(token);

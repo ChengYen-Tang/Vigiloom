@@ -28,11 +28,14 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
-            ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
+            ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
             InstancePolicyChanged change when IsValid(change) => (AuditKinds.InstancePolicyChangedV1, JsonSerializer.Serialize(change)),
             ServiceInstanceChanged change when IsValid(change) => (AuditKinds.ServiceInstanceChangedV1, JsonSerializer.Serialize(change)),
             ServiceCollectionChanged change when IsValid(change) => (AuditKinds.ServiceCollectionChangedV1, JsonSerializer.Serialize(change)),
+            LogQuotaChanged change when IsValid(change) => (AuditKinds.LogQuotaChangedV1, JsonSerializer.Serialize(change)),
+            TraceQuotaChanged change when IsValid(change) => (AuditKinds.TraceQuotaChangedV1, JsonSerializer.Serialize(change)),
+            CollectorChanged change when IsValid(change) => (AuditKinds.CollectorChangedV1, JsonSerializer.Serialize(change)),
             _ => throw new ArgumentException("Unsupported or invalid audit event details.", nameof(audit))
         };
         if (details.Length > 2048) throw new ArgumentException("Audit event details exceed the supported limit.", nameof(audit));
@@ -63,6 +66,14 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(ServiceInstanceChanged change) => change.ServiceId.Version == 7 &&
         change.Action is ServiceInstanceAction.Retired or ServiceInstanceAction.Restored;
     internal static bool IsValid(ServiceCollectionChanged change) => change.Action is ServiceCollectionAction.Stopped or ServiceCollectionAction.Resumed;
+    internal static bool IsValid(CollectorChanged change) => change.MonitoringServiceId.Version == 7 &&
+        (change.Action == CollectorAction.Registered ? change.SourceId is null :
+            change.Action is CollectorAction.RouteAdded or CollectorAction.RouteRemoved && change.SourceId?.Version == 7);
+    internal static bool IsValid(LogQuotaChanged change) => ValidQuota(change.Previous) && ValidQuota(change.Current) &&
+        (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
+    internal static bool IsValid(TraceQuotaChanged change) => ValidQuota(change.Previous) && ValidQuota(change.Current) &&
+        (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
+    private static bool ValidQuota(LogQuotaAuditValues? value) => value is not null && value.SourceRate > 0 && value.SourceBurst > 0 && value.GlobalRate > 0 && value.GlobalBurst > 0;
 
     internal static bool IsValid(PingSettingsChanged change) => change.Previous is not null && change.Current is not null &&
         PingSettingsLimits.IsValid(change.Current.IntervalSeconds, change.Current.TimeoutSeconds, change.Current.FailureThreshold,
