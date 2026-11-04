@@ -1,0 +1,118 @@
+@page "/settings/service-health"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@using Vigiloom.Modules.ServiceObservability.Application.Health
+@inject HealthTargetAdministration Targets
+@inject HealthNetworkPolicyAdministration Networks
+@inject HealthObservationReader Observations
+@inject ServiceInstanceAdministration Instances
+@inject ILogger<ServiceHealth> Logger
+
+<PageTitle>服務健康檢查 - Vigiloom</PageTitle>
+<main class="device-page health-settings">
+    <header class="device-heading"><div><h1>服務健康檢查</h1><p>為已加入的應用服務設定 HTTP 健康檢查。</p></div></header>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取設定，請重新整理後再試。</p> }
+    else
+    {
+        <div class="health-layout @(selectedService is not null ? "has-selection" : "")">
+        <section class="device-panel health-services" aria-labelledby="health-services-title">
+            <h2 id="health-services-title">選擇服務</h2>
+            @if (services.Count == 0) { <p>此頁沒有已加入的服務。請先到<a href="/settings/service-discovery">待加入服務</a>核准來源。</p> }
+            else
+            {
+                <ul class="health-service-list">
+                    @foreach (var service in services)
+                    {
+                        <li @key="service.Id"><div><a href="@ServiceUrl(service.Id, servicePage, 1, 1)">@service.Name（@service.Environment）</a><div>來源：@service.SourceName</div><details><summary>識別碼</summary><small>服務：@service.Id　來源：@service.SourceId</small></details></div><span>@(service.StoppedAt is null ? "已核准" : "已停收")</span></li>
+                    }
+                </ul>
+            }
+            <nav aria-label="服務分頁">
+                @if (servicePage > 1) { <a href="@ServiceUrl(SelectedService, servicePage - 1, 1, 1)">上一頁</a> }
+                <span>第 @servicePage 頁</span>
+                @if (services.Count == 50 && servicePage < 1000) { <a href="@ServiceUrl(SelectedService, servicePage + 1, 1, 1)">下一頁</a> }
+            </nav>
+        </section>
+        @if (selectedService is { } selectedInfo)
+        {
+            var selected = selectedInfo.Id;
+            <section class="device-panel health-targets" aria-labelledby="health-targets-title">
+                <h2 id="health-targets-title">檢查清單</h2>
+                <p>服務：@selectedInfo.Name（@selectedInfo.Environment），來源：@selectedInfo.SourceName。</p>
+                <details><summary>服務與來源識別碼</summary><small>服務：@selectedInfo.Id　來源：@selectedInfo.SourceId</small></details>
+                <p>最後記錄只代表當時的量測，並非目前服務健康結論。</p>
+                @if (targets.Count == 0) { <p>此頁沒有健康檢查，可使用下方表單新增。</p> }
+                else
+                {
+                    <p class="health-scroll-hint">左右滑動查看完整檢查資訊。</p>
+                    <div class="table-scroll" role="region" tabindex="0" aria-label="健康檢查清單，可左右捲動">
+                        <table><thead><tr><th scope="col">檢查對象</th><th scope="col">檢查網址</th><th scope="col">設定</th><th scope="col">最後記錄（UTC）</th><th scope="col">操作</th></tr></thead><tbody>
+                        @foreach (var target in targets)
+                        {
+                            var observation = observations.FirstOrDefault(x => x.TargetId == target.Id);
+                            <tr @key="target.Id"><td>@TargetSubject(target.InstanceId) @if (target.InstanceId is { } instanceId) { <details><summary>識別碼</summary><small>@instanceId</small></details> }</td><td>@target.Endpoint</td><td>@(target.Enabled ? "已啟用" : "已停用")，每 @target.IntervalSeconds 秒</td>
+                                <td>@(observation is null ? "尚無記錄" : $"{ObservationText(observation.Kind)} · {observation.ObservedAt:yyyy-MM-dd HH:mm:ss}")</td>
+                                <td><a href="@TargetUrl(selected, target.Id, servicePage, targetPage, instancePage)">編輯</a></td></tr>
+                        }
+                        </tbody></table>
+                    </div>
+                }
+                <nav aria-label="健康檢查分頁">
+                    @if (targetPage > 1) { <a href="@ServiceUrl(selected, servicePage, targetPage - 1, instancePage)">上一頁</a> }
+                    <span>第 @targetPage 頁</span>
+                    @if (targets.Count == 50 && targetPage < 1000) { <a href="@ServiceUrl(selected, servicePage, targetPage + 1, instancePage)">下一頁</a> }
+                </nav>
+            </section>
+            <section class="device-panel health-form" aria-labelledby="health-form-title">
+                <h2 id="health-form-title">@(TargetForm.Id is null ? "新增健康檢查" : "編輯健康檢查")</h2>
+                <p>支援 ASP.NET Core 預設的純文字健康回應；請勿將密碼或 token 寫進網址。</p>
+                <EditForm Model="TargetForm" FormName="health-target" method="post" OnValidSubmit="SaveTargetAsync">
+                    <div class="health-fields">
+                        <div class="health-field health-wide"><label for="health-endpoint">檢查網址</label><InputText id="health-endpoint" @bind-Value="TargetForm.Endpoint" type="url" maxlength="2048" required /></div>
+                        @if (TargetForm.Id is null)
+                        {
+                            <div class="health-field"><label for="health-instance">檢查對象</label><InputSelect id="health-instance" @bind-Value="TargetForm.InstanceId"><option value="">整個服務</option>@foreach (var instance in instances) { <option value="@instance.Id">@instance.ExternalInstanceId@(instance.RetiredAt is null ? "" : "（已退役）")</option> }</InputSelect></div>
+                        }
+                        else if (editingTarget is { } edited)
+                        {
+                            <div class="health-field"><span>檢查對象</span><strong>@TargetSubject(edited.InstanceId)</strong>@if (edited.InstanceId is { } instanceId) { <small>識別碼：@instanceId</small> }</div>
+                        }
+                        <div class="health-field"><label for="health-interval">檢查間隔（秒）</label><InputNumber id="health-interval" @bind-Value="TargetForm.IntervalSeconds" min="5" max="3600" required /></div>
+                        <div class="health-field"><label for="health-timeout">逾時（秒）</label><InputNumber id="health-timeout" @bind-Value="TargetForm.TimeoutSeconds" min="1" max="60" required /></div>
+                        <div class="health-field"><label for="health-failures">失敗門檻</label><InputNumber id="health-failures" @bind-Value="TargetForm.FailureThreshold" min="1" max="10" required /></div>
+                        <div class="health-field"><label for="health-recovery">恢復門檻</label><InputNumber id="health-recovery" @bind-Value="TargetForm.RecoveryThreshold" min="1" max="10" required /></div>
+                    </div>
+                    @if (TargetForm.Id is null && (instancePage > 1 || instances.Count == 50))
+                    {
+                        <nav aria-label="執行個體分頁">執行個體第 @instancePage 頁
+                            @if (instancePage > 1) { <a href="@ServiceUrl(selected, servicePage, targetPage, instancePage - 1)">上一頁</a> }
+                            @if (instances.Count == 50 && instancePage < 1000) { <a href="@ServiceUrl(selected, servicePage, targetPage, instancePage + 1)">下一頁</a> }
+                        </nav>
+                    }
+                    <p><label><InputCheckbox @bind-Value="TargetForm.Enabled" /> 啟用定期檢查</label></p>
+                    <input type="hidden" name="TargetForm.Id" value="@TargetForm.Id" />
+                    <InputText type="hidden" @bind-Value="TargetForm.Version" />
+                    <button type="submit">儲存檢查</button>
+                    @if (TargetForm.Id is not null) { <a href="@ServiceUrl(selected, servicePage, targetPage, instancePage)">取消編輯</a> }
+                </EditForm>
+            </section>
+        }
+        <section class="device-panel health-networks" aria-labelledby="health-networks-title">
+            <h2 id="health-networks-title">允許檢查的網段</h2>
+            <p>此政策適用於所有服務的健康檢查。Worker 只會連線至下列位址或網段。每行輸入一個 IP 位址（例如 192.168.1.10）或 CIDR 網段（例如 10.0.0.0/8）；空白表示不執行檢查。</p>
+            @if (networkEmpty) { <p class="device-alert" role="status">尚未設定允許網段，健康檢查目前不會執行。</p> }
+            <EditForm Model="NetworkForm" FormName="health-networks" method="post" OnValidSubmit="SaveNetworksAsync">
+                <div class="health-field"><label for="health-networks">允許網段</label><InputTextArea id="health-networks" @bind-Value="NetworkForm.Text" rows="4" maxlength="4608" /></div>
+                <InputText type="hidden" @bind-Value="NetworkForm.Version" />
+                <p>移除網段會中止使用舊政策的檢查；已保存的歷史紀錄不會被刪除。</p>
+                <button type="submit">儲存網段</button>
+            </EditForm>
+        </section>
+        </div>
+    }
+</main>

@@ -15,6 +15,12 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Health;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -22,6 +28,160 @@ namespace Vigiloom.Worker.Tests;
 [DoNotParallelize]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    [TestCategory("Integration")]
+    [TestCategory("Database")]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Host_CollectsHealth_CancelsOnShutdown_AndRecoversAfterLeaseExpiry() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        GlobalConfiguration.Configuration.UseNoOpLogProvider();
+        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+        var serviceOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+        await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
+        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+        await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+        await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(75));
+        var receivedSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var receivedThird = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? server = null;
+        IHost? host = null;
+        Exception? failure = null;
+        try
+        {
+            var now = DateTimeOffset.UtcNow.AddSeconds(-1);
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            var target = new HealthTarget(service.Id, null, $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/health", 60, 30, 3, 2, now);
+            target.SetEnabled(true, now);
+            var staleTarget = new HealthTarget(service.Id, null, "http://127.0.0.1:1/health", 30, 5, 3, 2, now);
+            staleTarget.SetEnabled(true, now);
+            var staleEvidence = now.AddSeconds(-70);
+            await using (var db = new ServiceObservabilityDbContext(serviceOptions))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source); db.Services.Add(service); db.HealthTargets.AddRange(target, staleTarget);
+                db.HealthSchedules.Add(new HealthSchedule(target.Id, true, now));
+                db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 0, 0, now));
+                var staleSchedule = new HealthSchedule(staleTarget.Id, true, now.AddHours(1));
+                staleSchedule.SetEvaluation(1, staleEvidence, 1, 2, staleEvidence, staleEvidence);
+                db.HealthSchedules.Add(staleSchedule);
+                db.HealthStateIntervals.Add(new HealthStateInterval(staleTarget.Id, 1, 1, staleEvidence));
+                var policy = new HealthNetworkPolicy(["127.0.0.0/8"], now);
+                db.HealthNetworkPolicies.Add(policy);
+                await db.SaveChangesAsync(token);
+                staleSchedule.SetVersions(source.Version, service.Version, null, staleTarget.Version, policy.Version);
+                await db.SaveChangesAsync(token);
+            }
+            server = ServeHealthAsync(listener, receivedSecond, receivedThird, deadline.Token);
+            var builder = WorkerHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+            host = builder.Build();
+            await host.StartAsync(deadline.Token);
+            while (true)
+            {
+                await using var db = new ServiceObservabilityDbContext(serviceOptions);
+                if (await db.HealthObservations.AnyAsync(deadline.Token))
+                {
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {target.Id}", deadline.Token);
+                    break;
+                }
+                await Task.Delay(100, deadline.Token);
+            }
+            await receivedSecond.Task.WaitAsync(deadline.Token);
+            // Include the policy transaction in the timeout that excludes the normal 30-second probe timeout.
+            var policyRetry = receivedThird.Task.WaitAsync(TimeSpan.FromSeconds(15), deadline.Token);
+            await using (var db = new ServiceObservabilityDbContext(serviceOptions))
+            {
+                var policy = await db.HealthNetworkPolicies.SingleAsync(token);
+                var changedAt = DateTimeOffset.UtcNow;
+                policy.ReplaceNetworks(["127.0.0.0/8"], changedAt);
+                db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), changedAt));
+                await db.SaveChangesAsync(token);
+            }
+            await policyRetry;
+            await host.StopAsync(deadline.Token);
+            host.Dispose(); host = null;
+            long previousGeneration;
+            await using (var verify = new ServiceObservabilityDbContext(serviceOptions))
+            {
+                Assert.AreEqual(1, await verify.HealthObservations.CountAsync(token));
+                Assert.AreEqual((byte)0, (await verify.HealthSchedules.SingleAsync(x => x.TargetId == staleTarget.Id, token)).State);
+                var interrupted = await verify.HealthSchedules.SingleAsync(x => x.TargetId == target.Id, token);
+                Assert.IsNotNull(interrupted.LeaseOwner);
+                previousGeneration = interrupted.Generation;
+                // Simulate passage of the durable lease after an interrupted worker.
+                await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [LeaseUntil] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')), [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {target.Id}", token);
+            }
+            var restarted = WorkerHost.CreateBuilder([]);
+            restarted.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+            host = restarted.Build();
+            await host.StartAsync(deadline.Token);
+            while (true)
+            {
+                await using var db = new ServiceObservabilityDbContext(serviceOptions);
+                if (await db.HealthObservations.CountAsync(deadline.Token) == 2) break;
+                await Task.Delay(100, deadline.Token);
+            }
+            await server.WaitAsync(deadline.Token);
+            await using (var verify = new ServiceObservabilityDbContext(serviceOptions))
+            {
+                var recovered = await verify.HealthObservations.OrderBy(x => x.RowId).LastAsync(token);
+                Assert.AreEqual(target.Id, recovered.TargetId);
+                Assert.AreEqual(HealthObservationKind.Healthy, recovered.Kind);
+                Assert.IsGreaterThan(previousGeneration, recovered.LeaseGeneration);
+            }
+        }
+        catch (Exception ex) { failure = ex; throw; }
+        finally
+        {
+            deadline.Cancel(); listener.Stop();
+            try
+            {
+                if (host is not null)
+                {
+                    try { await StopForCleanupAsync(host, failure); }
+                    finally { host.Dispose(); }
+                }
+            }
+            finally
+            {
+                if (server is not null) try { await server; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+            }
+        }
+    }, testContext.CancellationToken);
+
+    private static async Task ServeHealthAsync(TcpListener listener, TaskCompletionSource receivedSecond, TaskCompletionSource receivedThird, CancellationToken token)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            using var peer = await listener.AcceptTcpClientAsync(token);
+            await using var stream = peer.GetStream();
+            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+            while (!string.IsNullOrEmpty(await reader.ReadLineAsync(token))) { }
+            if (attempt is 0 or 3)
+                await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nHealthy"u8.ToArray(), token);
+            else
+            {
+                if (attempt == 1) receivedSecond.TrySetResult(); else receivedThird.TrySetResult();
+                try { Assert.AreEqual(0, await stream.ReadAsync(new byte[1], token)); }
+                catch (IOException) { /* A reset also proves that the client closed the connection. */ }
+            }
+        }
+    }
+
     [TestMethod]
     public void SpeedtestHttpHandlers_ArePooledAcrossMeasurements()
     {

@@ -1,0 +1,25 @@
+.health-settings { --vigiloom-muted: #536987; }
+.health-settings .health-layout { display: grid; gap: 1rem; }
+.health-settings .health-layout > .device-panel { margin: 0; min-width: 0; }
+.health-settings .health-services { grid-area: services; }
+.health-settings .health-targets { grid-area: targets; }
+.health-settings .health-form { grid-area: form; }
+.health-settings .health-networks { grid-area: networks; }
+.health-settings .health-layout { grid-template-areas: "services" "targets" "form" "networks"; }
+@media (min-width: 1000px) {
+    .health-settings .health-layout.has-selection { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); grid-template-rows: min-content 1fr auto; grid-template-areas: "services form" "targets form" "networks networks"; align-items: start; }
+}
+.health-settings .health-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 1rem; }
+.health-settings .health-wide { grid-column: 1 / -1; }
+.health-settings .health-field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; margin-block: .25rem; }
+.health-settings .health-field input, .health-settings .health-field select, .health-settings .health-field textarea { width: 100%; box-sizing: border-box; }
+.health-settings .health-service-list { list-style: none; margin: .75rem 0; padding: 0; }
+.health-settings .health-service-list li { padding: .6rem 0; border-bottom: 1px solid #e1e8f3; display: flex; justify-content: space-between; gap: 1rem; }
+.health-settings nav { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }
+.health-settings .table-scroll { max-width: 100%; overflow-x: auto; }
+.health-settings .table-scroll th { background: #edf4fc; color: #26466b; }
+.health-settings .health-scroll-hint { display: none; }
+@media (max-width: 700px) { .health-settings .health-scroll-hint { display: block; font-weight: 600; } }
+.health-settings .table-scroll th:first-child, .health-settings .table-scroll td:first-child,
+.health-settings .table-scroll th:last-child, .health-settings .table-scroll td:last-child { white-space: nowrap; }
+.health-settings .table-scroll td:nth-child(2) { overflow-wrap: anywhere; }
