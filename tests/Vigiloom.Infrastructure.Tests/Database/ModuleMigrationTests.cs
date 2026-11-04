@@ -59,19 +59,19 @@ public sealed class ModuleMigrationTests
             SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
             WHERE i.is_primary_key = 1 AND i.type_desc = 'CLUSTERED'
-              AND ((s.name = 'resources' AND t.name IN ('DeviceGroups', 'DeviceTargets', 'DeviceAudits')) OR (s.name = 'network' AND t.name = 'PingSamples'))
+              AND ((s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits')) OR (s.name = 'network' AND t.name = 'PingSamples'))
             """;
-        Assert.AreEqual(4, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.foreign_keys f
             JOIN sys.tables t ON t.object_id = f.parent_object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
-            WHERE (s.name = 'resources' AND t.name IN ('DeviceGroups', 'DeviceTargets', 'DeviceAudits') OR s.name = 'network' AND t.name = 'PingSamples')
+            WHERE (s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits') OR s.name = 'network' AND t.name = 'PingSamples')
               AND f.delete_referential_action_desc = 'NO_ACTION'
             """;
-        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
-        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.indexes i
             JOIN sys.tables t ON t.object_id = i.object_id

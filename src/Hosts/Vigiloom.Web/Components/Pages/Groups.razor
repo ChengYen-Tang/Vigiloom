@@ -1,0 +1,52 @@
+@page "/groups"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Groups
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Modules.Resources.Application
+@inject GroupManagement GroupsService
+@inject NavigationManager Navigation
+@inject ILogger<Groups> Logger
+
+<PageTitle>群組 - Vigiloom</PageTitle>
+<main class="device-page">
+    <header class="device-heading">
+        <div><h1>群組</h1><p>依地點、環境或系統整理設備和應用服務。群組不改變公開設定。</p></div>
+        <AuthorizeView Policy="Administrator"><Authorized><a class="device-primary" href="/groups/new">新增群組</a></Authorized></AuthorizeView>
+    </header>
+    <section class="device-panel">
+        <form method="get" action="/groups" class="device-filters">
+            <label>搜尋群組 <input name="search" value="@Search" maxlength="256" placeholder="名稱或說明" /></label>
+            <button type="submit">搜尋</button><a href="/groups/ungrouped">未分組設備</a><a href="/groups/ungrouped-services">未分組服務</a>
+        </form>
+        @if (error) { <p class="device-alert" role="alert">無法載入群組，請稍後重新整理。</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">沒有符合條件的群組。</p> }
+        else if (result is not null)
+        {
+            <p class="device-count">共 @result.Total 個群組</p>
+            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>說明</th><th>設備</th><th>應用服務</th><th></th></tr></thead><tbody>
+            @foreach (var group in result.Items)
+            {
+                <tr @key="group.Id"><td><a href="@($"/groups/{group.Id:D}")">@group.Name</a></td><td>@(group.Description ?? "—")</td><td>@group.DeviceCount</td><td>@group.ServiceCount</td><td><a href="@($"/groups/{group.Id:D}")">查看群組</a></td></tr>
+            }
+            </tbody></table></div>
+            <nav class="device-pagination" aria-label="群組分頁">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
+                <span>第 @result.Page 頁</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            </nav>
+        }
+    </section>
+</main>
+@code {
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int Page { get; set; } = 1;
+    private GroupPage? result;
+    private bool error;
+    protected override async Task OnInitializedAsync()
+    {
+        try { result = await GroupsService.ListAsync(Search is { Length: <= 256 } ? Search : null, Page, CancellationToken.None); }
+        catch (Exception exception) { Logger.LogWarning("Could not load groups: {ExceptionType}", exception.GetType().Name); error = true; }
+    }
+    private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/groups", new Dictionary<string, object?> { ["search"] = Search, ["page"] = page });
+}

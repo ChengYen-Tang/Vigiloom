@@ -35,13 +35,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryServiceSourcesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.ServiceSourceChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryGroupsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.GroupChangedV1, cancellationToken);
+
     private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, short kind, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
                 (kind != 0 ? x.Kind == kind :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1))
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -50,7 +53,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.PingSettingsChangedV1 ? ReadPingSettings(x.Details) : null,
             x.Kind == AuditKinds.AgentReplayPolicyChangedV1 ? ReadAgentReplayPolicy(x.Details) : null,
             x.Kind == AuditKinds.ServiceApprovedV1 ? ReadServiceApproval(x.Details) : null,
-            x.Kind == AuditKinds.ServiceSourceChangedV1 ? ReadServiceSource(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.ServiceSourceChangedV1 ? ReadServiceSource(x.Details) : null,
+            x.Kind == AuditKinds.GroupChangedV1 ? ReadGroup(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -101,6 +105,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         {
             var value = JsonSerializer.Deserialize<ServiceSourceChanged>(details, Options);
             return value?.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static GroupChanged? ReadGroup(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<GroupChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }

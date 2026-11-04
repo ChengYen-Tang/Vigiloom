@@ -66,7 +66,9 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
             else if (path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
-                     path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase))
+                     path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/groups", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/groups/", StringComparison.OrdinalIgnoreCase))
             {
                 var isMutation = !method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase);
                 var needsWrite = isMutation || path.EndsWith("/address-matches", StringComparison.OrdinalIgnoreCase);
@@ -105,6 +107,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/operations/audit/agent-replay", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-approvals", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-sources", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/groups", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/operations/audit-feed/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/platform-status", StringComparison.OrdinalIgnoreCase))
             {
