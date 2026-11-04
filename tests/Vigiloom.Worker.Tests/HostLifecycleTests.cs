@@ -15,6 +15,12 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Health;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -22,6 +28,99 @@ namespace Vigiloom.Worker.Tests;
 [DoNotParallelize]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    [TestCategory("Integration")]
+    [TestCategory("Database")]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Host_CollectsHealthAndCancelsInFlightProbeOnShutdown() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        GlobalConfiguration.Configuration.UseNoOpLogProvider();
+        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+        var serviceOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+        await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
+        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+        await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+        await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(45));
+        var receivedSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? server = null;
+        IHost? host = null;
+        Exception? failure = null;
+        try
+        {
+            var now = DateTimeOffset.UtcNow.AddSeconds(-1);
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            var target = new HealthTarget(service.Id, null, $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/health", 30, 5, 3, 2, now);
+            target.SetEnabled(true, now);
+            await using (var db = new ServiceObservabilityDbContext(serviceOptions))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source); db.Services.Add(service); db.HealthTargets.Add(target);
+                db.HealthSchedules.Add(new HealthSchedule(target.Id, true, now));
+                db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 0, 0, now));
+                db.HealthNetworkPolicies.Add(new HealthNetworkPolicy(["127.0.0.0/8"], now));
+                await db.SaveChangesAsync(token);
+            }
+            server = ServeHealthAsync(listener, receivedSecond, deadline.Token);
+            var builder = WorkerHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+            host = builder.Build();
+            await host.StartAsync(deadline.Token);
+            while (true)
+            {
+                await using var db = new ServiceObservabilityDbContext(serviceOptions);
+                if (await db.HealthObservations.AnyAsync(deadline.Token))
+                {
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {target.Id}", deadline.Token);
+                    break;
+                }
+                await Task.Delay(100, deadline.Token);
+            }
+            await receivedSecond.Task.WaitAsync(deadline.Token);
+            await host.StopAsync(deadline.Token);
+            await using var verify = new ServiceObservabilityDbContext(serviceOptions);
+            Assert.AreEqual(1, await verify.HealthObservations.CountAsync(token));
+        }
+        catch (Exception ex) { failure = ex; throw; }
+        finally
+        {
+            deadline.Cancel(); listener.Stop();
+            if (host is not null) { await StopForCleanupAsync(host, failure); host.Dispose(); }
+            if (server is not null) try { await server; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+        }
+    }, testContext.CancellationToken);
+
+    private static async Task ServeHealthAsync(TcpListener listener, TaskCompletionSource receivedSecond, CancellationToken token)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var peer = await listener.AcceptTcpClientAsync(token);
+            await using var stream = peer.GetStream();
+            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+            while (!string.IsNullOrEmpty(await reader.ReadLineAsync(token))) { }
+            if (attempt == 0)
+                await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nHealthy"u8.ToArray(), token);
+            else
+            {
+                receivedSecond.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            }
+        }
+    }
+
     [TestMethod]
     public void SpeedtestHttpHandlers_ArePooledAcrossMeasurements()
     {

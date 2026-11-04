@@ -5,4 +5,4 @@ public sealed record InstancePolicyInput(int PerService, int Total, string Versi
 public sealed record ServiceInstanceSummary(Guid Id, Guid ServiceId, string ExternalInstanceId,
     DateTimeOffset CreatedAt, DateTimeOffset? RetiredAt, string Version);
 public sealed record ServiceInstanceUpdate(string Version);
-public sealed record ManagedServiceSummary(Guid Id, string Name, string Environment, Guid SourceId, DateTimeOffset? StoppedAt, string Version);
+public sealed record ManagedServiceSummary(Guid Id, string Name, string Environment, Guid SourceId, DateTimeOffset? StoppedAt, string Version, string? SourceName = null);

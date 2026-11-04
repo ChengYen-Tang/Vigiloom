@@ -14,6 +14,8 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Worker.Hosting;
 
@@ -28,6 +30,7 @@ public static class WorkerHost
         builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
         builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
         builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
+        builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service", pooled: true);
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
@@ -51,6 +54,10 @@ public static class WorkerHost
         builder.Services.AddHostedService<SpeedWorker>();
         builder.Services.AddHostedService<SpeedSchedule>();
         builder.Services.AddHostedService<PingWorker>();
+        builder.Services.AddSingleton<HealthRunner>();
+        builder.Services.AddHostedService<HealthPolicyWorker>();
+        builder.Services.AddHostedService<HealthExpiryWorker>();
+        builder.Services.AddHostedService<HealthWorker>();
         builder.Services.AddHostedService<OutboxSchedule>();
         builder.Services.AddHangfireServer();
         return builder;
