@@ -1,0 +1,88 @@
+# OpenTelemetry Collector Contrib 0.164.0. Illustrative two-source configuration.
+# Replace placeholders through a secret manager and configure certificates before use.
+# Never reuse ingress or central credentials between mutually untrusted applications.
+extensions:
+  bearertokenauth/ingress-a:
+    token: ${env:VIGILOOM_INGRESS_A_TOKEN}
+  bearertokenauth/ingress-b:
+    token: ${env:VIGILOOM_INGRESS_B_TOKEN}
+  bearertokenauth/central-a:
+    token: ${env:VIGILOOM_SOURCE_A_TOKEN}
+  bearertokenauth/central-b:
+    token: ${env:VIGILOOM_SOURCE_B_TOKEN}
+
+receivers:
+  otlp/source-a:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 4
+        tls: { cert_file: /etc/vigiloom/tls/collector.crt, key_file: /etc/vigiloom/tls/collector.key }
+        auth: { authenticator: bearertokenauth/ingress-a }
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 4194304
+        tls: { cert_file: /etc/vigiloom/tls/collector.crt, key_file: /etc/vigiloom/tls/collector.key }
+        auth: { authenticator: bearertokenauth/ingress-a }
+  otlp/source-b:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4327
+        max_recv_msg_size_mib: 4
+        tls: { cert_file: /etc/vigiloom/tls/collector.crt, key_file: /etc/vigiloom/tls/collector.key }
+        auth: { authenticator: bearertokenauth/ingress-b }
+      http:
+        endpoint: 0.0.0.0:4328
+        max_request_body_size: 4194304
+        tls: { cert_file: /etc/vigiloom/tls/collector.crt, key_file: /etc/vigiloom/tls/collector.key }
+        auth: { authenticator: bearertokenauth/ingress-b }
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch:
+    send_batch_size: 50
+    send_batch_max_size: 100
+    timeout: 1s
+
+exporters:
+  otlp_http/source-a:
+    endpoint: ${env:VIGILOOM_OTLP_ENDPOINT}
+    tls: { ca_file: /etc/vigiloom/tls/platform-ca.crt }
+    auth: { authenticator: bearertokenauth/central-a }
+    sending_queue: { enabled: false }
+  otlp_http/source-b:
+    endpoint: ${env:VIGILOOM_OTLP_ENDPOINT}
+    tls: { ca_file: /etc/vigiloom/tls/platform-ca.crt }
+    auth: { authenticator: bearertokenauth/central-b }
+    sending_queue: { enabled: false }
+
+service:
+  # The Collector reports its own metrics under a dedicated Vigiloom source.
+  # Never give this credential to applications or attach it to ingress pipelines.
+  telemetry:
+    resource:
+      service.name: vigiloom-collector
+      deployment.environment.name: monitoring
+    metrics:
+      readers:
+        - periodic:
+            interval: 30000
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: ${env:VIGILOOM_COLLECTOR_METRICS_ENDPOINT}
+                certificate: /etc/vigiloom/tls/platform-ca.crt
+                headers:
+                  - name: Authorization
+                    value: Bearer ${env:VIGILOOM_COLLECTOR_MONITOR_TOKEN}
+  extensions: [bearertokenauth/ingress-a, bearertokenauth/ingress-b, bearertokenauth/central-a, bearertokenauth/central-b]
+  pipelines:
+    logs/source-a: { receivers: [otlp/source-a], processors: [memory_limiter, batch], exporters: [otlp_http/source-a] }
+    metrics/source-a: { receivers: [otlp/source-a], processors: [memory_limiter, batch], exporters: [otlp_http/source-a] }
+    traces/source-a: { receivers: [otlp/source-a], processors: [memory_limiter, batch], exporters: [otlp_http/source-a] }
+    logs/source-b: { receivers: [otlp/source-b], processors: [memory_limiter, batch], exporters: [otlp_http/source-b] }
+    metrics/source-b: { receivers: [otlp/source-b], processors: [memory_limiter, batch], exporters: [otlp_http/source-b] }
+    traces/source-b: { receivers: [otlp/source-b], processors: [memory_limiter, batch], exporters: [otlp_http/source-b] }

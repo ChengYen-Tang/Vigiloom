@@ -1,0 +1,118 @@
+@page "/settings/collectors/{CollectorId:guid}/instances/{InstanceId:guid}/counters"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@using Vigiloom.Modules.ServiceObservability.Application.Telemetry
+@inject CollectorAdministration Collectors
+@inject CollectorCounters Counters
+@inject ILogger<CollectorCountersPage> Logger
+
+<PageTitle>Collector 來源轉送 - Vigiloom</PageTitle>
+<main class="device-page collector-counters">
+    <header class="device-heading"><div><h1>Collector 來源轉送</h1><p>查看指定執行個體回報的累計計數。</p></div></header>
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取回報，請重新整理後再試。</p> }
+    else if (collector is null) { <p role="alert">找不到此 Collector。</p> }
+    else
+    {
+        <section class="device-panel" aria-labelledby="source-heading">
+            <h2 id="source-heading">@collector.Name：選擇來源</h2>
+            @if (routes.Count == 0) { <p>尚未設定來源對應。<a href="@($"/settings/collectors/{CollectorId:D}/sources")">管理來源對應</a></p> }
+            else
+            {
+                <ul class="source-identities">
+                    @foreach (var route in routes)
+                    {
+                        <li><a href="@($"/settings/collectors/{CollectorId:D}/instances/{InstanceId:D}/counters?source={route.SourceId:D}")">@route.SourceName</a>
+                            @if (route.SourceRevokedAt is not null) { <span>（來源已撤銷）</span> }
+                            <br /><small>來源：@route.SourceId · 轉送元件：@route.Exporter</small></li>
+                    }
+                </ul>
+            }
+        </section>
+        @if (SourceId is not null)
+        {
+            <section class="device-panel" aria-labelledby="counters-heading">
+                <h2 id="counters-heading">來源轉送回報</h2>
+                @if (result is null) { <p role="alert">找不到所選來源或執行個體，請重新選擇。</p> }
+                else
+                {
+                    <p>執行個體：@result.Instance<br />來源：@SourceId<br />轉送元件：@result.Exporter</p>
+                    <p>資料範圍：截至 @Display(result.Through) UTC 前 24 小時內保存的回報。這些是 Collector 回報的累計數，並非目前健康狀態或已遺失筆數；不同維度分開顯示。</p>
+                    @if (result.MonitoringSourceRevokedAt is not null || result.TargetSourceRevokedAt is not null || result.ServiceStoppedAt is not null || result.InstanceRetiredAt is not null)
+                    { <p class="device-alert" role="status">監控或轉送來源已撤銷、服務已停收或執行個體已退役；歷史回報不能代表目前狀態。</p> }
+                    @if (result.Incomplete) { <p class="device-alert" role="status">累計值列表因查詢上限、資料變動或格式不支援而可能不完整；近期比較會分別檢查各訊號的資料。</p> }
+                    <h3>最近兩次失敗回報的比較</h3>
+                    <p>僅比較同一序列且累計起始時間相同的樣本；最新回報超過 90 秒、樣本間隔超過 5 分鐘或資料不足時無法判斷。送出失敗可能隨後重試，不代表永久遺失。</p>
+                    <ul>
+                        @foreach (var failure in result.Failures)
+                        {
+                            <li><strong>@Label(failure.Metric)</strong>：@FailureLabel(failure.Observation)
+                                @if (failure.From is not null && failure.Through is not null)
+                                { <span>（@Start(failure.From.Value) 至 @Start(failure.Through.Value) UTC）</span> }
+                            </li>
+                        }
+                    </ul>
+                    @if (result.Counters.Count == 0) { <p>此範圍沒有可顯示的計數；無資料不代表計數為零。</p> }
+                    else
+                    {
+                        <p>同名指標的不同序列不會合計；序列識別碼用來區分維度，不顯示來源回報的任意屬性。</p>
+                        <p class="scroll-hint">左右滑動表格，查看完整計數與時間。</p>
+                        <div class="device-table-wrap" tabindex="0" role="region" aria-label="來源轉送計數，可左右滑動">
+                            <table><thead><tr><th scope="col">計數</th><th scope="col">累計值</th><th scope="col">累計起始（UTC）</th><th scope="col">量測時間（UTC）</th><th scope="col">保存時間（UTC）</th><th scope="col">序列</th></tr></thead>
+                                <tbody>@foreach (var counter in result.Counters)
+                                { <tr><th scope="row">@Label(counter.Metric)</th><td>@counter.Value</td><td>@Start(counter.StartedAtUnixNano)</td><td>@Display(counter.MeasuredAt)</td><td>@Display(counter.ReceivedAt)</td><td><code>@counter.Series</code></td></tr> }</tbody>
+                            </table>
+                        </div>
+                    }
+                }
+            </section>
+        }
+    }
+    <p><a href="/settings/collector-reports">返回 Collector 回報</a></p>
+</main>
+
+@code {
+    [Parameter] public Guid CollectorId { get; set; }
+    [Parameter] public Guid InstanceId { get; set; }
+    [SupplyParameterFromQuery(Name = "source")] public Guid? SourceId { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private CollectorSummary? collector;
+    private IReadOnlyList<CollectorRouteSummary> routes = [];
+    private CollectorCounterPage? result;
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            collector = await Collectors.GetAsync(CollectorId, HttpContext.RequestAborted);
+            if (collector is null) return;
+            routes = await Collectors.RoutesAsync(CollectorId, HttpContext.RequestAborted);
+            if (SourceId is { } source) result = await Counters.QueryAsync(CollectorId, source, InstanceId, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load Collector counters: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private static string Display(DateTimeOffset time) => time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    private static string Start(ulong nanoseconds) => nanoseconds == 0 ? "未提供" : Display(DateTimeOffset.FromUnixTimeMilliseconds((long)(nanoseconds / 1_000_000)));
+    private static string FailureLabel(FailureObservation value) => value switch
+    {
+        FailureObservation.Increased => "比較期間失敗計數增加",
+        FailureObservation.Unchanged => "比較期間未觀察到失敗增加",
+        FailureObservation.Stale => "回報過期",
+        _ => "未知"
+    };
+    private static string Label(string metric) => metric switch
+    {
+        "otelcol_exporter_sent_log_records" => "Log 已送出",
+        "otelcol_exporter_send_failed_log_records" => "Log 送出失敗",
+        "otelcol_exporter_sent_metric_points" => "Metrics 已送出",
+        "otelcol_exporter_send_failed_metric_points" => "Metrics 送出失敗",
+        "otelcol_exporter_sent_spans" => "Trace 已送出",
+        "otelcol_exporter_send_failed_spans" => "Trace 送出失敗",
+        _ => metric
+    };
+}

@@ -1,0 +1,175 @@
+@page "/settings/collector-reports"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application
+@using Vigiloom.Modules.ServiceObservability.Application.Telemetry
+@using System.Security.Claims
+@inject ServiceInstanceAdministration Services
+@inject CollectorObservations Observations
+@inject CollectorAdministration Collectors
+@inject ILogger<CollectorReports> Logger
+
+<PageTitle>Collector 回報 - Vigiloom</PageTitle>
+<main class="device-page collector-reports">
+    <header class="device-heading"><div><h1>Collector 回報</h1><p>查看已選服務的執行個體最近回報時間。</p></div></header>
+    <p class="management-notice">請選擇使用 Collector 專用來源憑證的監控服務；服務名稱本身無法證明來源。回報時間不代表所有管線或應用服務正常。</p>
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    <section class="device-panel" aria-labelledby="registered-heading">
+        <h2 id="registered-heading">已登記的 Collector</h2>
+        @if (loadError) { <p role="alert">無法讀取登記資料，請重新整理後再試。</p> }
+        else if (collectors.Count == 0) { <p>@(collectorPage > 1 ? "此頁沒有 Collector。" : "尚未登記 Collector。")</p> }
+        else
+        {
+            <ul class="registered-list">
+                @foreach (var collector in collectors)
+                {
+                    <li @key="collector.Id"><strong>@collector.Name</strong> <a href="@Url(servicePage, collector.MonitoringServiceId, 1, collectorPage)">查看回報</a> · <a href="@($"/settings/collectors/{collector.Id:D}/sources")">管理來源對應</a>
+                        @if (collector.MonitoringSourceRevokedAt is not null) { <span>來源憑證已撤銷</span> }
+                        @if (collector.MonitoringServiceStoppedAt is not null) { <span>監控服務已停收</span> }
+                        <br /><small>監控服務：@collector.MonitoringServiceId</small></li>
+                }
+            </ul>
+        }
+        @if (!loadError && (collectors.Count > 0 || collectorPage > 1))
+        {
+            <nav aria-label="Collector 分頁"><span>第 @collectorPage 頁</span>
+                @if (collectorPage > 1) { <a href="@Url(servicePage, SelectedService, instancePage, collectorPage - 1)">上一頁 Collector</a> }
+                @if (collectors.Count == 50 && collectorPage < 2000) { <a href="@Url(servicePage, SelectedService, instancePage, collectorPage + 1)">下一頁 Collector</a> }
+            </nav>
+        }
+    </section>
+    <section class="device-panel" aria-labelledby="choose-service">
+        <h2 id="choose-service">選擇監控服務</h2>
+        @if (loadError) { <p class="device-alert" role="alert">無法讀取監控資料，請重新整理後再試。</p> }
+        else if (services.Count == 0) { <p>此頁沒有已加入的服務。請先到<a href="/settings/service-discovery">待加入服務</a>確認來源並加入。</p> }
+        else
+        {
+            <form method="get" action="/settings/collector-reports">
+                <input type="hidden" name="servicePage" value="@servicePage" />
+                <fieldset class="service-options"><legend>監控服務</legend>
+                    @foreach (var service in services)
+                    {
+                        <label class="service-choice"><input type="radio" name="service" value="@service.Id" checked="@(service.Id == SelectedService)" required />
+                            <span><strong>@service.Name</strong> — @service.Environment<br />服務：@service.Id<br />來源：@service.SourceId</span></label>
+                    }
+                </fieldset>
+                <button type="submit">查看回報</button>
+            </form>
+        }
+        @if (!loadError && (services.Count > 0 || servicePage > 1))
+        {
+            <nav aria-label="監控服務分頁"><span>服務第 @servicePage 頁</span>
+                @if (servicePage > 1) { <a href="@Url(servicePage - 1, SelectedService, 1, collectorPage)">上一頁服務</a> }
+                @if (services.Count == 50 && servicePage < 1000) { <a href="@Url(servicePage + 1, SelectedService, 1, collectorPage)">下一頁服務</a> }
+            </nav>
+        }
+    </section>
+    @if (!loadError && SelectedService is not null)
+    {
+        <section class="device-panel" aria-labelledby="reports-heading">
+            <h2 id="reports-heading">執行個體回報</h2>
+            @if (reports is null) { <p role="alert">找不到所選服務，請重新選擇。</p> }
+            else
+            {
+                <p>服務識別碼：@reports.ServiceId<br />來源識別碼：@reports.SourceId</p>
+                <p>顯示截至 @Display(reports.ObservedThrough) UTC 前 24 小時內保存的 uptime 回報；每個執行個體選取量測時間最新的一筆，並顯示該筆保存時間。舊資料清除或來源未回報時可能沒有資料。</p>
+                @if (reports.SourceRevokedAt is not null) { <p class="device-alert" role="status">此來源憑證已撤銷；先前回報不能代表目前狀態。</p> }
+                @if (reports.ServiceStoppedAt is not null) { <p class="device-alert" role="status">此服務已停收；先前回報不能代表目前狀態。</p> }
+                @if (reports.Instances.Count == 0) { <p>此頁沒有可辨識的執行個體。</p> }
+                else
+                {
+                    <p class="scroll-hint">表格可左右滑動，查看完整時間。</p>
+                    <div class="table-scroll" tabindex="0" role="region" aria-label="Collector 執行個體回報，可左右滑動">
+                        <table><thead><tr><th scope="col">執行個體</th><th scope="col">退役狀態</th><th scope="col">平台保存時間（UTC）</th><th scope="col">來源量測時間（UTC）</th></tr></thead><tbody>
+                        @foreach (var instance in reports.Instances)
+                        {
+                            <tr @key="instance.InstanceId"><th scope="row">@instance.ExternalInstanceId
+                                @foreach (var collector in collectors.Where(x => x.MonitoringServiceId == reports.ServiceId))
+                                { <br /><a href="@($"/settings/collectors/{collector.Id:D}/instances/{instance.InstanceId:D}/counters")">查看 @collector.Name 的來源轉送</a> }
+                                </th><td>@(instance.RetiredAt is null ? "未退役" : "已退役")</td><td>@Display(instance.LastReceivedAt)</td><td>@Display(instance.LastMeasuredAt)</td></tr>
+                        }
+                        </tbody></table>
+                    </div>
+                }
+                @if (reports.UnidentifiedReceivedAt is not null) { <p>另有無法區分執行個體的回報：@Display(reports.UnidentifiedReceivedAt) UTC。</p> }
+                @if (instancePage > 1 || reports.HasMore)
+                {
+                    <nav aria-label="執行個體回報分頁"><span>第 @instancePage 頁</span>
+                        @if (instancePage > 1) { <a href="@Url(servicePage, SelectedService, instancePage - 1, collectorPage)">上一頁</a> }
+                        @if (reports.HasMore && instancePage < 2000) { <a href="@Url(servicePage, SelectedService, instancePage + 1, collectorPage)">下一頁</a> }
+                    </nav>
+                }
+            }
+        </section>
+    }
+    <EditForm Model="Registration" FormName="collector-register" method="post" OnValidSubmit="RegisterAsync">
+        @if (!loadError && reports is { SourceRevokedAt: null, ServiceStoppedAt: null } &&
+            !collectors.Any(x => x.MonitoringServiceId == reports.ServiceId))
+        {
+            <section class="device-panel"><details><summary>登記此 Collector</summary>
+                <p>登記僅建立管理對應，不會自動驗證來源或變更收集設定。</p>
+                <label for="collector-name">Collector 名稱</label><InputText id="collector-name" @bind-Value="Registration.Name" maxlength="128" required />
+                <label><input type="checkbox" name="Registration.Confirm" value="true" required /> 我已確認此服務使用僅供 Collector 自身監控的來源憑證</label>
+                <button type="submit">登記 Collector</button>
+            </details></section>
+        }
+    </EditForm>
+    <p><a href="/settings/service-reception">返回管線接入</a></p>
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "service")] public Guid? SelectedService { get; set; }
+    [SupplyParameterFromQuery(Name = "servicePage")] public int? RequestedServicePage { get; set; }
+    [SupplyParameterFromQuery(Name = "instancePage")] public int? RequestedInstancePage { get; set; }
+    [SupplyParameterFromQuery(Name = "collectorPage")] public int? RequestedCollectorPage { get; set; }
+    [SupplyParameterFromForm(FormName = "collector-register")] private RegistrationInput Registration { get; set; } = default!;
+    private IReadOnlyList<ManagedServiceSummary> services = [];
+    private IReadOnlyList<CollectorSummary> collectors = [];
+    private CollectorObservationPage? reports;
+    private bool loadError;
+    private string? message, error;
+    private int servicePage, instancePage, collectorPage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        servicePage = Math.Clamp(RequestedServicePage ?? 1, 1, 1000);
+        instancePage = Math.Clamp(RequestedInstancePage ?? 1, 1, 2000);
+        collectorPage = Math.Clamp(RequestedCollectorPage ?? 1, 1, 2000);
+        Registration ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            services = await Services.ListServicesAsync(servicePage, HttpContext.RequestAborted);
+            collectors = await Collectors.ListAsync(collectorPage, HttpContext.RequestAborted);
+            if (SelectedService is { } id) reports = await Observations.QueryAsync(id, instancePage, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load Collector reports: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (SelectedService is not { } service || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ||
+            !Registration.Confirm || string.IsNullOrWhiteSpace(Registration.Name) || Registration.Name.Length > 128)
+        { error = "請填寫名稱，並確認監控來源憑證的用途。"; return; }
+        CollectorChangeResult result;
+        try
+        {
+            result = await Collectors.RegisterAsync(Registration.Name, service, true, actor, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot register Collector: {ExceptionType}", ex.GetType().Name); error = "無法確認登記結果，請重新整理後檢查。"; return; }
+        if (result.Status == CollectorChangeStatus.Updated) { message = "Collector 已登記。"; Registration.Name = ""; Registration.Confirm = false; }
+        else error = result.Status == CollectorChangeStatus.Conflict ? "此監控服務已登記，請重新整理後確認。" : "服務或來源無法使用，請重新整理後確認。";
+        try { collectors = await Collectors.ListAsync(collectorPage, HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot refresh Collectors: {ExceptionType}", ex.GetType().Name); error = "無法更新清單，請重新整理。"; }
+    }
+
+    private static string Display(DateTimeOffset? value) => value is null ? "尚無資料" : value.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    private static string Url(int services, Guid? selected, int instances, int collectors) => $"/settings/collector-reports?servicePage={services}&service={selected:D}&instancePage={instances}&collectorPage={collectors}";
+    private sealed class RegistrationInput { public string Name { get; set; } = ""; public bool Confirm { get; set; } }
+}
