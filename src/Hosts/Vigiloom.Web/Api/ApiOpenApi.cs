@@ -89,7 +89,10 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
                         [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
             }
-            else if (path.StartsWith("/api/v1/service-telemetry/", StringComparison.OrdinalIgnoreCase))
+            else if (path.StartsWith("/api/v1/service-telemetry/", StringComparison.OrdinalIgnoreCase) ||
+                     (path.StartsWith("/api/v1/service-health/", StringComparison.OrdinalIgnoreCase) &&
+                      (path.EndsWith("/status", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/history", StringComparison.OrdinalIgnoreCase)) &&
+                      !path.StartsWith("/api/v1/service-health/networks", StringComparison.OrdinalIgnoreCase)))
             {
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] },
                     new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];

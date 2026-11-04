@@ -8,6 +8,35 @@ internal static class HealthTargetEndpoints
 {
     internal static void MapHealthTargetEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/service-health/{serviceId:guid}/status", async (Guid serviceId,
+            HealthStatusReader reader, HttpContext context, CancellationToken token) =>
+        {
+            if (serviceId.Version != 7) return Results.BadRequest();
+            context.Response.Headers.CacheControl = "no-store";
+            var status = await reader.ReadAsync(serviceId, token);
+            return status is null ? Results.NotFound() : Results.Ok(status);
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .WithSummary("Get current aggregate application health")
+            .Produces<ServiceHealthStatus>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
+        app.MapGet("/api/v1/service-health/{serviceId:guid}/history", async (Guid serviceId, DateTimeOffset from,
+            DateTimeOffset to, HealthHistoryReader reader, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                var history = await reader.ReadAsync(serviceId, from.ToUniversalTime(), to.ToUniversalTime(), token);
+                return history is null ? Results.NotFound() : Results.Ok(history);
+            }
+            catch (HealthHistoryRequestException) { return Results.BadRequest(); }
+            catch (HealthHistoryTooLargeException)
+            {
+                return Results.Problem(statusCode: 422, title: "The requested history is too large; select a shorter time range.");
+            }
+            catch (HealthHistoryBusyException) { return Results.Problem(statusCode: 503, title: "Health history changed; retry the request."); }
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .WithSummary("Get duration-based application health history")
+            .Produces<ServiceHealthHistory>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .ProducesProblem(404).ProducesProblem(422).ProducesProblem(429).ProducesProblem(503);
         var networks = app.MapGroup("/api/v1/service-health/networks")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         networks.MapGet("/", async (HealthNetworkPolicyAdministration policy, HttpContext context, CancellationToken token) =>
