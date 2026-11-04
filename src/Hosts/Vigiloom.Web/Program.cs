@@ -91,6 +91,8 @@ builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthObservationReader>();
+builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader>();
+builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthHistoryReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
 builder.Services.AddScoped<SourceCredentials>();
