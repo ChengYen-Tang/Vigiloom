@@ -4,6 +4,7 @@ using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -22,6 +23,84 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task ServiceInstancePage_PolicyAndLifecycleRequireAdminAndRemainUsableAcrossPosts() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            var contexts = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            var now = DateTimeOffset.UtcNow;
+            var source = new Vigiloom.Modules.ServiceObservability.Domain.ServiceSource("source", new byte[32], now);
+            var service = new Vigiloom.Modules.ServiceObservability.Domain.MonitoredService(
+                new Vigiloom.Modules.ServiceObservability.Domain.ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            Guid instanceId;
+            await using (var db = await contexts.CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+                await using var tx = await db.Database.BeginTransactionAsync(token);
+                var result = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", "node", token);
+                instanceId = result.InstanceId!.Value;
+                await tx.CommitAsync(token);
+            }
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            await LoginAsync(reader, "reader", token); await LoginAsync(admin, "admin", token);
+            var url = $"/settings/service-instances?service={service.Id:D}";
+            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
+            using (var denied = await anonymous.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await admin.PutAsJsonAsync("/api/v1/service-instances/policy", new InstancePolicyInput(2, 5, ""), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using var page = await admin.GetAsync(url, token);
+            var fields = await FieldsAsync(page, token, "instance-policy");
+            fields["PolicyForm.PerService"] = "2"; fields["PolicyForm.Total"] = "5";
+            using var saved = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
+            Assert.Contains("容量設定已儲存", await BodyTextAsync(saved, token));
+            var action = await FieldsAsync(saved, token, "instance-action");
+            action["InstanceForm.Id"] = instanceId.ToString("D"); action[$"confirm-{instanceId:N}"] = "true";
+            using var retired = await admin.PostAsync(url, new FormUrlEncodedContent(action), token);
+            Assert.Contains("執行個體已退役", await BodyTextAsync(retired, token));
+            var after = await FieldsAsync(retired, token, "instance-policy");
+            Assert.AreEqual("2", after["PolicyForm.PerService"]); Assert.AreEqual("5", after["PolicyForm.Total"]);
+            Assert.IsFalse(string.IsNullOrEmpty(after["PolicyForm.Version"]));
+            after["PolicyForm.Total"] = "6";
+            using var again = await admin.PostAsync(url, new FormUrlEncodedContent(after), token);
+            Assert.Contains("容量設定已儲存", await BodyTextAsync(again, token));
+            var restore = await FieldsAsync(again, token, "instance-action");
+            restore["InstanceForm.Id"] = instanceId.ToString("D"); restore[$"confirm-{instanceId:N}"] = "true";
+            using var restored = await admin.PostAsync(url, new FormUrlEncodedContent(restore), token);
+            Assert.Contains("執行個體已恢復", await BodyTextAsync(restored, token));
+            var stopService = await FieldsAsync(restored, token, "service-collection");
+            stopService["ServiceForm.Id"] = service.Id.ToString("D"); stopService[$"service-confirm-{service.Id:N}"] = "true";
+            using var stopped = await admin.PostAsync(url, new FormUrlEncodedContent(stopService), token);
+            Assert.Contains("服務已停收", await BodyTextAsync(stopped, token));
+            var resumeService = await FieldsAsync(stopped, token, "service-collection");
+            resumeService["ServiceForm.Id"] = service.Id.ToString("D"); resumeService[$"service-confirm-{service.Id:N}"] = "true";
+            using var resumed = await admin.PostAsync(url, new FormUrlEncodedContent(resumeService), token);
+            Assert.Contains("服務已恢復授權", await BodyTextAsync(resumed, token));
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            var latest = await admin.GetFromJsonAsync<InstancePolicySnapshot>("/api/v1/service-instances/policy", token);
+            using (var updated = await admin.PutAsJsonAsync("/api/v1/service-instances/policy", new InstancePolicyInput(3, 6, latest!.Version), token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            var instanceList = await admin.GetFromJsonAsync<ServiceInstanceSummary[]>($"/api/v1/service-instances/services/{service.Id:D}", token);
+            using (var change = await admin.PostAsJsonAsync($"/api/v1/service-instances/{instanceId:D}/retire", new ServiceInstanceUpdate(instanceList!.Single().Version), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, change.StatusCode);
+            var at = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit/service-instances?from={Uri.EscapeDataString(at.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(at.AddHours(1).ToString("O"))}";
+            var audit = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(auditUrl, token);
+            Assert.HasCount(3, audit!.Items);
+            var collectionAuditUrl = $"/api/v1/operations/audit/service-collections?from={Uri.EscapeDataString(at.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(at.AddHours(1).ToString("O"))}";
+            var collectionAudit = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(collectionAuditUrl, token);
+            Assert.HasCount(2, collectionAudit!.Items);
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task ServiceObservation_RateLimitAndCapacityDoNotConsumeAdministratorQuota() =>

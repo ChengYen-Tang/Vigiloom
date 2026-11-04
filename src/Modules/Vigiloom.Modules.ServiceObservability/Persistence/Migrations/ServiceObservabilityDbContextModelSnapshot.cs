@@ -23,6 +23,63 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.InstancePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("PerService")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Total")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("InstancePolicies", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_InstancePolicies_Central", "[Name] = 'central'");
+
+                            t.HasCheckConstraint("CK_InstancePolicies_Limits", "[PerService] > 0 AND [Total] > 0");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", b =>
                 {
                     b.Property<Guid>("Id")
@@ -71,6 +128,12 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.HasKey("Id");
 
@@ -151,6 +214,70 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.ToTable("Candidates", "service");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ExternalInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("ExternalInstanceIdBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(512)")
+                        .HasComputedColumnSql("CONVERT(varbinary(512), [ExternalInstanceId])", true);
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Id", "ServiceId")
+                        .IsUnique();
+
+                    b.HasIndex("ServiceId", "SourceScopeId", "ExternalInstanceIdBytes")
+                        .IsUnique()
+                        .HasFilter("[RetiredAt] IS NULL");
+
+                    b.HasIndex("ServiceId", "SourceScopeId", "ExternalInstanceIdBytes", "RetiredAt");
+
+                    b.ToTable("Instances", "service");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", b =>
                 {
                     b.Property<Guid>("Id")
@@ -206,6 +333,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceSource", null)
                         .WithMany()
                         .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId", "SourceScopeId")
+                        .HasPrincipalKey("Id", "SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

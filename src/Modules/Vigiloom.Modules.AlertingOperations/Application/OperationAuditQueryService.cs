@@ -38,13 +38,22 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryGroupsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.GroupChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryInstancePoliciesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.InstancePolicyChangedV1, cancellationToken);
+
+    public async Task<OperationAuditPage> QueryServiceInstancesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.ServiceInstanceChangedV1, cancellationToken);
+
+    public async Task<OperationAuditPage> QueryServiceCollectionsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.ServiceCollectionChangedV1, cancellationToken);
+
     private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, short kind, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
                 (kind != 0 ? x.Kind == kind :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1))
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -54,7 +63,10 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.AgentReplayPolicyChangedV1 ? ReadAgentReplayPolicy(x.Details) : null,
             x.Kind == AuditKinds.ServiceApprovedV1 ? ReadServiceApproval(x.Details) : null,
             x.Kind == AuditKinds.ServiceSourceChangedV1 ? ReadServiceSource(x.Details) : null,
-            x.Kind == AuditKinds.GroupChangedV1 ? ReadGroup(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.GroupChangedV1 ? ReadGroup(x.Details) : null,
+            x.Kind == AuditKinds.InstancePolicyChangedV1 ? ReadInstancePolicy(x.Details) : null,
+            x.Kind == AuditKinds.ServiceInstanceChangedV1 ? ReadServiceInstance(x.Details) : null,
+            x.Kind == AuditKinds.ServiceCollectionChangedV1 ? ReadServiceCollection(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -114,6 +126,36 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<GroupChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static InstancePolicyChanged? ReadInstancePolicy(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<InstancePolicyChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static ServiceInstanceChanged? ReadServiceInstance(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<ServiceInstanceChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static ServiceCollectionChanged? ReadServiceCollection(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<ServiceCollectionChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
