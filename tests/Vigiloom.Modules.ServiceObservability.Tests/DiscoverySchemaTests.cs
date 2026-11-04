@@ -55,6 +55,30 @@ public sealed class DiscoverySchemaTests(TestContext context)
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
     [TestMethod]
+    public Task CandidateDiscovery_ContinuedReportsRemainVisibleAfterFirstSeenWindow() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
+            var factory = new Factory(options);
+            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var discovery = new CandidateDiscovery(factory);
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Orders", token));
+            var original = (await discovery.ListAsync(1, token)).Single();
+            await using (var db = new ServiceObservabilityDbContext(options))
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Candidates] SET [FirstSeen] = DATEADD(minute, -4, SYSUTCDATETIME()), [LastSeen] = DATEADD(minute, -1, SYSUTCDATETIME()) WHERE [Id] = {original.Id}", token);
+
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "orders", "prod", "Updated", token));
+            var visible = (await discovery.ListAsync(1, token)).Single();
+            Assert.AreEqual(original.Id, visible.Id);
+            Assert.AreEqual("Updated", visible.DisplayName);
+            Assert.IsTrue(visible.LastSeen - visible.FirstSeen > TimeSpan.FromMinutes(3));
+            await using var check = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(1, await check.Candidates.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task CandidateDiscovery_GlobalCapacityIsSerializedAndExpiredCapacityIsReused() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
