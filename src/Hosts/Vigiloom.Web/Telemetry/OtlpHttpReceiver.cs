@@ -24,7 +24,7 @@ internal static class OtlpHttpReceiver
 {
     internal static async Task<IResult> ReceiveAsync<TRequest, TResponse>(HttpContext context,
         MessageParser<TRequest> parser, Func<AuthenticatedSource, TRequest, CancellationToken, Task<ExportResult>> export,
-        Func<ExportResult, TResponse> response, CancellationToken token)
+        Func<ExportResult, TResponse> response, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null)
         where TRequest : class, IMessage<TRequest>
         where TResponse : IMessage
     {
@@ -49,6 +49,8 @@ internal static class OtlpHttpReceiver
             try
             {
                 var result = await export(source, body.Message, token);
+                if (result.Status == ExportStatus.Unauthorized) diagnostics?.Record(ReceptionRejectionKind.SourceUnavailable, ReceptionIngress.Otlp, source.SourceId);
+                if (result.ServiceNotAuthorized) diagnostics?.Record(ReceptionRejectionKind.ServiceNotAuthorized, ReceptionIngress.Otlp, source.SourceId);
                 return OtlpResponse.FromResult(context, result, response);
             }
             catch (DbException)

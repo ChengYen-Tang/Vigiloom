@@ -19,10 +19,18 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<MetricPoint> MetricPoints => Set<MetricPoint>();
     public DbSet<CollectorRegistration> Collectors => Set<CollectorRegistration>();
     public DbSet<CollectorRoute> CollectorRoutes => Set<CollectorRoute>();
+    public DbSet<ReceptionRejectionSummary> ReceptionRejections => Set<ReceptionRejectionSummary>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("service");
+
+        var rejections = modelBuilder.Entity<ReceptionRejectionSummary>();
+        rejections.ToTable("ReceptionRejections", table => table.HasCheckConstraint("CK_ReceptionRejections_Kind", "[Kind] IN (1, 2, 3)"));
+        rejections.HasKey(x => x.RowId).IsClustered();
+        rejections.Property(x => x.RowId).UseIdentityColumn();
+        rejections.HasIndex(x => x.Kind).IsUnique();
+        rejections.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.ExampleSourceId).OnDelete(DeleteBehavior.SetNull);
 
         var source = modelBuilder.Entity<ServiceSource>();
         source.ToTable("Sources");
