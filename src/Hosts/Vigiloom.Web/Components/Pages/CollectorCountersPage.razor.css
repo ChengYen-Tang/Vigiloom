@@ -1,0 +1,9 @@
+.collector-counters p { line-height: 1.6; margin: 0.65rem 0; }
+.collector-counters ul { padding-left: 1.5rem; }
+.source-identities li { overflow-wrap: anywhere; margin-bottom: 0.75rem; }
+.collector-counters thead th { background: #f0f5fb; color: #435778; }
+.collector-counters th, .collector-counters td { vertical-align: top; }
+.collector-counters code { overflow-wrap: anywhere; font-size: 0.8rem; }
+.device-table-wrap { max-width: 100%; }
+.scroll-hint { display: none; }
+@media (max-width: 700px) { .scroll-hint { display: block; color: #294c79; font-weight: 600; } }

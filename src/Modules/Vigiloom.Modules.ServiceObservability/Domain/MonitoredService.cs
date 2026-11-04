@@ -12,6 +12,7 @@ public sealed class MonitoredService
         CandidateId = candidate.Id;
         SourceId = candidate.SourceId;
         ServiceKey = candidate.ServiceKey;
+        ServiceNamespace = candidate.ServiceNamespace;
         Environment = candidate.Environment;
         DisplayName = candidate.DisplayName;
         ApprovedAt = CreatedAt = UpdatedAt = approvedAt.ToUniversalTime();
@@ -22,6 +23,8 @@ public sealed class MonitoredService
     public Guid SourceId { get; private set; }
     public Guid? CandidateId { get; private set; }
     public string ServiceKey { get; private set; } = "";
+    public string ServiceNamespace { get; private set; } = "";
+    public byte[] ServiceNamespaceBytes { get; private set; } = [];
     public string Environment { get; private set; } = "";
     public string DisplayName { get; private set; } = "";
     public DateTimeOffset ApprovedAt { get; private set; }

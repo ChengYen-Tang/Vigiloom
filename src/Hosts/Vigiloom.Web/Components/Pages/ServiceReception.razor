@@ -1,0 +1,92 @@
+@page "/settings/service-reception"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application.Telemetry
+@inject ReceptionOverview Overview
+@inject ILogger<ServiceReception> Logger
+
+<PageTitle>管線接入 - Vigiloom</PageTitle>
+<main class="device-page reception-page">
+    <header class="device-heading"><div><h1>管線接入</h1><p>查看應用來源的接收情況，並取得接入資訊。</p></div></header>
+    <p class="management-notice">接收狀態不等於應用服務健康；沒有資料也不一定表示來源離線。</p>
+    <p class="reception-unknown"><strong>Collector 健康狀態：未知</strong><br />可<a href="/settings/collector-reports">查看 Collector 自身回報</a>；單一回報無法判斷所有管線是否正常運作。</p>
+    <section class="device-panel" aria-labelledby="reception-heading">
+        <h2 id="reception-heading">接收概覽</h2>
+        <p>顯示各來源已核准服務最後一次成功保存的資料時間（UTC）。刪除歷史資料後，時間可能改變或不再顯示。</p>
+        @if (loadError)
+        {
+            <p class="device-alert" role="alert">無法讀取接收情況，請重新整理後再試。</p>
+        }
+        else if (sources.Count == 0)
+        {
+            @if (page == 1) { <p>目前沒有來源。請先到<a href="/settings/service-discovery">來源憑證管理</a>建立來源。</p> }
+            else { <p>此頁沒有來源。</p> }
+        }
+        else
+        {
+            <p class="scroll-hint">表格可左右滑動，查看完整接收時間。</p>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="來源接收概覽，可左右滑動">
+                <table><thead><tr><th scope="col">來源</th><th scope="col">憑證狀態</th><th scope="col">最後接收 Logs</th><th scope="col">最後接收 Metrics</th><th scope="col">最後接收 Traces</th></tr></thead>
+                    <tbody>@foreach (var source in sources)
+                    {
+                        <tr @key="source.SourceId"><th scope="row">@source.Name <details><summary>來源識別碼</summary><small>@source.SourceId</small></details></th><td><span class="@(source.RevokedAt is null ? "status-active" : "status-revoked")">@(source.RevokedAt is null ? "未撤銷" : "已撤銷")</span></td>
+                            <td>@Display(source.LastLogAt)</td><td>@Display(source.LastMetricAt)</td><td>@Display(source.LastTraceAt)</td></tr>
+                    }</tbody>
+                </table>
+            </div>
+        }
+        @if (!loadError && (sources.Count > 0 || page > 1))
+        {
+            <nav aria-label="來源接收分頁"><span>第 @(page) 頁</span>
+                @if (page > 1) { <a href="@PageUrl(page - 1)">上一頁</a> }
+                @if (sources.Count == 50 && page < 200) { <a href="@PageUrl(page + 1)">下一頁</a> }
+            </nav>
+        }
+    </section>
+    <section class="device-panel onboarding" aria-labelledby="onboarding-heading">
+        <h2 id="onboarding-heading">連接應用服務</h2>
+        <p>應用服務不需要綁定設備；可以由共用的 OpenTelemetry Collector 轉送資料。</p>
+        <div class="guide-layout">
+            <ol>
+                <li>到<a href="/settings/service-discovery">來源憑證管理</a>建立來源，安全保存只顯示一次的憑證。</li>
+                <li>設定 Collector 透過 HTTPS 傳送 OTLP/HTTP protobuf；來源需要提供服務名稱及環境。
+                    <div class="endpoint"><span>本平台的 OTLP 接收路徑</span><code>/api/v1/otlp</code></div>
+                    <p><a href="/api/v1/service-reception/collector-template">下載 Collector 設定範例</a>（OpenTelemetry Collector Contrib 0.164.0）。範例需要替換憑證、端點及 TLS 憑證路徑後才能使用。</p>
+                    <p><a href="/api/v1/service-reception/application-template">下載應用程式 SDK 設定範例</a>。範例需配合已啟用 OpenTelemetry 的應用程式，並設定 Collector 入口與憑證。</p>
+                    <details><summary>設定範例需要哪些資訊？</summary>
+                        <ul>
+                            <li>兩組互相隔離的應用來源各需一個來源憑證；Collector 自身監控另需第三個專用來源憑證。不要把中央來源憑證交給應用程式。</li>
+                            <li>各應用程式連線 Collector 使用各自的入口憑證，並使用對應的入口連接埠；不信任的應用不共用憑證。</li>
+                            <li>平台 HTTPS 網址加上上述 OTLP 接收路徑，以及 Collector 的 TLS 憑證、私密金鑰和平台 CA 憑證。憑證與金鑰應由安全的機密管理方式提供。</li>
+                        </ul>
+                        <p>範例固定配置兩組來源；更多來源需要增加獨立的入口、驗證及轉送管線。更換來源憑證後，須更新設定並重新啟動 Collector。</p>
+                    </details></li>
+                <li>確認服務出現在<a href="/settings/service-discovery">待加入服務</a>清單後加入；核准前只保留必要候選資訊。</li>
+                <li>加入後回到本頁確認接收時間。接收時間不代表應用服務健康或資料完整。</li>
+            </ol>
+            <aside class="security-guide" aria-label="來源憑證安全性"><strong>保護來源憑證</strong><p>互不信任的應用應使用不同來源；共用 Collector 必須分別驗證入口並固定對應來源，不可讓應用自行選擇中央憑證。</p></aside>
+        </div>
+        <p>範例使用記憶體批次，Collector 或應用程式中斷時可能遺失尚未送達的平台資料，並不保證恰好一次送達。Collector 的自動設定、升級與健康狀態整理尚未完成；請由負責接入的人員設定目前提供的管線。</p>
+    </section>
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "page")] public int? RequestedPage { get; set; }
+    private IReadOnlyList<SourceReceptionSummary> sources = [];
+    private bool loadError;
+    private int page;
+
+    protected override async Task OnInitializedAsync()
+    {
+        page = Math.Clamp(RequestedPage ?? 1, 1, 200);
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try { sources = await Overview.ListAsync(page, HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { Logger.LogWarning("Cannot load source reception overview: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private static string Display(DateTimeOffset? value) => value is null ? "尚無資料" : value.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    private static string PageUrl(int number) => $"/settings/service-reception?page={number}";
+}

@@ -17,12 +17,13 @@
     @if (message is not null) { <p role="status">@message</p> }
     @if (secret is not null)
     {
-        <section class="device-panel"><h2>立即保存來源憑證</h2><p>憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時請撤銷後重新建立。</p>
+        <section class="device-panel"><h2>立即保存來源憑證</h2><p>憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時可再次更換憑證。</p>
             <textarea readonly rows="3" aria-label="來源憑證">@secret</textarea>
             <p>請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。</p>
             <details><summary>目前可用的來源回報資訊</summary>
                 <p>使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 <code>POST /api/v1/service-discovery/observations</code> 傳送 JSON 欄位 <code>serviceKey</code>、<code>environment</code> 及 <code>displayName</code>。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。</p>
                 <p>這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。</p>
+                <p>來源憑證可向該來源下所有仍獲授權收集的已加入服務寫入資料。互不信任的應用請使用不同來源；不要將中央來源憑證交給共用 Collector 的應用端。</p>
             </details>
         </section>
     }
@@ -38,7 +39,7 @@
             <table><thead><tr><th>服務名稱</th><th>環境</th><th>來源</th><th>最後回報（UTC）</th><th>操作</th></tr></thead><tbody>
             @foreach (var candidate in candidates)
             {
-                <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>服務識別：@candidate.ServiceKey</small></td><td class="environment">@candidate.Environment</td>
+                <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>服務識別：@candidate.ServiceKey</small>@if (!string.IsNullOrEmpty(candidate.ServiceNamespace)) { <br /><small>命名空間：@candidate.ServiceNamespace</small> }</td><td class="environment">@candidate.Environment</td>
                 <td>@candidate.SourceName<details><summary>來源識別碼</summary><small>@candidate.SourceId</small></details></td><td class="timestamp">@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
                     <details><summary>加入服務</summary>
                         <label><input type="checkbox" name="@($"approve-{candidate.Id:N}")" value="true" /> 我已確認來源及環境，並了解服務預設為私人</label>
@@ -83,6 +84,24 @@
             </tbody></table></div>
         }
         </EditForm>
+        <EditForm Model="RotateSource" FormName="source-rotate" method="post" OnValidSubmit="RotateAsync">
+            @if (!loadError && sources.Any(x => x.RevokedAt is null))
+            {
+                <details><summary>更換來源憑證</summary>
+                    <p>更換後舊憑證立即失效，請更新使用該來源的 Collector 設定。服務身分與已核准狀態會保留。</p>
+                    <label for="rotate-source">選擇來源</label>
+                    <select id="rotate-source" name="RotateSource.Selection" required>
+                        <option value="">請選擇來源</option>
+                        @foreach (var source in sources.Where(x => x.RevokedAt is null))
+                        {
+                            <option value="@($"{source.Id:D}:{source.Version}")">@source.Name (@source.Id)</option>
+                        }
+                    </select>
+                    <label><input type="checkbox" name="RotateSource.Confirm" value="true" required /> 我了解舊憑證會立即失效</label>
+                    <button type="submit">更換憑證</button>
+                </details>
+            }
+        </EditForm>
         <nav aria-label="來源清單分頁"><span>第 @sourcePage 頁</span>
             @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">上一頁</a> }
             @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(candidatePage, sourcePage + 1)">下一頁</a> }
@@ -95,6 +114,7 @@
     [SupplyParameterFromQuery(Name = "candidates")] public int? CandidatePage { get; set; }
     [SupplyParameterFromQuery(Name = "sources")] public int? SourcePage { get; set; }
     [SupplyParameterFromForm(FormName = "source-create")] private SourceForm CreateSource { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "source-rotate")] private ConfirmForm RotateSource { get; set; } = default!;
     [SupplyParameterFromForm] private ConfirmForm ConfirmRevocation { get; set; } = default!;
     [SupplyParameterFromForm] private ConfirmForm ConfirmApproval { get; set; } = default!;
     private IReadOnlyList<CandidateSummary> candidates = [];
@@ -105,7 +125,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        CreateSource ??= new(); ConfirmRevocation ??= new(); ConfirmApproval ??= new();
+        CreateSource ??= new(); RotateSource ??= new(); ConfirmRevocation ??= new(); ConfirmApproval ??= new();
         candidatePage = Math.Clamp(CandidatePage ?? 1, 1, 200); sourcePage = Math.Clamp(SourcePage ?? 1, 1, 200);
         HttpContext.Response.Headers.CacheControl = "no-store";
         await LoadAsync();
@@ -149,6 +169,25 @@
         if (!Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || form[$"revoke-{id:N}"] != "true" || Actor() is not { } actor) { error = "請確認撤銷來源的影響。"; return; }
         try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = "來源已撤銷。"; else error = "找不到來源。"; await LoadAsync(); }
         catch (Exception ex) { Logger.LogWarning("Cannot revoke source: {ExceptionType}", ex.GetType().Name); error = "無法確認撤銷結果，請重新整理後檢查。"; }
+    }
+    private async Task RotateAsync()
+    {
+        if (!HttpContext.Request.IsHttps) { error = "更換憑證需要安全連線（HTTPS）。"; return; }
+        var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        var parts = form["RotateSource.Selection"].ToString().Split(':', 2);
+        Span<byte> version = stackalloc byte[8];
+        if (parts.Length != 2 || !Guid.TryParse(parts[0], out var id) || id.Version != 7 ||
+            !Convert.TryFromBase64String(parts[1], version, out var written) || written != 8 ||
+            form["RotateSource.Confirm"] != "true" || Actor() is not { } actor)
+        { error = "請選擇來源並確認更換憑證的影響。"; return; }
+        try
+        {
+            var result = await Sources.RotateAsync(id, version.ToArray(), actor, HttpContext.RequestAborted);
+            if (result.Status == SourceRotationStatus.Rotated) { secret = result.Credential; message = "來源憑證已更換，請立即保存並更新 Collector 設定。"; }
+            else error = "來源已變更、撤銷或不存在，請重新整理後確認。";
+            await LoadAsync();
+        }
+        catch (Exception ex) { Logger.LogWarning("Cannot rotate source credential: {ExceptionType}", ex.GetType().Name); error = "無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。"; }
     }
     private sealed class SourceForm { public string Name { get; set; } = ""; }
     private sealed class ConfirmForm { public bool Confirm { get; set; } }

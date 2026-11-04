@@ -48,7 +48,33 @@ public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityD
         ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(page, 200);
         await using var db = await contexts.CreateDbContextAsync(token);
-        return await db.Sources.AsNoTracking().OrderByDescending(x => x.RowId).Skip((page - 1) * 50).Take(50)
-            .Select(x => new ServiceSourceSummary(x.Id, x.Name, x.CreatedAt, x.RevokedAt)).ToArrayAsync(token);
+        var rows = await db.Sources.AsNoTracking().OrderByDescending(x => x.RowId).Skip((page - 1) * 50).Take(50)
+            .Select(x => new { x.Id, x.Name, x.CreatedAt, x.RevokedAt, x.Version }).ToArrayAsync(token);
+        return rows.Select(x => new ServiceSourceSummary(x.Id, x.Name, x.CreatedAt, x.RevokedAt, Convert.ToBase64String(x.Version))).ToArray();
+    }
+
+    /// <summary>Atomically changes one source credential and audits the action; old versions cease authorizing new transactions.</summary>
+    public async Task<SourceRotationResult> RotateAsync(Guid sourceId, byte[] expectedVersion, Guid actorId, CancellationToken token)
+    {
+        if (sourceId.Version != 7 || actorId == Guid.Empty || expectedVersion is not { Length: 8 })
+            throw new ArgumentException("A source, its current version and an administrator are required.");
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var source = await db.Sources.FromSqlInterpolated($"SELECT * FROM [service].[Sources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
+            .SingleOrDefaultAsync(token);
+        if (source is null) return new(SourceRotationStatus.NotFound);
+        if (source.RevokedAt is not null) return new(SourceRotationStatus.Revoked);
+        if (!source.Version.AsSpan().SequenceEqual(expectedVersion)) return new(SourceRotationStatus.Conflict);
+        var now = await DiscoveryTransaction.NowAsync(db, token);
+        var (verifier, credential) = SourceCredentials.CreateFor(source.Id);
+        source.ReplaceVerifier(verifier, now);
+        await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actorId, source.Id, now, new ServiceSourceChanged(ServiceSourceAction.CredentialRotated)), token);
+        await transaction.CommitAsync(token);
+        return new(SourceRotationStatus.Rotated, credential);
     }
 }
+
+public enum SourceRotationStatus { Rotated, NotFound, Revoked, Conflict }
+public sealed record SourceRotationResult(SourceRotationStatus Status, string? Credential = null);

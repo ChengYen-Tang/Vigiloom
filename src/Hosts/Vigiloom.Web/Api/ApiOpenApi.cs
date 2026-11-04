@@ -89,6 +89,17 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
                         [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
             }
+            else if (path.StartsWith("/api/v1/service-telemetry/", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] },
+                    new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
+                operation.Description = "Requires an Administrator or Read only session, or an API credential with monitoring.read.";
+            }
+            else if (path.StartsWith("/api/v1/otlp/", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
+                operation.Description = "Accepts authenticated OTLP/HTTP protobuf for this trusted source.";
+            }
             else if (path.Equals("/api/v1/service-discovery/observations", StringComparison.OrdinalIgnoreCase))
             {
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
@@ -97,7 +108,13 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             else if (path.StartsWith("/api/v1/service-discovery/candidates", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-discovery/sources", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-discovery/services", StringComparison.OrdinalIgnoreCase) ||
-                     path.StartsWith("/api/v1/service-instances", StringComparison.OrdinalIgnoreCase))
+                     path.StartsWith("/api/v1/service-instances", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/service-reception", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/service-reception/collector-template", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/service-reception/application-template", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/service-reception/collector-observations/", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/log-quota", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/trace-quota", StringComparison.OrdinalIgnoreCase))
             {
                 var requirement = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
                 if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase)) requirement[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
@@ -111,6 +128,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/operations/audit/service-sources", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/groups", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/instance-policy", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/log-quota", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/trace-quota", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-instances", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-collections", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/operations/audit-feed/", StringComparison.OrdinalIgnoreCase) ||

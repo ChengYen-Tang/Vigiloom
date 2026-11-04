@@ -10,5 +10,18 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Core.Api" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="Protos/opentelemetry/proto/common/v1/common.proto" ProtoRoot="Protos" GrpcServices="None" />
+    <Protobuf Include="Protos/opentelemetry/proto/resource/v1/resource.proto" ProtoRoot="Protos" GrpcServices="None" />
+    <Protobuf Include="Protos/opentelemetry/proto/logs/v1/logs.proto" ProtoRoot="Protos" GrpcServices="None" />
+    <Protobuf Include="Protos/opentelemetry/proto/metrics/v1/metrics.proto" ProtoRoot="Protos" GrpcServices="None" />
+    <Protobuf Include="Protos/opentelemetry/proto/trace/v1/trace.proto" ProtoRoot="Protos" GrpcServices="None" />
+    <Protobuf Include="Protos/opentelemetry/proto/collector/logs/v1/logs_service.proto" ProtoRoot="Protos" GrpcServices="Both" />
+    <Protobuf Include="Protos/opentelemetry/proto/collector/metrics/v1/metrics_service.proto" ProtoRoot="Protos" GrpcServices="Both" />
+    <Protobuf Include="Protos/opentelemetry/proto/collector/trace/v1/trace_service.proto" ProtoRoot="Protos" GrpcServices="Both" />
   </ItemGroup>
 </Project>

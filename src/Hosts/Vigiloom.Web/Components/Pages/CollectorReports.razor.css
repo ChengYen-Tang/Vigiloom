@@ -1,0 +1,14 @@
+.collector-reports form { display: grid; gap: 10px; justify-items: start; }
+.service-options { box-sizing: border-box; width: 100%; max-height: 24rem; overflow-y: auto; border: 1px solid #dce6f2; border-radius: 6px; }
+.service-choice { display: flex; align-items: start; gap: 10px; padding: 10px 4px; border-bottom: 1px solid #e2e9f1; }
+.service-choice:last-child { border-bottom: 0; }
+.service-choice span { min-width: 0; overflow-wrap: anywhere; }
+.collector-reports nav { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.table-scroll { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; }
+thead th { background: #f0f5fb; color: #435778; }
+th, td { padding: 12px; border-bottom: 1px solid #e2e9f1; text-align: left; vertical-align: top; }
+tbody th { overflow-wrap: anywhere; }
+td { white-space: nowrap; }
+.scroll-hint { display: none; }
+@media (max-width: 1000px) { .scroll-hint { display: block; color: #324f77; font-weight: 600; } }
