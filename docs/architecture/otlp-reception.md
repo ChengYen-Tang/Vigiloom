@@ -62,4 +62,3 @@ The pinned Collector's `health_check` extension provides liveness/readiness, but
 An administrator can replace a source credential in the service discovery page. The replacement preserves the source and its approved services, and the old credential stops authorizing transactions once rotation commits. Copy the new secret immediately and update the corresponding Collector; it is not displayed again. If the response is lost, check the source and explicitly rotate again to obtain a usable secret. Concurrent rotations using an older page are rejected.
 
 Before applying the source-version migration or enabling rotation, stop and drain **all** old Web receivers, apply the migrations, and start only upgraded receivers. Older nodes cannot enforce the authenticated credential version and must not run alongside the upgraded nodes. This follows the coordinated migration procedure in `sql-server-migrations.md`.
-
