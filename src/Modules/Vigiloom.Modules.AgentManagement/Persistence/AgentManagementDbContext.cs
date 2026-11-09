@@ -7,6 +7,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
 {
     public DbSet<Agent> Agents => Set<Agent>();
     public DbSet<AgentReplayPolicy> ReplayPolicies => Set<AgentReplayPolicy>();
+    public DbSet<AgentReplayGeneration> ReplayGenerations => Set<AgentReplayGeneration>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<AgentAudit> Audits => Set<AgentAudit>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
@@ -42,6 +43,8 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         {
             table.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
             table.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
+            table.HasCheckConstraint("CK_ReplayPolicies_ReplayWindowSeconds", "[ReplayWindowSeconds] BETWEEN 1 AND 2592000");
+            table.HasCheckConstraint("CK_ReplayPolicies_ReceiptRetentionDays", "[ReceiptRetentionDays] BETWEEN 1 AND 3650");
             table.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
         });
         replay.HasKey(x => x.Id).IsClustered(false);
@@ -50,6 +53,15 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         replay.HasIndex(x => x.RowId).IsUnique().IsClustered();
         replay.HasIndex(x => x.Scope).IsUnique();
         replay.Property(x => x.Version).IsRowVersion();
+        replay.Property(x => x.ReplayWindowSeconds).HasDefaultValue(86400);
+        replay.Property(x => x.ReceiptRetentionDays).HasDefaultValue(7);
+
+        var generation = modelBuilder.Entity<AgentReplayGeneration>();
+        generation.ToTable("ReplayGenerations", table => table.HasCheckConstraint("CK_ReplayGenerations_WindowSeconds", "[WindowSeconds] BETWEEN 1 AND 2592000"));
+        generation.HasKey(x => x.RowId).IsClustered();
+        generation.Property(x => x.RowId).UseIdentityColumn();
+        generation.HasIndex(x => new { x.PolicyId, x.ValidThrough }).IncludeProperties(x => x.WindowSeconds);
+        generation.HasOne<AgentReplayPolicy>().WithMany().HasForeignKey(x => x.PolicyId).OnDelete(DeleteBehavior.NoAction);
 
         var enrollment = modelBuilder.Entity<Enrollment>();
         enrollment.ToTable("Enrollments", table => table.HasCheckConstraint("CK_Enrollments_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));

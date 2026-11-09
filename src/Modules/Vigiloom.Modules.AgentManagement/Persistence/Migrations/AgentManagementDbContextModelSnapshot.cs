@@ -339,6 +339,37 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayGeneration", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ValidThrough")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("WindowSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("PolicyId", "ValidThrough");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("PolicyId", "ValidThrough"), new[] { "WindowSeconds" });
+
+                    b.ToTable("ReplayGenerations", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReplayGenerations_WindowSeconds", "[WindowSeconds] BETWEEN 1 AND 2592000");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", b =>
                 {
                     b.Property<Guid>("Id")
@@ -361,6 +392,16 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<int>("Phase")
                         .HasColumnType("int");
+
+                    b.Property<int>("ReceiptRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(7);
+
+                    b.Property<int>("ReplayWindowSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(86400);
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -394,6 +435,10 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                             t.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 
                             t.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_ReceiptRetentionDays", "[ReceiptRetentionDays] BETWEEN 1 AND 3650");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_ReplayWindowSeconds", "[ReplayWindowSeconds] BETWEEN 1 AND 2592000");
 
                             t.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
                         });
@@ -675,6 +720,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacitySetting", null)
                         .WithMany()
                         .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayGeneration", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
