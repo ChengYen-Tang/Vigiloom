@@ -19,4 +19,5 @@ internal static class AuditKinds
     public const short HealthNetworkPolicyChangedV1 = 14;
     public const short SpeedRetentionChangedV1 = 15;
     public const short AgentInboxSettingsChangedV1 = 16;
+    public const short AgentInboxCleanupActivatedV1 = 17;
 }
