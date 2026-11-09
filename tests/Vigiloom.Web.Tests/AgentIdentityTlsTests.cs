@@ -124,6 +124,7 @@ public sealed class AgentIdentityTlsTests
 
                 // Exercise the actual host workers against the real TLS listener and SQL database.
                 AgentSettingsView configured;
+                AgentMetricSettingsView configuredMetrics;
                 await using (var scope = factory.Services.CreateAsyncScope())
                 {
                     var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
@@ -131,6 +132,12 @@ public sealed class AgentIdentityTlsTests
                     Assert.IsNotNull(current);
                     configured = (await configuration.UpdateAsync(device.Id, new(new(10, 60, 3), current.Version), Guid.CreateVersion7(), token))!;
                     Assert.IsNotNull(configured);
+                    var metricConfiguration = scope.ServiceProvider.GetRequiredService<AgentMetricConfiguration>();
+                    var metricCurrent = await metricConfiguration.GetAsync(device.Id, token);
+                    Assert.IsNotNull(metricCurrent);
+                    configuredMetrics = (await metricConfiguration.UpdateAsync(device.Id,
+                        new(new(10, 20, 2000, 1024, 2500, 8, 96), metricCurrent.Version), Guid.CreateVersion7(), token))!;
+                    Assert.IsNotNull(configuredMetrics);
                 }
                 var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
                 var agentBuilder = AgentHost.CreateBuilder([]);
@@ -141,6 +148,7 @@ public sealed class AgentIdentityTlsTests
                 });
                 agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
                 agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, agentClock));
+                agentBuilder.Services.AddSingleton(new AgentMetricSettingsClient(http, agentClock));
                 agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
                 agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
                 using (var agentHost = agentBuilder.Build())
@@ -168,6 +176,31 @@ public sealed class AgentIdentityTlsTests
                         }
                         Assert.AreEqual(configured.Effective, observed.Applied);
                         Assert.AreEqual(configured.Effective, saved.Snapshot);
+                        var metricStore = new AgentMetricSettingsStore(vault, url, id);
+                        AgentSavedMetricSettings? metricSaved = null;
+                        while (metricSaved is null)
+                        {
+                            try { metricSaved = await metricStore.ReadAsync(deadline.Token); }
+                            catch (IOException) { /* The running host may briefly hold the identity lease. */ }
+                            if (metricSaved is null) { agentClock.Advance(TimeSpan.FromSeconds(2)); await Task.Delay(250, deadline.Token); }
+                        }
+                        Assert.AreEqual(configuredMetrics.Effective, metricSaved.Snapshot);
+                        while (true)
+                        {
+                            await using var metricDb = await agents.CreateDbContextAsync(deadline.Token);
+                            if (await metricDb.HostMetrics.AnyAsync(x => x.AgentId == id && x.Kind == AgentMetricKind.MemoryTotalBytes, deadline.Token)) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        await using (var scope = factory.Services.CreateAsyncScope())
+                        {
+                            var history = scope.ServiceProvider.GetRequiredService<HostMetricHistory>();
+                            var page = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), agentClock.GetUtcNow().AddMinutes(1),
+                                null, AgentMetricKind.MemoryTotalBytes, deadline.Token);
+                            Assert.IsNotNull(page);
+                            Assert.IsNotEmpty(page.Items);
+                            Assert.IsTrue(page.Items.Any(item => item.Value > 0));
+                        }
                     }
                     finally { await agentHost.StopAsync(CancellationToken.None); }
                 }
@@ -183,7 +216,7 @@ public sealed class AgentIdentityTlsTests
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
                     Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
-                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id && x.BatchId == batch.BatchId, token));
                 }
                 using (var oversized = await http.PostAsync(new Uri(url, "/api/v1/agent/enroll"), new StringContent(new string('x', 4096), System.Text.Encoding.UTF8, "application/json"), token))
                     Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
@@ -215,7 +248,7 @@ public sealed class AgentIdentityTlsTests
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
                     Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(x => x.AgentId == id, token));
-                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id, token));
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == id && x.BatchId == batch.BatchId, token));
                 }
             }
             finally

@@ -261,6 +261,165 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.ToTable("AgentAudits", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentMetricSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CpuMillisecondsPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("HostIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IoLimitMiBPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProcessCollectionBudgetMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProcessIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("UploadLimitMiBPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("WorkingSetLimitMiB")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("MetricSettings", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_MetricSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentMetricSettingAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ChangeVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<int?>("CpuMillisecondsPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EffectiveCpuMillisecondsPerMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(3000);
+
+                    b.Property<int>("EffectiveHostIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EffectiveIoLimitMiBPerMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(64);
+
+                    b.Property<int>("EffectiveProcessCollectionBudgetMs")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(2000);
+
+                    b.Property<int>("EffectiveProcessIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EffectiveRevision")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("EffectiveUploadLimitMiBPerMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(16);
+
+                    b.Property<int>("EffectiveWorkingSetLimitMiB")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(512);
+
+                    b.Property<int?>("HostIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IoLimitMiBPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ProcessCollectionBudgetMs")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProcessIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("SettingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("UploadLimitMiBPerMinute")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("WorkingSetLimitMiB")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SettingId");
+
+                    b.HasIndex("OccurredAt", "RowId");
+
+                    b.HasIndex("DeviceId", "OccurredAt", "RowId");
+
+                    b.ToTable("MetricSettingAudits", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacityAudit", b =>
                 {
                     b.Property<long>("RowId")
@@ -647,6 +806,61 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetric", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Dimension")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("float");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("AgentId", "OccurredAt", "RowId");
+
+                    b.HasIndex("AgentId", "Kind", "OccurredAt", "RowId");
+
+                    b.ToTable("HostMetrics", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.ReceivedBatch", b =>
                 {
                     b.Property<long>("RowId")
@@ -756,6 +970,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .OnDelete(DeleteBehavior.NoAction);
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentMetricSettingAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentMetricSetting", null)
+                        .WithMany()
+                        .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacityAudit", b =>
                 {
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacitySetting", null)
@@ -789,6 +1012,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AgentId")
                         .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetric", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.ReceivedBatch", b =>

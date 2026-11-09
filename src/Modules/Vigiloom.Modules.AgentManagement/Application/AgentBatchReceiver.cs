@@ -18,14 +18,19 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
 
     public async Task<BatchReceiptStatus> ReceiveAsync(string? credential, ReadOnlyMemory<byte> payload, CancellationToken token)
     {
-        if (!AgentBatchCodec.TryRead(payload.Span, out var batch)) return BatchReceiptStatus.Invalid;
+        AgentMetricBatch? metrics = null;
+        if (!AgentBatchCodec.TryRead(payload.Span, out var batch) &&
+            !AgentMetricBatchCodec.TryRead(payload.Span, out metrics)) return BatchReceiptStatus.Invalid;
+        var batchId = batch?.BatchId ?? metrics!.BatchId;
+        var enqueuedAt = batch?.EnqueuedAt ?? metrics!.EnqueuedAt;
+        var itemCount = batch?.Items.Count ?? metrics!.Items.Count;
         if (capacityBytes < 1 || maximumBatches < 1) throw new InvalidOperationException("Agent receipt capacity must be positive.");
         var digest = SHA256.HashData(payload.Span);
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var agent = await identity.AuthenticateForWriteAsync(db, credential, token);
         if (agent is null) return BatchReceiptStatus.Unauthorized;
-        var previous = await db.ReceivedBatches.AsNoTracking().SingleOrDefaultAsync(x => x.AgentId == agent.Id && x.BatchId == batch!.BatchId, token);
+        var previous = await db.ReceivedBatches.AsNoTracking().SingleOrDefaultAsync(x => x.AgentId == agent.Id && x.BatchId == batchId, token);
         if (previous is not null)
             return CryptographicOperations.FixedTimeEquals(previous.Digest, digest) ? BatchReceiptStatus.AlreadyAccepted : BatchReceiptStatus.Conflict;
 
@@ -61,7 +66,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
                 .Where(x => x.PolicyId == policy.Id && x.ValidThrough >= policyTime)
                 .MaxAsync(x => (int?)x.WindowSeconds, token);
             var effectiveWindow = Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0);
-            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime,
+            var rejection = AgentReplayWindow.Classify(enqueuedAt, policyTime,
                 TimeSpan.FromSeconds(effectiveWindow), TimeSpan.FromSeconds(AgentInboxPolicyLimits.FutureSkewSeconds), agent.ReplayCleanedBefore);
             if (rejection is { } reason)
             {
@@ -73,11 +78,23 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             }
         }
 
-        var itemIds = batch!.Items.Select(item => item.MessageId).ToArray();
-        var existing = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
+        var itemIds = batch is not null ? batch.Items.Select(item => item.MessageId).ToArray() : metrics!.Items.Select(item => item.MessageId).ToArray();
+        var existingRuntime = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
-        foreach (var item in batch.Items)
-            if (existing.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
+        var existingMetrics = await db.HostMetrics.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
+            .ToDictionaryAsync(x => x.MessageId, token);
+        if (batch is not null)
+        {
+            foreach (var item in batch.Items)
+                if (existingMetrics.ContainsKey(item.MessageId) ||
+                    existingRuntime.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
+        }
+        else
+        {
+            foreach (var item in metrics!.Items)
+                if (existingRuntime.ContainsKey(item.MessageId) ||
+                    existingMetrics.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
+        }
 
         var usageWasInitialized = agent.InboxReceiptCount is not null;
         var usage = policy.CleanupCutoverAt is not null
@@ -97,12 +114,20 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
         if (policy.CleanupCutoverAt is not null) agent.ChangeInboxUsage(1, payload.Length);
-        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length,
+        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batchId, digest, enqueuedAt, receivedAt, itemCount, payload.Length,
             policyTime, policyTime.AddDays(policy.ReceiptRetentionDays)));
-        for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
+        for (var ordinal = 0; ordinal < itemCount; ordinal++)
         {
-            var item = batch.Items[ordinal];
-            if (!existing.ContainsKey(item.MessageId)) db.RuntimeObservations.Add(new RuntimeObservation(agent.Id, batch.BatchId, ordinal, item, receivedAt));
+            if (batch is not null)
+            {
+                var item = batch.Items[ordinal];
+                if (!existingRuntime.ContainsKey(item.MessageId)) db.RuntimeObservations.Add(new RuntimeObservation(agent.Id, batchId, ordinal, item, receivedAt));
+            }
+            else
+            {
+                var item = metrics!.Items[ordinal];
+                if (!existingMetrics.ContainsKey(item.MessageId)) db.HostMetrics.Add(new HostMetric(agent.Id, batchId, ordinal, item, receivedAt));
+            }
         }
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
