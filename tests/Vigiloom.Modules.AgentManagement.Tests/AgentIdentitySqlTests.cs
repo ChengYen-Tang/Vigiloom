@@ -752,7 +752,7 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted,
             await new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(credential, bytes, token));
         await using (var db = agents.CreateDbContext())
-            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [CleanupCutoverAt] = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
         await using (var db = agents.CreateDbContext())
         {
             var rejected = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261103195754_AgentReplayFreshInstallation", token));
@@ -765,7 +765,7 @@ public sealed class AgentIdentitySqlTests
         }
         await using (var db = agents.CreateDbContext())
         {
-            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [CleanupCutoverAt] = NULL WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [CleanupCutoverAt] = NULL, [InboxSettingsChangedAt] = NULL, [LegacyReceiptsRetainUntil] = NULL WHERE [Scope] = 1", token);
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayCleanedBefore] = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WHERE [Id] = {registration.AgentId.Value}", token);
         }
         await using (var db = agents.CreateDbContext())

@@ -37,7 +37,9 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         var policyTime = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         if (agent.ReplayClockFloor is { } floor && policyTime < floor ||
             policy.ActivatedAt is { } activated && policyTime < activated ||
-            policy.EnforcedAt is { } enforced && policyTime < enforced)
+            policy.EnforcedAt is { } enforced && policyTime < enforced ||
+            policy.CleanupCutoverAt is { } cutover && policyTime < cutover ||
+            policy.InboxSettingsChangedAt is { } changed && policyTime < changed)
         {
             agent.RecordReplayIssue(AgentReplayIssue.ClockUncertain, policyTime);
             await db.SaveChangesAsync(token);
@@ -60,7 +62,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
                 .MaxAsync(x => (int?)x.WindowSeconds, token);
             var effectiveWindow = Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0);
             var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime,
-                TimeSpan.FromSeconds(effectiveWindow), TimeSpan.FromMinutes(5), agent.ReplayCleanedBefore);
+                TimeSpan.FromSeconds(effectiveWindow), TimeSpan.FromSeconds(AgentInboxPolicyLimits.FutureSkewSeconds), agent.ReplayCleanedBefore);
             if (rejection is { } reason)
             {
                 agent.AdvanceReplayClock(policyTime);
