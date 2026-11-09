@@ -73,6 +73,12 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<int>("InboxLastDeletedCount")
                         .HasColumnType("int");
 
+                    b.Property<long?>("InboxReceiptCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InboxReceiptPayloadBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset?>("LastBatchEnqueuedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -210,6 +216,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                             t.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
 
                             t.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Agents_InboxUsage", "([InboxReceiptCount] IS NULL AND [InboxReceiptPayloadBytes] IS NULL) OR ([InboxReceiptCount] >= 0 AND [InboxReceiptPayloadBytes] >= 0 AND [InboxReceiptCount] IS NOT NULL AND [InboxReceiptPayloadBytes] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
                         });

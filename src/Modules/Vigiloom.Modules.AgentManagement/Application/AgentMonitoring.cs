@@ -23,7 +23,7 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
                 x.QuarantineInvalidLocal, x.QuarantineBadRequest, x.QuarantineConflict, x.QuarantineTooLarge,
                 x.QuarantineUnsupported, x.QuarantineExpired, x.QuarantineOther,
                 x.QueueReportEpoch, x.QueueReportSequence, x.QuarantineReportEpoch, x.QuarantineReportSequence,
-                x.LastBatchEnqueuedAt, x.LastBatchReceivedAt, x.LastBatchReceiptRowId,
+                x.LastBatchEnqueuedAt, x.LastBatchReceivedAt, x.LastBatchReceiptRowId, x.InboxReceiptCount, x.InboxReceiptPayloadBytes,
                 LatestReceipt = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
                     .OrderByDescending(batch => batch.ReceivedAt).ThenByDescending(batch => batch.RowId)
                     .Select(batch => new { batch.EnqueuedAt, batch.ReceivedAt, batch.RowId }).FirstOrDefault() }).SingleOrDefaultAsync(token);
@@ -55,7 +55,8 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         }
         var batchTime = enqueuedAt is { } enqueued && receivedAt is { } received
             ? new AgentBatchTimeObservation(enqueued, received, enqueued - received > TimeSpan.FromMinutes(5)) : null;
-        var usage = await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
+        var usage = agent.InboxReceiptCount is { } receiptCount && agent.InboxReceiptPayloadBytes is { } receiptBytes
+            ? (Count: receiptCount, Bytes: receiptBytes) : await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
         var capacity = new AgentReceiptCapacity(usage.Count, usage.Bytes, AgentBatchReceiver.MaximumRetainedBatchesPerAgent,
             AgentBatchReceiver.MaximumRetainedBytesPerAgent);
         var issue = agent.LastReplayIssue is { } reason && Enum.IsDefined(reason) && agent.LastReplayIssueAt is { } issueAt

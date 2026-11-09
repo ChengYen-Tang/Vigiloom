@@ -75,11 +75,13 @@ public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext
         var previousWindow = await db.ReplayGenerations.AsNoTracking().Where(x => x.PolicyId == policy.Id && x.ValidThrough >= now)
             .MaxAsync(x => (int?)x.WindowSeconds, token);
         var boundary = now.AddSeconds(-Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0));
-        var ids = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agentId && x.EnqueuedAt < boundary &&
+        var candidates = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agentId && x.EnqueuedAt < boundary &&
                 (x.RetainUntil == null || x.RetainUntil <= now) &&
                 (x.TrustedReceivedAt != null && x.TrustedReceivedAt >= cutover && x.RetainUntil != null || legacyDeadline <= now))
-            .OrderBy(x => x.RowId).Select(x => x.RowId).Take(batchSize).ToArrayAsync(token);
-        if (ids.Length == 0) return 0;
+            .OrderBy(x => x.RowId).Select(x => new { x.RowId, x.ByteCount }).Take(batchSize).ToArrayAsync(token);
+        if (candidates.Length == 0) return 0;
+        await AgentReceiptUsage.InitializeAsync(db, agent, token);
+        var ids = candidates.Select(x => x.RowId).ToArray();
         // Capture the latest committed receipt before deleting any rows. This also covers
         // receipts written by an older receiver after the schema migration.
         var latest = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agentId)
@@ -87,6 +89,8 @@ public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext
             .Select(x => new { x.EnqueuedAt, x.ReceivedAt, x.RowId }).FirstAsync(token);
         agent.RecordCommittedBatch(latest.EnqueuedAt, latest.ReceivedAt, latest.RowId);
         var deleted = await db.ReceivedBatches.Where(x => x.AgentId == agentId && ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        if (deleted != ids.Length) throw new InvalidOperationException("Inbox receipts changed outside the device lock.");
+        agent.ChangeInboxUsage(-deleted, -candidates.Sum(x => (long)x.ByteCount));
         agent.RecordInboxCleanup(deleted, now);
         agent.AdvanceReplayClock(now);
         agent.AdvanceCleanupFence(boundary);

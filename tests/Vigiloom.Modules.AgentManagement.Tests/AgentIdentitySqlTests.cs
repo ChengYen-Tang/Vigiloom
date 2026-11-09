@@ -26,6 +26,47 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task InboxUsage_InitializesAfterCutoverAndTracksCommittedReceipts() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("inbox usage", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var id = registered.AgentId!.Value;
+        var credential = Credential(id, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var first = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, first, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.IsNull((await db.Agents.SingleAsync(x => x.Id == id, token)).InboxReceiptCount);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        }
+        var second = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message with { MessageId = Guid.CreateVersion7() }]));
+        var full = new AgentBatchReceiver(agents, identity, clock, maximumBatches: 1);
+        Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await full.ReceiveAsync(credential, second, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var initialized = await db.Agents.SingleAsync(x => x.Id == id, token);
+            Assert.AreEqual(1L, initialized.InboxReceiptCount);
+            Assert.AreEqual((long)first.Length, initialized.InboxReceiptPayloadBytes);
+        }
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, second, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, second, token));
+        await using var verify = agents.CreateDbContext();
+        var agent = await verify.Agents.SingleAsync(x => x.Id == id, token);
+        Assert.AreEqual(2L, agent.InboxReceiptCount);
+        Assert.AreEqual((long)first.Length + second.Length, agent.InboxReceiptPayloadBytes);
+        Assert.AreEqual(await verify.ReceivedBatches.LongCountAsync(token), agent.InboxReceiptCount);
+        var rejected = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261109173325_AgentInboxProgress", token));
+        Assert.AreEqual(51000, rejected.Number);
+    });
+
+    [TestMethod]
     public Task InboxCleanup_RetriesFailedAgentWithoutStarvingOthers() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
@@ -63,9 +104,12 @@ public sealed class AgentIdentitySqlTests
             var completed = await db.Agents.SingleAsync(x => x.Id == second, token);
             Assert.AreEqual(0L, failed.InboxDeletedTotal);
             Assert.IsNull(failed.InboxLastDeletedAt);
+            Assert.IsNull(failed.InboxReceiptCount);
             Assert.AreEqual(3601L, completed.InboxDeletedTotal);
             Assert.AreEqual(1, completed.InboxLastDeletedCount);
             Assert.IsNotNull(completed.InboxLastDeletedAt);
+            Assert.AreEqual(0L, completed.InboxReceiptCount);
+            Assert.AreEqual(0L, completed.InboxReceiptPayloadBytes);
             await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
         }
         Assert.AreEqual(1, await cleanup.RunAsync(token));
