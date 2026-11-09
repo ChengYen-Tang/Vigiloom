@@ -3,6 +3,8 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Modules.AgentManagement.Domain;
 
+public sealed class AgentInboxNotReadyException() : InvalidOperationException("The inbox cleanup protocol is not ready or its SQL clock moved backward.");
+
 /// <summary>The central rollout state for the Agent replay window.</summary>
 public sealed class AgentReplayPolicy
 {
@@ -71,7 +73,7 @@ public sealed class AgentReplayPolicy
         var utc = now.ToUniversalTime();
         if (Phase != AgentReplayPhase.Enforced || CleanupCutoverAt is null || InboxSettingsChangedAt is null ||
             utc < CleanupCutoverAt || utc < InboxSettingsChangedAt)
-            throw new InvalidOperationException("The inbox cleanup protocol is not ready or its SQL clock moved backward.");
+            throw new AgentInboxNotReadyException();
         AgentReplayGeneration? previous = null;
         if (replaySeconds < ReplayWindowSeconds)
         {

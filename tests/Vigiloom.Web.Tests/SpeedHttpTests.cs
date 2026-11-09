@@ -19,6 +19,8 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Web.Tests;
 [TestClass]
@@ -28,6 +30,47 @@ namespace Vigiloom.Web.Tests;
 public sealed class SpeedHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+    [TestMethod]
+    public Task AgentInboxSettings_RequiresAdministratorCsrfAndPreview() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        }
+        const string url = "/api/v1/settings/agent-inbox/";
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var before = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        Assert.IsNotNull(before);
+        Assert.IsTrue(before.CleanupReady);
+        using (var forged = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
+        using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
+            admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+        }
+        using (var unconfirmed = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
+        using var previewResponse = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token);
+        Assert.AreEqual(HttpStatusCode.OK, previewResponse.StatusCode);
+        var preview = await previewResponse.Content.ReadFromJsonAsync<AgentInboxSettingsPreview>(cancellationToken: token);
+        Assert.IsNotNull(preview);
+        using (var saved = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, preview.ConfirmationToken), token)) Assert.AreEqual(HttpStatusCode.NoContent, saved.StatusCode);
+        using (var stale = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, preview.ConfirmationToken), token)) Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+        var after = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        Assert.AreEqual(3600, after!.ReplaySeconds);
+        Assert.AreEqual(2, after.RetentionDays);
+        var now = DateTimeOffset.UtcNow;
+        var auditUrl = $"/api/v1/operations/audit/agent-inbox?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var audit = await admin.GetFromJsonAsync<OperationAuditPage>(auditUrl, token);
+        Assert.AreEqual(3600, audit!.Items.Single().AgentInboxSettings!.CurrentReplaySeconds);
+    }, TestContext.CancellationToken);
+
     [TestMethod]
     public Task AgentInboxAudit_IsTypedAndAdministratorOnly() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
