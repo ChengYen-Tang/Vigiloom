@@ -77,6 +77,31 @@ public sealed class SpeedRetentionSqlTests
     });
 
     [TestMethod]
+    public Task Cleanup_LimitsEachRunAndPreservesRetainedRows() => WithDatabase(async (factory, _, token) =>
+    {
+        var settings = new SpeedRetentionSettings(factory, new OperationAuditWriter(), new EphemeralDataProtectionProvider());
+        await settings.GetAsync(token);
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = await factory.CreateDbContextAsync(token))
+        {
+            for (var i = 0; i < 5100; i++) db.SpeedRuns.Add(Run(now.AddDays(-366), SpeedTestState.Success));
+            for (var i = 0; i < 1000; i++) db.SpeedRuns.Add(Run(now.AddDays(-10), SpeedTestState.Success));
+            await db.SaveChangesAsync(token);
+        }
+        var cleanup = new SpeedRetentionCleanup(factory);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        Assert.AreEqual(5000, await cleanup.RunAsync(token));
+        elapsed.Stop();
+        TestContext.WriteLine($"First 5,000-row cleanup with 1,000 retained rows: {elapsed.ElapsedMilliseconds} ms.");
+        await using (var db = await factory.CreateDbContextAsync(token)) Assert.AreEqual(1100, await db.SpeedRuns.CountAsync(token));
+        Assert.AreEqual(100, await cleanup.RunAsync(token));
+        await using var verify = await factory.CreateDbContextAsync(token);
+        Assert.AreEqual(1000, await verify.SpeedRuns.CountAsync(token));
+        Assert.IsFalse(await verify.SpeedRuns.AnyAsync(x => x.RequestedAt < now.AddDays(-365), token));
+        Assert.AreEqual(5100L, (await settings.GetAsync(token)).DeletedTotal);
+    });
+
+    [TestMethod]
     public Task Cleanup_CancellationKeepsCommittedBatchAndCanResume() => WithDatabase(async (factory, connectionString, token) =>
     {
         var settings = new SpeedRetentionSettings(factory, new OperationAuditWriter(), new EphemeralDataProtectionProvider());
