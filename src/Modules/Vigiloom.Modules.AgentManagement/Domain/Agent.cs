@@ -36,6 +36,8 @@ public sealed class Agent
     public long InboxDeletedTotal { get; private set; }
     public int InboxLastDeletedCount { get; private set; }
     public DateTimeOffset? InboxLastDeletedAt { get; private set; }
+    public long? InboxReceiptCount { get; private set; }
+    public long? InboxReceiptPayloadBytes { get; private set; }
     public AgentReplayIssue? LastReplayIssue { get; private set; }
     public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
@@ -89,6 +91,23 @@ public sealed class Agent
         InboxDeletedTotal = checked(InboxDeletedTotal + deleted);
         InboxLastDeletedCount = deleted;
         InboxLastDeletedAt = now.ToUniversalTime();
+    }
+    public void InitializeInboxUsage(long count, long bytes)
+    {
+        if (InboxReceiptCount is not null || InboxReceiptPayloadBytes is not null || count < 0 || bytes < 0)
+            throw new InvalidOperationException("Inbox usage cannot be initialized.");
+        InboxReceiptCount = count;
+        InboxReceiptPayloadBytes = bytes;
+    }
+    public void ChangeInboxUsage(long countDelta, long bytesDelta)
+    {
+        if (InboxReceiptCount is not { } count || InboxReceiptPayloadBytes is not { } bytes)
+            throw new InvalidOperationException("Inbox usage is not initialized.");
+        var nextCount = checked(count + countDelta);
+        var nextBytes = checked(bytes + bytesDelta);
+        if (nextCount < 0 || nextBytes < 0) throw new InvalidOperationException("Inbox usage cannot be negative.");
+        InboxReceiptCount = nextCount;
+        InboxReceiptPayloadBytes = nextBytes;
     }
     public void RecordCommittedBatch(DateTimeOffset enqueuedAt, DateTimeOffset receivedAt, long receiptRowId)
     {

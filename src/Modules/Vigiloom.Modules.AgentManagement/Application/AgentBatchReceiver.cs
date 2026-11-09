@@ -13,8 +13,8 @@ public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorize
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
     long capacityBytes = AgentBatchReceiver.MaximumRetainedBytesPerAgent, int maximumBatches = AgentBatchReceiver.MaximumRetainedBatchesPerAgent)
 {
-    public const long MaximumRetainedBytesPerAgent = 256L * 1024 * 1024;
-    public const int MaximumRetainedBatchesPerAgent = 8192;
+    public const long MaximumRetainedBytesPerAgent = 4L * 1024 * 1024 * 1024;
+    public const int MaximumRetainedBatchesPerAgent = 1_000_000;
 
     public async Task<BatchReceiptStatus> ReceiveAsync(string? credential, ReadOnlyMemory<byte> payload, CancellationToken token)
     {
@@ -79,13 +79,24 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         foreach (var item in batch.Items)
             if (existing.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
 
-        var usage = await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
+        var usageWasInitialized = agent.InboxReceiptCount is not null;
+        var usage = policy.CleanupCutoverAt is not null
+            ? await AgentReceiptUsage.InitializeAsync(db, agent, token)
+            : await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
         if (usage.Count >= maximumBatches || payload.Length > capacityBytes - usage.Bytes)
+        {
+            if (policy.CleanupCutoverAt is not null && !usageWasInitialized)
+            {
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
+            }
             return BatchReceiptStatus.CapacityExceeded;
+        }
 
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
+        if (policy.CleanupCutoverAt is not null) agent.ChangeInboxUsage(1, payload.Length);
         db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length,
             policyTime, policyTime.AddDays(policy.ReceiptRetentionDays)));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)

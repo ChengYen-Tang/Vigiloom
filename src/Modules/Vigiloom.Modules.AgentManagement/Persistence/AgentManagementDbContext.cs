@@ -26,6 +26,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
             table.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
             table.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
             table.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
+            table.HasCheckConstraint("CK_Agents_InboxUsage", "([InboxReceiptCount] IS NULL AND [InboxReceiptPayloadBytes] IS NULL) OR ([InboxReceiptCount] >= 0 AND [InboxReceiptPayloadBytes] >= 0 AND [InboxReceiptCount] IS NOT NULL AND [InboxReceiptPayloadBytes] IS NOT NULL)");
         });
         agent.HasKey(x => x.Id).IsClustered(false);
         agent.Property(x => x.Id).ValueGeneratedNever();
