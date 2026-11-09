@@ -72,6 +72,11 @@ public sealed class Agent
         var utc = now.ToUniversalTime();
         if (ReplayClockFloor is null || utc > ReplayClockFloor) ReplayClockFloor = utc;
     }
+    public void AdvanceCleanupFence(DateTimeOffset boundary)
+    {
+        var utc = boundary.ToUniversalTime();
+        if (ReplayCleanedBefore is null || utc > ReplayCleanedBefore) ReplayCleanedBefore = utc;
+    }
     public void RecordReplayIssue(AgentReplayIssue issue, DateTimeOffset now)
     {
         if (!Enum.IsDefined(issue)) throw new ArgumentOutOfRangeException(nameof(issue));
