@@ -61,3 +61,9 @@ final result: blocked
 See `docs/design/req-24/design-qa.md` for the feature reference, normalized full-view and focused comparisons, desktop and narrow captures, iteration history, fidelity surfaces, and tested interactions. Its P2 findings were corrected and independently re-reviewed.
 
 final result: passed
+
+## REQ-39 speed retention — current review
+
+See `docs/design/req-39/design-qa.md` for the current visual verification status.
+
+final result: blocked

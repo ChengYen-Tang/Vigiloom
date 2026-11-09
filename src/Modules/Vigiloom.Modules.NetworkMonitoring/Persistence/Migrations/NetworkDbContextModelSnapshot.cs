@@ -395,6 +395,20 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                     b.Property<DateTimeOffset?>("NextAutomaticAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("RetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
+
+                    b.Property<long>("RetentionDeletedTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("RetentionLastBatchAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("RetentionLastBatchCount")
+                        .HasColumnType("int");
+
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -431,6 +445,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                     b.ToTable("SpeedSettings", "network", t =>
                         {
                             t.HasCheckConstraint("CK_SpeedSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_SpeedSettings_RetentionDays", "[RetentionDays] BETWEEN 1 AND 3650");
                         });
                 });
 #pragma warning restore 612, 618

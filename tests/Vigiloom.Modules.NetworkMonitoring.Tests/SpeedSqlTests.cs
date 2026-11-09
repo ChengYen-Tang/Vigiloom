@@ -45,6 +45,27 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
+    public Task UpgradeRetention_PreservesExistingSettingsAndResults() => WithDatabase(async (factory, token) =>
+    {
+        var settings = new SpeedSettings(factory, new OperationAuditWriter());
+        var initial = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new(false, 12, 100, 45, initial.Version), Guid.CreateVersion7(), token));
+        var runId = Guid.CreateVersion7();
+        await using var db = factory.CreateDbContext();
+        db.SpeedRuns.Add(new SpeedRun { Id = runId, RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow, State = SpeedTestState.Success });
+        await db.SaveChangesAsync(token);
+        await db.GetService<IMigrator>().MigrateAsync("20261102220000_SpeedTimeoutMinimum", token);
+        await db.GetService<IMigrator>().MigrateAsync(null, token);
+        db.ChangeTracker.Clear();
+        var actual = await db.SpeedSettings.SingleAsync(x => x.Name == "central", token);
+        Assert.AreEqual(365, actual.RetentionDays);
+        Assert.AreEqual(0L, actual.RetentionDeletedTotal);
+        Assert.IsFalse(actual.Automatic);
+        Assert.AreEqual(12, actual.IntervalHours);
+        Assert.IsTrue(await db.SpeedRuns.AnyAsync(x => x.Id == runId, token));
+    });
+
+    [TestMethod]
     public Task UpgradeSchedule_PreservesCustomSettingsAndHistory() => WithDatabase(async (factory, token) =>
     {
         var settings = new SpeedSettings(factory, new OperationAuditWriter());
@@ -342,6 +363,21 @@ public sealed class SpeedSqlTests
         Assert.AreEqual(detail.Summary.UploadMbps, page.Items[0].UploadMbps);
         Assert.HasCount(1, page.Trend);
         Assert.AreEqual(detail.Summary.Id, page.Trend[0].Id);
+
+        var cleanup = new SpeedRetentionCleanup(factory);
+        Assert.AreEqual(0, await cleanup.RunAsync(token), "Freshly produced results remain within retention.");
+        Assert.IsNotNull(await history.GetAsync(request.RunId.Value, token));
+        // The result above was produced by the actual runner and controlled provider. Move its
+        // stored timestamps across the retention boundary rather than waiting a year.
+        var expired = DateTimeOffset.UtcNow.AddDays(-366);
+        await using (var db = factory.CreateDbContext())
+            await db.SpeedRuns.Where(x => x.Id == request.RunId.Value).ExecuteUpdateAsync(update => update
+                .SetProperty(x => x.RequestedAt, expired).SetProperty(x => x.StartedAt, expired)
+                .SetProperty(x => x.CompletedAt, expired.AddMinutes(1)), token);
+        Assert.AreEqual(1, await cleanup.RunAsync(token));
+        Assert.IsNull(await history.GetAsync(request.RunId.Value, token));
+        var expiredPage = await history.QueryAsync(new(expired.AddMinutes(-1), expired.AddMinutes(1)), token);
+        Assert.IsEmpty(expiredPage.Items);
     });
 
     private sealed class FixedProbe(SpeedMeasurement result) : ISpeedProbe

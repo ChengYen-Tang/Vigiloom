@@ -12,7 +12,7 @@
         <h2>Speedtest.net 測試</h2>
         <p>測試會連線至 Speedtest.net 伺服器，並占用上下傳頻寬。資料處理方式請參閱服務提供者的條款與隱私政策。</p>
         <p><a href="https://www.speedtest.net/about/terms" target="_blank" rel="noopener noreferrer">Speedtest.net 使用條款</a> · <a href="https://www.speedtest.net/about/privacy" target="_blank" rel="noopener noreferrer">隱私政策</a></p>
-        @if (error) { <p role="alert">無法讀取設定，請稍後重新整理。</p> }
+        @if (error) { <p role="alert">@scheduleErrorMessage</p> }
         else
         {
             @if (message is not null) { <p role="status">@message</p> }
@@ -35,12 +35,15 @@
             }
         }
     </section>
+    <SpeedRetentionPanel RefreshKey="retentionRefresh" OnSaved="RefreshSpeedSettingsAsync" />
 </main>
 @code {
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "speed-settings")] private SpeedForm Input { get; set; } = default!;
     private SpeedSettingsSnapshot? snapshot;
     private bool error;
+    private string scheduleErrorMessage = "無法讀取設定，請稍後重新整理。";
+    private int retentionRefresh;
     private string? message;
     protected override async Task OnInitializedAsync()
     {
@@ -48,7 +51,9 @@
         try
         {
             snapshot = await Settings.GetAsync(HttpContext.RequestAborted);
-            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { Automatic = snapshot.Automatic, Hours = snapshot.IntervalHours,
+            if (!HttpMethods.IsPost(HttpContext.Request.Method) ||
+                (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] != "speed-settings")
+                Input = new() { Automatic = snapshot.Automatic, Hours = snapshot.IntervalHours,
                 MaxMiB = snapshot.MaxMiB, Timeout = snapshot.TimeoutSeconds, Version = snapshot.Version };
         }
         catch (Exception ex) { Logger.LogWarning("Could not load speed settings: {ExceptionType}", ex.GetType().Name); error = true; }
@@ -62,11 +67,26 @@
         {
             if (await Settings.UpdateAsync(input, actor, HttpContext.RequestAborted) is { } saved)
             {
-                snapshot = saved; Input.Version = saved.Version; message = "設定已儲存；中央 Worker 會依新排程執行。";
+                snapshot = saved; Input.Version = saved.Version; retentionRefresh++; message = "設定已儲存；中央 Worker 會依新排程執行。";
             }
             else message = "設定已被其他操作變更，請重新整理後再試。";
         }
         catch (Exception ex) { Logger.LogWarning("Could not save speed settings: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+    }
+    private async Task RefreshSpeedSettingsAsync()
+    {
+        try
+        {
+            snapshot = await Settings.GetAsync(HttpContext.RequestAborted);
+            Input = new() { Automatic = snapshot.Automatic, Hours = snapshot.IntervalHours, MaxMiB = snapshot.MaxMiB,
+                Timeout = snapshot.TimeoutSeconds, Version = snapshot.Version };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning("Could not refresh speed settings: {ExceptionType}", ex.GetType().Name);
+            error = true;
+            scheduleErrorMessage = "保存期限已儲存，但無法更新測速排程設定，請重新整理。";
+        }
     }
     private sealed class SpeedForm
     {

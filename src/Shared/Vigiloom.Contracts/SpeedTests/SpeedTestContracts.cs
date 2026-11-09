@@ -17,7 +17,7 @@ public sealed record SpeedRunDetails(SpeedRunSummary Summary, int MaxMiB, int Ti
     string? City, string? Country, string? Isp, double? Latitude, double? Longitude, string? DiagnosticCode);
 public sealed record SpeedHistoryQuery(DateTimeOffset From, DateTimeOffset To, string? Search = null, string Sort = "time", bool Descending = true, int Page = 1);
 public sealed record SpeedHistoryPage(IReadOnlyList<SpeedRunSummary> Items, int Total, int Page, int PageSize,
-    IReadOnlyList<SpeedRunSummary> Trend, bool TrendTruncated, DateTimeOffset? EarliestAvailableAt);
+    IReadOnlyList<SpeedRunSummary> Trend, bool TrendTruncated, DateTimeOffset? EarliestAvailableAt, int RetentionDays = SpeedRetentionLimits.DefaultDays);
 public interface ISpeedHistoryClient
 {
     Task<SpeedHistoryPage> QueryAsync(SpeedHistoryQuery query, CancellationToken token);
