@@ -31,7 +31,7 @@
                 <option value="collectors" selected="@(sourceText == "collectors")">Collector 管理</option>
                 <option value="agent-inbox" selected="@(sourceText == "agent-inbox")">Agent 收據保存</option>
                 <option value="speed" selected="@(sourceText == "speed")">網路測速設定</option><option value="ping" selected="@(sourceText == "ping")">Ping 設定</option><option value="accounts" selected="@(sourceText == "accounts")">帳號</option><option value="api-credentials" selected="@(sourceText == "api-credentials")">API 憑證</option>
-                <option value="devices" selected="@(sourceText == "devices")">設備</option><option value="groups" selected="@(sourceText == "groups")">群組</option><option value="agent-identity" selected="@(sourceText == "agent-identity")">Agent 身分</option><option value="agent-settings" selected="@(sourceText == "agent-settings")">Agent 設定</option><option value="agent-queue-capacity" selected="@(sourceText == "agent-queue-capacity")">Agent 佇列容量</option><option value="agent-replay" selected="@(sourceText == "agent-replay")">Agent 補送政策</option><option value="service-approvals" selected="@(sourceText == "service-approvals")">服務核准</option><option value="service-sources" selected="@(sourceText == "service-sources")">服務來源憑證</option><option value="scheduling" selected="@(sourceText == "scheduling")">背景工作</option>
+                <option value="devices" selected="@(sourceText == "devices")">設備</option><option value="groups" selected="@(sourceText == "groups")">群組</option><option value="agent-identity" selected="@(sourceText == "agent-identity")">Agent 身分</option><option value="agent-settings" selected="@(sourceText == "agent-settings")">Agent 設定</option><option value="agent-queue-capacity" selected="@(sourceText == "agent-queue-capacity")">Agent 佇列容量</option><option value="agent-metric-settings" selected="@(sourceText == "agent-metric-settings")">Agent 指標設定</option><option value="agent-replay" selected="@(sourceText == "agent-replay")">Agent 補送政策</option><option value="service-approvals" selected="@(sourceText == "service-approvals")">服務核准</option><option value="service-sources" selected="@(sourceText == "service-sources")">服務來源憑證</option><option value="scheduling" selected="@(sourceText == "scheduling")">背景工作</option>
             </select></div>
             <div class="audit-date-field"><label for="audit-from">開始日期（UTC）</label><input id="audit-from" name="from" type="date" value="@fromText" aria-invalid="@(dateError is not null ? "true" : null)" aria-describedby="@(dateError is not null ? "audit-date-error" : null)" required /></div>
             <div class="audit-date-field"><label for="audit-to">結束日期（UTC）</label><input id="audit-to" name="to" type="date" value="@toText" aria-invalid="@(dateError is not null ? "true" : null)" aria-describedby="@(dateError is not null ? "audit-date-error" : null)" required /></div>
@@ -179,7 +179,7 @@
                         <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                         <td>@(entry.ActorId is { } actor ? Actor(actor) : "系統／機器流程")</td>
                         <td>@ActionText(entry.Action)</td>
-                        <td>@(entry.SubjectId?.ToString("D") ?? (feedResult.Source is AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity ? "平台設定" : "—"))</td>
+                        <td>@(entry.SubjectId?.ToString("D") ?? (feedResult.Source is AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings ? "平台設定" : "—"))</td>
                         <td>
                             @if (entry.AgentId is { } agentId) { <div>Agent：@agentId</div> }
                             @if (entry.Reference is { } reference) { <div>工作：@reference</div> }
@@ -193,7 +193,17 @@
                                 <div>有效容量：@(capacity.EffectivePayloadBytes / 1048576) MiB</div><div>有效批次上限：@capacity.EffectiveBatchCount</div>
                                 <details><summary>設定與版本</summary><div>覆寫：@(capacity.PayloadBytes is { } bytes ? $"{bytes / 1048576} MiB" : "繼承")／@(capacity.BatchCount?.ToString() ?? "繼承")</div><div>版本：@capacity.Version</div><div>有效版本：@capacity.Revision</div></details>
                             }
-                            @if (entry.AgentId is null && entry.Reference is null && entry.AgentSettings is null && entry.QueueCapacity is null) { <span>—</span> }
+                            @if (entry.MetricSettings is { } metrics)
+                            {
+                                <div>有效主機採樣：@metrics.EffectiveHostIntervalSeconds 秒</div><div>有效程序採樣：@metrics.EffectiveProcessIntervalSeconds 秒</div>
+                                <div>有效採樣 CPU 預算：@metrics.EffectiveCpuMillisecondsPerMinute 毫秒／分鐘</div>
+                                <div>有效 Agent 記憶體門檻：@metrics.EffectiveWorkingSetLimitMiB MiB</div>
+                                <div>有效程序採集時間預算：@metrics.EffectiveProcessCollectionBudgetMs 毫秒</div>
+                                <div>有效資料上傳額度：@metrics.EffectiveUploadLimitMiBPerMinute MiB／分鐘</div>
+                                <div>有效採樣 I/O 預算：@metrics.EffectiveIoLimitMiBPerMinute MiB／分鐘</div>
+                                <details><summary>設定與版本</summary><div>覆寫：@(metrics.HostIntervalSeconds?.ToString() ?? "繼承")／@(metrics.ProcessIntervalSeconds?.ToString() ?? "繼承")</div><div>CPU 預算覆寫：@(metrics.CpuMillisecondsPerMinute?.ToString() ?? "繼承")</div><div>記憶體門檻覆寫：@(metrics.WorkingSetLimitMiB?.ToString() ?? "繼承")</div><div>程序時間預算覆寫：@(metrics.ProcessCollectionBudgetMs?.ToString() ?? "繼承")</div><div>上傳額度覆寫：@(metrics.UploadLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>採樣 I/O 預算覆寫：@(metrics.IoLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>版本：@metrics.Version</div><div>有效版本：@metrics.Revision</div></details>
+                            }
+                            @if (entry.AgentId is null && entry.Reference is null && entry.AgentSettings is null && entry.QueueCapacity is null && entry.MetricSettings is null) { <span>—</span> }
                         </td>
                         <td>@OutcomeText(entry.Outcome)</td>
                     </tr>
@@ -329,7 +339,7 @@
         AuditFeedAction.ApiCredentialIssued => "核發 API 憑證", AuditFeedAction.ApiCredentialRevoked => "撤銷 API 憑證",
         AuditFeedAction.DeviceCreated => "建立設備", AuditFeedAction.DeviceUpdated => "更新設備", AuditFeedAction.DeviceArchived => "封存設備", AuditFeedAction.DeviceRestored => "還原設備",
         AuditFeedAction.EnrollmentIssued => "核發 Agent 註冊", AuditFeedAction.EnrollmentRevoked => "撤銷 Agent 註冊", AuditFeedAction.AgentEnrolled => "Agent 加入", AuditFeedAction.AgentRevoked => "撤銷 Agent", AuditFeedAction.RotationStarted => "開始憑證輪替", AuditFeedAction.RotationFinished => "完成憑證輪替",
-        AuditFeedAction.AgentSettingsChanged => "變更 Agent 設定", AuditFeedAction.AgentQueueCapacityChanged => "變更 Agent 佇列容量", AuditFeedAction.ScheduleSettingsChanged => "變更排程設定", AuditFeedAction.JobDeleteRequested => "刪除工作", AuditFeedAction.JobRequeueRequested => "重新排入工作", AuditFeedAction.JobEnqueueRequested => "排入工作", AuditFeedAction.RecurringJobRemoveRequested => "移除週期工作", AuditFeedAction.RecurringJobTriggerRequested => "觸發週期工作",
+        AuditFeedAction.AgentSettingsChanged => "變更 Agent 設定", AuditFeedAction.AgentQueueCapacityChanged => "變更 Agent 佇列容量", AuditFeedAction.AgentMetricSettingsChanged => "變更 Agent 指標設定", AuditFeedAction.ScheduleSettingsChanged => "變更排程設定", AuditFeedAction.JobDeleteRequested => "刪除工作", AuditFeedAction.JobRequeueRequested => "重新排入工作", AuditFeedAction.JobEnqueueRequested => "排入工作", AuditFeedAction.RecurringJobRemoveRequested => "移除週期工作", AuditFeedAction.RecurringJobTriggerRequested => "觸發週期工作",
         _ => "未支援的紀錄"
     };
 }

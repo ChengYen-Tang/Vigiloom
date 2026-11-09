@@ -109,11 +109,14 @@ public sealed class AgentProcessReplayTests(TestContext context)
                     Assert.AreEqual(3, await db.RuntimeObservations.CountAsync(token));
                 }
                 await RunAgentAsync("normal", "Agent batch transport: Delivered", server, stateRoot, caPath, token);
-                Assert.IsNull(await queue.PeekAsync(token));
+                // The metrics worker may concurrently enqueue new batches; the replayed
+                // batch was at the head, so a different head proves it was removed.
+                Assert.AreNotEqual(batch.BatchId, (await queue.PeekAsync(token))?.BatchId);
+                Assert.AreEqual(0L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
-                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
-                    var items = await db.RuntimeObservations.AsNoTracking().OrderBy(x => x.Ordinal).Select(x => new { x.Ordinal, x.MessageId }).ToArrayAsync(token);
+                    Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.BatchId == batch.BatchId, token));
+                    var items = await db.RuntimeObservations.AsNoTracking().Where(x => x.BatchId == batch.BatchId).OrderBy(x => x.Ordinal).Select(x => new { x.Ordinal, x.MessageId }).ToArrayAsync(token);
                     CollectionAssert.AreEqual(messages.Select((x, i) => (i, x.MessageId)).ToArray(), items.Select(x => (x.Ordinal, x.MessageId)).ToArray());
                 }
             }

@@ -16,11 +16,12 @@ internal static class AgentBatchEndpoints
             .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentBatchCodec.MaximumBytes))
             .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
             .ProducesProblem(410).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429).ProducesProblem(503)
-            .WithSummary("Commit an authenticated, validated Agent runtime batch");
+            .WithSummary("Commit an authenticated, validated Agent batch");
     }
 
     private static async Task<IResult> ReceiveAsync(HttpContext context, AgentBatchReceiver receiver, CancellationToken token)
     {
+        context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] = "1, 2";
         var encodings = context.Request.Headers.ContentEncoding;
         var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
         if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)

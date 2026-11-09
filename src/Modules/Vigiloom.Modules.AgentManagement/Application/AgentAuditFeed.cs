@@ -10,7 +10,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
-        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity))
+        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings))
             throw new ArgumentException("Invalid audit source or range.");
         await using var db = await contexts.CreateDbContextAsync(token);
         var skip = (query.Page - 1) * AuditFeedLimits.PageSize;
@@ -33,6 +33,42 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
                     "RotationFinished" => AuditFeedAction.RotationFinished,
                     _ => AuditFeedAction.Unknown
                 }, AuditFeedOutcome.Recorded, AgentId: row.AgentId)).ToArray();
+        }
+        else if (source == AuditFeedSource.AgentMetricSettings)
+        {
+            var rows = await db.MetricSettingAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+                .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
+                .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.HostIntervalSeconds, x.ProcessIntervalSeconds, x.CpuMillisecondsPerMinute, x.WorkingSetLimitMiB, x.ProcessCollectionBudgetMs, x.UploadLimitMiBPerMinute, x.IoLimitMiBPerMinute,
+                    x.EffectiveHostIntervalSeconds, x.EffectiveProcessIntervalSeconds, x.EffectiveCpuMillisecondsPerMinute, x.EffectiveWorkingSetLimitMiB, x.EffectiveProcessCollectionBudgetMs, x.EffectiveUploadLimitMiBPerMinute, x.EffectiveIoLimitMiBPerMinute, x.EffectiveRevision, x.ChangeVersion }).ToArrayAsync(token);
+            more = rows.Length > AuditFeedLimits.PageSize;
+            entries = rows.Take(AuditFeedLimits.PageSize).Select(row =>
+            {
+                var effective = new AgentMetricSettings(row.EffectiveHostIntervalSeconds, row.EffectiveProcessIntervalSeconds, row.EffectiveCpuMillisecondsPerMinute, row.EffectiveWorkingSetLimitMiB, row.EffectiveProcessCollectionBudgetMs, row.EffectiveUploadLimitMiBPerMinute, row.EffectiveIoLimitMiBPerMinute);
+                var valid = AgentMetricConfiguration.Valid(new(row.HostIntervalSeconds, row.ProcessIntervalSeconds, row.CpuMillisecondsPerMinute, row.WorkingSetLimitMiB, row.ProcessCollectionBudgetMs, row.UploadLimitMiBPerMinute, row.IoLimitMiBPerMinute)) && effective.IsValid() &&
+                    row.ChangeVersion.Length == 8 && (row.HostIntervalSeconds is null || row.HostIntervalSeconds == effective.HostIntervalSeconds) &&
+                    (row.ProcessIntervalSeconds is null || row.ProcessIntervalSeconds == effective.ProcessIntervalSeconds) &&
+                    (row.CpuMillisecondsPerMinute is null || row.CpuMillisecondsPerMinute == effective.CpuMillisecondsPerMinute) &&
+                    (row.WorkingSetLimitMiB is null || row.WorkingSetLimitMiB == effective.WorkingSetLimitMiB) &&
+                    (row.ProcessCollectionBudgetMs is null || row.ProcessCollectionBudgetMs == effective.ProcessCollectionBudgetMs) &&
+                    (row.UploadLimitMiBPerMinute is null || row.UploadLimitMiBPerMinute == effective.UploadLimitMiBPerMinute) &&
+                    (row.IoLimitMiBPerMinute is null || row.IoLimitMiBPerMinute == effective.IoLimitMiBPerMinute) &&
+                    (row.DeviceId is not null ||
+                        (row.HostIntervalSeconds ?? AgentMetricSettings.Default.HostIntervalSeconds) == effective.HostIntervalSeconds &&
+                        (row.ProcessIntervalSeconds ?? AgentMetricSettings.Default.ProcessIntervalSeconds) == effective.ProcessIntervalSeconds &&
+                        (row.CpuMillisecondsPerMinute ?? AgentMetricSettings.Default.CpuMillisecondsPerMinute) == effective.CpuMillisecondsPerMinute &&
+                        (row.WorkingSetLimitMiB ?? AgentMetricSettings.Default.WorkingSetLimitMiB) == effective.WorkingSetLimitMiB &&
+                        (row.ProcessCollectionBudgetMs ?? AgentMetricSettings.Default.ProcessCollectionBudgetMs) == effective.ProcessCollectionBudgetMs &&
+                        (row.UploadLimitMiBPerMinute ?? AgentMetricSettings.Default.UploadLimitMiBPerMinute) == effective.UploadLimitMiBPerMinute &&
+                        (row.IoLimitMiBPerMinute ?? AgentMetricSettings.Default.IoLimitMiBPerMinute) == effective.IoLimitMiBPerMinute) &&
+                    (new AgentMetricSettingsSnapshot(AgentMetricSettingsSnapshot.CurrentSchema, row.EffectiveRevision, effective).IsValid() ||
+                        row.IoLimitMiBPerMinute is null && AgentMetricSettingsSnapshot.MatchesLegacyAuditRevision(effective, row.EffectiveRevision, row.CpuMillisecondsPerMinute is null, row.WorkingSetLimitMiB is null, row.ProcessCollectionBudgetMs is null, row.UploadLimitMiBPerMinute is null));
+                var details = valid ? new AgentMetricSettingsAuditDetails(row.HostIntervalSeconds, row.ProcessIntervalSeconds,
+                    row.EffectiveHostIntervalSeconds, row.EffectiveProcessIntervalSeconds, row.EffectiveRevision, Convert.ToBase64String(row.ChangeVersion),
+                    row.CpuMillisecondsPerMinute, row.EffectiveCpuMillisecondsPerMinute, row.WorkingSetLimitMiB, row.EffectiveWorkingSetLimitMiB,
+                    row.ProcessCollectionBudgetMs, row.EffectiveProcessCollectionBudgetMs, row.UploadLimitMiBPerMinute, row.EffectiveUploadLimitMiBPerMinute, row.IoLimitMiBPerMinute, row.EffectiveIoLimitMiBPerMinute) : null;
+                return new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId,
+                    valid ? AuditFeedAction.AgentMetricSettingsChanged : AuditFeedAction.Unknown, AuditFeedOutcome.Recorded, MetricSettings: details);
+            }).ToArray();
         }
         else if (source == AuditFeedSource.AgentQueueCapacity)
         {

@@ -12,10 +12,13 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentAudit> Audits => Set<AgentAudit>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
+    public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
     public DbSet<AgentSetting> Settings => Set<AgentSetting>();
     public DbSet<AgentSettingAudit> SettingAudits => Set<AgentSettingAudit>();
     public DbSet<AgentQueueCapacitySetting> QueueCapacitySettings => Set<AgentQueueCapacitySetting>();
     public DbSet<AgentQueueCapacityAudit> QueueCapacityAudits => Set<AgentQueueCapacityAudit>();
+    public DbSet<AgentMetricSetting> MetricSettings => Set<AgentMetricSetting>();
+    public DbSet<AgentMetricSettingAudit> MetricSettingAudits => Set<AgentMetricSettingAudit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +109,17 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         observation.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
         observation.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
 
+        var metric = modelBuilder.Entity<HostMetric>();
+        metric.ToTable("HostMetrics");
+        metric.HasKey(x => x.RowId).IsClustered();
+        metric.Property(x => x.RowId).UseIdentityColumn();
+        metric.Property(x => x.Source).HasMaxLength(128).IsRequired();
+        metric.Property(x => x.Dimension).HasMaxLength(256);
+        metric.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        metric.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
+        metric.HasIndex(x => new { x.AgentId, x.Kind, x.OccurredAt, x.RowId });
+        metric.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
         var setting = modelBuilder.Entity<AgentSetting>();
         setting.ToTable("Settings", table => table.HasCheckConstraint("CK_AgentSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
         setting.HasKey(x => x.Id).IsClustered(false);
@@ -143,5 +157,29 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         capacityAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
         capacityAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
         capacityAudit.HasOne<AgentQueueCapacitySetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
+
+        var metricSetting = modelBuilder.Entity<AgentMetricSetting>();
+        metricSetting.ToTable("MetricSettings", table => table.HasCheckConstraint("CK_MetricSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        metricSetting.HasKey(x => x.Id).IsClustered(false);
+        metricSetting.Property(x => x.Id).ValueGeneratedNever();
+        metricSetting.Property(x => x.RowId).UseIdentityColumn();
+        metricSetting.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        metricSetting.HasIndex(x => x.DeviceId).IsUnique().HasFilter(null);
+        metricSetting.Property(x => x.Version).IsRowVersion();
+
+        var metricAudit = modelBuilder.Entity<AgentMetricSettingAudit>();
+        metricAudit.ToTable("MetricSettingAudits");
+        metricAudit.HasKey(x => x.RowId).IsClustered();
+        metricAudit.Property(x => x.RowId).UseIdentityColumn();
+        metricAudit.Property(x => x.EffectiveCpuMillisecondsPerMinute).HasDefaultValue(3000);
+        metricAudit.Property(x => x.EffectiveWorkingSetLimitMiB).HasDefaultValue(512);
+        metricAudit.Property(x => x.EffectiveProcessCollectionBudgetMs).HasDefaultValue(2000);
+        metricAudit.Property(x => x.EffectiveUploadLimitMiBPerMinute).HasDefaultValue(16);
+        metricAudit.Property(x => x.EffectiveIoLimitMiBPerMinute).HasDefaultValue(64);
+        metricAudit.Property(x => x.EffectiveRevision).HasMaxLength(64).IsRequired();
+        metricAudit.Property(x => x.ChangeVersion).HasColumnType("binary(8)").IsRequired();
+        metricAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        metricAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
+        metricAudit.HasOne<AgentMetricSetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
     }
 }

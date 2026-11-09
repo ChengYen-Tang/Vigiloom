@@ -49,7 +49,13 @@ internal sealed class BatchWorker(AgentBatchClient client, AgentSettingsRuntime 
                 else logger.LogWarning("Agent batch transport: {Status}.", status);
                 previous = status;
             }
-            if (outcome.Status is BatchSendResult.Retry)
+            if (outcome.Status is BatchSendResult.Throttled)
+            {
+                failures = 0;
+                consecutiveDelivered = 0;
+                delay = outcome.RetryAfter is { } wait && wait > TimeSpan.Zero ? wait : TimeSpan.FromSeconds(1);
+            }
+            else if (outcome.Status is BatchSendResult.Retry)
             {
                 consecutiveDelivered = 0;
                 failures = Math.Min(failures + 1, 7);

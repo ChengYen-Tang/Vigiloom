@@ -9,6 +9,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
+using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Tests;
@@ -121,6 +122,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
     {
         var builder = AgentHost.CreateBuilder([]);
         using var host = builder.Build();
+        var hosted = host.Services.GetServices<IHostedService>().Select(x => x.GetType()).ToArray();
+        Assert.IsGreaterThanOrEqualTo(0, Array.IndexOf(hosted, typeof(BatchWorker)));
+        Assert.IsGreaterThan(Array.IndexOf(hosted, typeof(BatchWorker)), Array.IndexOf(hosted, typeof(MetricWorker)));
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 
         await host.StartAsync(testContext.CancellationToken);
@@ -151,6 +155,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = secondId, MachineSecret = secret }, token);
             var cached = AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 60, BatchIntervalSeconds = 10 });
             await new AgentSettingsStore(firstVault, server, firstId).SaveAsync(cached, null, DateTimeOffset.UtcNow, token);
+            var cachedMetrics = AgentMetricSettingsSnapshot.Create(new(45, 90));
+            await new AgentMetricSettingsStore(firstVault, server, firstId).SaveAsync(cachedMetrics, null, DateTimeOffset.UtcNow, token);
             var settingsHandler = new AlwaysUnavailableSettingsHandler();
             var heartbeatHandler = new CaptureOwnerHeartbeatHandler();
             var clock = new ObservedTimeProvider();
@@ -166,6 +172,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
@@ -174,6 +181,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await host.StartAsync(token);
                 await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 Assert.AreEqual(cached.Settings, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
+                Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
                 await heartbeatHandler.First.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 clock.Advance(TimeSpan.FromSeconds(61));
                 await heartbeatHandler.Second.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
@@ -184,6 +192,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.StartsWith($"vla_{secondId:D}.", switched.Credential);
                 Assert.IsNull(switched.Report.Configuration?.Applied);
                 Assert.AreEqual(AgentSettings.Default, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
+                Assert.AreEqual(AgentMetricSettings.Default, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
             }
             finally { await host.StopAsync(CancellationToken.None); }
         }
@@ -223,10 +232,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:StateDirectory"] = root,
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
-            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker" })
+            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker", "MetricWorker" })
                 builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
             builder.Services.AddSingleton(new AgentSettingsClient(http, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try
@@ -275,11 +285,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using var settingsHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
             using var capacityHttp = new HttpClient(new CapacityHostHandler(next));
             var builder = AgentHost.CreateBuilder([]);
+            DisableMetricWorker(builder);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri });
             foreach (var name in new[] { "HeartbeatWorker", "BatchWorker" })
                 builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try
@@ -333,6 +345,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try
@@ -403,6 +416,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             }
             await EnqueueAsync();
             var builder = AgentHost.CreateBuilder([]);
+            DisableMetricWorker(builder);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri
@@ -411,6 +425,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             heartbeat.ReleaseFirst.TrySetResult(); heartbeat.ReleaseSecond.TrySetResult();
@@ -1046,6 +1061,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
     private static void DisableSettingsWorker(HostApplicationBuilder builder)
     {
         var descriptor = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "AgentSettingsWorker");
+        builder.Services.Remove(descriptor);
+        // These fixtures isolate heartbeat or batch behavior and own their queue inputs.
+        DisableMetricWorker(builder);
+    }
+
+    private static void DisableMetricWorker(HostApplicationBuilder builder)
+    {
+        var descriptor = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MetricWorker));
         builder.Services.Remove(descriptor);
     }
 
