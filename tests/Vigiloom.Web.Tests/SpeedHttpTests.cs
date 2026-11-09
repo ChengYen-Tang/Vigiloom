@@ -144,7 +144,11 @@ public sealed class SpeedHttpTests
         scheduleFields["Input.Automatic"] = "false";
         using var scheduleSaved = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(scheduleFields), token);
         Assert.Contains("設定已儲存", await TextAsync(scheduleSaved, token));
-        var fields = Hidden(await FormAsync(scheduleSaved, "speed-retention", token));
+        var retentionForm = await FormAsync(scheduleSaved, "speed-retention", token);
+        Assert.AreEqual("/settings/speed-tests#speed-retention-title", retentionForm.GetAttribute("action"));
+        var fields = Hidden(retentionForm);
+        Assert.AreEqual("speed-retention", fields["_handler"]);
+        Assert.IsTrue(fields.ContainsKey("__RequestVerificationToken"));
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token);
         Assert.Contains("預估有", await TextAsync(preview, token));
