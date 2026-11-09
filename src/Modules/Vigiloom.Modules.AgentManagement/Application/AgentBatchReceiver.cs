@@ -44,9 +44,16 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             await transaction.CommitAsync(token);
             return BatchReceiptStatus.ClockUncertain;
         }
+        if (agent.ReplayCleanedBefore is not null && policy.Phase != AgentReplayPhase.Enforced)
+        {
+            agent.RecordReplayIssue(AgentReplayIssue.ClockUncertain, policyTime);
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return BatchReceiptStatus.ClockUncertain;
+        }
         if (policy.Phase == AgentReplayPhase.Enforced)
         {
-            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime);
+            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime, agent.ReplayCleanedBefore);
             if (rejection is { } reason)
             {
                 agent.AdvanceReplayClock(policyTime);
@@ -70,7 +77,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
-        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length));
+        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length, policyTime));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
         {
             var item = batch.Items[ordinal];

@@ -14,6 +14,8 @@ public sealed class AgentReplayPolicy
     public DateTimeOffset? ActivatedAt { get; private set; }
     public DateTimeOffset? GraceUntil { get; private set; }
     public DateTimeOffset? EnforcedAt { get; private set; }
+    /// <summary>SQL-clock cutover for the cleanup protocol; separate from replay-policy activation.</summary>
+    public DateTimeOffset? CleanupCutoverAt { get; private set; }
     public byte[] Version { get; private set; } = [];
 
     public bool InitializeFresh(DateTimeOffset now)
