@@ -26,6 +26,31 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task InboxCleanup_TraversesFiveHundredAgents() => WithDatabase(async (resources, agents, token) =>
+    {
+        var old = DateTimeOffset.UtcNow.AddDays(-10);
+        var devices = Enumerable.Range(0, 500).Select(i => new Device($"load-{i}", "127.0.0.1", true, old)).ToArray();
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(devices); await db.SaveChangesAsync(token); }
+        var principals = devices.Select(device => new Agent(device.Id, 1, new byte[32], old)).ToArray();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.AddRange(principals);
+            await db.SaveChangesAsync(token);
+            db.ReceivedBatches.AddRange(principals.Select(agent => new ReceivedBatch(agent.Id, Guid.CreateVersion7(), new byte[32], old, old, 1, 300, old, old.AddDays(7))));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+        }
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var removed = await new AgentInboxCleanup(agents).RunAsync(token);
+        timer.Stop();
+        TestContext.WriteLine($"500 Agents, one expired synthetic receipt each: cleanup {timer.Elapsed.TotalSeconds:F2} seconds.");
+        Assert.AreEqual(500, removed);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(500, await verify.Agents.CountAsync(x => x.InboxDeletedTotal == 1 && x.InboxReceiptCount == 0 && x.InboxReceiptPayloadBytes == 0 && x.ReplayCleanedBefore != null, token));
+    });
+
+    [TestMethod]
     public Task InboxUsage_InitializesAfterCutoverAndTracksCommittedReceipts() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
