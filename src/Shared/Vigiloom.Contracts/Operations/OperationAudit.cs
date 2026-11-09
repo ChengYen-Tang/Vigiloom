@@ -13,6 +13,9 @@ public sealed record SpeedSettingsChanged(
     SpeedSettingsAuditValues Previous, SpeedSettingsAuditValues Current,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 
+public sealed record SpeedRetentionChanged(int PreviousDays, int CurrentDays,
+    string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
+
 public sealed record PingSettingsAuditValues(int IntervalSeconds, int TimeoutSeconds, int FailureThreshold, int SuccessThreshold, int MaxConcurrency);
 public sealed record PingSettingsChanged(PingSettingsAuditValues Previous, PingSettingsAuditValues Current,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
@@ -64,7 +67,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);

@@ -58,7 +58,7 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@Operation(entry)</span></td>
-                            <td>@(entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
+                            <td>@(entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
                             <td>
                                 @if (entry.SpeedSettings is { } change)
                                 {
@@ -67,6 +67,11 @@
                                     <div>流量：@change.Previous.MaxMiB → @change.Current.MaxMiB MiB</div>
                                     <div>逾時：@change.Previous.TimeoutSeconds → @change.Current.TimeoutSeconds 秒</div>
                                     <details><summary>版本資訊</summary><span>@change.PreviousVersion → @change.CurrentVersion</span></details>
+                                }
+                                else if (entry.SpeedRetention is { } retention)
+                                {
+                                    <div>保存期限：@retention.PreviousDays → @retention.CurrentDays 天</div>
+                                    <details><summary>版本資訊</summary><span>@retention.PreviousVersion → @retention.CurrentVersion</span></details>
                                 }
                                 else if (entry.PingSettings is { } ping)
                                 {
@@ -291,7 +296,7 @@
         _ when entry.Collector?.Action == CollectorAction.Registered => "登記 Collector",
         _ when entry.Collector?.Action == CollectorAction.RouteAdded => "加入來源對應",
         _ when entry.Collector?.Action == CollectorAction.RouteRemoved => "移除來源對應",
-        _ when entry.SpeedSettings is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.InstancePolicy is not null || entry.LogQuota is not null || entry.TraceQuota is not null => "更新",
+        _ when entry.SpeedSettings is not null || entry.SpeedRetention is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.InstancePolicy is not null || entry.LogQuota is not null || entry.TraceQuota is not null => "更新",
         _ => "未支援的紀錄"
     };
     private static string ReplayPhase(AgentReplayPhase value) => value switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" };

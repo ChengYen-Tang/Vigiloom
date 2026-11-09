@@ -83,7 +83,9 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
-        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = "SELECT COUNT(*) FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID('network.SpeedSettings') AND name = 'CK_SpeedSettings_RetentionDays' AND is_disabled = 0 AND is_not_trusted = 0";
+        Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
     });
 
     [TestMethod]

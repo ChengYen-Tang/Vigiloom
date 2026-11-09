@@ -34,5 +34,25 @@ internal static class SpeedTestEndpoints
                 ? Results.Ok(saved) : Results.Conflict(), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedSettingsSnapshot>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Update speed-test scheduling and limits");
+        app.MapGet("/api/v1/settings/speed-retention", async (SpeedRetentionSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+            .RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedRetentionSnapshot>().ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("Get speed-test retention policy and cleanup progress");
+        app.MapPost("/api/v1/settings/speed-retention/preview", async (SpeedRetentionPreviewRequest input, SpeedRetentionSettings settings, HttpContext context, CancellationToken token) =>
+        {
+            if (!SpeedRetentionLimits.IsValid(input.Days)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
+            return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input.Days, input.Version, actor, token) is { } preview
+                ? Results.Ok(preview) : Results.Conflict(), allowApiCredential: false);
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedRetentionPreview>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("Preview a speed-test retention policy change");
+        app.MapPut("/api/v1/settings/speed-retention", async (SpeedRetentionInput input, SpeedRetentionSettings settings, HttpContext context, CancellationToken token) =>
+        {
+            if (!SpeedRetentionLimits.IsValid(input.Days)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                try { return await settings.UpdateAsync(input, actor, token) is { } saved ? Results.Ok(saved) : Results.Conflict(); }
+                catch (ArgumentException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["preview"] = ["A valid, current preview is required when reducing retention."] }); }
+            }, allowApiCredential: false);
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<SpeedRetentionSnapshot>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("Update speed-test retention policy");
     }
 }
