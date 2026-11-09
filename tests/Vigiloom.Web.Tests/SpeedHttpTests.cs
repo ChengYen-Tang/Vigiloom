@@ -17,6 +17,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Data.Common;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Vigiloom.Web.Tests;
 [TestClass]
@@ -26,6 +28,35 @@ namespace Vigiloom.Web.Tests;
 public sealed class SpeedHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+    [TestMethod]
+    public Task AgentInboxAudit_IsTypedAndAdministratorOnly() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        var now = DateTimeOffset.UtcNow;
+        var version = Convert.ToBase64String(new byte[8]);
+        var details = new AgentInboxSettingsChanged(86400, 7, 3600, 2, version, version);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            await new OperationAuditWriter().AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                new OperationAudit(Guid.CreateVersion7(), Guid.CreateVersion7(), now, details), token);
+            await transaction.CommitAsync(token);
+        }
+        var range = $"?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var url = "/api/v1/operations/audit/agent-inbox" + range;
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var page = await admin.GetFromJsonAsync<OperationAuditPage>(url, token);
+        Assert.IsNotNull(page);
+        Assert.AreEqual(details, page.Items.Single().AgentInboxSettings);
+        var speedPage = await admin.GetFromJsonAsync<OperationAuditPage>("/api/v1/operations/audit" + range, token);
+        Assert.IsNotNull(speedPage);
+        Assert.IsFalse(speedPage.Items.Any(x => x.AgentInboxSettings is not null));
+    }, TestContext.CancellationToken);
     [TestMethod]
     public Task ScheduleSettingsAreProtectedAndManualStartIsUnavailable() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
