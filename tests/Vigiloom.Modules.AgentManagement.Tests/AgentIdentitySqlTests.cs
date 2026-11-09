@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
@@ -739,10 +740,18 @@ public sealed class AgentIdentitySqlTests
             await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
         }
         var audit = new ReplayPolicyTestAuditWriter { Fail = true };
-        var settings = new AgentInboxSettings(agents, audit);
+        var settings = new AgentInboxSettings(agents, audit, new EphemeralDataProtectionProvider());
         string version;
         await using (var db = agents.CreateDbContext()) version = Convert.ToBase64String((await db.ReplayPolicies.SingleAsync(token)).Version);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
+        var actor = Guid.CreateVersion7();
+        var preview = await settings.PreviewAsync(3600, 2, version, actor, token);
+        Assert.IsNotNull(preview);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, null, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, Guid.CreateVersion7(), token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3601, 2, version, preview.ConfirmationToken, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 3, version, preview.ConfirmationToken, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, "invalid", actor, token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
         await using (var db = agents.CreateDbContext())
         {
             Assert.AreEqual(86400, (await db.ReplayPolicies.SingleAsync(token)).ReplayWindowSeconds);
@@ -750,8 +759,8 @@ public sealed class AgentIdentitySqlTests
             Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
         }
         audit.Fail = false;
-        Assert.IsTrue(await settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
-        Assert.IsFalse(await settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
+        Assert.IsTrue(await settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
+        Assert.IsFalse(await settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
         await using var verify = agents.CreateDbContext();
         var policy = await verify.ReplayPolicies.SingleAsync(token);
         var generation = await verify.ReplayGenerations.SingleAsync(token);
