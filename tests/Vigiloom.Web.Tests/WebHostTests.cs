@@ -168,6 +168,9 @@ public sealed class WebHostTests(TestContext testContext)
         var replayAudit = paths.GetProperty("/api/v1/operations/audit/agent-replay").GetProperty("get");
         Assert.IsTrue(replayAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", replayAudit.GetProperty("description").GetString()!);
+        var inboxAudit = paths.GetProperty("/api/v1/operations/audit/agent-inbox").GetProperty("get");
+        Assert.IsTrue(inboxAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.Contains("Administrator", inboxAudit.GetProperty("description").GetString()!);
         var serviceAudit = paths.GetProperty("/api/v1/operations/audit/service-approvals").GetProperty("get");
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);
