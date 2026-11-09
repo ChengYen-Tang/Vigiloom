@@ -58,6 +58,13 @@ public sealed class AgentIdentitySqlTests
         {
             Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == first, token));
             Assert.AreEqual(0, await db.ReceivedBatches.CountAsync(x => x.AgentId == second, token));
+            var failed = await db.Agents.SingleAsync(x => x.Id == first, token);
+            var completed = await db.Agents.SingleAsync(x => x.Id == second, token);
+            Assert.AreEqual(0L, failed.InboxDeletedTotal);
+            Assert.IsNull(failed.InboxLastDeletedAt);
+            Assert.AreEqual(350L, completed.InboxDeletedTotal);
+            Assert.AreEqual(150, completed.InboxLastDeletedCount);
+            Assert.IsNotNull(completed.InboxLastDeletedAt);
             await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
         }
         Assert.AreEqual(1, await cleanup.RunAsync(token));
@@ -890,7 +897,9 @@ public sealed class AgentIdentitySqlTests
         await using (var db = agents.CreateDbContext())
         {
             Assert.AreEqual(3, await db.ReceivedBatches.CountAsync(token));
-            Assert.IsNull((await db.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayCleanedBefore);
+            var unchanged = await db.Agents.SingleAsync(x => x.Id == agentId, token);
+            Assert.IsNull(unchanged.ReplayCleanedBefore);
+            Assert.AreEqual(0L, unchanged.InboxDeletedTotal);
             await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailCleanupFence]", token);
         }
         Assert.AreEqual(1, await cleanup.CleanAgentAsync(agentId, 1, token));

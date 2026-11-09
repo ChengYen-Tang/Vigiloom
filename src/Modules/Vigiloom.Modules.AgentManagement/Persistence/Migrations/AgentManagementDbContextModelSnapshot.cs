@@ -64,6 +64,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(30);
 
+                    b.Property<long>("InboxDeletedTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("InboxLastDeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("InboxLastDeletedCount")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("LastBatchEnqueuedAt")
                         .HasColumnType("datetimeoffset");
 

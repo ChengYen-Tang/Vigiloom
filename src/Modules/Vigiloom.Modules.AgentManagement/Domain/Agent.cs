@@ -33,6 +33,9 @@ public sealed class Agent
     public DateTimeOffset? LastBatchReceivedAt { get; private set; }
     public DateTimeOffset? LastBatchEnqueuedAt { get; private set; }
     public long? LastBatchReceiptRowId { get; private set; }
+    public long InboxDeletedTotal { get; private set; }
+    public int InboxLastDeletedCount { get; private set; }
+    public DateTimeOffset? InboxLastDeletedAt { get; private set; }
     public AgentReplayIssue? LastReplayIssue { get; private set; }
     public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
@@ -79,6 +82,13 @@ public sealed class Agent
     {
         var utc = boundary.ToUniversalTime();
         if (ReplayCleanedBefore is null || utc > ReplayCleanedBefore) ReplayCleanedBefore = utc;
+    }
+    public void RecordInboxCleanup(int deleted, DateTimeOffset now)
+    {
+        if (deleted <= 0) throw new ArgumentOutOfRangeException(nameof(deleted));
+        InboxDeletedTotal = checked(InboxDeletedTotal + deleted);
+        InboxLastDeletedCount = deleted;
+        InboxLastDeletedAt = now.ToUniversalTime();
     }
     public void RecordCommittedBatch(DateTimeOffset enqueuedAt, DateTimeOffset receivedAt, long receiptRowId)
     {
