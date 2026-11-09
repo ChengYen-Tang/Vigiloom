@@ -10,6 +10,10 @@ public sealed class SpeedSetting
     public int IntervalHours { get; set; } = 6;
     public int MaxMiB { get; set; } = 2048;
     public int TimeoutSeconds { get; set; } = 60;
+    public int RetentionDays { get; set; } = 365;
+    public long RetentionDeletedTotal { get; set; }
+    public int RetentionLastBatchCount { get; set; }
+    public DateTimeOffset? RetentionLastBatchAt { get; set; }
     public DateTimeOffset? NextAutomaticAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

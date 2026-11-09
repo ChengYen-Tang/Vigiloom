@@ -27,7 +27,9 @@ public sealed class SpeedHistory(IDbContextFactory<NetworkDbContext> contexts) :
         var rows = await sorted.ThenBy(x => x.RowId).Skip((query.Page - 1) * PageSize).Take(PageSize).ToArrayAsync(token);
         var trend = await runs.OrderBy(x => x.RequestedAt).ThenBy(x => x.RowId).Take(MaxTrend + 1).ToArrayAsync(token);
         var earliest = await db.SpeedRuns.MinAsync(x => (DateTimeOffset?)x.RequestedAt, token);
-        return new(rows.Select(Map).ToArray(), total, query.Page, PageSize, trend.Take(MaxTrend).Select(Map).ToArray(), trend.Length > MaxTrend, earliest);
+        var retention = await db.SpeedSettings.AsNoTracking().Where(x => x.Name == "central").Select(x => (int?)x.RetentionDays).SingleOrDefaultAsync(token)
+            ?? SpeedRetentionLimits.DefaultDays;
+        return new(rows.Select(Map).ToArray(), total, query.Page, PageSize, trend.Take(MaxTrend).Select(Map).ToArray(), trend.Length > MaxTrend, earliest, retention);
     }
     public async Task<SpeedRunDetails?> GetAsync(Guid id, CancellationToken token)
     {

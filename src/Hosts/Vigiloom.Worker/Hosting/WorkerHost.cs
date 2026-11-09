@@ -47,12 +47,15 @@ public static class WorkerHost
         builder.Services.AddScoped<SpeedSettings>();
         builder.Services.AddScoped<SpeedQueue>();
         builder.Services.AddScoped<SpeedRunner>();
+        builder.Services.AddScoped<SpeedRetentionCleanup>();
+        builder.Services.AddScoped<SpeedRetentionJob>();
         builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
         builder.Services.AddScoped<ISpeedProbe, SpeedtestNetProbe>();
         builder.Services.AddScoped<AutomaticSpeedJob>();
         builder.Services.AddHostedService<SpeedWorker>();
         builder.Services.AddHostedService<SpeedSchedule>();
+        builder.Services.AddHostedService<SpeedRetentionSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddSingleton<HealthRunner>();
         builder.Services.AddHostedService<HealthPolicyWorker>();

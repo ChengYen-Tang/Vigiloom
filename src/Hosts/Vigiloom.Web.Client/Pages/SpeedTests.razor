@@ -28,6 +28,7 @@
             else { <SpeedTable Page="result" ReturnUrl="@FilterUrl" Busy="@(loading || !RendererInfo.IsInteractive)" PageChanged="ChangePage" /> }
             <p>非完成狀態的數值是已觀測的部分結果；缺資料顯示「—」，不代表 0 Mbps。</p>
             <p>目前最早可用紀錄（UTC）：@(result.EarliestAvailableAt?.ToString("u") ?? "尚無資料")</p>
+            <p>測速紀錄保存期限：@result.RetentionDays 天。逾期資料在排程清理前可能仍可查詢。</p>
         </section>
     }
     else { <p role="status">正在載入測速紀錄…</p> }

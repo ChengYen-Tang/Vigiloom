@@ -111,6 +111,7 @@ builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<SpeedSettings>();
+builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
