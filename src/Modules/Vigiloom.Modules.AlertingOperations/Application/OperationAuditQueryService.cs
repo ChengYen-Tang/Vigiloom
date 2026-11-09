@@ -86,7 +86,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.TraceQuotaChangedV1 ? ReadTraceQuota(x.Details) : null,
             x.Kind == AuditKinds.CollectorChangedV1 ? ReadCollector(x.Details) : null,
             x.Kind == AuditKinds.HealthTargetChangedV1 ? ReadHealthTarget(x.Details) : null,
-            x.Kind == AuditKinds.HealthNetworkPolicyChangedV1 ? ReadHealthNetworkPolicy(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.HealthNetworkPolicyChangedV1 ? ReadHealthNetworkPolicy(x.Details) : null,
+            x.Kind == AuditKinds.SpeedRetentionChangedV1 ? ReadSpeedRetention(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -96,6 +97,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedSettingsChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static SpeedRetentionChanged? ReadSpeedRetention(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<SpeedRetentionChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

@@ -12,6 +12,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
@@ -422,6 +423,25 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-speed-test'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-speed-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+
+            var expired = new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow.AddDays(-366),
+                State = SpeedTestState.Success, CompletedAt = DateTimeOffset.UtcNow.AddDays(-366).AddMinutes(1) };
+            check.SpeedRuns.Add(expired);
+            await check.SaveChangesAsync(token);
+            var cleanupJob = jobs.Enqueue<SpeedRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            while (true)
+            {
+                var state = jobConnection.GetStateData(cleanupJob)?.Name;
+                Assert.AreNotEqual("Failed", state);
+                if (state == "Succeeded") break;
+                await Task.Delay(100, deadline.Token);
+            }
+            await using var afterCleanup = new NetworkDbContext(network);
+            Assert.IsFalse(await afterCleanup.SpeedRuns.AnyAsync(x => x.Id == expired.Id, token));
+            Assert.IsTrue(await afterCleanup.SpeedRuns.AnyAsync(x => x.Id == result.Id, token));
+            Assert.AreEqual(1L, (await afterCleanup.SpeedSettings.SingleAsync(token)).RetentionDeletedTotal);
         }
         finally { await host.StopAsync(CancellationToken.None); }
     }, testContext.CancellationToken);

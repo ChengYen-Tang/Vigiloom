@@ -1,0 +1,101 @@
+@using System.Security.Claims
+@using Vigiloom.Contracts.SpeedTests
+@using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests
+@inject SpeedRetentionSettings Retention
+@inject ILogger<SpeedRetentionPanel> Logger
+
+<section class="device-panel speed-retention" aria-labelledby="speed-retention-title">
+    <h2 id="speed-retention-title">測速紀錄保存</h2>
+    <p>到期的測速結果每小時分批清理；執行中、待執行及最近 24 小時的工作不會清除。延長期限無法恢復已清除的紀錄。</p>
+    @if (loadError) { <p role="alert">無法讀取保存設定，請重新整理後再試。</p> }
+    else if (snapshot is not null)
+    {
+        <p>目前保存 @snapshot.Days 天。已清除 @snapshot.DeletedTotal 筆；最近一次清除資料（UTC）：@(snapshot.LastBatchAt?.ToString("u") ?? "尚無紀錄")。</p>
+        <p>清理失敗可至<a href="/admin/jobs">背景工作</a>查詢。</p>
+        @if (message is not null) { <p role="status">@message</p> }
+        <EditForm Model="Input" FormName="speed-retention" method="post" action="/settings/speed-tests#speed-retention-title" OnValidSubmit="SubmitAsync">
+            <InputHidden @bind-Value="Input.Version" />
+            <InputHidden @bind-Value="Input.ConfirmationToken" />
+            <label for="retention-days">保存天數（@SpeedRetentionLimits.MinDays～@SpeedRetentionLimits.MaxDays 天）</label>
+            <InputNumber id="retention-days" @bind-Value="Input.Days" min="@SpeedRetentionLimits.MinDays" max="@SpeedRetentionLimits.MaxDays" required />
+            @if (preview is { } impact)
+            {
+                <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預估有 @impact.AffectedResults 筆結果超過新期限。實際清理數量會隨時間及資料變動。</p>
+                <p>預覽截止時間（UTC）：@impact.Cutoff.ToString("u")；申請時間早於此截止時間、目前已結束，且開始時間（未開始則申請時間）已滿 24 小時的結果會列入清理範圍。</p>
+                <p>變更後將依排程清理；刪除後無法復原。預覽在 5 分鐘內有效。</p>
+                <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/speed-tests?retention=cancel#speed-retention-title">取消</a></div>
+            }
+            else { <button type="submit">預覽變更</button> }
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter] public int RefreshKey { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "speed-retention")] private RetentionForm Input { get; set; } = default!;
+    private SpeedRetentionSnapshot? snapshot;
+    private SpeedRetentionPreview? preview;
+    private bool loadError;
+    private string? message;
+    private int lastRefresh;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        try
+        {
+            snapshot = await Retention.GetAsync(HttpContext.RequestAborted);
+            if (!HttpMethods.IsPost(HttpContext.Request.Method) ||
+                (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] != "speed-retention")
+                Input = new() { Days = snapshot.Days, Version = snapshot.Version };
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not load speed retention: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (RefreshKey == lastRefresh) return;
+        lastRefresh = RefreshKey;
+        try
+        {
+            snapshot = await Retention.GetAsync(HttpContext.RequestAborted);
+            Input = new() { Days = snapshot.Days, Version = snapshot.Version };
+            preview = null;
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not refresh speed retention: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        if (!SpeedRetentionLimits.IsValid(Input.Days) || Input.Version is null) { message = "請輸入有效的保存天數。"; return; }
+        try
+        {
+            if (string.IsNullOrEmpty(Input.ConfirmationToken))
+            {
+                preview = await Retention.PreviewAsync(Input.Days, Input.Version, actor, HttpContext.RequestAborted);
+                if (preview is null) { message = "設定已被其他操作變更，請重新整理後再試。"; return; }
+                Input.ConfirmationToken = preview.ConfirmationToken;
+            }
+            else if (await Retention.UpdateAsync(new(Input.Days, Input.Version, Input.ConfirmationToken), actor, HttpContext.RequestAborted) is { } saved)
+            {
+                snapshot = saved;
+                Input = new() { Days = saved.Days, Version = saved.Version };
+                message = "保存設定已儲存。";
+                await OnSaved.InvokeAsync();
+            }
+            else { Input.ConfirmationToken = null; message = "設定已被其他操作變更，請重新整理後再試。"; }
+        }
+        catch (ArgumentException) { Input.ConfirmationToken = null; message = "預覽已過期或天數已變更，請重新預覽。"; }
+        catch (Exception ex) { Logger.LogWarning("Could not update speed retention: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+    }
+
+    private sealed class RetentionForm
+    {
+        public int Days { get; set; } = SpeedRetentionLimits.DefaultDays;
+        public string? Version { get; set; }
+        public string? ConfirmationToken { get; set; }
+    }
+}

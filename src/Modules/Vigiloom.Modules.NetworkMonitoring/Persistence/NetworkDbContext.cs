@@ -16,12 +16,17 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
     {
         modelBuilder.HasDefaultSchema("network");
         var speedSettings = modelBuilder.Entity<SpeedSetting>();
-        speedSettings.ToTable("SpeedSettings", t => t.HasCheckConstraint("CK_SpeedSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        speedSettings.ToTable("SpeedSettings", t =>
+        {
+            t.HasCheckConstraint("CK_SpeedSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            t.HasCheckConstraint("CK_SpeedSettings_RetentionDays", "[RetentionDays] BETWEEN 1 AND 3650");
+        });
         speedSettings.HasKey(x => x.Id).IsClustered(false);
         speedSettings.Property(x => x.Id).ValueGeneratedNever();
         speedSettings.Property(x => x.RowId).UseIdentityColumn();
         speedSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
         speedSettings.Property(x => x.Name).HasMaxLength(32);
+        speedSettings.Property(x => x.RetentionDays).HasDefaultValue(365);
         speedSettings.HasIndex(x => x.Name).IsUnique();
         speedSettings.Property(x => x.Version).IsRowVersion();
         var run = modelBuilder.Entity<SpeedRun>();

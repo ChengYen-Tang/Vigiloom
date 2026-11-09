@@ -12,6 +12,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Data.Common;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
 
 namespace Vigiloom.Web.Tests;
 [TestClass]
@@ -120,6 +125,91 @@ public sealed class SpeedHttpTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
+    public Task RetentionSettings_RequireAdministratorAndPreviewBeforeConfirmation() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/speed-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/speed-retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await reader.PostAsJsonAsync("/api/v1/settings/speed-retention/preview", new SpeedRetentionPreviewRequest(30, "invalid"), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var beforeRetention = await admin.GetFromJsonAsync<SpeedRetentionSnapshot>("/api/v1/settings/speed-retention", token);
+        Assert.IsNotNull(beforeRetention);
+        using (var denied = await admin.PostAsJsonAsync("/api/v1/settings/speed-retention/preview", new SpeedRetentionPreviewRequest(30, beforeRetention.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+        using var initial = await admin.GetAsync("/settings/speed-tests", token);
+        var scheduleFields = Hidden(await FormAsync(initial, "speed-settings", token));
+        scheduleFields["Input.Hours"] = "6"; scheduleFields["Input.MaxMiB"] = "100"; scheduleFields["Input.Timeout"] = "45";
+        scheduleFields["Input.Automatic"] = "false";
+        using var scheduleSaved = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(scheduleFields), token);
+        Assert.Contains("設定已儲存", await TextAsync(scheduleSaved, token));
+        var retentionForm = await FormAsync(scheduleSaved, "speed-retention", token);
+        Assert.AreEqual("/settings/speed-tests#speed-retention-title", retentionForm.GetAttribute("action"));
+        var fields = Hidden(retentionForm);
+        Assert.AreEqual("speed-retention", fields["_handler"]);
+        Assert.IsTrue(fields.ContainsKey("__RequestVerificationToken"));
+        fields["Input.Days"] = "30";
+        using var preview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("預估有", await TextAsync(preview, token));
+        var previewForm = await FormAsync(preview, "speed-retention", token);
+        Assert.AreEqual("/settings/speed-tests?retention=cancel#speed-retention-title", previewForm.QuerySelector("a")?.GetAttribute("href"));
+        using var cancelled = await admin.GetAsync("/settings/speed-tests?retention=cancel", token);
+        var cancelledText = await TextAsync(cancelled, token);
+        Assert.DoesNotContain("確認儲存", cancelledText);
+        Assert.Contains("目前保存 365 天", cancelledText);
+        var confirmedFields = Hidden(previewForm);
+        confirmedFields["Input.Days"] = "30";
+        using var confirmed = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(confirmedFields), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(confirmed, token));
+        var saved = await admin.GetFromJsonAsync<SpeedRetentionSnapshot>("/api/v1/settings/speed-retention", token);
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(30, saved.Days);
+        var nextSchedule = Hidden(await FormAsync(confirmed, "speed-settings", token));
+        nextSchedule["Input.Hours"] = "12"; nextSchedule["Input.MaxMiB"] = "100"; nextSchedule["Input.Timeout"] = "45";
+        nextSchedule["Input.Automatic"] = "false";
+        using var scheduleAgain = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(nextSchedule), token);
+        Assert.Contains("設定已儲存", await TextAsync(scheduleAgain, token));
+        using var stale = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(confirmedFields), token);
+        Assert.Contains("設定已被其他操作變更", await TextAsync(stale, token));
+        var now = DateTimeOffset.UtcNow;
+        var auditUrl = $"/api/v1/operations/audit?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
+        var audit = await admin.GetFromJsonAsync<OperationAuditPage>(auditUrl, token);
+        Assert.IsNotNull(audit);
+        Assert.AreEqual(30, audit.Items.Single(x => x.SpeedRetention is not null).SpeedRetention?.CurrentDays);
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task RetentionSave_ReportsSuccessWhenScheduleRefreshFails() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        var failure = new RefreshFailure();
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            var options = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).AddInterceptors(failure).Options;
+            services.RemoveAll<IDbContextFactory<NetworkDbContext>>();
+            services.AddSingleton<IDbContextFactory<NetworkDbContext>>(new InterceptedFactory(options));
+            services.RemoveAll<IOperationAuditWriter<OperationAudit>>();
+            services.AddSingleton<IOperationAuditWriter<OperationAudit>>(new ArmFailureAfterAudit(failure));
+        }));
+        await PingTestSite.InitializeAsync(factory, token);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        using var initial = await admin.GetAsync("/settings/speed-tests", token);
+        var fields = Hidden(await FormAsync(initial, "speed-retention", token));
+        fields["Input.Days"] = "30";
+        using var preview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token);
+        var confirm = Hidden(await FormAsync(preview, "speed-retention", token));
+        confirm["Input.Days"] = "30";
+        using var result = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(confirm), token);
+        var document = await new HtmlParser().ParseDocumentAsync(await result.Content.ReadAsStringAsync(token), token);
+        Assert.Contains("保存設定已儲存", document.Body!.TextContent);
+        Assert.Contains("保存期限已儲存，但無法更新測速排程設定", document.Body.TextContent);
+        Assert.IsFalse(document.QuerySelectorAll("form").Any(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "speed-settings"));
+        await using var db = new NetworkDbContext(new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString).Options);
+        Assert.AreEqual(30, (await db.SpeedSettings.SingleAsync(token)).RetentionDays);
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task Details_ShowCoordinatesOnlyWhenProvided() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
@@ -159,5 +249,32 @@ public sealed class SpeedHttpTests
         using var page=await client.GetAsync("/account/login",token); var fields=Hidden(await FormAsync(page,"login",token));
         fields["Input.UserName"]=name;fields["Input.Password"]="Strong-Password-123";
         using var response=await client.PostAsync("/account/login",new FormUrlEncodedContent(fields),token);Assert.AreEqual(HttpStatusCode.Redirect,response.StatusCode);
+    }
+
+    private sealed class RefreshFailure : DbCommandInterceptor
+    {
+        public bool Armed { get; set; }
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (Armed && command.CommandText.Contains("[network].[SpeedSettings]", StringComparison.Ordinal))
+                throw new InvalidOperationException("Injected refresh failure");
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class InterceptedFactory(DbContextOptions<NetworkDbContext> options) : IDbContextFactory<NetworkDbContext>
+    {
+        public NetworkDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class ArmFailureAfterAudit(RefreshFailure failure) : IOperationAuditWriter<OperationAudit>
+    {
+        private readonly OperationAuditWriter inner = new();
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken token)
+        {
+            await inner.AppendAsync(connection, transaction, audit, token);
+            if (audit.Details is SpeedRetentionChanged) failure.Armed = true;
+        }
     }
 }

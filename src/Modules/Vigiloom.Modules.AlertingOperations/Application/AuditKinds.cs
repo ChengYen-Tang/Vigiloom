@@ -17,4 +17,5 @@ internal static class AuditKinds
     public const short CollectorChangedV1 = 12;
     public const short HealthTargetChangedV1 = 13;
     public const short HealthNetworkPolicyChangedV1 = 14;
+    public const short SpeedRetentionChangedV1 = 15;
 }
