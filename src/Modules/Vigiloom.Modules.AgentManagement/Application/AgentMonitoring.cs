@@ -23,9 +23,10 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
                 x.QuarantineInvalidLocal, x.QuarantineBadRequest, x.QuarantineConflict, x.QuarantineTooLarge,
                 x.QuarantineUnsupported, x.QuarantineExpired, x.QuarantineOther,
                 x.QueueReportEpoch, x.QueueReportSequence, x.QuarantineReportEpoch, x.QuarantineReportSequence,
-                LastBatch = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
+                x.LastBatchEnqueuedAt, x.LastBatchReceivedAt, x.LastBatchReceiptRowId, x.InboxReceiptCount, x.InboxReceiptPayloadBytes,
+                LatestReceipt = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
                     .OrderByDescending(batch => batch.ReceivedAt).ThenByDescending(batch => batch.RowId)
-                    .Select(batch => new { batch.EnqueuedAt, batch.ReceivedAt }).FirstOrDefault() }).SingleOrDefaultAsync(token);
+                    .Select(batch => new { batch.EnqueuedAt, batch.ReceivedAt, batch.RowId }).FirstOrDefault() }).SingleOrDefaultAsync(token);
         if (agent is null) return new(deviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
         var now = clock.GetUtcNow();
         var last = agent.LastHeartbeatAt;
@@ -44,9 +45,18 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
             agent.QuarantineReportEpoch != agent.QueueReportEpoch || agent.QuarantineReportSequence != agent.QueueReportSequence ||
             details?.IsValid(snapshot.QuarantinedBatches) != true) details = null;
         AgentQueueMonitoring? queue = agent.QueueReportedAt is { } reportedAt ? new(reportedAt, snapshot, details) : null;
-        var batchTime = agent.LastBatch is { } batch ? new AgentBatchTimeObservation(batch.EnqueuedAt, batch.ReceivedAt,
-            batch.EnqueuedAt - batch.ReceivedAt > TimeSpan.FromMinutes(5)) : null;
-        var usage = await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
+        var enqueuedAt = agent.LastBatchEnqueuedAt;
+        var receivedAt = agent.LastBatchReceivedAt;
+        if (agent.LatestReceipt is { } receipt && (receivedAt is null || receipt.ReceivedAt > receivedAt ||
+            receipt.ReceivedAt == receivedAt && receipt.RowId > (agent.LastBatchReceiptRowId ?? 0)))
+        {
+            enqueuedAt = receipt.EnqueuedAt;
+            receivedAt = receipt.ReceivedAt;
+        }
+        var batchTime = enqueuedAt is { } enqueued && receivedAt is { } received
+            ? new AgentBatchTimeObservation(enqueued, received, enqueued - received > TimeSpan.FromMinutes(5)) : null;
+        var usage = agent.InboxReceiptCount is { } receiptCount && agent.InboxReceiptPayloadBytes is { } receiptBytes
+            ? (Count: receiptCount, Bytes: receiptBytes) : await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
         var capacity = new AgentReceiptCapacity(usage.Count, usage.Bytes, AgentBatchReceiver.MaximumRetainedBatchesPerAgent,
             AgentBatchReceiver.MaximumRetainedBytesPerAgent);
         var issue = agent.LastReplayIssue is { } reason && Enum.IsDefined(reason) && agent.LastReplayIssueAt is { } issueAt

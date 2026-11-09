@@ -29,6 +29,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryAgentReplayAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.AgentReplayPolicyChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryAgentInboxAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.AgentInboxSettingsChangedV1, cancellationToken);
+
     public async Task<OperationAuditPage> QueryServiceApprovalsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.ServiceApprovedV1, cancellationToken);
 
@@ -67,8 +70,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
-                (kind != 0 ? x.Kind == kind :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1))
+                (kind != 0 ? x.Kind == kind || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) :
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -87,7 +90,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.CollectorChangedV1 ? ReadCollector(x.Details) : null,
             x.Kind == AuditKinds.HealthTargetChangedV1 ? ReadHealthTarget(x.Details) : null,
             x.Kind == AuditKinds.HealthNetworkPolicyChangedV1 ? ReadHealthNetworkPolicy(x.Details) : null,
-            x.Kind == AuditKinds.SpeedRetentionChangedV1 ? ReadSpeedRetention(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.SpeedRetentionChangedV1 ? ReadSpeedRetention(x.Details) : null,
+            x.Kind == AuditKinds.AgentInboxSettingsChangedV1 ? ReadAgentInboxSettings(x.Details) : null,
+            x.Kind == AuditKinds.AgentInboxCleanupActivatedV1 ? ReadAgentInboxActivation(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -107,6 +112,26 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedRetentionChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static AgentInboxSettingsChanged? ReadAgentInboxSettings(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<AgentInboxSettingsChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static AgentInboxCleanupActivated? ReadAgentInboxActivation(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<AgentInboxCleanupActivated>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

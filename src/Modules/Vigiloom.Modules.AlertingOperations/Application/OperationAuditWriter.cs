@@ -28,6 +28,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
+            AgentInboxSettingsChanged change when IsValid(change) => (AuditKinds.AgentInboxSettingsChangedV1, JsonSerializer.Serialize(change)),
+            AgentInboxCleanupActivated change when IsValid(change) => (AuditKinds.AgentInboxCleanupActivatedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
             ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
@@ -103,6 +105,15 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         ((change.Previous == AgentReplayPhase.Disabled && change.Current == AgentReplayPhase.Grace && change.EnforcedAt is null) ||
          (change.Previous == AgentReplayPhase.Grace && change.Current == AgentReplayPhase.Enforced &&
           change.EnforcedAt is { Offset: var offset } enforced && offset == TimeSpan.Zero && enforced >= change.GraceUntil)) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(AgentInboxSettingsChanged change) =>
+        AgentInboxPolicyLimits.IsValid(change.PreviousReplaySeconds, change.PreviousRetentionDays) &&
+        AgentInboxPolicyLimits.IsValid(change.CurrentReplaySeconds, change.CurrentRetentionDays) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(AgentInboxCleanupActivated change) => change.CutoverAt.Offset == TimeSpan.Zero &&
+        change.LegacyRetainUntil.Offset == TimeSpan.Zero && change.LegacyRetainUntil >= change.CutoverAt &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     private static bool IsVersion(string? value)

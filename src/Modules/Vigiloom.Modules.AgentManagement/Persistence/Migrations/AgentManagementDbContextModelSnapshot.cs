@@ -64,6 +64,30 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(30);
 
+                    b.Property<long>("InboxDeletedTotal")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("InboxLastDeletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("InboxLastDeletedCount")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("InboxReceiptCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InboxReceiptPayloadBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastBatchEnqueuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("LastBatchReceiptRowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastBatchReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("datetimeoffset");
 
@@ -155,6 +179,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<long?>("QueueTotalBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset?>("ReplayCleanedBefore")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("ReplayClockFloor")
                         .HasColumnType("datetimeoffset");
 
@@ -189,6 +216,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                             t.HasCheckConstraint("CK_Agents_HeartbeatSafety", "[HeartbeatSafetyIntervalSeconds] BETWEEN 10 AND 300");
 
                             t.HasCheckConstraint("CK_Agents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Agents_InboxUsage", "([InboxReceiptCount] IS NULL AND [InboxReceiptPayloadBytes] IS NULL) OR ([InboxReceiptCount] >= 0 AND [InboxReceiptPayloadBytes] >= 0 AND [InboxReceiptCount] IS NOT NULL AND [InboxReceiptPayloadBytes] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_Agents_ReplayIssue", "([LastReplayIssue] IS NULL AND [LastReplayIssueAt] IS NULL) OR ([LastReplayIssue] IS NOT NULL AND [LastReplayIssue] IN (1, 2, 3) AND [LastReplayIssueAt] IS NOT NULL)");
                         });
@@ -336,12 +365,46 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayGeneration", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("PolicyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ValidThrough")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("WindowSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("PolicyId", "ValidThrough");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("PolicyId", "ValidThrough"), new[] { "WindowSeconds" });
+
+                    b.ToTable("ReplayGenerations", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReplayGenerations_WindowSeconds", "[WindowSeconds] BETWEEN 1 AND 2592000");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("CleanupCutoverAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("EnforcedAt")
@@ -353,8 +416,24 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset?>("GraceUntil")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("InboxSettingsChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LegacyReceiptsRetainUntil")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("Phase")
                         .HasColumnType("int");
+
+                    b.Property<int>("ReceiptRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(7);
+
+                    b.Property<int>("ReplayWindowSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(86400);
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -387,9 +466,19 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ReplayPolicies_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 
+                            t.HasCheckConstraint("CK_ReplayPolicies_InboxTimes", "([CleanupCutoverAt] IS NULL AND [InboxSettingsChangedAt] IS NULL) OR ([Phase] = 2 AND [CleanupCutoverAt] IS NOT NULL AND [InboxSettingsChangedAt] IS NOT NULL AND [InboxSettingsChangedAt] >= [CleanupCutoverAt] AND [CleanupCutoverAt] >= [EnforcedAt])");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_LegacyDeadline", "([CleanupCutoverAt] IS NULL AND [LegacyReceiptsRetainUntil] IS NULL) OR ([CleanupCutoverAt] IS NOT NULL AND [LegacyReceiptsRetainUntil] IS NOT NULL AND [LegacyReceiptsRetainUntil] >= [CleanupCutoverAt])");
+
                             t.HasCheckConstraint("CK_ReplayPolicies_Phase", "([Phase] = 0 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NULL AND [GraceUntil] IS NULL AND [EnforcedAt] IS NULL) OR ([Phase] = 1 AND [FreshInstallation] = 0 AND [ActivatedAt] IS NOT NULL AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] IS NULL) OR ([Phase] = 2 AND [ActivatedAt] IS NOT NULL AND [EnforcedAt] IS NOT NULL AND (([FreshInstallation] = 1 AND [GraceUntil] IS NULL AND [EnforcedAt] = [ActivatedAt]) OR ([FreshInstallation] = 0 AND [GraceUntil] IS NOT NULL AND [GraceUntil] > [ActivatedAt] AND [EnforcedAt] >= [GraceUntil])))");
 
+                            t.HasCheckConstraint("CK_ReplayPolicies_ReceiptRetentionDays", "[ReceiptRetentionDays] BETWEEN 1 AND 3650");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_ReplayWindowSeconds", "[ReplayWindowSeconds] BETWEEN 1 AND 2592000");
+
                             t.HasCheckConstraint("CK_ReplayPolicies_Scope", "[Scope] = 1");
+
+                            t.HasCheckConstraint("CK_ReplayPolicies_WindowWithinRetention", "CAST([ReceiptRetentionDays] AS bigint) * 86400 >= CAST([ReplayWindowSeconds] AS bigint) + 300");
                         });
                 });
 
@@ -588,6 +677,12 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset>("ReceivedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("RetainUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("TrustedReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
@@ -666,6 +761,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentQueueCapacitySetting", null)
                         .WithMany()
                         .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentReplayGeneration", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", null)
+                        .WithMany()
+                        .HasForeignKey("PolicyId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

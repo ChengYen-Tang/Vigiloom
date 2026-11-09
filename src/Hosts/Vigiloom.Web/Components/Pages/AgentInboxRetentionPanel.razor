@@ -1,0 +1,151 @@
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.AgentManagement.Domain
+@inject AgentInboxSettings Settings
+@inject ILogger<AgentInboxRetentionPanel> Logger
+
+<section class="device-panel inbox-retention" aria-labelledby="inbox-retention-title">
+    <h2 id="inbox-retention-title">Agent 收據保存與清理</h2>
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (loadError) { <p role="alert">無法讀取保存設定，請重新整理後再試。</p> }
+    else if (snapshot is not null)
+    {
+        <p>平台保留收據以辨識重送的批次。符合條件的收據每小時分批清理；清理不會刪除 Agent 已提交的觀測資料。</p>
+        <p>目前重送期限：@snapshot.ReplaySeconds 秒；收據保存：@snapshot.RetentionDays 天。已清理 @snapshot.DeletedReceipts 筆收據。</p>
+        <p>最近一次清理資料（UTC）：@(snapshot.LastCleanupAt?.ToString("u") ?? "尚無紀錄")。失敗紀錄可至<a href="/admin/jobs">背景工作</a>查詢。</p>
+        <EditForm Model="Cutover" FormName="agent-inbox-cutover" method="post" action="/settings/agents#inbox-retention-title" OnSubmit="ActivateAsync">
+        @if (!snapshot.CleanupReady)
+        {
+            <p>目前尚未啟用收據清理。@(CanActivate ? "" : "請先完成上方的補送期限啟用。")</p>
+            @if (CanActivate)
+            {
+                    <InputHidden @bind-Value="Cutover.Version" />
+                    <p>啟用前必須停止所有舊版接收節點，並等待進行中的接收工作結束；啟用後不可讓舊節點重新加入。系統不會自動停止或偵測這些節點。</p>
+                    <label><InputCheckbox @bind-Value="Cutover.Confirmed" /> 我已確認舊接收節點及其進行中的工作均已停止，且不會重新加入</label>
+                    <button type="submit">啟用收據清理</button>
+            }
+        }
+        </EditForm>
+        @if (snapshot.CleanupReady)
+        {
+            <p>狀態：清理已啟用。延長期限無法恢復已清除的收據，也不會重新接受已清理範圍內的舊批次。</p>
+            <EditForm Model="Input" FormName="agent-inbox-retention" method="post" action="/settings/agents#inbox-retention-title" OnSubmit="SaveAsync">
+                <InputHidden @bind-Value="Input.Version" />
+                <InputHidden @bind-Value="Input.ConfirmationToken" />
+                <label for="inbox-replay">重送期限（秒）</label>
+                <InputNumber id="inbox-replay" @bind-Value="Input.ReplaySeconds" min="@AgentInboxPolicyLimits.MinReplaySeconds" max="@AgentInboxPolicyLimits.MaxReplaySeconds" required />
+                <label for="inbox-days">收據保存期限（天）</label>
+                <InputNumber id="inbox-days" @bind-Value="Input.RetentionDays" min="@AgentInboxPolicyLimits.MinRetentionDays" max="@AgentInboxPolicyLimits.MaxRetentionDays" required />
+                <p>保存期限須涵蓋重送期限及 5 分鐘的時間誤差。已接收收據保留原有期限；縮短重送期限時，原期限有過渡保護。</p>
+                @if (preview is { } impact)
+                {
+                    <p role="status">由 @impact.PreviousReplaySeconds 秒／@impact.PreviousRetentionDays 天改為 @impact.ReplaySeconds 秒／@impact.RetentionDays 天。</p>
+                    <p>預覽時共有 @impact.RetainedReceipts 筆收據，以及 @impact.AgentsWithCleanupFence 個已有清理邊界的 Agent。這不是預計刪除筆數，數量可能變動；確認有效期為 5 分鐘。</p>
+                    <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/agents?inbox=cancel#inbox-retention-title">取消</a></div>
+                }
+                else { <button type="submit">預覽變更</button> }
+            </EditForm>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public bool CanActivate { get; set; }
+    [Parameter] public string? RefreshVersion { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-inbox-retention")] private RetentionForm Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-inbox-cutover")] private CutoverForm Cutover { get; set; } = default!;
+    private AgentInboxSettingsSnapshot? snapshot;
+    private AgentInboxSettingsPreview? preview;
+    private bool loadError;
+    private string? message;
+    private string? lastRefreshVersion;
+    private bool ownPost;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var handler = HttpMethods.IsPost(HttpContext.Request.Method)
+            ? (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"].ToString() : "";
+        var submittedRetention = handler == "agent-inbox-retention";
+        var submittedCutover = handler == "agent-inbox-cutover";
+        ownPost = submittedRetention || submittedCutover;
+        Input ??= new(); Cutover ??= new();
+        lastRefreshVersion = RefreshVersion;
+        try
+        {
+            snapshot = await Settings.GetAsync(HttpContext.RequestAborted);
+            if (!submittedRetention) Input = new() { ReplaySeconds = snapshot.ReplaySeconds, RetentionDays = snapshot.RetentionDays, Version = snapshot.Version };
+            if (!submittedCutover) Cutover.Version = snapshot.Version;
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not load Agent inbox policy: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ownPost || string.Equals(lastRefreshVersion, RefreshVersion, StringComparison.Ordinal)) return;
+        lastRefreshVersion = RefreshVersion;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            snapshot = await Settings.GetAsync(HttpContext.RequestAborted);
+            Input = new() { ReplaySeconds = snapshot.ReplaySeconds, RetentionDays = snapshot.RetentionDays, Version = snapshot.Version };
+            Cutover.Version = snapshot.Version;
+            preview = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning("Could not refresh inbox policy: {ExceptionType}", ex.GetType().Name);
+            loadError = true;
+            message = message is null ? "無法更新畫面，請重新整理。" : message + " 畫面未能更新，請重新整理。";
+        }
+    }
+
+    private async Task ActivateAsync(EditContext context)
+    {
+        if (!Cutover.Confirmed || !CanActivate) { message = "請確認舊接收節點及工作已停止，並先啟用補送期限。"; return; }
+        if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        try
+        {
+            if (await Settings.ActivateCleanupAsync(Cutover.Version ?? "", actor, HttpContext.RequestAborted))
+            {
+                message = "收據清理已啟用。舊收據仍受保護期限約束。";
+                await RefreshAsync();
+            }
+            else message = "狀態已變更，或補送期限尚未啟用；請重新整理。";
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not activate inbox cleanup: {ExceptionType}", ex.GetType().Name); message = "無法確認啟用結果，請重新整理後檢查。"; }
+    }
+
+    private async Task SaveAsync(EditContext context)
+    {
+        if (!AgentInboxPolicyLimits.IsValid(Input.ReplaySeconds, Input.RetentionDays) || Input.Version is null)
+        { message = "請檢查重送與保存期限，保存期限須涵蓋重送期限及 5 分鐘。"; return; }
+        if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        try
+        {
+            if (string.IsNullOrEmpty(Input.ConfirmationToken))
+            {
+                preview = await Settings.PreviewAsync(Input.ReplaySeconds, Input.RetentionDays, Input.Version, actor, HttpContext.RequestAborted);
+                if (preview is null) { message = "設定已變更或清理尚未啟用，請重新整理。"; return; }
+                Input.ConfirmationToken = preview.ConfirmationToken;
+            }
+            else if (await Settings.UpdateAsync(Input.ReplaySeconds, Input.RetentionDays, Input.Version, Input.ConfirmationToken, actor, HttpContext.RequestAborted))
+            {
+                message = "保存設定已儲存。";
+                await RefreshAsync();
+            }
+            else { Input.ConfirmationToken = null; message = "設定已變更，請重新整理。"; }
+        }
+        catch (ArgumentException) { Input.ConfirmationToken = null; message = "預覽已過期或設定已變更，請重新預覽。"; }
+        catch (AgentInboxNotReadyException) { Input.ConfirmationToken = null; message = "清理尚未就緒或系統時間異常，請重新整理並檢查。"; }
+        catch (Exception ex) { Logger.LogWarning("Could not save inbox policy: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+    }
+
+    private sealed class RetentionForm { public int ReplaySeconds { get; set; } public int RetentionDays { get; set; } public string? Version { get; set; } public string? ConfirmationToken { get; set; } }
+    private sealed class CutoverForm { public string? Version { get; set; } public bool Confirmed { get; set; } }
+}

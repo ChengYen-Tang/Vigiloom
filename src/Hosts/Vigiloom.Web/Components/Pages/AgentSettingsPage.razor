@@ -77,7 +77,7 @@
             else if (replay is not null)
             {
                 <p>目前狀態：@(replay.Phase switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" })</p>
-                <p>期限啟用後，平台接受最近 24 小時內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。</p>
+                <p>期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。</p>
                 @if (replay.GraceUntil is { } deadline) { <p>過渡期結束時間（UTC）：@deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p> }
                 @if (replayMessage is not null) { <p role="status">@replayMessage</p> }
                 @if (replay.Phase is AgentReplayPhase.Disabled or AgentReplayPhase.Grace)
@@ -91,6 +91,7 @@
                 }
             }
         </section>
+        <AgentInboxRetentionPanel CanActivate="@(replay?.Phase == AgentReplayPhase.Enforced)" RefreshVersion="@(replay?.Version)" />
     }
 </main>
 

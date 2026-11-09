@@ -1,4 +1,3 @@
-using System.Data;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -42,7 +41,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         if (!device.Eligible) return new(AgentIdentityStatus.Conflict);
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        await LockDeviceAsync(db, deviceId, token);
+        await AgentDeviceLock.AcquireAsync(db, deviceId, token);
         if (!await IsCurrentAsync(db, device, token)) return new(AgentIdentityStatus.Conflict);
         var now = clock.GetUtcNow();
         var active = await db.Agents.SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.RevokedAt == null, token);
@@ -78,7 +77,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
                 .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
             if (binding is null) return new(AgentIdentityStatus.Invalid);
             await using var transaction = await db.Database.BeginTransactionAsync(token);
-            await LockDeviceAsync(db, binding.DeviceId, token);
+            await AgentDeviceLock.AcquireAsync(db, binding.DeviceId, token);
             var enrollment = await db.Enrollments.SingleOrDefaultAsync(x => x.Id == id, token);
             var now = clock.GetUtcNow();
             if (enrollment is null || enrollment.RevokedAt is not null || enrollment.ExpiresAt <= now ||
@@ -178,7 +177,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
             var binding = await db.Agents.AsNoTracking().Where(x => x.Id == id)
                 .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
             if (binding is null) return null;
-            await LockDeviceAsync(db, binding.DeviceId, token);
+            await AgentDeviceLock.AcquireAsync(db, binding.DeviceId, token);
             var agent = await db.Agents.SingleOrDefaultAsync(x => x.Id == id, token);
             return agent is not null && agent.RevokedAt is null &&
                 CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(secret)) &&
@@ -224,7 +223,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
                 .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
             if (binding is null) return AgentIdentityStatus.Invalid;
             await using var transaction = await db.Database.BeginTransactionAsync(token);
-            await LockDeviceAsync(db, binding.DeviceId, token);
+            await AgentDeviceLock.AcquireAsync(db, binding.DeviceId, token);
             var agent = await db.Agents.SingleAsync(x => x.Id == id, token);
             if (agent.RevokedAt is not null || !CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(secret)) ||
                 !await IsCurrentAsync(db, new(binding.DeviceId, binding.DeviceGeneration, true), token)) return AgentIdentityStatus.Invalid;
@@ -251,7 +250,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
                 .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
             if (binding is null) return AgentIdentityStatus.Invalid;
             await using var transaction = await db.Database.BeginTransactionAsync(token);
-            await LockDeviceAsync(db, binding.DeviceId, token);
+            await AgentDeviceLock.AcquireAsync(db, binding.DeviceId, token);
             var agent = await db.Agents.SingleAsync(x => x.Id == id, token);
             if (agent.RevokedAt is not null || !await IsCurrentAsync(db, new(binding.DeviceId, binding.DeviceGeneration, true), token))
                 return AgentIdentityStatus.Invalid;
@@ -277,7 +276,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         var deviceId = await db.Agents.AsNoTracking().Where(x => x.Id == agentId).Select(x => (Guid?)x.DeviceId).SingleOrDefaultAsync(token);
         if (deviceId is null) return AgentIdentityStatus.NotFound;
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        await LockDeviceAsync(db, deviceId.Value, token);
+        await AgentDeviceLock.AcquireAsync(db, deviceId.Value, token);
         var agent = await db.Agents.SingleAsync(x => x.Id == agentId, token);
         if (agent.RevokedAt is null)
         {
@@ -297,7 +296,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         var deviceId = await db.Enrollments.AsNoTracking().Where(x => x.Id == enrollmentId).Select(x => (Guid?)x.DeviceId).SingleOrDefaultAsync(token);
         if (deviceId is null) return AgentIdentityStatus.NotFound;
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        await LockDeviceAsync(db, deviceId.Value, token);
+        await AgentDeviceLock.AcquireAsync(db, deviceId.Value, token);
         var enrollment = await db.Enrollments.SingleAsync(x => x.Id == enrollmentId, token);
         if (enrollment.RevokedAt is null)
         {
@@ -312,16 +311,6 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
 
     private async Task<bool> IsCurrentAsync(AgentManagementDbContext db, DeviceAgentState device, CancellationToken token) =>
         await devices.IsCurrentAsync(device.DeviceId, device.Generation, db.Database.GetDbConnection(), db.Database.CurrentTransaction!.GetDbTransaction(), token);
-
-    private static async Task LockDeviceAsync(AgentManagementDbContext db, Guid deviceId, CancellationToken token)
-    {
-        await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
-        command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r;";
-        var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.DbType = DbType.String;
-        parameter.Value = $"vigiloom.agent.device.{deviceId:D}"; command.Parameters.Add(parameter);
-        if (Convert.ToInt32(await command.ExecuteScalarAsync(token)) < 0) throw new InvalidOperationException("Agent device lock could not be acquired.");
-    }
 
     private static string Encode(string prefix, Guid id, byte[] secret) =>
         $"{prefix}_{id:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";

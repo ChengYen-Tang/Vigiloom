@@ -129,6 +129,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             else if (path.Equals("/api/v1/operations/audit", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/ping", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/agent-replay", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/agent-inbox", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-approvals", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-sources", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/groups", StringComparison.OrdinalIgnoreCase) ||
