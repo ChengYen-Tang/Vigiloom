@@ -26,6 +26,58 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task InboxCleanup_ProtectsOldGenerationAndDoesNotReopenDeletedRange() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("generation retention", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var enqueued = clock.Now.AddHours(-2);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, enqueued, "test", "X64", ".NET 10");
+        var initial = new AgentBatch(1, Guid.CreateVersion7(), enqueued, [message]);
+        var payload = AgentBatchCodec.Serialize(initial);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
+        }
+        var actor = Guid.CreateVersion7();
+        var settings = new AgentInboxSettings(agents, new ReplayPolicyTestAuditWriter(), new EphemeralDataProtectionProvider());
+        var original = await settings.GetAsync(token);
+        Assert.IsTrue(await settings.ActivateCleanupAsync(original.Version, actor, token));
+        var active = await settings.GetAsync(token);
+        var preview = await settings.PreviewAsync(3600, 2, active.Version, actor, token);
+        Assert.IsNotNull(preview);
+        Assert.IsTrue(await settings.UpdateAsync(3600, 2, active.Version, preview.ConfirmationToken, actor, token));
+        var cleanup = new AgentInboxCleanup(agents);
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        var unseen = AgentBatchCodec.Serialize(initial with { BatchId = Guid.CreateVersion7() });
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, unseen, token));
+        // Simulate elapsed retention in the isolated database while the old window remains active.
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [ActivatedAt] = DATEADD(day, -8, @now), [EnforcedAt] = DATEADD(day, -8, @now), [CleanupCutoverAt] = DATEADD(day, -8, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -1, @now) WHERE [Scope] = 1; UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, @now)", token);
+        }
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayGenerations] SET [ValidThrough] = DATEADD(second, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+        Assert.AreEqual(2, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        var shortened = await settings.GetAsync(token);
+        Assert.IsTrue(await settings.UpdateAsync(86400, 2, shortened.Version, null, actor, token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+    });
+
+    [TestMethod]
     public Task InboxCleanup_TraversesFiveHundredAgents() => WithDatabase(async (resources, agents, token) =>
     {
         var old = DateTimeOffset.UtcNow.AddDays(-10);
@@ -786,6 +838,97 @@ public sealed class AgentIdentitySqlTests
             await Release.Task.WaitAsync(cancellationToken);
         }
     }
+
+    private sealed class BlockingInboxAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public TaskCompletionSource<int> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "SELECT @@SPID";
+            var session = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+            Entered.TrySetResult(session);
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task InboxPolicy_ReceiversAndCleanupWaitForAtomicGeneration(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var receivingDevice = new Device("policy receiver", "127.0.0.1", true, clock.Now);
+        var cleanupDevice = new Device("policy cleanup", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(receivingDevice, cleanupDevice); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        async Task<(Guid Id, string Credential)> RegisterAsync(Guid id)
+        {
+            var issued = await identity.IssueAsync(id, Guid.CreateVersion7(), token);
+            var secret = RandomNumberGenerator.GetBytes(32);
+            var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+            return (registered.AgentId!.Value, Credential(registered.AgentId.Value, secret));
+        }
+        var receiving = await RegisterAsync(receivingDevice.Id);
+        var cleaning = await RegisterAsync(cleanupDevice.Id);
+        var old = clock.Now.AddHours(-2);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            db.ReceivedBatches.Add(new ReceivedBatch(cleaning.Id, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, old.AddHours(1)));
+            await db.SaveChangesAsync(token);
+        }
+        var writer = new BlockingInboxAuditWriter();
+        var settings = new AgentInboxSettings(agents, writer, new EphemeralDataProtectionProvider());
+        var actor = Guid.CreateVersion7();
+        var state = await settings.GetAsync(token);
+        var preview = await settings.PreviewAsync(3600, 2, state.Version, actor, token);
+        Assert.IsNotNull(preview);
+        var update = settings.UpdateAsync(3600, 2, state.Version, preview.ConfirmationToken, actor, token);
+        Task<BatchReceiptStatus>? receive = null;
+        Task<int>? cleanup = null;
+        try
+        {
+            var session = await writer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
+            var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
+            receive = new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(receiving.Credential, payload, token);
+            cleanup = new AgentInboxCleanup(agents).CleanAgentAsync(cleaning.Id, 10, token);
+            await using var observer = agents.CreateDbContext();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                while (true)
+                {
+                    if (receive.IsCompleted) Assert.Fail($"Receiver completed before policy release: {await receive}.");
+                    if (cleanup.IsCompleted) Assert.Fail($"Cleanup completed before policy release: {await cleanup}.");
+                    // SQL Server may queue the second reader behind the first reader rather than directly behind the writer.
+                    var waiting = await observer.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM sys.dm_exec_requests r WHERE r.database_id = DB_ID() AND r.wait_type LIKE 'LCK%' AND (r.blocking_session_id = {session} OR r.blocking_session_id IN (SELECT session_id FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id = {session} AND wait_type LIKE 'LCK%'))").SingleAsync(deadline.Token);
+                    if (waiting >= 2) break;
+                    await Task.Delay(50, deadline.Token);
+                }
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                var waits = await observer.Database.SqlQuery<string>($"SELECT CONCAT(session_id, ':', blocking_session_id, ':', COALESCE(wait_type, '-')) AS [Value] FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND session_id <> @@SPID").ToArrayAsync(token);
+                Assert.Fail($"Policy session {session}; active SQL requests: {string.Join(", ", waits)}");
+            }
+            writer.Release.TrySetResult();
+            Assert.IsTrue(await update);
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receive);
+            Assert.AreEqual(0, await cleanup);
+        }
+        finally
+        {
+            writer.Release.TrySetResult();
+            try { await update; } catch { }
+            if (receive is not null) { try { await receive; } catch { } }
+            if (cleanup is not null) { try { await cleanup; } catch { } }
+        }
+    }, snapshotReads);
 
     private sealed class ReplayPolicyTestAuditWriter : IOperationAuditWriter<OperationAudit>
     {
