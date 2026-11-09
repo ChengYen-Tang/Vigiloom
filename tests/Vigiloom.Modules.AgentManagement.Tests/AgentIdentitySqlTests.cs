@@ -47,14 +47,14 @@ public sealed class AgentIdentitySqlTests
             var old = DateTimeOffset.UtcNow.AddDays(-10);
             var expired = DateTimeOffset.UtcNow.AddDays(-1);
             db.ReceivedBatches.Add(new ReceivedBatch(first, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
-            for (var i = 0; i < 350; i++)
+            for (var i = 0; i < 3601; i++)
                 db.ReceivedBatches.Add(new ReceivedBatch(second, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
             await db.SaveChangesAsync(token);
             await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[FailFirstInbox] ON [agent].[ReceivedBatches] AFTER DELETE AS IF EXISTS (SELECT 1 FROM deleted d JOIN [agent].[Agents] a ON a.[Id] = d.[AgentId] WHERE a.[RowId] = (SELECT MIN([RowId]) FROM [agent].[Agents])) THROW 51001, 'Injected failure', 1", token);
         }
         var cleanup = new AgentInboxCleanup(agents);
         var failure = await Assert.ThrowsAsync<AggregateException>(() => cleanup.RunAsync(token));
-        Assert.Contains("350 receipts were removed", failure.Message);
+        Assert.Contains("3601 receipts were removed", failure.Message);
         await using (var db = agents.CreateDbContext())
         {
             Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == first, token));
@@ -63,8 +63,8 @@ public sealed class AgentIdentitySqlTests
             var completed = await db.Agents.SingleAsync(x => x.Id == second, token);
             Assert.AreEqual(0L, failed.InboxDeletedTotal);
             Assert.IsNull(failed.InboxLastDeletedAt);
-            Assert.AreEqual(350L, completed.InboxDeletedTotal);
-            Assert.AreEqual(150, completed.InboxLastDeletedCount);
+            Assert.AreEqual(3601L, completed.InboxDeletedTotal);
+            Assert.AreEqual(1, completed.InboxLastDeletedCount);
             Assert.IsNotNull(completed.InboxLastDeletedAt);
             await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
         }

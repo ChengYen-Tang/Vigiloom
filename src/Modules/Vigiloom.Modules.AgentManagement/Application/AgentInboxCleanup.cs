@@ -9,7 +9,9 @@ public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext
 {
     public const int MaximumBatchSize = 200;
     private const int AgentPageSize = 100;
-    private const int MaximumBatchesPerAgent = 10;
+    // At the minimum configured one-second interval, an hour can produce 3,600 batches.
+    // Leave bounded headroom to catch up, while giving other Agents a turn each run.
+    private const int MaximumBatchesPerAgent = 25;
 
     /// <summary>Scans Agents in bounded pages; each Agent is committed independently.</summary>
     public async Task<int> RunAsync(CancellationToken token)
