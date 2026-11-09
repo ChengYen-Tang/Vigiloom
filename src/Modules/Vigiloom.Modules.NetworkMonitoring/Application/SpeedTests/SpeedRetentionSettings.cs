@@ -34,9 +34,7 @@ public sealed class SpeedRetentionSettings(IDbContextFactory<NetworkDbContext> c
         var now = await SpeedDatabase.NowAsync(db, token);
         var cutoff = now.AddDays(-days);
         var protectedSince = now.AddHours(-24);
-        var count = await db.SpeedRuns.CountAsync(x => x.RequestedAt < cutoff &&
-            x.State != SpeedTestState.Queued && x.State != SpeedTestState.Running &&
-            (x.StartedAt ?? x.RequestedAt) <= protectedSince, token);
+        var count = await SpeedRetentionEligibility.Apply(db.SpeedRuns, cutoff, protectedSince).CountAsync(token);
         await transaction.CommitAsync(token);
         var confirmation = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, days, version, now)));
         return new(days, now, cutoff, count, version, confirmation);
