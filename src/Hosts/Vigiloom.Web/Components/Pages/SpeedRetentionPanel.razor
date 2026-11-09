@@ -4,7 +4,7 @@
 @inject SpeedRetentionSettings Retention
 @inject ILogger<SpeedRetentionPanel> Logger
 
-<section class="device-panel" aria-labelledby="speed-retention-title">
+<section class="device-panel speed-retention" aria-labelledby="speed-retention-title">
     <h2 id="speed-retention-title">測速紀錄保存</h2>
     <p>到期的測速結果每小時分批清理；執行中、待執行及最近 24 小時的工作不會清除。延長期限無法恢復已清除的紀錄。</p>
     @if (loadError) { <p role="alert">無法讀取保存設定，請重新整理後再試。</p> }

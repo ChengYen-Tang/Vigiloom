@@ -64,6 +64,6 @@ final result: passed
 
 ## REQ-39 speed retention — current review
 
-See `docs/design/req-39/design-qa.md` for the current visual verification status.
+See `docs/design/req-39/design-qa.md` for source limitations, combined desktop and narrow comparisons, interaction checks and iteration history.
 
-final result: blocked
+final result: passed
