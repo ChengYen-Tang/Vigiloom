@@ -60,6 +60,43 @@ public sealed class AgentReplayPolicyTests
     }
 
     [TestMethod]
+    public void InboxSettings_RequireCutoverPreservePriorWindowAndRejectClockRollback()
+    {
+        var start = new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero);
+        var policy = new AgentReplayPolicy();
+        Assert.IsFalse(policy.BeginCleanupCutover(start));
+        Assert.IsTrue(policy.InitializeFresh(start));
+        Assert.IsFalse(policy.BeginCleanupCutover(start.AddTicks(-1)));
+        Assert.IsTrue(policy.BeginCleanupCutover(start));
+        Assert.AreEqual(start.AddDays(7), policy.LegacyReceiptsRetainUntil);
+        Assert.IsFalse(policy.BeginCleanupCutover(start.AddHours(1)));
+        var prior = policy.ChangeInboxSettings(3600, 7, start.AddMinutes(1));
+        Assert.IsNotNull(prior);
+        Assert.AreEqual(86400, prior.WindowSeconds);
+        Assert.AreEqual(start.AddMinutes(1).AddHours(24).AddMinutes(5), prior.ValidThrough);
+        var second = policy.ChangeInboxSettings(600, 7, start.AddMinutes(2));
+        Assert.IsNotNull(second);
+        Assert.AreEqual(3600, second.WindowSeconds);
+        Assert.AreEqual(start.AddMinutes(2).AddHours(1).AddMinutes(5), second.ValidThrough);
+        Assert.Throws<InvalidOperationException>(() => policy.ChangeInboxSettings(1200, 7, start.AddMinutes(1)));
+        Assert.AreEqual(600, policy.ReplayWindowSeconds);
+        Assert.AreEqual(start.AddDays(7), policy.LegacyReceiptsRetainUntil);
+        Assert.AreEqual(start.AddMinutes(2), policy.InboxSettingsChangedAt);
+        Assert.Throws<ArgumentException>(() => policy.ChangeInboxSettings(86400, 1, start.AddMinutes(3)));
+    }
+
+    [TestMethod]
+    public void InboxSettings_RetentionCoversReplayWindowAndClockSkew()
+    {
+        Assert.IsTrue(AgentInboxPolicyLimits.IsValid(86100, 1));
+        Assert.IsFalse(AgentInboxPolicyLimits.IsValid(86101, 1));
+        Assert.IsTrue(AgentInboxPolicyLimits.IsValid(86400, 7));
+        Assert.IsFalse(AgentInboxPolicyLimits.IsValid(0, 7));
+        Assert.IsFalse(AgentInboxPolicyLimits.IsValid(2592001, 3650));
+        Assert.IsFalse(AgentInboxPolicyLimits.IsValid(86400, 3651));
+    }
+
+    [TestMethod]
     public void Activate_OnlyOnceAndEnforceAfterTheOriginalGrace()
     {
         var policy = new AgentReplayPolicy();
