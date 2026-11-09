@@ -9,10 +9,11 @@ public sealed class AgentReceiverMonitoring(IDbContextFactory<AgentManagementDbC
     public async Task<DateTimeOffset?> LastCommittedBatchAsync(CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
-        // The existing (AgentId, ReceivedAt, RowId) index bounds each per-Agent lookup.
-        return await db.Agents.AsNoTracking()
+        var retained = await db.Agents.AsNoTracking()
             .SelectMany(agent => db.ReceivedBatches.Where(batch => batch.AgentId == agent.Id)
                 .OrderByDescending(batch => batch.ReceivedAt).Select(batch => batch.ReceivedAt).Take(1))
             .MaxAsync(value => (DateTimeOffset?)value, token);
+        var cleaned = await db.Agents.AsNoTracking().MaxAsync(agent => agent.LastBatchReceivedAt, token);
+        return retained is null || cleaned > retained ? cleaned : retained;
     }
 }

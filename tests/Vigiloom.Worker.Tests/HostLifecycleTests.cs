@@ -22,6 +22,11 @@ using System.Text;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Contracts.Agent;
+using System.Security.Cryptography;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -29,6 +34,77 @@ namespace Vigiloom.Worker.Tests;
 [DoNotParallelize]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    [TestCategory("Integration")]
+    [TestCategory("Database")]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task InboxRetentionJob_CleansRealReceiptAndPreservesReplayFence() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        GlobalConfiguration.Configuration.UseNoOpLogProvider();
+        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        var builder = WorkerHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
+        builder.Services.AddSingleton<ISpeedProbe>(new FixtureSpeedProbe());
+        using var host = builder.Build();
+        var services = host.Services;
+        var resources = services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+        var agents = services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+        await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        var old = DateTimeOffset.UtcNow.AddDays(-10);
+        var device = new Device("inbox worker", "127.0.0.1", true, old);
+        await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), TimeProvider.System);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var credential = $"vla_{agentId:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
+        var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
+        var receiver = new AgentBatchReceiver(agents, identity, TimeProvider.System);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        await using (var db = await agents.CreateDbContextAsync(token))
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId}", token);
+        }
+        await host.StartAsync(token);
+        try
+        {
+            using var scope = services.CreateScope();
+            var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+            var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(60));
+            while (true)
+            {
+                var state = connection.GetStateData(id)?.Name;
+                Assert.AreNotEqual("Failed", state);
+                if (state == "Succeeded") break;
+                await Task.Delay(100, deadline.Token);
+            }
+            await using var check = await agents.CreateDbContextAsync(token);
+            Assert.AreEqual(0, await check.ReceivedBatches.CountAsync(token));
+            Assert.AreEqual(1, await check.RuntimeObservations.CountAsync(token));
+            var agent = await check.Agents.SingleAsync(x => x.Id == agentId, token);
+            Assert.AreEqual(1L, agent.InboxDeletedTotal);
+            Assert.IsNotNull(agent.ReplayCleanedBefore);
+            Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+            await using var sql = new SqlConnection(database.ConnectionString);
+            await sql.OpenAsync(token);
+            await using var command = sql.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-agent-inbox-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        }
+        finally { await host.StopAsync(CancellationToken.None); }
+    }, testContext.CancellationToken);
+
     [TestMethod]
     [TestCategory("Integration")]
     [TestCategory("Database")]

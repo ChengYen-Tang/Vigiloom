@@ -13,8 +13,8 @@ public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorize
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
     long capacityBytes = AgentBatchReceiver.MaximumRetainedBytesPerAgent, int maximumBatches = AgentBatchReceiver.MaximumRetainedBatchesPerAgent)
 {
-    public const long MaximumRetainedBytesPerAgent = 256L * 1024 * 1024;
-    public const int MaximumRetainedBatchesPerAgent = 8192;
+    public const long MaximumRetainedBytesPerAgent = 4L * 1024 * 1024 * 1024;
+    public const int MaximumRetainedBatchesPerAgent = 1_000_000;
 
     public async Task<BatchReceiptStatus> ReceiveAsync(string? credential, ReadOnlyMemory<byte> payload, CancellationToken token)
     {
@@ -37,7 +37,16 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         var policyTime = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         if (agent.ReplayClockFloor is { } floor && policyTime < floor ||
             policy.ActivatedAt is { } activated && policyTime < activated ||
-            policy.EnforcedAt is { } enforced && policyTime < enforced)
+            policy.EnforcedAt is { } enforced && policyTime < enforced ||
+            policy.CleanupCutoverAt is { } cutover && policyTime < cutover ||
+            policy.InboxSettingsChangedAt is { } changed && policyTime < changed)
+        {
+            agent.RecordReplayIssue(AgentReplayIssue.ClockUncertain, policyTime);
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return BatchReceiptStatus.ClockUncertain;
+        }
+        if (agent.ReplayCleanedBefore is not null && policy.Phase != AgentReplayPhase.Enforced)
         {
             agent.RecordReplayIssue(AgentReplayIssue.ClockUncertain, policyTime);
             await db.SaveChangesAsync(token);
@@ -46,7 +55,14 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         }
         if (policy.Phase == AgentReplayPhase.Enforced)
         {
-            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime);
+            // The policy HOLDLOCK serializes these reads with policy changes; all live previous
+            // generations retain their promised allowance through the deadline instant.
+            var previousWindow = await db.ReplayGenerations.AsNoTracking()
+                .Where(x => x.PolicyId == policy.Id && x.ValidThrough >= policyTime)
+                .MaxAsync(x => (int?)x.WindowSeconds, token);
+            var effectiveWindow = Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0);
+            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime,
+                TimeSpan.FromSeconds(effectiveWindow), TimeSpan.FromSeconds(AgentInboxPolicyLimits.FutureSkewSeconds), agent.ReplayCleanedBefore);
             if (rejection is { } reason)
             {
                 agent.AdvanceReplayClock(policyTime);
@@ -63,14 +79,26 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         foreach (var item in batch.Items)
             if (existing.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
 
-        var usage = await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
+        var usageWasInitialized = agent.InboxReceiptCount is not null;
+        var usage = policy.CleanupCutoverAt is not null
+            ? await AgentReceiptUsage.InitializeAsync(db, agent, token)
+            : await AgentReceiptUsage.ReadAsync(db, agent.Id, token);
         if (usage.Count >= maximumBatches || payload.Length > capacityBytes - usage.Bytes)
+        {
+            if (policy.CleanupCutoverAt is not null && !usageWasInitialized)
+            {
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
+            }
             return BatchReceiptStatus.CapacityExceeded;
+        }
 
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
-        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length));
+        if (policy.CleanupCutoverAt is not null) agent.ChangeInboxUsage(1, payload.Length);
+        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length,
+            policyTime, policyTime.AddDays(policy.ReceiptRetentionDays)));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
         {
             var item = batch.Items[ordinal];

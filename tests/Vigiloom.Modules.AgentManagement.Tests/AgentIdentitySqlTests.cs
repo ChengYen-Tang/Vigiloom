@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
@@ -24,6 +25,173 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentitySqlTests
 {
+    [TestMethod]
+    public Task InboxCleanup_ProtectsOldGenerationAndDoesNotReopenDeletedRange() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("generation retention", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var enqueued = clock.Now.AddHours(-2);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, enqueued, "test", "X64", ".NET 10");
+        var initial = new AgentBatch(1, Guid.CreateVersion7(), enqueued, [message]);
+        var payload = AgentBatchCodec.Serialize(initial);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
+        }
+        var actor = Guid.CreateVersion7();
+        var settings = new AgentInboxSettings(agents, new ReplayPolicyTestAuditWriter(), new EphemeralDataProtectionProvider());
+        var original = await settings.GetAsync(token);
+        Assert.IsTrue(await settings.ActivateCleanupAsync(original.Version, actor, token));
+        var active = await settings.GetAsync(token);
+        var preview = await settings.PreviewAsync(3600, 2, active.Version, actor, token);
+        Assert.IsNotNull(preview);
+        Assert.IsTrue(await settings.UpdateAsync(3600, 2, active.Version, preview.ConfirmationToken, actor, token));
+        var cleanup = new AgentInboxCleanup(agents);
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        var unseen = AgentBatchCodec.Serialize(initial with { BatchId = Guid.CreateVersion7() });
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, unseen, token));
+        // Simulate elapsed retention in the isolated database while the old window remains active.
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [ActivatedAt] = DATEADD(day, -8, @now), [EnforcedAt] = DATEADD(day, -8, @now), [CleanupCutoverAt] = DATEADD(day, -8, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -1, @now) WHERE [Scope] = 1; UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, @now)", token);
+        }
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayGenerations] SET [ValidThrough] = DATEADD(second, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+        Assert.AreEqual(2, await cleanup.CleanAgentAsync(registration.AgentId.Value, 10, token));
+        var shortened = await settings.GetAsync(token);
+        Assert.IsTrue(await settings.UpdateAsync(86400, 2, shortened.Version, null, actor, token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task InboxCleanup_TraversesFiveHundredAgents() => WithDatabase(async (resources, agents, token) =>
+    {
+        var old = DateTimeOffset.UtcNow.AddDays(-10);
+        var devices = Enumerable.Range(0, 500).Select(i => new Device($"load-{i}", "127.0.0.1", true, old)).ToArray();
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(devices); await db.SaveChangesAsync(token); }
+        var principals = devices.Select(device => new Agent(device.Id, 1, new byte[32], old)).ToArray();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.AddRange(principals);
+            await db.SaveChangesAsync(token);
+            db.ReceivedBatches.AddRange(principals.Select(agent => new ReceivedBatch(agent.Id, Guid.CreateVersion7(), new byte[32], old, old, 1, 300, old, old.AddDays(7))));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+        }
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var removed = await new AgentInboxCleanup(agents).RunAsync(token);
+        timer.Stop();
+        TestContext.WriteLine($"500 Agents, one expired synthetic receipt each: cleanup {timer.Elapsed.TotalSeconds:F2} seconds.");
+        Assert.AreEqual(500, removed);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(500, await verify.Agents.CountAsync(x => x.InboxDeletedTotal == 1 && x.InboxReceiptCount == 0 && x.InboxReceiptPayloadBytes == 0 && x.ReplayCleanedBefore != null, token));
+    });
+
+    [TestMethod]
+    public Task InboxUsage_InitializesAfterCutoverAndTracksCommittedReceipts() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("inbox usage", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var id = registered.AgentId!.Value;
+        var credential = Credential(id, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var first = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, first, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.IsNull((await db.Agents.SingleAsync(x => x.Id == id, token)).InboxReceiptCount);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        }
+        var second = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message with { MessageId = Guid.CreateVersion7() }]));
+        var full = new AgentBatchReceiver(agents, identity, clock, maximumBatches: 1);
+        Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await full.ReceiveAsync(credential, second, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var initialized = await db.Agents.SingleAsync(x => x.Id == id, token);
+            Assert.AreEqual(1L, initialized.InboxReceiptCount);
+            Assert.AreEqual((long)first.Length, initialized.InboxReceiptPayloadBytes);
+        }
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, second, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, second, token));
+        await using var verify = agents.CreateDbContext();
+        var agent = await verify.Agents.SingleAsync(x => x.Id == id, token);
+        Assert.AreEqual(2L, agent.InboxReceiptCount);
+        Assert.AreEqual((long)first.Length + second.Length, agent.InboxReceiptPayloadBytes);
+        Assert.AreEqual(await verify.ReceivedBatches.LongCountAsync(token), agent.InboxReceiptCount);
+        var rejected = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261109173325_AgentInboxProgress", token));
+        Assert.AreEqual(51000, rejected.Number);
+    });
+
+    [TestMethod]
+    public Task InboxCleanup_RetriesFailedAgentWithoutStarvingOthers() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var firstDevice = new Device("failed cleanup", "127.0.0.1", true, clock.Now);
+        var secondDevice = new Device("large cleanup", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(firstDevice, secondDevice); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        async Task<Guid> Register(Guid deviceId)
+        {
+            var issued = await identity.IssueAsync(deviceId, Guid.CreateVersion7(), token);
+            var result = await identity.RedeemAsync(issued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+            return result.AgentId!.Value;
+        }
+        var first = await Register(firstDevice.Id);
+        var second = await Register(secondDevice.Id);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            var old = DateTimeOffset.UtcNow.AddDays(-10);
+            var expired = DateTimeOffset.UtcNow.AddDays(-1);
+            db.ReceivedBatches.Add(new ReceivedBatch(first, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
+            for (var i = 0; i < 3601; i++)
+                db.ReceivedBatches.Add(new ReceivedBatch(second, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[FailFirstInbox] ON [agent].[ReceivedBatches] AFTER DELETE AS IF EXISTS (SELECT 1 FROM deleted d JOIN [agent].[Agents] a ON a.[Id] = d.[AgentId] WHERE a.[RowId] = (SELECT MIN([RowId]) FROM [agent].[Agents])) THROW 51001, 'Injected failure', 1", token);
+        }
+        var cleanup = new AgentInboxCleanup(agents);
+        var failure = await Assert.ThrowsAsync<AggregateException>(() => cleanup.RunAsync(token));
+        Assert.Contains("3601 receipts were removed", failure.Message);
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == first, token));
+            Assert.AreEqual(0, await db.ReceivedBatches.CountAsync(x => x.AgentId == second, token));
+            var failed = await db.Agents.SingleAsync(x => x.Id == first, token);
+            var completed = await db.Agents.SingleAsync(x => x.Id == second, token);
+            Assert.AreEqual(0L, failed.InboxDeletedTotal);
+            Assert.IsNull(failed.InboxLastDeletedAt);
+            Assert.IsNull(failed.InboxReceiptCount);
+            Assert.AreEqual(3601L, completed.InboxDeletedTotal);
+            Assert.AreEqual(1, completed.InboxLastDeletedCount);
+            Assert.IsNotNull(completed.InboxLastDeletedAt);
+            Assert.AreEqual(0L, completed.InboxReceiptCount);
+            Assert.AreEqual(0L, completed.InboxReceiptPayloadBytes);
+            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
+        }
+        Assert.AreEqual(1, await cleanup.RunAsync(token));
+    });
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -555,7 +723,85 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastReplayIssue);
         await using var verify = agents.CreateDbContext();
         Assert.AreEqual(3, await verify.ReceivedBatches.CountAsync(token));
+        await verify.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [Phase] = 1, [EnforcedAt] = NULL WHERE [Scope] = 1", token);
+        await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayCleanedBefore] = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WHERE [Id] = {registration.AgentId!.Value}", token);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(old), token));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { Items = [item with { RuntimeVersion = "different" }] }), token));
+        Assert.AreEqual(BatchReceiptStatus.ClockUncertain, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(old with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now }), token));
+        Assert.AreEqual(3, await verify.ReceivedBatches.CountAsync(token));
     }, snapshotReads);
+
+    [TestMethod]
+    public Task ReplayGenerations_PreserveLiveAllowanceWithoutReopeningCleanedRange() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("generation receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(hour, -1, @now), [EnforcedAt] = DATEADD(hour, -1, @now) WHERE [Scope] = 1", token);
+        var item = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now.AddDays(-2), [item]);
+        var bytes = AgentBatchCodec.Serialize(batch);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, bytes, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var policy = await db.ReplayPolicies.SingleAsync(token);
+            db.ReplayGenerations.Add(new AgentReplayGeneration(policy.Id, 7 * 24 * 60 * 60, DateTimeOffset.UtcNow.AddHours(1)));
+            db.ReplayGenerations.Add(new AgentReplayGeneration(policy.Id, 3 * 24 * 60 * 60, DateTimeOffset.UtcNow.AddHours(1)));
+            db.ReplayGenerations.Add(new AgentReplayGeneration(policy.Id, 30 * 24 * 60 * 60, DateTimeOffset.UtcNow.AddHours(-1)));
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, bytes, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddDays(-6) }), token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddDays(-10) }), token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayCleanedBefore] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Id] = {registration.AgentId.Value}", token);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, bytes, token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential,
+            AgentBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(2, await db.ReceivedBatches.CountAsync(token));
+            Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
+        }
+    });
+
+    [TestMethod]
+    public Task ReplayGenerationsMigration_RejectsDowngradeWhenPromisesExist() => WithDatabase(async (_, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+        {
+            var policy = await db.ReplayPolicies.SingleAsync(token);
+            db.ReplayGenerations.Add(new AgentReplayGeneration(policy.Id, 172800, DateTimeOffset.UtcNow.AddDays(2)));
+            await db.SaveChangesAsync(token);
+        }
+        async Task AssertDowngradeRejectedAsync()
+        {
+            await using var db = agents.CreateDbContext();
+            var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261109165532_AgentInboxSafety", token));
+            Assert.AreEqual(51000, error.Number);
+        }
+        await AssertDowngradeRejectedAsync();
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.ReplayGenerations.ExecuteDeleteAsync(token);
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [ReplayWindowSeconds] = 172800 WHERE [Scope] = 1", token);
+        }
+        await AssertDowngradeRejectedAsync();
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [ReplayWindowSeconds] = 86400, [ReceiptRetentionDays] = 8 WHERE [Scope] = 1", token);
+        await AssertDowngradeRejectedAsync();
+    });
 
     [TestMethod]
     public Task ReplayPolicy_DowngradeCannotRaceAnActivation() => WithDatabase(async (resources, agents, token) =>
@@ -593,6 +839,97 @@ public sealed class AgentIdentitySqlTests
         }
     }
 
+    private sealed class BlockingInboxAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public TaskCompletionSource<int> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "SELECT @@SPID";
+            var session = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+            Entered.TrySetResult(session);
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task InboxPolicy_ReceiversAndCleanupWaitForAtomicGeneration(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var receivingDevice = new Device("policy receiver", "127.0.0.1", true, clock.Now);
+        var cleanupDevice = new Device("policy cleanup", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(receivingDevice, cleanupDevice); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        async Task<(Guid Id, string Credential)> RegisterAsync(Guid id)
+        {
+            var issued = await identity.IssueAsync(id, Guid.CreateVersion7(), token);
+            var secret = RandomNumberGenerator.GetBytes(32);
+            var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+            return (registered.AgentId!.Value, Credential(registered.AgentId.Value, secret));
+        }
+        var receiving = await RegisterAsync(receivingDevice.Id);
+        var cleaning = await RegisterAsync(cleanupDevice.Id);
+        var old = clock.Now.AddHours(-2);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            db.ReceivedBatches.Add(new ReceivedBatch(cleaning.Id, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, old.AddHours(1)));
+            await db.SaveChangesAsync(token);
+        }
+        var writer = new BlockingInboxAuditWriter();
+        var settings = new AgentInboxSettings(agents, writer, new EphemeralDataProtectionProvider());
+        var actor = Guid.CreateVersion7();
+        var state = await settings.GetAsync(token);
+        var preview = await settings.PreviewAsync(3600, 2, state.Version, actor, token);
+        Assert.IsNotNull(preview);
+        var update = settings.UpdateAsync(3600, 2, state.Version, preview.ConfirmationToken, actor, token);
+        Task<BatchReceiptStatus>? receive = null;
+        Task<int>? cleanup = null;
+        try
+        {
+            var session = await writer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
+            var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
+            receive = new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(receiving.Credential, payload, token);
+            cleanup = new AgentInboxCleanup(agents).CleanAgentAsync(cleaning.Id, 10, token);
+            await using var observer = agents.CreateDbContext();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                while (true)
+                {
+                    if (receive.IsCompleted) Assert.Fail($"Receiver completed before policy release: {await receive}.");
+                    if (cleanup.IsCompleted) Assert.Fail($"Cleanup completed before policy release: {await cleanup}.");
+                    // SQL Server may queue the second reader behind the first reader rather than directly behind the writer.
+                    var waiting = await observer.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM sys.dm_exec_requests r WHERE r.database_id = DB_ID() AND r.wait_type LIKE 'LCK%' AND (r.blocking_session_id = {session} OR r.blocking_session_id IN (SELECT session_id FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND blocking_session_id = {session} AND wait_type LIKE 'LCK%'))").SingleAsync(deadline.Token);
+                    if (waiting >= 2) break;
+                    await Task.Delay(50, deadline.Token);
+                }
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                var waits = await observer.Database.SqlQuery<string>($"SELECT CONCAT(session_id, ':', blocking_session_id, ':', COALESCE(wait_type, '-')) AS [Value] FROM sys.dm_exec_requests WHERE database_id = DB_ID() AND session_id <> @@SPID").ToArrayAsync(token);
+                Assert.Fail($"Policy session {session}; active SQL requests: {string.Join(", ", waits)}");
+            }
+            writer.Release.TrySetResult();
+            Assert.IsTrue(await update);
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receive);
+            Assert.AreEqual(0, await cleanup);
+        }
+        finally
+        {
+            writer.Release.TrySetResult();
+            try { await update; } catch { }
+            if (receive is not null) { try { await receive; } catch { } }
+            if (cleanup is not null) { try { await cleanup; } catch { } }
+        }
+    }, snapshotReads);
+
     private sealed class ReplayPolicyTestAuditWriter : IOperationAuditWriter<OperationAudit>
     {
         public bool Fail { get; set; }
@@ -605,6 +942,72 @@ public sealed class AgentIdentitySqlTests
             if (Fail) throw new InvalidOperationException("Injected audit failure.");
         }
     }
+
+    [TestMethod]
+    public Task InboxCutover_AuditFailureRollsBackAndConcurrentActivationIsSingle() => WithDatabase(async (_, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
+        }
+        var writer = new ReplayPolicyTestAuditWriter { Fail = true };
+        var settings = new AgentInboxSettings(agents, writer, new EphemeralDataProtectionProvider());
+        var before = await settings.GetAsync(token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token));
+        var afterFailure = await settings.GetAsync(token);
+        Assert.IsFalse(afterFailure.CleanupReady);
+        Assert.AreEqual(before.Version, afterFailure.Version);
+        writer.Fail = false;
+        var results = await Task.WhenAll(settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token),
+            settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(1, results.Count(x => x));
+        await using var verify = agents.CreateDbContext();
+        var policy = await verify.ReplayPolicies.SingleAsync(token);
+        Assert.IsNotNull(policy.CleanupCutoverAt);
+        Assert.AreEqual(policy.CleanupCutoverAt.Value.AddDays(7), policy.LegacyReceiptsRetainUntil);
+        Assert.AreEqual(1, await verify.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+    });
+
+    [TestMethod]
+    public Task InboxSettings_UpdatesGenerationAndAuditAtomically() => WithDatabase(async (_, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        }
+        var audit = new ReplayPolicyTestAuditWriter { Fail = true };
+        var settings = new AgentInboxSettings(agents, audit, new EphemeralDataProtectionProvider());
+        string version;
+        await using (var db = agents.CreateDbContext()) version = Convert.ToBase64String((await db.ReplayPolicies.SingleAsync(token)).Version);
+        var actor = Guid.CreateVersion7();
+        var preview = await settings.PreviewAsync(3600, 2, version, actor, token);
+        Assert.IsNotNull(preview);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, null, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, Guid.CreateVersion7(), token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3601, 2, version, preview.ConfirmationToken, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 3, version, preview.ConfirmationToken, actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(3600, 2, version, "invalid", actor, token));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(86400, (await db.ReplayPolicies.SingleAsync(token)).ReplayWindowSeconds);
+            Assert.AreEqual(0, await db.ReplayGenerations.CountAsync(token));
+            Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+        }
+        audit.Fail = false;
+        Assert.IsTrue(await settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
+        Assert.IsFalse(await settings.UpdateAsync(3600, 2, version, preview.ConfirmationToken, actor, token));
+        await using var verify = agents.CreateDbContext();
+        var policy = await verify.ReplayPolicies.SingleAsync(token);
+        var generation = await verify.ReplayGenerations.SingleAsync(token);
+        Assert.AreEqual(3600, policy.ReplayWindowSeconds);
+        Assert.AreEqual(2, policy.ReceiptRetentionDays);
+        Assert.AreEqual(86400, generation.WindowSeconds);
+        Assert.AreEqual(policy.InboxSettingsChangedAt!.Value.AddSeconds(86700), generation.ValidThrough);
+        Assert.AreEqual(1, await verify.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+    });
 
     [TestMethod]
     public Task ReplayClockMigration_InitializesExistingReceiptHistory() => WithDatabase(async (resources, agents, token) =>
@@ -634,6 +1037,262 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(clock.Now, (await verify.Agents.SingleAsync(x => x.Id == first.Id, token)).ReplayClockFloor);
         Assert.IsNull((await verify.Agents.SingleAsync(x => x.Id == empty.Id, token)).ReplayClockFloor);
         Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+    });
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task InboxCleanup_SerializesWithRetry(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock { Now = DateTimeOffset.UtcNow.AddDays(-10) };
+        var device = new Device("concurrent cleanup", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]);
+        var payload = AgentBatchCodec.Serialize(batch);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId}", token);
+        }
+        await using var gate = agents.CreateDbContext();
+        await using var transaction = await gate.Database.BeginTransactionAsync(token);
+        var lockName = $"vigiloom.agent.device.{device.Id:D}";
+        await gate.Database.ExecuteSqlInterpolatedAsync($"DECLARE @r int; EXEC @r = sp_getapplock @Resource = {lockName}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; IF @r < 0 THROW 51000, 'Cannot acquire test lock', 1;", token);
+        var retry = receiver.ReceiveAsync(credential, payload, token);
+        var clean = new AgentInboxCleanup(agents).CleanAgentAsync(agentId, 1, token);
+        var committed = false;
+        try
+        {
+            await Task.Delay(250, token);
+            Assert.IsFalse(retry.IsCompleted, "The receiver did not finish while the device lock was held.");
+            Assert.IsFalse(clean.IsCompleted, "Cleanup did not finish while the device lock was held.");
+            await transaction.CommitAsync(token);
+            committed = true;
+            Assert.AreEqual(1, await clean);
+            var retryStatus = await retry;
+            Assert.IsTrue(retryStatus is BatchReceiptStatus.AlreadyAccepted or BatchReceiptStatus.Expired);
+        }
+        finally
+        {
+            try { if (!committed) await transaction.RollbackAsync(CancellationToken.None); }
+            finally
+            {
+                // Observe both operations before the fixture removes its database, even on assertion failure.
+                try { await Task.WhenAll(retry, clean); } catch { /* Preserve the original failure. */ }
+            }
+        }
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.RuntimeObservations.CountAsync(token));
+        Assert.IsNotNull((await verify.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayCleanedBefore);
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task InboxDiagnostics_SeesLegacyReceiverAfterProjectionAtSameTime() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("mixed receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(Credential(agentId, secret), AgentBatchCodec.Serialize(batch), token));
+        var laterEnqueued = clock.Now.AddMinutes(1);
+        await using (var db = agents.CreateDbContext())
+        {
+            var first = await db.ReceivedBatches.SingleAsync(token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [LastBatchEnqueuedAt] = {first.EnqueuedAt}, [LastBatchReceivedAt] = {first.ReceivedAt}, [LastBatchReceiptRowId] = {first.RowId} WHERE [Id] = {agentId}", token);
+            db.ReceivedBatches.Add(new ReceivedBatch(agentId, Guid.CreateVersion7(), new byte[32], laterEnqueued, clock.Now, 1, 1));
+            await db.SaveChangesAsync(token);
+        }
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
+        var status = await monitoring.GetAsync(device.Id, token);
+        Assert.IsNotNull(status!.LastBatchTime);
+        Assert.AreEqual(laterEnqueued, status.LastBatchTime.EnqueuedAt);
+        Assert.AreEqual(clock.Now, await new AgentReceiverMonitoring(agents).LastCommittedBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20261109172036_AgentLastBatchProjection", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [LastBatchEnqueuedAt] = {clock.Now} WHERE [Id] = {agentId}", token);
+            await db.Database.MigrateAsync(token);
+        }
+        await using var verify = agents.CreateDbContext();
+        var projected = await verify.Agents.SingleAsync(x => x.Id == agentId, token);
+        var latest = await verify.ReceivedBatches.OrderByDescending(x => x.ReceivedAt).ThenByDescending(x => x.RowId).FirstAsync(token);
+        Assert.AreEqual(latest.RowId, projected.LastBatchReceiptRowId);
+        Assert.AreEqual(laterEnqueued, projected.LastBatchEnqueuedAt);
+    });
+
+    [TestMethod]
+    public Task InboxCleanup_DeletesBoundedReceiptsAndPreservesReplayFence() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock { Now = DateTimeOffset.UtcNow.AddDays(-10) };
+        var device = new Device("cleanup server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        AgentBatch CreateBatch() => new(1, Guid.CreateVersion7(), clock.Now,
+            [new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10")]);
+        var first = CreateBatch();
+        var second = CreateBatch();
+        var retained = CreateBatch();
+        foreach (var batch in new[] { first, second, retained })
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(batch), token));
+        var cleanup = new AgentInboxCleanup(agents);
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(agentId, 1, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId} AND [BatchId] <> {retained.BatchId}", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayClockFloor] = DATEADD(day, 1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Id] = {agentId}", token);
+        }
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(agentId, 1, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayClockFloor] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Id] = {agentId}", token);
+            await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[FailCleanupFence] ON [agent].[Agents] AFTER UPDATE AS THROW 51001, 'Injected failure', 1", token);
+        }
+        await Assert.ThrowsAsync<DbUpdateException>(() => cleanup.CleanAgentAsync(agentId, 1, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(3, await db.ReceivedBatches.CountAsync(token));
+            var unchanged = await db.Agents.SingleAsync(x => x.Id == agentId, token);
+            Assert.IsNull(unchanged.ReplayCleanedBefore);
+            Assert.AreEqual(0L, unchanged.InboxDeletedTotal);
+            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailCleanupFence]", token);
+        }
+        Assert.AreEqual(1, await cleanup.CleanAgentAsync(agentId, 1, token));
+        Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(first), token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(second), token));
+        Assert.AreEqual(1, await cleanup.CleanAgentAsync(agentId, 1, token));
+        Assert.AreEqual(0, await cleanup.CleanAgentAsync(agentId, 1, token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(retained.BatchId, (await verify.ReceivedBatches.SingleAsync(token)).BatchId);
+        Assert.AreEqual(3, await verify.RuntimeObservations.CountAsync(token));
+        Assert.IsNotNull((await verify.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayCleanedBefore);
+        await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId}", token);
+        Assert.AreEqual(1, await cleanup.RunAsync(token));
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
+        Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.AreEqual(clock.Now, await new AgentReceiverMonitoring(agents).LastCommittedBatchAsync(token));
+    });
+
+    [TestMethod]
+    public Task InboxReceipt_RetainsOriginalDeadlineWhenPolicyShortens() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock { Now = DateTimeOffset.UtcNow.AddYears(-1) };
+        var device = new Device("retention server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        AgentBatch CreateBatch() => new(1, Guid.CreateVersion7(), clock.Now,
+            [new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10")]);
+        var first = CreateBatch();
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(first), token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [ReceiptRetentionDays] = 2 WHERE [Scope] = 1", token);
+        var second = CreateBatch();
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(second), token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(first), token));
+        await using var verify = agents.CreateDbContext();
+        var receipts = await verify.ReceivedBatches.AsNoTracking().ToDictionaryAsync(x => x.BatchId, token);
+        var oldReceipt = receipts[first.BatchId];
+        var newReceipt = receipts[second.BatchId];
+        Assert.IsNotNull(oldReceipt.TrustedReceivedAt);
+        Assert.IsNotNull(newReceipt.TrustedReceivedAt);
+        Assert.AreEqual(oldReceipt.TrustedReceivedAt.Value.AddDays(7), oldReceipt.RetainUntil);
+        Assert.AreEqual(newReceipt.TrustedReceivedAt.Value.AddDays(2), newReceipt.RetainUntil);
+        Assert.AreEqual(clock.Now, oldReceipt.ReceivedAt);
+        Assert.IsGreaterThan(clock.Now.AddMonths(11), oldReceipt.TrustedReceivedAt.Value);
+    });
+
+    [TestMethod]
+    public Task InboxSafetyMigration_PreservesLegacyReceiptsWithoutInventingTrustedTimes() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock { Now = DateTimeOffset.UtcNow.AddYears(-1) };
+        var device = new Device("legacy receipt", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]);
+        var bytes = AgentBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(credential, bytes, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var receipt = await db.ReceivedBatches.SingleAsync(token);
+            var databaseNow = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            Assert.AreEqual(clock.Now, receipt.ReceivedAt);
+            Assert.IsNotNull(receipt.TrustedReceivedAt);
+            Assert.IsLessThan(TimeSpan.FromMinutes(1), (databaseNow - receipt.TrustedReceivedAt.Value).Duration());
+        }
+        await using (var db = agents.CreateDbContext())
+            await db.GetService<IMigrator>().MigrateAsync("20261103195754_AgentReplayFreshInstallation", token);
+        await using (var db = agents.CreateDbContext()) await db.Database.MigrateAsync(token);
+        await using (var db = agents.CreateDbContext())
+        {
+            var receipt = await db.ReceivedBatches.SingleAsync(token);
+            Assert.AreEqual(batch.BatchId, receipt.BatchId);
+            Assert.IsNull(receipt.TrustedReceivedAt);
+            Assert.IsNull(receipt.RetainUntil);
+            var historicalAgent = await db.Agents.SingleAsync(token);
+            Assert.AreEqual(receipt.ReceivedAt, historicalAgent.LastBatchReceivedAt);
+            Assert.AreEqual(receipt.EnqueuedAt, historicalAgent.LastBatchEnqueuedAt);
+            Assert.IsNull((await db.Agents.SingleAsync(token)).ReplayCleanedBefore);
+            Assert.IsNull((await db.ReplayPolicies.SingleAsync(token)).CleanupCutoverAt);
+            Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
+        }
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted,
+            await new AgentBatchReceiver(agents, identity, clock).ReceiveAsync(credential, bytes, token));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        await using (var db = agents.CreateDbContext())
+        {
+            var rejected = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261109170951_AgentInboxLegacyConstraint", token));
+            Assert.AreEqual(51000, rejected.Number);
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.IsNotNull((await db.ReplayPolicies.SingleAsync(token)).CleanupCutoverAt);
+            Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("UPDATE [agent].[ReplayPolicies] SET [CleanupCutoverAt] = NULL, [InboxSettingsChangedAt] = NULL, [LegacyReceiptsRetainUntil] = NULL WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayCleanedBefore] = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') WHERE [Id] = {registration.AgentId.Value}", token);
+        }
+        await using (var db = agents.CreateDbContext())
+        {
+            var rejected = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261103195754_AgentReplayFreshInstallation", token));
+            Assert.AreEqual(51000, rejected.Number);
+        }
     });
 
     [TestMethod]

@@ -819,11 +819,11 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("隔離原因摘要尚未提供", page.Body!.TextContent);
                 Assert.DoesNotContain("批次內容衝突：2 批", page.Body.TextContent);
             }
-            // Synthetic retained receipts exercise the byte limit without transferring 256 MiB.
+            // Synthetic receipt lengths exercise the logical byte limit without transferring 4 GiB.
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
             {
                 for (var i = 0; i < 256; i++)
-                    db.ReceivedBatches.Add(new ReceivedBatch(result.AgentId, Guid.CreateVersion7(), new byte[32], clock.Now, clock.Now, 1, 1024 * 1024));
+                    db.ReceivedBatches.Add(new ReceivedBatch(result.AgentId, Guid.CreateVersion7(), new byte[32], clock.Now, clock.Now, 1, 16 * 1024 * 1024));
                 await db.SaveChangesAsync(token);
             }
             using (var capacityPage = await reader.GetAsync($"/devices/{device.Id:D}", token))

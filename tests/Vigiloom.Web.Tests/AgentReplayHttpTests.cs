@@ -82,6 +82,22 @@ public sealed class AgentReplayHttpTests(TestContext context)
                 Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(original.BatchId, original.EnqueuedAt, 1, originalBytes, token));
                 Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
                 Assert.AreEqual(AgentReplayIssue.Expired, (await monitor.GetAsync(device.Id, token))!.LastReplayIssue!.Reason);
+
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    var stored = await db.ReceivedBatches.SingleAsync(token);
+                    Assert.IsNotNull(stored.TrustedReceivedAt);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [ReplayCleanedBefore] = DATEADD(minute, -30, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Id] = {agentId}", token);
+                }
+                // A retained duplicate is still acknowledged before the cleanup fence is checked.
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(original.BatchId, original.EnqueuedAt, 1, originalBytes, token));
+                Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                var cleanedRange = CreateBatch(now.AddHours(-1));
+                var cleanedBytes = AgentBatchCodec.Serialize(cleanedRange);
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(cleanedRange.BatchId, cleanedRange.EnqueuedAt, 1, cleanedBytes, token));
+                Assert.AreEqual(BatchSendResult.Rejected, (await sender.SendNextAsync(vault, server, token)).Status);
+                Assert.AreEqual(HttpStatusCode.Gone, handler.LastBatchStatus);
+
                 var future = CreateBatch(now.AddMinutes(10));
                 var futureBytes = AgentBatchCodec.Serialize(future);
                 Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(future.BatchId, future.EnqueuedAt, 1, futureBytes, token));
