@@ -15,6 +15,16 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AgentInbox.Preview.v1");
 
+    public async Task<AgentInboxSettingsSnapshot> GetAsync(CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var policy = await db.ReplayPolicies.AsNoTracking().SingleAsync(token);
+        var deleted = await db.Agents.SumAsync(x => (long?)x.InboxDeletedTotal, token) ?? 0;
+        var last = await db.Agents.MaxAsync(x => x.InboxLastDeletedAt, token);
+        return new(policy.ReplayWindowSeconds, policy.ReceiptRetentionDays, policy.CleanupCutoverAt is not null,
+            deleted, last, Convert.ToBase64String(policy.Version));
+    }
+
     public async Task<AgentInboxSettingsPreview?> PreviewAsync(int replaySeconds, int retentionDays, string version, Guid actor, CancellationToken token)
     {
         if (actor == Guid.Empty || !AgentInboxPolicyLimits.IsValid(replaySeconds, retentionDays)) throw new ArgumentException("Invalid inbox policy or administrator.");
