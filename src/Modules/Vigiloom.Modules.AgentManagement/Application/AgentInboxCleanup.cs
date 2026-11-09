@@ -85,6 +85,7 @@ public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext
             .Select(x => new { x.EnqueuedAt, x.ReceivedAt, x.RowId }).FirstAsync(token);
         agent.RecordCommittedBatch(latest.EnqueuedAt, latest.ReceivedAt, latest.RowId);
         var deleted = await db.ReceivedBatches.Where(x => x.AgentId == agentId && ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        agent.RecordInboxCleanup(deleted, now);
         agent.AdvanceReplayClock(now);
         agent.AdvanceCleanupFence(boundary);
         await db.SaveChangesAsync(token);
