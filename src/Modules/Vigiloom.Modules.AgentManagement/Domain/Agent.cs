@@ -28,6 +28,8 @@ public sealed class Agent
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? LastHeartbeatAt { get; private set; }
     public DateTimeOffset? ReplayClockFloor { get; private set; }
+    /// <summary>Exclusive enqueue-time lower bound after receipt cleanup; null before cleanup.</summary>
+    public DateTimeOffset? ReplayCleanedBefore { get; private set; }
     public AgentReplayIssue? LastReplayIssue { get; private set; }
     public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;

@@ -4,7 +4,10 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 public static class AgentReplayWindow
 {
     public static BatchReceiptStatus? Classify(DateTimeOffset enqueuedAt, DateTimeOffset authorityTime) =>
-        Classify(enqueuedAt, authorityTime, TimeSpan.FromHours(24), TimeSpan.FromMinutes(5), null);
+        Classify(enqueuedAt, authorityTime, null);
+
+    public static BatchReceiptStatus? Classify(DateTimeOffset enqueuedAt, DateTimeOffset authorityTime, DateTimeOffset? cleanedBefore) =>
+        Classify(enqueuedAt, authorityTime, TimeSpan.FromHours(24), TimeSpan.FromMinutes(5), cleanedBefore);
 
     public static BatchReceiptStatus? Classify(DateTimeOffset enqueuedAt, DateTimeOffset authorityTime,
         TimeSpan window, TimeSpan allowedFutureSkew, DateTimeOffset? cleanedBefore)

@@ -155,6 +155,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<long?>("QueueTotalBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset?>("ReplayCleanedBefore")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("ReplayClockFloor")
                         .HasColumnType("datetimeoffset");
 
@@ -342,6 +345,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("CleanupCutoverAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset?>("EnforcedAt")
@@ -586,6 +592,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("TrustedReceivedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("RowId");
