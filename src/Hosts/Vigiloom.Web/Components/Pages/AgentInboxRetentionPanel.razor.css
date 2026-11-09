@@ -1,0 +1,2 @@
+.inbox-retention p { color: var(--vigiloom-ink); line-height: 1.6; margin: 10px 0; }
+.inbox-retention label { display: flex; gap: 8px; align-items: baseline; line-height: 1.5; }
