@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
@@ -22,9 +21,7 @@ public sealed class SpeedRetentionCleanup(IDbContextFactory<NetworkDbContext> co
             var now = await SpeedDatabase.NowAsync(db, token);
             var cutoff = now.AddDays(-settings.RetentionDays);
             var protectedSince = now.AddHours(-24);
-            var candidates = db.SpeedRuns.Where(x => x.RequestedAt < cutoff &&
-                    x.State != SpeedTestState.Queued && x.State != SpeedTestState.Running &&
-                    (x.StartedAt ?? x.RequestedAt) <= protectedSince)
+            var candidates = SpeedRetentionEligibility.Apply(db.SpeedRuns, cutoff, protectedSince)
                 .OrderBy(x => x.RequestedAt).ThenBy(x => x.RowId).Select(x => x.Id).Take(BatchSize);
             var removed = await db.SpeedRuns.Where(x => candidates.Contains(x.Id)).ExecuteDeleteAsync(token);
             if (removed > 0)

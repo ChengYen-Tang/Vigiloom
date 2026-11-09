@@ -23,6 +23,30 @@ public sealed class SpeedRetentionSqlTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task Eligibility_UsesExactCutoffAndTwentyFourHourBoundary() => WithDatabase(async (factory, _, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.AddDays(-365);
+        var protectedSince = now.AddHours(-24);
+        var before = Run(cutoff.AddTicks(-1), SpeedTestState.Success);
+        var atCutoff = Run(cutoff, SpeedTestState.Success);
+        var afterCutoff = Run(cutoff.AddTicks(1), SpeedTestState.Success);
+        var atProtectedStart = Run(cutoff.AddDays(-1), SpeedTestState.Success);
+        atProtectedStart.StartedAt = protectedSince;
+        var afterProtectedStart = Run(cutoff.AddDays(-1), SpeedTestState.Success);
+        afterProtectedStart.StartedAt = protectedSince.AddTicks(1);
+        var queued = Run(cutoff.AddDays(-1), SpeedTestState.Queued);
+        await using var db = await factory.CreateDbContextAsync(token);
+        db.SpeedRuns.AddRange(before, atCutoff, afterCutoff, atProtectedStart, afterProtectedStart, queued);
+        await db.SaveChangesAsync(token);
+        var actual = await SpeedRetentionEligibility.Apply(db.SpeedRuns.AsNoTracking(), cutoff, protectedSince)
+            .Select(x => x.Id).ToArrayAsync(token);
+        Assert.HasCount(2, actual);
+        Assert.Contains(before.Id, actual);
+        Assert.Contains(atProtectedStart.Id, actual);
+    });
+
+    [TestMethod]
     public Task Cleanup_ConcurrentWorkersKeepActiveAndRecentRunsAndRecordCommittedBatches() => WithDatabase(async (factory, _, token) =>
     {
         var protection = new EphemeralDataProtectionProvider();
