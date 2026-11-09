@@ -24,6 +24,9 @@ public sealed record AgentReplayPolicyChanged(AgentReplayPhase Previous, AgentRe
     DateTimeOffset ActivatedAt, DateTimeOffset GraceUntil, DateTimeOffset? EnforcedAt,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 
+public sealed record AgentInboxSettingsChanged(int PreviousReplaySeconds, int PreviousRetentionDays,
+    int CurrentReplaySeconds, int CurrentRetentionDays, string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
+
 /// <summary>Approval references only the trusted source; names and credentials are not recorded.</summary>
 public sealed record ServiceApproved(Guid SourceId) : OperationAuditDetails;
 

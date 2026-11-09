@@ -731,6 +731,38 @@ public sealed class AgentIdentitySqlTests
     }
 
     [TestMethod]
+    public Task InboxSettings_UpdatesGenerationAndAuditAtomically() => WithDatabase(async (_, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+        }
+        var audit = new ReplayPolicyTestAuditWriter { Fail = true };
+        var settings = new AgentInboxSettings(agents, audit);
+        string version;
+        await using (var db = agents.CreateDbContext()) version = Convert.ToBase64String((await db.ReplayPolicies.SingleAsync(token)).Version);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(86400, (await db.ReplayPolicies.SingleAsync(token)).ReplayWindowSeconds);
+            Assert.AreEqual(0, await db.ReplayGenerations.CountAsync(token));
+            Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+        }
+        audit.Fail = false;
+        Assert.IsTrue(await settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
+        Assert.IsFalse(await settings.UpdateAsync(3600, 2, version, Guid.CreateVersion7(), token));
+        await using var verify = agents.CreateDbContext();
+        var policy = await verify.ReplayPolicies.SingleAsync(token);
+        var generation = await verify.ReplayGenerations.SingleAsync(token);
+        Assert.AreEqual(3600, policy.ReplayWindowSeconds);
+        Assert.AreEqual(2, policy.ReceiptRetentionDays);
+        Assert.AreEqual(86400, generation.WindowSeconds);
+        Assert.AreEqual(policy.InboxSettingsChangedAt!.Value.AddSeconds(86700), generation.ValidThrough);
+        Assert.AreEqual(1, await verify.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+    });
+
+    [TestMethod]
     public Task ReplayClockMigration_InitializesExistingReceiptHistory() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
