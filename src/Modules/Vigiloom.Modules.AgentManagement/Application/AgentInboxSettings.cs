@@ -25,6 +25,29 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
             deleted, last, Convert.ToBase64String(policy.Version));
     }
 
+    /// <summary>Requires the caller to confirm old receivers have stopped and drained before invoking.</summary>
+    public async Task<bool> ActivateCleanupAsync(string version, Guid actor, CancellationToken token)
+    {
+        if (actor == Guid.Empty) throw new ArgumentException("An administrator is required.", nameof(actor));
+        byte[] expected;
+        try { expected = Convert.FromBase64String(version ?? ""); }
+        catch (FormatException) { return false; }
+        if (expected.Length != 8) return false;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (XLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
+        if (!expected.AsSpan().SequenceEqual(policy.Version)) return false;
+        var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var previousVersion = Convert.ToBase64String(policy.Version);
+        if (!policy.BeginCleanupCutover(now)) return false;
+        await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actor, policy.Id, now, new AgentInboxCleanupActivated(now, policy.LegacyReceiptsRetainUntil!.Value,
+                previousVersion, Convert.ToBase64String(policy.Version))), token);
+        await transaction.CommitAsync(token);
+        return true;
+    }
+
     public async Task<AgentInboxSettingsPreview?> PreviewAsync(int replaySeconds, int retentionDays, string version, Guid actor, CancellationToken token)
     {
         if (actor == Guid.Empty || !AgentInboxPolicyLimits.IsValid(replaySeconds, retentionDays)) throw new ArgumentException("Invalid inbox policy or administrator.");

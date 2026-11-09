@@ -38,7 +38,7 @@ public sealed class SpeedHttpTests
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             await db.Database.MigrateAsync(token);
-            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
         }
         const string url = "/api/v1/settings/agent-inbox/";
         using var anonymous = Client(factory);
@@ -48,13 +48,18 @@ public sealed class SpeedHttpTests
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
         var before = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
         Assert.IsNotNull(before);
-        Assert.IsTrue(before.CleanupReady);
+        Assert.IsFalse(before.CleanupReady);
         using (var forged = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
         using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
         {
             using var json = System.Text.Json.JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
             admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
         }
+        using (var notConfirmed = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, false), token)) Assert.AreEqual(HttpStatusCode.BadRequest, notConfirmed.StatusCode);
+        using (var activated = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, true), token)) Assert.AreEqual(HttpStatusCode.NoContent, activated.StatusCode);
+        using (var staleCutover = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, true), token)) Assert.AreEqual(HttpStatusCode.Conflict, staleCutover.StatusCode);
+        before = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        Assert.IsTrue(before!.CleanupReady);
         using (var unconfirmed = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
         using var previewResponse = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token);
         Assert.AreEqual(HttpStatusCode.OK, previewResponse.StatusCode);
@@ -68,7 +73,8 @@ public sealed class SpeedHttpTests
         var now = DateTimeOffset.UtcNow;
         var auditUrl = $"/api/v1/operations/audit/agent-inbox?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
         var audit = await admin.GetFromJsonAsync<OperationAuditPage>(auditUrl, token);
-        Assert.AreEqual(3600, audit!.Items.Single().AgentInboxSettings!.CurrentReplaySeconds);
+        Assert.AreEqual(3600, audit!.Items.Single(x => x.AgentInboxSettings is not null).AgentInboxSettings!.CurrentReplaySeconds);
+        Assert.AreEqual(1, audit.Items.Count(x => x.AgentInboxActivation is not null));
     }, TestContext.CancellationToken);
 
     [TestMethod]

@@ -732,6 +732,32 @@ public sealed class AgentIdentitySqlTests
     }
 
     [TestMethod]
+    public Task InboxCutover_AuditFailureRollsBackAndConcurrentActivationIsSingle() => WithDatabase(async (_, agents, token) =>
+    {
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("CREATE TABLE [agent].[ReplayPolicyTestAudit] ([Id] bigint IDENTITY PRIMARY KEY)", token);
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
+        }
+        var writer = new ReplayPolicyTestAuditWriter { Fail = true };
+        var settings = new AgentInboxSettings(agents, writer, new EphemeralDataProtectionProvider());
+        var before = await settings.GetAsync(token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token));
+        var afterFailure = await settings.GetAsync(token);
+        Assert.IsFalse(afterFailure.CleanupReady);
+        Assert.AreEqual(before.Version, afterFailure.Version);
+        writer.Fail = false;
+        var results = await Task.WhenAll(settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token),
+            settings.ActivateCleanupAsync(before.Version, Guid.CreateVersion7(), token));
+        Assert.AreEqual(1, results.Count(x => x));
+        await using var verify = agents.CreateDbContext();
+        var policy = await verify.ReplayPolicies.SingleAsync(token);
+        Assert.IsNotNull(policy.CleanupCutoverAt);
+        Assert.AreEqual(policy.CleanupCutoverAt.Value.AddDays(7), policy.LegacyReceiptsRetainUntil);
+        Assert.AreEqual(1, await verify.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [agent].[ReplayPolicyTestAudit]").SingleAsync(token));
+    });
+
+    [TestMethod]
     public Task InboxSettings_UpdatesGenerationAndAuditAtomically() => WithDatabase(async (_, agents, token) =>
     {
         await using (var db = agents.CreateDbContext())
