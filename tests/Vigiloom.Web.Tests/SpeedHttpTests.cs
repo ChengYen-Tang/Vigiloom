@@ -152,7 +152,13 @@ public sealed class SpeedHttpTests
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(fields), token);
         Assert.Contains("預估有", await TextAsync(preview, token));
-        var confirmedFields = Hidden(await FormAsync(preview, "speed-retention", token));
+        var previewForm = await FormAsync(preview, "speed-retention", token);
+        Assert.AreEqual("/settings/speed-tests?retention=cancel#speed-retention-title", previewForm.QuerySelector("a")?.GetAttribute("href"));
+        using var cancelled = await admin.GetAsync("/settings/speed-tests?retention=cancel", token);
+        var cancelledText = await TextAsync(cancelled, token);
+        Assert.DoesNotContain("確認儲存", cancelledText);
+        Assert.Contains("目前保存 365 天", cancelledText);
+        var confirmedFields = Hidden(previewForm);
         confirmedFields["Input.Days"] = "30";
         using var confirmed = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(confirmedFields), token);
         Assert.Contains("保存設定已儲存", await TextAsync(confirmed, token));
