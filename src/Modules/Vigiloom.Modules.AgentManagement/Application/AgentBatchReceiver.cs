@@ -53,7 +53,14 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         }
         if (policy.Phase == AgentReplayPhase.Enforced)
         {
-            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime, agent.ReplayCleanedBefore);
+            // The policy HOLDLOCK serializes these reads with policy changes; all live previous
+            // generations retain their promised allowance through the deadline instant.
+            var previousWindow = await db.ReplayGenerations.AsNoTracking()
+                .Where(x => x.PolicyId == policy.Id && x.ValidThrough >= policyTime)
+                .MaxAsync(x => (int?)x.WindowSeconds, token);
+            var effectiveWindow = Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0);
+            var rejection = AgentReplayWindow.Classify(batch!.EnqueuedAt, policyTime,
+                TimeSpan.FromSeconds(effectiveWindow), TimeSpan.FromMinutes(5), agent.ReplayCleanedBefore);
             if (rejection is { } reason)
             {
                 agent.AdvanceReplayClock(policyTime);
