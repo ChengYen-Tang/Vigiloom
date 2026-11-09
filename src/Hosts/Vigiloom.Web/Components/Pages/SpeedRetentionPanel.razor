@@ -23,7 +23,7 @@
                 <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預估有 @impact.AffectedResults 筆結果超過新期限。實際清理數量會隨時間及資料變動。</p>
                 <p>預覽截止時間（UTC）：@impact.Cutoff.ToString("u")；申請時間早於此截止時間、目前已結束，且開始時間（未開始則申請時間）已滿 24 小時的結果會列入清理範圍。</p>
                 <p>變更後將依排程清理；刪除後無法復原。預覽在 5 分鐘內有效。</p>
-                <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/speed-tests#speed-retention-title">取消</a></div>
+                <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/speed-tests?retention=cancel#speed-retention-title">取消</a></div>
             }
             else { <button type="submit">預覽變更</button> }
         </EditForm>
