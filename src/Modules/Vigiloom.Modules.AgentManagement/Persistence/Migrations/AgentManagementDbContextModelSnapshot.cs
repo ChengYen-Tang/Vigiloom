@@ -651,6 +651,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset>("ReceivedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("RetainUntil")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("TrustedReceivedAt")
                         .HasColumnType("datetimeoffset");
 

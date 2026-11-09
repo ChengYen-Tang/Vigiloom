@@ -86,7 +86,8 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
-        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length, policyTime));
+        db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batch.BatchId, digest, batch.EnqueuedAt, receivedAt, batch.Items.Count, payload.Length,
+            policyTime, policyTime.AddDays(policy.ReceiptRetentionDays)));
         for (var ordinal = 0; ordinal < batch.Items.Count; ordinal++)
         {
             var item = batch.Items[ordinal];
