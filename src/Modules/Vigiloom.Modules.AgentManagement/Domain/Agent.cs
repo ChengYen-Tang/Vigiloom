@@ -30,6 +30,9 @@ public sealed class Agent
     public DateTimeOffset? ReplayClockFloor { get; private set; }
     /// <summary>Exclusive enqueue-time lower bound after receipt cleanup; null before cleanup.</summary>
     public DateTimeOffset? ReplayCleanedBefore { get; private set; }
+    public DateTimeOffset? LastBatchReceivedAt { get; private set; }
+    public DateTimeOffset? LastBatchEnqueuedAt { get; private set; }
+    public long? LastBatchReceiptRowId { get; private set; }
     public AgentReplayIssue? LastReplayIssue { get; private set; }
     public DateTimeOffset? LastReplayIssueAt { get; private set; }
     public int HeartbeatSafetyIntervalSeconds { get; private set; } = 30;
@@ -76,6 +79,14 @@ public sealed class Agent
     {
         var utc = boundary.ToUniversalTime();
         if (ReplayCleanedBefore is null || utc > ReplayCleanedBefore) ReplayCleanedBefore = utc;
+    }
+    public void RecordCommittedBatch(DateTimeOffset enqueuedAt, DateTimeOffset receivedAt, long receiptRowId)
+    {
+        var utc = receivedAt.ToUniversalTime();
+        if (LastBatchReceivedAt is { } last && (utc < last || utc == last && receiptRowId <= (LastBatchReceiptRowId ?? 0))) return;
+        LastBatchReceivedAt = utc;
+        LastBatchEnqueuedAt = enqueuedAt.ToUniversalTime();
+        LastBatchReceiptRowId = receiptRowId;
     }
     public void RecordReplayIssue(AgentReplayIssue issue, DateTimeOffset now)
     {

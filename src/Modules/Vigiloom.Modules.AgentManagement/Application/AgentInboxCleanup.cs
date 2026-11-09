@@ -35,6 +35,12 @@ public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext
                 (x.TrustedReceivedAt != null && x.TrustedReceivedAt >= cutover && x.RetainUntil != null || legacyDeadline <= now))
             .OrderBy(x => x.RowId).Select(x => x.RowId).Take(batchSize).ToArrayAsync(token);
         if (ids.Length == 0) return 0;
+        // Capture the latest committed receipt before deleting any rows. This also covers
+        // receipts written by an older receiver after the schema migration.
+        var latest = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agentId)
+            .OrderByDescending(x => x.ReceivedAt).ThenByDescending(x => x.RowId)
+            .Select(x => new { x.EnqueuedAt, x.ReceivedAt, x.RowId }).FirstAsync(token);
+        agent.RecordCommittedBatch(latest.EnqueuedAt, latest.ReceivedAt, latest.RowId);
         var deleted = await db.ReceivedBatches.Where(x => x.AgentId == agentId && ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
         agent.AdvanceReplayClock(now);
         agent.AdvanceCleanupFence(boundary);
