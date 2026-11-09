@@ -64,6 +64,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(30);
 
+                    b.Property<DateTimeOffset?>("LastBatchEnqueuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("LastBatchReceiptRowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastBatchReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("LastHeartbeatAt")
                         .HasColumnType("datetimeoffset");
 

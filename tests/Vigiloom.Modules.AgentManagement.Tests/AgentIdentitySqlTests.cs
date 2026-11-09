@@ -715,6 +715,47 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    public Task InboxDiagnostics_SeesLegacyReceiverAfterProjectionAtSameTime() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("mixed receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, clock.Now, "test", "X64", ".NET 10");
+        var batch = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [message]);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(Credential(agentId, secret), AgentBatchCodec.Serialize(batch), token));
+        var laterEnqueued = clock.Now.AddMinutes(1);
+        await using (var db = agents.CreateDbContext())
+        {
+            var first = await db.ReceivedBatches.SingleAsync(token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [LastBatchEnqueuedAt] = {first.EnqueuedAt}, [LastBatchReceivedAt] = {first.ReceivedAt}, [LastBatchReceiptRowId] = {first.RowId} WHERE [Id] = {agentId}", token);
+            db.ReceivedBatches.Add(new ReceivedBatch(agentId, Guid.CreateVersion7(), new byte[32], laterEnqueued, clock.Now, 1, 1));
+            await db.SaveChangesAsync(token);
+        }
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
+        var status = await monitoring.GetAsync(device.Id, token);
+        Assert.IsNotNull(status!.LastBatchTime);
+        Assert.AreEqual(laterEnqueued, status.LastBatchTime.EnqueuedAt);
+        Assert.AreEqual(clock.Now, await new AgentReceiverMonitoring(agents).LastCommittedBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20261109172036_AgentLastBatchProjection", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[Agents] SET [LastBatchEnqueuedAt] = {clock.Now} WHERE [Id] = {agentId}", token);
+            await db.Database.MigrateAsync(token);
+        }
+        await using var verify = agents.CreateDbContext();
+        var projected = await verify.Agents.SingleAsync(x => x.Id == agentId, token);
+        var latest = await verify.ReceivedBatches.OrderByDescending(x => x.ReceivedAt).ThenByDescending(x => x.RowId).FirstAsync(token);
+        Assert.AreEqual(latest.RowId, projected.LastBatchReceiptRowId);
+        Assert.AreEqual(laterEnqueued, projected.LastBatchEnqueuedAt);
+    });
+
+    [TestMethod]
     public Task InboxCleanup_DeletesBoundedReceiptsAndPreservesReplayFence() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock { Now = DateTimeOffset.UtcNow.AddDays(-10) };
@@ -764,6 +805,11 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(retained.BatchId, (await verify.ReceivedBatches.SingleAsync(token)).BatchId);
         Assert.AreEqual(3, await verify.RuntimeObservations.CountAsync(token));
         Assert.IsNotNull((await verify.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayCleanedBefore);
+        await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId}", token);
+        Assert.AreEqual(1, await cleanup.CleanAgentAsync(agentId, 1, token));
+        var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
+        Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
+        Assert.AreEqual(clock.Now, await new AgentReceiverMonitoring(agents).LastCommittedBatchAsync(token));
     });
 
     [TestMethod]
@@ -831,6 +877,9 @@ public sealed class AgentIdentitySqlTests
             Assert.AreEqual(batch.BatchId, receipt.BatchId);
             Assert.IsNull(receipt.TrustedReceivedAt);
             Assert.IsNull(receipt.RetainUntil);
+            var historicalAgent = await db.Agents.SingleAsync(token);
+            Assert.AreEqual(receipt.ReceivedAt, historicalAgent.LastBatchReceivedAt);
+            Assert.AreEqual(receipt.EnqueuedAt, historicalAgent.LastBatchEnqueuedAt);
             Assert.IsNull((await db.Agents.SingleAsync(token)).ReplayCleanedBefore);
             Assert.IsNull((await db.ReplayPolicies.SingleAsync(token)).CleanupCutoverAt);
             Assert.AreEqual(1, await db.RuntimeObservations.CountAsync(token));
