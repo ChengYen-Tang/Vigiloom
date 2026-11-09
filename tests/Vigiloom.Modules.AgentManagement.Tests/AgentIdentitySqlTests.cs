@@ -25,6 +25,45 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task InboxCleanup_RetriesFailedAgentWithoutStarvingOthers() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var firstDevice = new Device("failed cleanup", "127.0.0.1", true, clock.Now);
+        var secondDevice = new Device("large cleanup", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(firstDevice, secondDevice); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        async Task<Guid> Register(Guid deviceId)
+        {
+            var issued = await identity.IssueAsync(deviceId, Guid.CreateVersion7(), token);
+            var result = await identity.RedeemAsync(issued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+            return result.AgentId!.Value;
+        }
+        var first = await Register(firstDevice.Id);
+        var second = await Register(secondDevice.Id);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = DATEADD(day, -10, @now), [EnforcedAt] = DATEADD(day, -10, @now), [CleanupCutoverAt] = DATEADD(day, -9, @now), [InboxSettingsChangedAt] = DATEADD(day, -9, @now), [LegacyReceiptsRetainUntil] = DATEADD(day, -2, @now) WHERE [Scope] = 1", token);
+            var old = DateTimeOffset.UtcNow.AddDays(-10);
+            var expired = DateTimeOffset.UtcNow.AddDays(-1);
+            db.ReceivedBatches.Add(new ReceivedBatch(first, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
+            for (var i = 0; i < 350; i++)
+                db.ReceivedBatches.Add(new ReceivedBatch(second, Guid.CreateVersion7(), new byte[32], old, old, 1, 1, old, expired));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[FailFirstInbox] ON [agent].[ReceivedBatches] AFTER DELETE AS IF EXISTS (SELECT 1 FROM deleted d JOIN [agent].[Agents] a ON a.[Id] = d.[AgentId] WHERE a.[RowId] = (SELECT MIN([RowId]) FROM [agent].[Agents])) THROW 51001, 'Injected failure', 1", token);
+        }
+        var cleanup = new AgentInboxCleanup(agents);
+        var failure = await Assert.ThrowsAsync<AggregateException>(() => cleanup.RunAsync(token));
+        Assert.Contains("350 receipts were removed", failure.Message);
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(x => x.AgentId == first, token));
+            Assert.AreEqual(0, await db.ReceivedBatches.CountAsync(x => x.AgentId == second, token));
+            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
+        }
+        Assert.AreEqual(1, await cleanup.RunAsync(token));
+    });
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task QueueCapacity_InheritsOverridesAndAuditsAtomically(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
@@ -864,7 +903,7 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(3, await verify.RuntimeObservations.CountAsync(token));
         Assert.IsNotNull((await verify.Agents.SingleAsync(x => x.Id == agentId, token)).ReplayCleanedBefore);
         await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [agent].[ReceivedBatches] SET [RetainUntil] = DATEADD(day, -1, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [AgentId] = {agentId}", token);
-        Assert.AreEqual(1, await cleanup.CleanAgentAsync(agentId, 1, token));
+        Assert.AreEqual(1, await cleanup.RunAsync(token));
         var monitoring = new AgentMonitoring(agents, new DeviceAgentSource(resources), clock);
         Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         Assert.AreEqual(clock.Now, await new AgentReceiverMonitoring(agents).LastCommittedBatchAsync(token));

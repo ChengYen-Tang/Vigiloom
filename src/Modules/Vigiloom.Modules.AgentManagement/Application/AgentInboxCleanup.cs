@@ -8,6 +8,49 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 public sealed class AgentInboxCleanup(IDbContextFactory<AgentManagementDbContext> contexts)
 {
     public const int MaximumBatchSize = 200;
+    private const int AgentPageSize = 100;
+    private const int MaximumBatchesPerAgent = 10;
+
+    /// <summary>Scans Agents in bounded pages; each Agent is committed independently.</summary>
+    public async Task<int> RunAsync(CancellationToken token)
+    {
+        var total = 0;
+        List<Exception>? failures = null;
+        long after = 0;
+        await using (var check = await contexts.CreateDbContextAsync(token))
+        {
+            var ready = await check.ReplayPolicies.AsNoTracking().AnyAsync(x => x.Phase == AgentReplayPhase.Enforced && x.CleanupCutoverAt != null, token);
+            if (!ready) return 0;
+        }
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            var page = await db.Agents.AsNoTracking().Where(x => x.RowId > after && db.ReceivedBatches.Any(r => r.AgentId == x.Id))
+                .OrderBy(x => x.RowId).Select(x => new { x.Id, x.RowId }).Take(AgentPageSize).ToArrayAsync(token);
+            if (page.Length == 0)
+            {
+                if (failures is not null) throw new AggregateException($"Inbox cleanup failed for {failures.Count} Agent(s); {total} receipts were removed.", failures);
+                return total;
+            }
+            foreach (var agent in page)
+            {
+                after = agent.RowId;
+                try
+                {
+                    for (var batch = 0; batch < MaximumBatchesPerAgent; batch++)
+                    {
+                        var deleted = await CleanAgentAsync(agent.Id, MaximumBatchSize, token);
+                        total = checked(total + deleted);
+                        if (deleted < MaximumBatchSize) break;
+                    }
+                }
+                catch (Exception ex) when (!token.IsCancellationRequested)
+                {
+                    (failures ??= []).Add(new InvalidOperationException($"Inbox cleanup failed for Agent {agent.Id}.", ex));
+                }
+            }
+        }
+    }
 
     public async Task<int> CleanAgentAsync(Guid agentId, int batchSize, CancellationToken token)
     {
