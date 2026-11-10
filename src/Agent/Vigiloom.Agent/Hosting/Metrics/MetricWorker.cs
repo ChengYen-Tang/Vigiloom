@@ -9,7 +9,7 @@ namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>Runs one owner's metric collection serially and retries pending batches.</summary>
 internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfiguration configuration, TimeProvider clock,
-    ILogger<MetricWorker> logger, IMetricResourceMonitor? resourceMonitor = null) : BackgroundService
+    ILogger<MetricWorker> logger, IMetricResourceMonitor? resourceMonitor = null, SamplingBudgetCoordinator? sharedBudget = null) : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(5);
 
@@ -25,8 +25,7 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
         var ioThrottled = false;
         var loggedUnavailable = new HashSet<string>(StringComparer.Ordinal);
         using var resources = resourceMonitor ?? new MetricResourceMonitor();
-        var cpuBudget = new SamplingCpuBudget(clock, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(3));
-        var ioBudget = new SamplingIoBudget(clock, TimeSpan.FromMinutes(1), 64UL * 1024 * 1024);
+        var budget = sharedBudget ?? new SamplingBudgetCoordinator(clock);
         try
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -100,54 +99,66 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                                 result = new(pendingStatus, CheckInterval, []);
                             else
                             {
-                                cpuBudget.SetAllowance(TimeSpan.FromMilliseconds(policy.CpuMillisecondsPerMinute));
-                                ioBudget.SetAllowance((ulong)policy.IoLimitMiBPerMinute * 1024 * 1024);
-                                var throttle = cpuBudget.Delay();
-                                var ioDelay = ioBudget.Delay();
-                                if ((ioDelay > TimeSpan.Zero) != ioThrottled)
+                                await using var budgetLease = await budget.AcquireAsync(stoppingToken);
+                                var cpuBudget = budget.Cpu;
+                                var ioBudget = budget.Io;
+                                var latestPolicy = settings.ForOwner(owner);
+                                if (latestPolicy is null || !IsCurrent(directory, server))
                                 {
-                                    ioThrottled = ioDelay > TimeSpan.Zero;
-                                    if (ioThrottled) logger.LogWarning("Agent metric collection is delayed by the I/O budget.");
-                                    else logger.LogInformation("Agent metric collection resumed after the I/O budget delay.");
-                                }
-                                var memoryExceeded = SamplingMemoryBudget.IsExceeded(resources.ReadWorkingSetBytes(), (long)policy.WorkingSetLimitMiB * 1024 * 1024);
-                                if (memoryExceeded != memoryThrottled)
-                                {
-                                    memoryThrottled = memoryExceeded;
-                                    if (memoryThrottled) logger.LogWarning("Agent metric collection is delayed by the memory budget.");
-                                    else logger.LogInformation("Agent metric collection resumed after the memory budget delay.");
-                                }
-                                if ((throttle > TimeSpan.Zero) != cpuThrottled)
-                                {
-                                    cpuThrottled = throttle > TimeSpan.Zero;
-                                    if (cpuThrottled) logger.LogWarning("Agent metric collection is delayed by the CPU budget.");
-                                    else logger.LogInformation("Agent metric collection resumed after the CPU budget delay.");
-                                }
-                                if (throttle > TimeSpan.Zero || ioDelay > TimeSpan.Zero || memoryExceeded)
-                                {
-                                    var wait = throttle > ioDelay ? throttle : ioDelay;
-                                    result = new(pendingStatus, memoryExceeded ? CheckInterval : wait, []);
+                                    result = new(pendingStatus, CheckInterval, []);
                                 }
                                 else
                                 {
-                                    var before = resources.ReadCpuTime();
-                                    var ioBefore = await resources.ReadIoAsync(stoppingToken);
-                                    try { result = await cycle.RunAsync(policy, stoppingToken); }
-                                    finally
+                                    policy = latestPolicy;
+                                    cpuBudget.SetAllowance(TimeSpan.FromMilliseconds(policy.CpuMillisecondsPerMinute));
+                                    ioBudget.SetAllowance((ulong)policy.IoLimitMiBPerMinute * 1024 * 1024);
+                                    var throttle = cpuBudget.Delay();
+                                    var ioDelay = ioBudget.Delay();
+                                    if ((ioDelay > TimeSpan.Zero) != ioThrottled)
                                     {
-                                        try { ioBudget.Record(ioBefore, await resources.ReadIoAsync(CancellationToken.None)); }
-                                        catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or Win32Exception or PlatformNotSupportedException)
-                                        {
-                                            ioBudget.MarkUnknown();
-                                            logger.LogWarning("Agent I/O budget observation failed: {ErrorType}.", ex.GetType().Name);
-                                        }
+                                        ioThrottled = ioDelay > TimeSpan.Zero;
+                                        if (ioThrottled) logger.LogWarning("Agent metric collection is delayed by the I/O budget.");
+                                        else logger.LogInformation("Agent metric collection resumed after the I/O budget delay.");
+                                    }
+                                    var memoryExceeded = SamplingMemoryBudget.IsExceeded(resources.ReadWorkingSetBytes(), (long)policy.WorkingSetLimitMiB * 1024 * 1024);
+                                    if (memoryExceeded != memoryThrottled)
+                                    {
+                                        memoryThrottled = memoryExceeded;
+                                        if (memoryThrottled) logger.LogWarning("Agent metric collection is delayed by the memory budget.");
+                                        else logger.LogInformation("Agent metric collection resumed after the memory budget delay.");
+                                    }
+                                    if ((throttle > TimeSpan.Zero) != cpuThrottled)
+                                    {
+                                        cpuThrottled = throttle > TimeSpan.Zero;
+                                        if (cpuThrottled) logger.LogWarning("Agent metric collection is delayed by the CPU budget.");
+                                        else logger.LogInformation("Agent metric collection resumed after the CPU budget delay.");
+                                    }
+                                    if (throttle > TimeSpan.Zero || ioDelay > TimeSpan.Zero || memoryExceeded)
+                                    {
+                                        var wait = throttle > ioDelay ? throttle : ioDelay;
+                                        result = new(pendingStatus, memoryExceeded ? CheckInterval : wait, []);
+                                    }
+                                    else
+                                    {
+                                        var before = resources.ReadCpuTime();
+                                        var ioBefore = await resources.ReadIoAsync(stoppingToken);
+                                        try { result = await cycle.RunAsync(policy, stoppingToken); }
                                         finally
                                         {
-                                            try { cpuBudget.Record(before, resources.ReadCpuTime()); }
-                                            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+                                            try { ioBudget.Record(ioBefore, await resources.ReadIoAsync(CancellationToken.None)); }
+                                            catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or Win32Exception or PlatformNotSupportedException)
                                             {
-                                                cpuBudget.MarkUnknown();
-                                                logger.LogWarning("Agent CPU budget observation failed: {ErrorType}.", ex.GetType().Name);
+                                                ioBudget.MarkUnknown();
+                                                logger.LogWarning("Agent I/O budget observation failed: {ErrorType}.", ex.GetType().Name);
+                                            }
+                                            finally
+                                            {
+                                                try { cpuBudget.Record(before, resources.ReadCpuTime()); }
+                                                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+                                                {
+                                                    cpuBudget.MarkUnknown();
+                                                    logger.LogWarning("Agent CPU budget observation failed: {ErrorType}.", ex.GetType().Name);
+                                                }
                                             }
                                         }
                                     }

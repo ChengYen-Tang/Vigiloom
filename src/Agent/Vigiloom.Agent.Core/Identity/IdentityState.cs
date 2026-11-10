@@ -19,3 +19,4 @@ public sealed record AgentAppliedQueueCapacity(Vigiloom.Contracts.Agent.AgentQue
 
 /// <summary>Last valid metric policy bound to the registered Agent identity.</summary>
 public sealed record AgentSavedMetricSettings(Vigiloom.Contracts.Agent.AgentMetricSettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);
+public sealed record AgentSavedLogSettings(Vigiloom.Contracts.Agent.AgentLogSettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);

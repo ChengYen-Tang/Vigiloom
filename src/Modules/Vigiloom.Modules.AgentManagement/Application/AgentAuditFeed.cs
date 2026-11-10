@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
@@ -10,7 +11,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
-        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings))
+        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources))
             throw new ArgumentException("Invalid audit source or range.");
         await using var db = await contexts.CreateDbContextAsync(token);
         var skip = (query.Page - 1) * AuditFeedLimits.PageSize;
@@ -33,6 +34,26 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
                     "RotationFinished" => AuditFeedAction.RotationFinished,
                     _ => AuditFeedAction.Unknown
                 }, AuditFeedOutcome.Recorded, AgentId: row.AgentId)).ToArray();
+        }
+        else if (source == AuditFeedSource.HostLogSources)
+        {
+            var rows = await db.HostLogSourceAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+                .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
+                .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.SourceId, x.Action, x.Generation, x.Enabled, x.Version }).ToArrayAsync(token);
+            more = rows.Length > AuditFeedLimits.PageSize;
+            entries = rows.Take(AuditFeedLimits.PageSize).Select(row =>
+            {
+                var action = row.Action switch
+                {
+                    HostLogSourceAction.Created => AuditFeedAction.HostLogSourceCreated,
+                    HostLogSourceAction.Updated => AuditFeedAction.HostLogSourceUpdated,
+                    HostLogSourceAction.Retired => AuditFeedAction.HostLogSourceRetired,
+                    _ => AuditFeedAction.Unknown
+                };
+                var valid = action != AuditFeedAction.Unknown && row.SourceId != Guid.Empty && row.Generation != Guid.Empty && row.Version.Length == 8;
+                var details = valid ? new HostLogSourceAuditDetails(row.SourceId, row.Generation, row.Enabled, Convert.ToBase64String(row.Version)) : null;
+                return new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId, valid ? action : AuditFeedAction.Unknown, AuditFeedOutcome.Recorded, HostLogSource: details);
+            }).ToArray();
         }
         else if (source == AuditFeedSource.AgentMetricSettings)
         {

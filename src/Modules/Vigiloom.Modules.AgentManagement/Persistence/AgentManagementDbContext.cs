@@ -13,6 +13,9 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
+    public DbSet<HostLog> HostLogs => Set<HostLog>();
+    public DbSet<HostLogSource> HostLogSources => Set<HostLogSource>();
+    public DbSet<HostLogSourceAudit> HostLogSourceAudits => Set<HostLogSourceAudit>();
     public DbSet<AgentSetting> Settings => Set<AgentSetting>();
     public DbSet<AgentSettingAudit> SettingAudits => Set<AgentSettingAudit>();
     public DbSet<AgentQueueCapacitySetting> QueueCapacitySettings => Set<AgentQueueCapacitySetting>();
@@ -40,6 +43,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         agent.Property(x => x.HeartbeatSafetyIntervalSeconds).HasDefaultValue(30);
         agent.Property(x => x.AppliedConfigurationRevision).HasMaxLength(64);
         agent.Property(x => x.QueueCapacityAppliedRevision).HasMaxLength(64);
+        agent.Property(x => x.LogStatusJson).HasMaxLength(8192);
         agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
 
         var replay = modelBuilder.Entity<AgentReplayPolicy>();
@@ -119,6 +123,48 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         metric.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
         metric.HasIndex(x => new { x.AgentId, x.Kind, x.OccurredAt, x.RowId });
         metric.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var log = modelBuilder.Entity<HostLog>();
+        log.ToTable("HostLogs", table => table.HasCheckConstraint("CK_HostLogs_Gap", """
+            ([GapReason] IS NULL AND [GapAffectedCount] IS NULL) OR
+            ([GapReason] IS NOT NULL AND [GapReason] BETWEEN 1 AND 5 AND
+             ([GapAffectedCount] IS NULL OR [GapAffectedCount] > 0) AND [Content] = N'' AND
+             [Provider] IS NULL AND [EventId] IS NULL AND [Level] IS NULL AND [User] IS NULL AND [Process] IS NULL)
+            """));
+        log.HasKey(x => x.RowId).IsClustered();
+        log.Property(x => x.RowId).UseIdentityColumn();
+        log.Property(x => x.SourceName).HasMaxLength(512).IsRequired();
+        log.Property(x => x.Content).IsRequired();
+        log.Property(x => x.Provider).HasMaxLength(256);
+        log.Property(x => x.Level).HasMaxLength(64);
+        log.Property(x => x.User).HasMaxLength(256);
+        log.Property(x => x.Process).HasMaxLength(256);
+        log.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        log.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
+        log.HasIndex(x => new { x.AgentId, x.SourceId, x.ReceivedAt, x.RowId });
+        log.HasIndex(x => new { x.AgentId, x.SourceId, x.OccurredAt, x.RowId });
+        log.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var logSource = modelBuilder.Entity<HostLogSource>();
+        logSource.ToTable("HostLogSources");
+        logSource.HasKey(x => x.Id).IsClustered(false);
+        logSource.Property(x => x.Id).ValueGeneratedNever();
+        logSource.Property(x => x.Generation).ValueGeneratedNever();
+        logSource.Property(x => x.RowId).UseIdentityColumn();
+        logSource.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        logSource.HasIndex(x => new { x.DeviceId, x.RetiredAt });
+        logSource.Property(x => x.Name).HasMaxLength(256).IsRequired();
+        logSource.Property(x => x.Target).HasMaxLength(1024).IsRequired();
+        logSource.Property(x => x.Version).IsRowVersion();
+
+        var logSourceAudit = modelBuilder.Entity<HostLogSourceAudit>();
+        logSourceAudit.ToTable("HostLogSourceAudits");
+        logSourceAudit.HasKey(x => x.RowId).IsClustered();
+        logSourceAudit.Property(x => x.RowId).UseIdentityColumn();
+        logSourceAudit.Property(x => x.Version).HasColumnType("binary(8)").IsRequired();
+        logSourceAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        logSourceAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
+        logSourceAudit.HasOne<HostLogSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.NoAction);
 
         var setting = modelBuilder.Entity<AgentSetting>();
         setting.ToTable("Settings", table => table.HasCheckConstraint("CK_AgentSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));

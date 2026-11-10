@@ -1,0 +1,37 @@
+@baseUrl = https://localhost:7043
+@deviceId = 00000000-0000-7000-8000-000000000001
+@sourceId = 00000000-0000-7000-8000-000000000002
+@antiforgery = replace-with-request-token
+@version = replace-with-current-version
+@machineCredential = replace-with-machine-credential
+
+### Administrator session: list a device's sources.
+GET {{baseUrl}}/api/v1/agent-management/devices/{{deviceId}}/log-sources/
+
+### Administrator session: create a local journal source.
+POST {{baseUrl}}/api/v1/agent-management/devices/{{deviceId}}/log-sources/
+Content-Type: application/json
+RequestVerificationToken: {{antiforgery}}
+
+{"kind":2,"name":"System journal","target":"local","enabled":true,"textMode":null}
+
+### Administrator session: inspect a source and use its returned version in the following requests.
+GET {{baseUrl}}/api/v1/agent-management/devices/{{deviceId}}/log-sources/{{sourceId}}
+
+### Administrator session: update without changing the native source identity.
+PUT {{baseUrl}}/api/v1/agent-management/devices/{{deviceId}}/log-sources/{{sourceId}}
+Content-Type: application/json
+RequestVerificationToken: {{antiforgery}}
+
+{"name":"System journal","enabled":false,"textMode":null,"version":"{{version}}"}
+
+### Administrator session: retire with the latest version.
+POST {{baseUrl}}/api/v1/agent-management/devices/{{deviceId}}/log-sources/{{sourceId}}/retire
+Content-Type: application/json
+RequestVerificationToken: {{antiforgery}}
+
+{"version":"{{version}}"}
+
+### Agent credential: fetch only its own desired sources.
+GET {{baseUrl}}/api/v1/agent/log-settings
+Authorization: Bearer {{machineCredential}}

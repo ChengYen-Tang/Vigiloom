@@ -40,6 +40,9 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Keep malformed minimal-API requests as 400 responses in Development as well as Production.
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents()
@@ -102,6 +105,9 @@ builder.Services.AddScoped<HostMetricHistory>();
 builder.Services.AddScoped<AgentConfiguration>();
 builder.Services.AddScoped<AgentQueueCapacityConfiguration>();
 builder.Services.AddScoped<AgentMetricConfiguration>();
+builder.Services.AddScoped<HostLogConfiguration>();
+builder.Services.AddScoped<HostLogMonitoring>();
+builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddScoped<AgentReplayPolicyService>();
 builder.Services.AddScoped<AgentInboxSettings>();
 builder.Services.AddScoped<AgentQueueCapacityMonitoring>();
@@ -273,6 +279,8 @@ app.MapHostMetricEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentQueueCapacityEndpoints();
 app.MapAgentMetricSettingsEndpoints();
+app.MapHostLogSettingsEndpoints();
+app.MapHostLogEndpoints();
 app.MapAgentReplayPolicyEndpoints();
 app.MapAgentInboxSettingsEndpoints();
 app.MapAgentBatchEndpoints();
