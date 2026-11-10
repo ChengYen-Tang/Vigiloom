@@ -71,9 +71,6 @@
                 <label for="agent-metric-process-budget">程序採集時間預算（100～30000 毫秒）</label>
                 <InputNumber id="agent-metric-process-budget" @bind-Value="MetricInput.ProcessCollectionBudgetMs" min="100" max="30000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessCollectionBudgetMs} 毫秒")" />
                 <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessCollectionBudgetMs 毫秒；到期後不再開始讀取其他程序。</small>
-                <label for="agent-metric-upload">資料上傳額度（2～1024 MiB／分鐘）</label>
-                <InputNumber id="agent-metric-upload" @bind-Value="MetricInput.UploadLimitMiBPerMinute" min="2" max="1024" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.UploadLimitMiBPerMinute} MiB／分鐘")" />
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.UploadLimitMiBPerMinute MiB／分鐘；額度不足時保留資料並等待。</small>
                 <label for="agent-metric-io">採樣 I/O 預算（1～4096 MiB／分鐘）</label>
                 <InputNumber id="agent-metric-io" @bind-Value="MetricInput.IoLimitMiBPerMinute" min="1" max="4096" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.IoLimitMiBPerMinute} MiB／分鐘")" />
                 <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.IoLimitMiBPerMinute MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。</small>
@@ -188,7 +185,7 @@
                 MetricInput = new() { HostIntervalSeconds = metricCurrent.Overrides.HostIntervalSeconds,
                     ProcessIntervalSeconds = metricCurrent.Overrides.ProcessIntervalSeconds, CpuMillisecondsPerMinute = metricCurrent.Overrides.CpuMillisecondsPerMinute,
                     WorkingSetLimitMiB = metricCurrent.Overrides.WorkingSetLimitMiB, ProcessCollectionBudgetMs = metricCurrent.Overrides.ProcessCollectionBudgetMs,
-                    UploadLimitMiBPerMinute = metricCurrent.Overrides.UploadLimitMiBPerMinute, IoLimitMiBPerMinute = metricCurrent.Overrides.IoLimitMiBPerMinute, Version = metricCurrent.Version };
+                    IoLimitMiBPerMinute = metricCurrent.Overrides.IoLimitMiBPerMinute, Version = metricCurrent.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read Agent metric settings: {ExceptionType}", exception.GetType().Name); metricLoadError = true; }
         if (Id is null)
@@ -251,7 +248,7 @@
     {
         if (!context.Validate() || metricCurrent is null) return;
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        var input = new AgentMetricSettingsUpdate(new(MetricInput.HostIntervalSeconds, MetricInput.ProcessIntervalSeconds, MetricInput.CpuMillisecondsPerMinute, MetricInput.WorkingSetLimitMiB, MetricInput.ProcessCollectionBudgetMs, MetricInput.UploadLimitMiBPerMinute, MetricInput.IoLimitMiBPerMinute), MetricInput.Version ?? "");
+        var input = new AgentMetricSettingsUpdate(new(MetricInput.HostIntervalSeconds, MetricInput.ProcessIntervalSeconds, MetricInput.CpuMillisecondsPerMinute, MetricInput.WorkingSetLimitMiB, MetricInput.ProcessCollectionBudgetMs, MetricInput.IoLimitMiBPerMinute), MetricInput.Version ?? "");
         if (!AgentMetricConfiguration.Valid(input.Overrides)) { metricMessage = "請檢查採樣設定的允許範圍。"; return; }
         try
         {
@@ -305,7 +302,6 @@
         [Range(100, 60000)] public int? CpuMillisecondsPerMinute { get; set; }
         [Range(64, 4096)] public int? WorkingSetLimitMiB { get; set; }
         [Range(100, 30000)] public int? ProcessCollectionBudgetMs { get; set; }
-        [Range(2, 1024)] public int? UploadLimitMiBPerMinute { get; set; }
         [Range(1, 4096)] public int? IoLimitMiBPerMinute { get; set; }
         public string? Version { get; set; }
     }

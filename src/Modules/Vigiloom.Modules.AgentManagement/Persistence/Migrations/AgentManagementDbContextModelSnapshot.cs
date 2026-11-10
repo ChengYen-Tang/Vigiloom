@@ -296,9 +296,6 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<Guid>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int?>("UploadLimitMiBPerMinute")
-                        .HasColumnType("int");
-
                     b.Property<byte[]>("Version")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -373,11 +370,6 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<int>("EffectiveUploadLimitMiBPerMinute")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(16);
-
                     b.Property<int>("EffectiveWorkingSetLimitMiB")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -400,9 +392,6 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<Guid>("SettingId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("UploadLimitMiBPerMinute")
-                        .HasColumnType("int");
 
                     b.Property<int?>("WorkingSetLimitMiB")
                         .HasColumnType("int");

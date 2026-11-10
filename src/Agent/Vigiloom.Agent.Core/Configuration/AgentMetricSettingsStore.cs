@@ -27,7 +27,7 @@ public sealed class AgentMetricSettingsStore(IdentityVault vault, Uri server, Gu
         return saved;
     }
 
-    internal static async Task<AgentSavedMetricSettings?> ReadLockedAsync(IdentityVault.Session session, Guid agentId, string server, CancellationToken token)
+    private static async Task<AgentSavedMetricSettings?> ReadLockedAsync(IdentityVault.Session session, Guid agentId, string server, CancellationToken token)
     {
         var identity = await session.ReadAsync(token);
         if (agentId.Version != 7 || identity?.AgentId != agentId || !string.Equals(identity.Server, server, StringComparison.Ordinal))

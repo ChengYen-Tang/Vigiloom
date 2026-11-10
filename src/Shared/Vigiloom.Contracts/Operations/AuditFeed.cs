@@ -25,7 +25,6 @@ public sealed record AgentMetricSettingsAuditDetails(int? HostIntervalSeconds, i
     int? CpuMillisecondsPerMinute = null, int EffectiveCpuMillisecondsPerMinute = 3000,
     int? WorkingSetLimitMiB = null, int EffectiveWorkingSetLimitMiB = 512,
     int? ProcessCollectionBudgetMs = null, int EffectiveProcessCollectionBudgetMs = 2000,
-    int? UploadLimitMiBPerMinute = null, int EffectiveUploadLimitMiBPerMinute = 16,
     int? IoLimitMiBPerMinute = null, int EffectiveIoLimitMiBPerMinute = 64);
 public sealed record AuditFeedEntry(DateTimeOffset OccurredAt, Guid? ActorId, Guid? SubjectId, AuditFeedAction Action, AuditFeedOutcome Outcome,
     AgentSettingsAuditDetails? AgentSettings = null, string? Reference = null, Guid? AgentId = null, AgentQueueCapacityAuditDetails? QueueCapacity = null,

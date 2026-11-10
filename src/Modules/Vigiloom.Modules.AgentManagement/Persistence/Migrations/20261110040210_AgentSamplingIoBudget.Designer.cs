@@ -12,8 +12,8 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 {
     [DbContext(typeof(AgentManagementDbContext))]
-    [Migration("20261109213427_AgentUploadBudget")]
-    partial class AgentUploadBudget
+    [Migration("20261110040210_AgentSamplingIoBudget")]
+    partial class AgentSamplingIoBudget
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -278,6 +278,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<int?>("HostIntervalSeconds")
                         .HasColumnType("int");
 
+                    b.Property<int?>("IoLimitMiBPerMinute")
+                        .HasColumnType("int");
+
                     b.Property<int?>("ProcessCollectionBudgetMs")
                         .HasColumnType("int");
 
@@ -295,9 +298,6 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<Guid>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("UploadLimitMiBPerMinute")
-                        .HasColumnType("int");
 
                     b.Property<byte[]>("Version")
                         .IsConcurrencyToken()
@@ -355,6 +355,11 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<int>("EffectiveHostIntervalSeconds")
                         .HasColumnType("int");
 
+                    b.Property<int>("EffectiveIoLimitMiBPerMinute")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(64);
+
                     b.Property<int>("EffectiveProcessCollectionBudgetMs")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -368,17 +373,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<int>("EffectiveUploadLimitMiBPerMinute")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(16);
-
                     b.Property<int>("EffectiveWorkingSetLimitMiB")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(512);
 
                     b.Property<int?>("HostIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("IoLimitMiBPerMinute")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("OccurredAt")
@@ -392,9 +395,6 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<Guid>("SettingId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<int?>("UploadLimitMiBPerMinute")
-                        .HasColumnType("int");
 
                     b.Property<int?>("WorkingSetLimitMiB")
                         .HasColumnType("int");

@@ -199,9 +199,8 @@
                                 <div>有效採樣 CPU 預算：@metrics.EffectiveCpuMillisecondsPerMinute 毫秒／分鐘</div>
                                 <div>有效 Agent 記憶體門檻：@metrics.EffectiveWorkingSetLimitMiB MiB</div>
                                 <div>有效程序採集時間預算：@metrics.EffectiveProcessCollectionBudgetMs 毫秒</div>
-                                <div>有效資料上傳額度：@metrics.EffectiveUploadLimitMiBPerMinute MiB／分鐘</div>
                                 <div>有效採樣 I/O 預算：@metrics.EffectiveIoLimitMiBPerMinute MiB／分鐘</div>
-                                <details><summary>設定與版本</summary><div>覆寫：@(metrics.HostIntervalSeconds?.ToString() ?? "繼承")／@(metrics.ProcessIntervalSeconds?.ToString() ?? "繼承")</div><div>CPU 預算覆寫：@(metrics.CpuMillisecondsPerMinute?.ToString() ?? "繼承")</div><div>記憶體門檻覆寫：@(metrics.WorkingSetLimitMiB?.ToString() ?? "繼承")</div><div>程序時間預算覆寫：@(metrics.ProcessCollectionBudgetMs?.ToString() ?? "繼承")</div><div>上傳額度覆寫：@(metrics.UploadLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>採樣 I/O 預算覆寫：@(metrics.IoLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>版本：@metrics.Version</div><div>有效版本：@metrics.Revision</div></details>
+                                <details><summary>設定與版本</summary><div>覆寫：@(metrics.HostIntervalSeconds?.ToString() ?? "繼承")／@(metrics.ProcessIntervalSeconds?.ToString() ?? "繼承")</div><div>CPU 預算覆寫：@(metrics.CpuMillisecondsPerMinute?.ToString() ?? "繼承")</div><div>記憶體門檻覆寫：@(metrics.WorkingSetLimitMiB?.ToString() ?? "繼承")</div><div>程序時間預算覆寫：@(metrics.ProcessCollectionBudgetMs?.ToString() ?? "繼承")</div><div>採樣 I/O 預算覆寫：@(metrics.IoLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>版本：@metrics.Version</div><div>有效版本：@metrics.Revision</div></details>
                             }
                             @if (entry.AgentId is null && entry.Reference is null && entry.AgentSettings is null && entry.QueueCapacity is null && entry.MetricSettings is null) { <span>—</span> }
                         </td>

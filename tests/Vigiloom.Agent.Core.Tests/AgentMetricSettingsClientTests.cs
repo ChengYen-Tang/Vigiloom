@@ -29,7 +29,7 @@ public sealed class AgentMetricSettingsClientTests(TestContext context)
             var client = new AgentMetricSettingsClient(http, TimeProvider.System);
             var saved = await client.SyncAsync(vault, server, token);
             Assert.AreEqual(AgentSettingsSyncStatus.Saved, saved.Status);
-            Assert.AreEqual(new AgentMetricSettings(45, 90, 1500, 768, 3500, 8, 96), saved.Settings!.Snapshot.Settings);
+            Assert.AreEqual(new AgentMetricSettings(45, 90, 1500, 768, 3500, 96), saved.Settings!.Snapshot.Settings);
             handler.InvalidTag = true;
             Assert.AreEqual(AgentSettingsSyncStatus.Invalid, (await client.SyncAsync(vault, server, token)).Status);
             Assert.AreEqual(saved.Settings.Snapshot, (await client.LoadSavedAsync(vault, server, token)).Settings!.Snapshot);
@@ -50,7 +50,7 @@ public sealed class AgentMetricSettingsClientTests(TestContext context)
         {
             Assert.AreEqual("/api/v1/agent/metric-settings", request.RequestUri!.AbsolutePath);
             Assert.AreEqual("Bearer", request.Headers.Authorization!.Scheme);
-            var snapshot = AgentMetricSettingsSnapshot.Create(new(45, 90, 1500, 768, 3500, 8, 96));
+            var snapshot = AgentMetricSettingsSnapshot.Create(new(45, 90, 1500, 768, 3500, 96));
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(snapshot) };
             response.Headers.ETag = new EntityTagHeaderValue($"\"{(InvalidTag ? "wrong" : snapshot.Revision)}\"");
             return Task.FromResult(response);

@@ -16,68 +16,6 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? c
     public const long DefaultCapacityBytes = 256L * 1024 * 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    /// <summary>Atomically reserve HTTP body bytes for this identity in a fixed one-minute window.</summary>
-    public async Task<UploadReservation> ReserveUploadAsync(AgentSettingsOwner owner, int bytes, long? bytesPerMinute,
-        TimeProvider clock, CancellationToken token)
-    {
-        ArgumentNullException.ThrowIfNull(owner);
-        ArgumentNullException.ThrowIfNull(clock);
-        if (bytes is < 1 or > MaximumBatchBytes || bytesPerMinute is < 2 * MaximumBatchBytes or > 1024L * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(bytesPerMinute));
-        await gate.WaitAsync(token);
-        try
-        {
-            await using var session = await vault.AcquireForTransportAsync(token);
-            var identity = await session.ReadAsync(token);
-            if (owner.AgentId != agentId || identity?.AgentId != agentId ||
-                !string.Equals(identity.Server, owner.Server, StringComparison.Ordinal) ||
-                !string.Equals(owner.StateDirectory, vault.StateDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                return new(false, true, TimeSpan.Zero);
-            if (bytesPerMinute is null)
-            {
-                var saved = await AgentMetricSettingsStore.ReadLockedAsync(session, agentId, owner.Server, token);
-                bytesPerMinute = (long)(saved?.Snapshot.Settings.UploadLimitMiBPerMinute ?? AgentMetricSettings.Default.UploadLimitMiBPerMinute) * 1024 * 1024;
-            }
-            using var connection = Open(session.DirectoryPath);
-            using var transaction = connection.BeginTransaction();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "CREATE TABLE IF NOT EXISTS upload_budget (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), started INTEGER NOT NULL, frequency INTEGER NOT NULL, used INTEGER NOT NULL)";
-            command.ExecuteNonQuery();
-            var now = clock.GetTimestamp();
-            var frequency = clock.TimestampFrequency;
-            if (frequency <= 0) throw new InvalidOperationException("Invalid upload clock frequency.");
-            command.CommandText = "SELECT started, frequency, used FROM upload_budget WHERE singleton = 1";
-            long started, used;
-            using (var reader = command.ExecuteReader())
-            {
-                if (reader.Read())
-                {
-                    started = reader.GetInt64(0);
-                    var storedFrequency = reader.GetInt64(1);
-                    used = reader.GetInt64(2);
-                    if (used < 0) throw new InvalidDataException("Invalid upload budget state.");
-                    // A reset or different frequency retains spent bytes for a full new window.
-                    if (storedFrequency != frequency || now < started) started = now;
-                    else if (clock.GetElapsedTime(started, now) >= TimeSpan.FromMinutes(1)) { started = now; used = 0; }
-                }
-                else { started = now; used = 0; }
-            }
-            var allowed = used <= bytesPerMinute.Value - bytes;
-            if (allowed) used += bytes;
-            command.CommandText = "INSERT INTO upload_budget(singleton, started, frequency, used) VALUES(1, $started, $frequency, $used) ON CONFLICT(singleton) DO UPDATE SET started = excluded.started, frequency = excluded.frequency, used = excluded.used";
-            command.Parameters.AddWithValue("$started", started);
-            command.Parameters.AddWithValue("$frequency", frequency);
-            command.Parameters.AddWithValue("$used", used);
-            command.ExecuteNonQuery();
-            token.ThrowIfCancellationRequested();
-            transaction.Commit();
-            var retry = allowed ? TimeSpan.Zero : TimeSpan.FromMinutes(1) - clock.GetElapsedTime(started, now);
-            return new(allowed, false, retry);
-        }
-        finally { gate.Release(); }
-    }
-
     /// <summary>Persist an entire sample atomically, or leave the queue unchanged when capacity is insufficient. Keep the batches and payloads unchanged until the call completes.</summary>
     public Task<EnqueueResult> EnqueueManyAsync(IReadOnlyList<QueuedBatch> batches, CancellationToken token) =>
         EnqueueManyCoreAsync(batches, null, token);
@@ -395,4 +333,3 @@ public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full, Owner
 public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5, Expired = 6 }
 public sealed record QueuedBatch(Guid BatchId, DateTimeOffset EnqueuedAt, int RecordCount, byte[] Payload);
 public readonly record struct QueueStatus(long TotalBytes, long TotalBatches, long QuarantinedBatches);
-public readonly record struct UploadReservation(bool Allowed, bool OwnerChanged, TimeSpan RetryAfter);

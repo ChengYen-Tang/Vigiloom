@@ -174,7 +174,6 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         metricAudit.Property(x => x.EffectiveCpuMillisecondsPerMinute).HasDefaultValue(3000);
         metricAudit.Property(x => x.EffectiveWorkingSetLimitMiB).HasDefaultValue(512);
         metricAudit.Property(x => x.EffectiveProcessCollectionBudgetMs).HasDefaultValue(2000);
-        metricAudit.Property(x => x.EffectiveUploadLimitMiBPerMinute).HasDefaultValue(16);
         metricAudit.Property(x => x.EffectiveIoLimitMiBPerMinute).HasDefaultValue(64);
         metricAudit.Property(x => x.EffectiveRevision).HasMaxLength(64).IsRequired();
         metricAudit.Property(x => x.ChangeVersion).HasColumnType("binary(8)").IsRequired();
