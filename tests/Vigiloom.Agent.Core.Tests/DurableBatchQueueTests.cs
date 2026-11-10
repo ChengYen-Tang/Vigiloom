@@ -37,6 +37,36 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
+    public async Task MetricPublisher_AmbiguousHeadKeepsLaterUnattemptedBatchesDistinct()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = id, MachineSecret = "test" }, token);
+            var now = DateTimeOffset.UtcNow;
+            var points = Enumerable.Range(0, 501).Select(i => new AgentMetricPoint(Guid.CreateVersion7(), now,
+                AgentMetricKind.MemoryTotalBytes, "test", null, i)).ToArray();
+            var publisher = new MetricSamplePublisher(new DurableBatchQueue(vault, id), owner);
+            publisher.Prepare(points, now);
+            await using (vault.Acquire())
+                await Assert.ThrowsExactlyAsync<IOException>(() => publisher.FlushAsync(token));
+            Assert.IsTrue(publisher.PendingOutcomeUnknown);
+            Assert.AreEqual(3, publisher.PendingBatches);
+            Assert.AreEqual(2, publisher.KnownUnqueuedBatches);
+            Assert.AreEqual(251L, publisher.KnownUnqueuedRecords);
+            Assert.AreEqual(EnqueueResult.Queued, await publisher.FlushAsync(token));
+            Assert.IsFalse(publisher.PendingOutcomeUnknown);
+            Assert.AreEqual(0, publisher.KnownUnqueuedBatches);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task MetricPublisher_SampleLargerThanQueueProgressesInOrder()
     {
         var root = NewRoot();

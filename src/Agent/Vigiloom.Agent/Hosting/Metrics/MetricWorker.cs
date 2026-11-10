@@ -17,6 +17,8 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
     {
         AgentSettingsOwner? activeOwner = null;
         MetricSamplingCycle? cycle = null;
+        MetricLossLedger? ledger = null;
+        IdentityVault.MetricOwnership? producerOwnership = null;
         string? lastStatus = null;
         var cpuThrottled = false;
         var memoryThrottled = false;
@@ -37,8 +39,11 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                     if (string.IsNullOrWhiteSpace(directory) || !Uri.TryCreate(server, UriKind.Absolute, out var uri))
                     {
                         if (cycle?.HasPending == true) logger.LogWarning("Agent configuration changed with {Batches} metric batches and {Records} records not queued.", cycle.PendingBatches, cycle.PendingRecords);
-                        cycle?.Dispose();
+                        if (activeOwner is not null) settings.ClearLossWriter(activeOwner);
+                        if (cycle is not null && producerOwnership is not null) await CloseCycleAsync(cycle, ledger, producerOwnership);
                         cycle = null;
+                        ledger = null;
+                        producerOwnership = null;
                         activeOwner = null;
                         settings.Bind(null);
                     }
@@ -50,14 +55,42 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                         if (owner != activeOwner)
                         {
                             if (cycle?.HasPending == true) logger.LogWarning("Agent identity changed with {Batches} metric batches and {Records} records not queued.", cycle.PendingBatches, cycle.PendingRecords);
-                            cycle?.Dispose();
-                            cycle = owner is null ? null : new MetricSamplingCycle(owner, new DurableBatchQueue(vault, owner.AgentId), clock);
+                            if (activeOwner is not null) settings.ClearLossWriter(activeOwner);
+                            if (cycle is not null && producerOwnership is not null) await CloseCycleAsync(cycle, ledger, producerOwnership);
+                            cycle = null;
+                            ledger = null;
+                            producerOwnership = null;
+                            activeOwner = null;
+                            if (owner is not null)
+                            {
+                                producerOwnership = vault.AcquireMetricOwnership();
+                                try { cycle = new MetricSamplingCycle(owner, new DurableBatchQueue(vault, owner.AgentId), clock); }
+                                catch { await producerOwnership.DisposeAsync(); producerOwnership = null; throw; }
+                            }
                             activeOwner = owner;
                             loggedUnavailable.Clear();
                             settings.Bind(owner);
                         }
                         if (owner is not null && cycle is not null && settings.ForOwner(owner) is { } policy)
                         {
+                            if (ledger is not null)
+                            {
+                                try { await ledger.ReadAsync(stoppingToken); }
+                                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+                                catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
+                                    UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException)
+                                {
+                                    settings.ClearLossWriter(owner);
+                                    await ledger.DisposeAsync();
+                                    ledger = null;
+                                    logger.LogWarning("Agent metric loss accounting unavailable; collection continues: {ErrorType}.", ex.GetType().Name);
+                                }
+                            }
+                            if (ledger is null && producerOwnership is not null)
+                            {
+                                ledger = await TryStartLedgerAsync(vault, owner, producerOwnership, stoppingToken);
+                                if (ledger is not null) settings.PublishLossWriter(owner, ledger.WriterId);
+                            }
                             // Pending observations can become durable even when resource
                             // probes fail or a budget prevents starting new collection.
                             var pending = cycle.FlushPendingAsync(stoppingToken);
@@ -123,8 +156,11 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                             if (result.Status == EnqueueResult.OwnerChanged)
                             {
                                 logger.LogWarning("Metric collection stopped because the Agent identity changed; {Batches} batches and {Records} records were not queued.", cycle.PendingBatches, cycle.PendingRecords);
-                                cycle.Dispose();
+                                settings.ClearLossWriter(owner);
+                                if (producerOwnership is not null) await CloseCycleAsync(cycle, ledger, producerOwnership);
                                 cycle = null;
+                                ledger = null;
+                                producerOwnership = null;
                                 activeOwner = null;
                                 settings.Bind(null);
                             }
@@ -156,22 +192,74 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
         }
         finally
         {
-            if (cycle?.HasPending == true)
+            try
             {
-                try
+                if (cycle?.HasPending == true)
                 {
-                    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                    var result = await cycle.FlushForShutdownAsync(deadline.Token);
-                    if (result != EnqueueResult.Queued)
-                        logger.LogWarning("Agent shutdown left {Batches} metric batches and {Records} records not queued: {Status}.", cycle.PendingBatches, cycle.PendingRecords, result);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or IOException or InvalidOperationException or ArgumentException or
-                    UnauthorizedAccessException or JsonException or CryptographicException or System.Data.Common.DbException)
-                {
-                    logger.LogWarning("Agent shutdown left {Batches} metric batches and {Records} records not queued: {ErrorType}.", cycle.PendingBatches, cycle.PendingRecords, ex.GetType().Name);
+                    try
+                    {
+                        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        var result = await cycle.FlushForShutdownAsync(deadline.Token);
+                        if (result != EnqueueResult.Queued)
+                            logger.LogWarning("Agent shutdown left {Batches} metric batches and {Records} records not queued: {Status}.", cycle.PendingBatches, cycle.PendingRecords, result);
+                    }
+                    catch (Exception ex) when (ex is OperationCanceledException or IOException or InvalidDataException or InvalidOperationException or ArgumentException or
+                        UnauthorizedAccessException or JsonException or CryptographicException or System.Data.Common.DbException)
+                    {
+                        logger.LogWarning("Agent shutdown left {Batches} metric batches and {Records} records not queued: {ErrorType}.", cycle.PendingBatches, cycle.PendingRecords, ex.GetType().Name);
+                    }
                 }
             }
-            cycle?.Dispose();
+            finally
+            {
+                if (activeOwner is not null) settings.ClearLossWriter(activeOwner);
+                if (cycle is not null && producerOwnership is not null) await CloseCycleAsync(cycle, ledger, producerOwnership);
+            }
+        }
+    }
+
+    private async Task<MetricLossLedger?> TryStartLedgerAsync(IdentityVault vault, AgentSettingsOwner owner,
+        IdentityVault.MetricOwnership ownership, CancellationToken token)
+    {
+        try { return await MetricLossLedger.StartUnderOwnershipAsync(vault, owner, ownership, token); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
+            UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException)
+        {
+            logger.LogWarning("Agent metric loss accounting unavailable; collection continues: {ErrorType}.", ex.GetType().Name);
+            return null;
+        }
+    }
+
+    private async Task CloseCycleAsync(MetricSamplingCycle cycle, MetricLossLedger? ledger, IdentityVault.MetricOwnership ownership)
+    {
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            if (ledger is null) return;
+            if (cycle.HasPending)
+            {
+                if (cycle.KnownUnqueuedBatches > 0)
+                    await ledger.RecordAsync(1, cycle.KnownUnqueuedBatches, cycle.KnownUnqueuedRecords, deadline.Token);
+                if (cycle.PendingOutcomeUnknown) await ledger.MarkIncompleteAsync(deadline.Token);
+            }
+            await ledger.CompleteAsync(deadline.Token);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or InvalidDataException or InvalidOperationException or
+            ArgumentException or UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException)
+        {
+            // An unfinished writer session causes the next owner to report
+            // unverified completeness, never a fabricated successful count.
+            logger.LogWarning("Agent metric loss accounting could not be completed: {ErrorType}.", ex.GetType().Name);
+        }
+        finally
+        {
+            try { cycle.Dispose(); }
+            finally
+            {
+                try { if (ledger is not null) await ledger.DisposeAsync(); }
+                finally { await ownership.DisposeAsync(); }
+            }
         }
     }
 

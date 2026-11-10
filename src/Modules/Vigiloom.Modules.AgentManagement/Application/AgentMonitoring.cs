@@ -23,6 +23,8 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
                 x.QuarantineInvalidLocal, x.QuarantineBadRequest, x.QuarantineConflict, x.QuarantineTooLarge,
                 x.QuarantineUnsupported, x.QuarantineExpired, x.QuarantineOther,
                 x.QueueReportEpoch, x.QueueReportSequence, x.QuarantineReportEpoch, x.QuarantineReportSequence,
+                x.MetricLossReportEpoch, x.MetricLossReportSequence, x.MetricLossReportedAt, x.MetricLossLedgerId,
+                x.MetricLossStartedAt, x.MetricLossBatches, x.MetricLossRecords, x.MetricLossCompletenessUnknown,
                 x.LastBatchEnqueuedAt, x.LastBatchReceivedAt, x.LastBatchReceiptRowId, x.InboxReceiptCount, x.InboxReceiptPayloadBytes,
                 LatestReceipt = db.ReceivedBatches.Where(batch => batch.AgentId == x.Id)
                     .OrderByDescending(batch => batch.ReceivedAt).ThenByDescending(batch => batch.RowId)
@@ -45,6 +47,16 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
             agent.QuarantineReportEpoch != agent.QueueReportEpoch || agent.QuarantineReportSequence != agent.QueueReportSequence ||
             details?.IsValid(snapshot.QuarantinedBatches) != true) details = null;
         AgentQueueMonitoring? queue = agent.QueueReportedAt is { } reportedAt ? new(reportedAt, snapshot, details) : null;
+        AgentMetricLossMonitoring? metricLoss = null;
+        if (agent.MetricLossReportEpoch == agent.QueueReportEpoch && agent.MetricLossReportEpoch is not null &&
+            agent.MetricLossReportSequence == agent.QueueReportSequence && agent.MetricLossReportedAt is { } lossReportedAt &&
+            agent.MetricLossLedgerId is { } ledgerId && agent.MetricLossStartedAt is { } lossStartedAt &&
+            agent.MetricLossBatches is { } lossBatches && agent.MetricLossRecords is { } lossRecords &&
+            agent.MetricLossCompletenessUnknown is { } completenessUnknown)
+        {
+            var loss = new AgentMetricLossReport(ledgerId, lossStartedAt, lossBatches, lossRecords, completenessUnknown);
+            if (loss.IsValid()) metricLoss = new(lossReportedAt, loss);
+        }
         var enqueuedAt = agent.LastBatchEnqueuedAt;
         var receivedAt = agent.LastBatchReceivedAt;
         if (agent.LatestReceipt is { } receipt && (receivedAt is null || receipt.ReceivedAt > receivedAt ||
@@ -61,6 +73,6 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
             AgentBatchReceiver.MaximumRetainedBytesPerAgent);
         var issue = agent.LastReplayIssue is { } reason && Enum.IsDefined(reason) && agent.LastReplayIssueAt is { } issueAt
             ? new AgentReplayIssueObservation(reason, issueAt) : null;
-        return new(deviceId, state, last, offlineAfter, queue, batchTime?.ReceivedAt, batchTime, capacity, issue);
+        return new(deviceId, state, last, offlineAfter, queue, batchTime?.ReceivedAt, batchTime, capacity, issue, metricLoss);
     }
 }
