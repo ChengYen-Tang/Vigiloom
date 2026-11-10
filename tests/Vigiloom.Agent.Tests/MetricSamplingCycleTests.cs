@@ -216,13 +216,19 @@ public sealed class MetricSamplingCycleTests(TestContext context)
                 await host.StartAsync(token);
                 var queue = new DurableBatchQueue(vault, id);
                 QueuedBatch? first = null;
+                IOException? lastSharingViolation = null;
                 var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
                 while (first is null && DateTimeOffset.UtcNow < deadline)
                 {
-                    first = await queue.PeekAsync(token);
+                    try { first = await queue.PeekAsync(token); }
+                    catch (IOException error) when (OperatingSystem.IsWindows() && (error.HResult & 0xffff) == 32)
+                    {
+                        // The running worker may temporarily hold the exclusive identity lease.
+                        lastSharingViolation = error;
+                    }
                     if (first is null) await Task.Delay(100, token);
                 }
-                Assert.IsNotNull(first);
+                Assert.IsNotNull(first, $"No batch arrived before the deadline. Last sharing violation: {lastSharingViolation}");
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(first.Payload, out var batch));
                 Assert.IsNotNull(batch);
                 Assert.IsTrue(batch.Items.Any(x => x.Kind == AgentMetricKind.MemoryTotalBytes));
