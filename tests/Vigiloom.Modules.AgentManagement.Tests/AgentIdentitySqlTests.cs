@@ -26,6 +26,244 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task HostMetricAggregate_MaximumAcceptedValuesHaveFiniteAverage() => WithDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("extreme metrics", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var batchId = Guid.CreateVersion7();
+        var points = new[]
+        {
+            new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, AgentMetricBatchCodec.MaximumValue),
+            new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, AgentMetricBatchCodec.MaximumValue)
+        };
+        Assert.IsNotEmpty(AgentMetricBatchCodec.Serialize(new(2, batchId, now, points)));
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            for (var i = 0; i < points.Length; i++) db.HostMetrics.Add(new HostMetric(agent.Id, batchId, i, points[i], now));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var aggregate = await history.AggregateAsync(device.Id, agent.Id, now.AddSeconds(-1), now.AddSeconds(1), AgentMetricKind.MemoryTotalBytes, "test", null, 60, token);
+        Assert.IsNotNull(aggregate);
+        var bucket = aggregate.Buckets.Single();
+        Assert.AreEqual(2L, bucket.Samples);
+        Assert.AreEqual(AgentMetricBatchCodec.MaximumValue, bucket.Average, AgentMetricBatchCodec.MaximumValue * 1e-12);
+    });
+
+    [TestMethod]
+    public Task MetricIoBudgetMigration_DowngradePreservesSettingsAndAudit() => WithDatabase(async (resources, agents, token) =>
+    {
+        const string previousMigration = "20261109212419_ProcessCollectionBudget";
+        await using (var db = agents.CreateDbContext())
+        {
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync(previousMigration, token);
+            await migrator.MigrateAsync(null, token);
+        }
+        var clock = new TestClock();
+        var source = new DeviceAgentSource(resources);
+        var configuration = new AgentMetricConfiguration(agents, source, new AgentIdentity(agents, source, clock), clock);
+        var current = await configuration.GetAsync(null, token);
+        Assert.IsNotNull(current);
+        var saved = await configuration.UpdateAsync(null, new(new(null, null, IoLimitMiBPerMinute: 96), current.Version), Guid.CreateVersion7(), token);
+        Assert.IsNotNull(saved);
+        await using (var db = agents.CreateDbContext())
+        {
+            var migrator = db.GetService<IMigrator>();
+            var error = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(previousMigration, token));
+            Assert.AreEqual(51000, error.Number);
+            Assert.AreEqual(96, (await db.MetricSettings.SingleAsync(token)).IoLimitMiBPerMinute);
+            Assert.AreEqual(96, (await db.MetricSettingAudits.SingleAsync(token)).EffectiveIoLimitMiBPerMinute);
+            await db.Database.ExecuteSqlRawAsync("UPDATE agent.MetricSettings SET IoLimitMiBPerMinute = NULL; UPDATE agent.MetricSettingAudits SET IoLimitMiBPerMinute = NULL, EffectiveIoLimitMiBPerMinute = 64", token);
+            error = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(previousMigration, token));
+            Assert.AreEqual(51000, error.Number);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM agent.MetricSettingAudits; UPDATE agent.MetricSettings SET IoLimitMiBPerMinute = 96", token);
+            error = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(previousMigration, token));
+            Assert.AreEqual(51000, error.Number);
+        }
+    });
+
+    [TestMethod]
+    public Task HostMetricAggregate_SeparatesSeriesAndUsesUtcBuckets() => WithDatabase(async (resources, agents, token) =>
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        var device = new Device("aggregate", "127.0.0.1", true, start);
+        var other = new Device("aggregate other", "127.0.0.2", true, start);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(device, other); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], start);
+        var unrelated = new Agent(other.Id, 1, new byte[32], start);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.AddRange(agent, unrelated);
+            var batch = Guid.CreateVersion7();
+            void Add(Agent target, int ordinal, DateTimeOffset at, string source, string? dimension, double value) =>
+                db.HostMetrics.Add(new HostMetric(target.Id, batch, ordinal,
+                    new AgentMetricPoint(Guid.CreateVersion7(), at, AgentMetricKind.CpuCorePercent, source, dimension, value), at));
+            Add(agent, 0, start.AddSeconds(1), "cpu", "core", 10);
+            Add(agent, 1, start.AddSeconds(9), "cpu", "core", 30);
+            Add(agent, 2, start.AddSeconds(20), "cpu", "core", 50);
+            Add(agent, 3, start.AddSeconds(30), "cpu", "core", 90);
+            Add(agent, 4, start.AddSeconds(1), "CPU", "core", 90);
+            Add(agent, 5, start.AddSeconds(1), "cpu ", "core", 90);
+            Add(agent, 6, start.AddSeconds(1), "cpu", "core ", 90);
+            Add(agent, 7, start.AddSeconds(1), "cpu", null, 60);
+            Add(unrelated, 0, start.AddSeconds(1), "cpu", "core", 90);
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var result = await history.AggregateAsync(device.Id, agent.Id, start.AddMilliseconds(500), start.AddSeconds(30),
+            AgentMetricKind.CpuCorePercent, "cpu", "core", 10, token);
+        Assert.IsNotNull(result);
+        Assert.HasCount(2, result.Buckets);
+        Assert.AreEqual(start, result.Buckets[0].Start);
+        Assert.AreEqual(2L, result.Buckets[0].Samples);
+        Assert.AreEqual(20d, result.Buckets[0].Average);
+        Assert.AreEqual(10d, result.Buckets[0].Minimum);
+        Assert.AreEqual(30d, result.Buckets[0].Maximum);
+        Assert.AreEqual(start.AddSeconds(9), result.Buckets[0].LastObservedAt);
+        Assert.AreEqual(start.AddSeconds(20), result.Buckets[1].Start);
+        Assert.AreEqual(50d, result.Buckets[1].Average);
+        var noDimension = await history.AggregateAsync(device.Id, agent.Id, start, start.AddSeconds(10),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 10, token);
+        Assert.IsNotNull(noDimension);
+        Assert.HasCount(1, noDimension.Buckets);
+        Assert.AreEqual(60d, noDimension.Buckets[0].Average);
+        Assert.IsNull(await history.AggregateAsync(other.Id, agent.Id, start, start.AddMinutes(1), AgentMetricKind.CpuCorePercent, "cpu", "core", 10, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => history.AggregateAsync(device.Id, agent.Id, start, start.AddMinutes(1), AgentMetricKind.CollectionUnavailable, "cpu", "core", 10, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => history.AggregateAsync(device.Id, agent.Id, start.AddMilliseconds(500), start.AddSeconds(1000).AddMilliseconds(500), AgentMetricKind.CpuCorePercent, "cpu", "core", 1, token));
+    });
+
+    [TestMethod]
+    public Task HostMetricHistory_BoundsPagesAndKeepsDevicesSeparate() => WithDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("metrics history", "127.0.0.1", true, now);
+        var other = new Device("other history", "127.0.0.2", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(device, other); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var unrelated = new Agent(other.Id, 1, new byte[32], now);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.AddRange(agent, unrelated);
+            var batchId = Guid.CreateVersion7();
+            db.HostMetrics.AddRange(Enumerable.Range(0, 205).Select(i => new HostMetric(agent.Id, batchId, i,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, i), now)));
+            db.HostMetrics.Add(new HostMetric(agent.Id, batchId, 205,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryAvailableBytes, "test", null, 999), now));
+            db.HostMetrics.Add(new HostMetric(unrelated.Id, batchId, 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, 777), now));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var from = now.AddMinutes(-1);
+        var until = now.AddMinutes(1);
+        var first = await history.GetAsync(device.Id, from, until, null, AgentMetricKind.MemoryTotalBytes, token);
+        Assert.IsNotNull(first);
+        Assert.HasCount(200, first.Items);
+        Assert.IsNotNull(first.NextCursor);
+        var second = await history.GetAsync(device.Id, from, until, first.NextCursor, AgentMetricKind.MemoryTotalBytes, token);
+        Assert.IsNotNull(second);
+        Assert.HasCount(5, second.Items);
+        Assert.IsNull(second.NextCursor);
+        CollectionAssert.AreEquivalent(Enumerable.Range(0, 205).Select(i => (double)i).ToArray(), first.Items.Concat(second.Items).Select(x => x.Value).ToArray());
+        var available = await history.GetAsync(device.Id, from, until, null, AgentMetricKind.MemoryAvailableBytes, token);
+        Assert.IsNotNull(available);
+        Assert.HasCount(1, available.Items);
+        Assert.AreEqual(999d, available.Items[0].Value);
+        await Assert.ThrowsAsync<ArgumentException>(() => history.GetAsync(device.Id, from, until, "bad", null, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => history.GetAsync(device.Id, from, from.AddDays(32), null, null, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => history.GetAsync(device.Id, from, until, null, (AgentMetricKind)999, token));
+        Assert.IsNull(await history.GetAsync(Guid.CreateVersion7(), from, until, null, null, token));
+    });
+
+    [TestMethod]
+    public Task MetricBatch_InsertFailureRollsBackReceiptAndUsage() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("metric rollback", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now, [CleanupCutoverAt] = @now, [InboxSettingsChangedAt] = @now, [LegacyReceiptsRetainUntil] = DATEADD(day, 7, @now) WHERE [Scope] = 1", token);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[HostMetrics] ADD CONSTRAINT [CK_TestMetricFailure] CHECK ([Value] <> 1024)", token);
+        }
+        var agentId = registration.AgentId!.Value;
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var point = new AgentMetricPoint(Guid.CreateVersion7(), clock.Now, AgentMetricKind.MemoryTotalBytes, "test", null, 1024);
+        var batch = new AgentMetricBatch(2, Guid.CreateVersion7(), clock.Now, [point]);
+        var error = await Assert.ThrowsAsync<DbUpdateException>(() => receiver.ReceiveAsync(Credential(agentId, secret), AgentMetricBatchCodec.Serialize(batch), token));
+        var sqlError = Assert.IsInstanceOfType<SqlException>(error.InnerException);
+        Assert.AreEqual(547, sqlError.Number);
+        Assert.Contains("CK_TestMetricFailure", sqlError.Message);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(0, await verify.HostMetrics.CountAsync(token));
+        Assert.AreEqual(0, await verify.ReceivedBatches.CountAsync(token));
+        var agent = await verify.Agents.SingleAsync(x => x.Id == agentId, token);
+        Assert.IsNull(agent.InboxReceiptCount);
+        Assert.IsNull(agent.InboxReceiptPayloadBytes);
+    });
+
+    [TestMethod]
+    public Task MetricBatch_CommitsOnceAndRejectsConflictingMessageIdentities() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("metric receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var point = new AgentMetricPoint(Guid.CreateVersion7(), clock.Now, AgentMetricKind.MemoryAvailableBytes, "linux.proc", null, 4096);
+        var batch = new AgentMetricBatch(2, Guid.CreateVersion7(), clock.Now, [point]);
+        var payload = AgentMetricBatchCodec.Serialize(batch);
+        var encoded = System.Text.Encoding.UTF8.GetString(payload);
+        var extreme = encoded.Replace("\"value\":4096", "\"value\":1e308", StringComparison.Ordinal);
+        Assert.AreNotEqual(encoded, extreme);
+        Assert.AreEqual(BatchReceiptStatus.Invalid, await receiver.ReceiveAsync(credential, System.Text.Encoding.UTF8.GetBytes(extreme), token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        var changed = batch with { BatchId = Guid.CreateVersion7(), Items = [point with { Value = 8192 }] };
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentMetricBatchCodec.Serialize(changed), token));
+        var runtime = new AgentRuntimeMessage(point.MessageId, AgentBatchCodec.RuntimeKind, clock.Now, "test", "x64", ".NET 10");
+        var otherKind = new AgentBatch(1, Guid.CreateVersion7(), clock.Now, [runtime]);
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(otherKind), token));
+        var originalRuntime = runtime with { MessageId = Guid.CreateVersion7() };
+        var runtimeBatch = otherKind with { BatchId = Guid.CreateVersion7(), Items = [originalRuntime] };
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(runtimeBatch), token));
+        var reverseConflict = batch with { BatchId = Guid.CreateVersion7(), Items = [point with { MessageId = originalRuntime.MessageId }] };
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentMetricBatchCodec.Serialize(reverseConflict), token));
+        await using var dbVerify = agents.CreateDbContext();
+        Assert.AreEqual(1, await dbVerify.HostMetrics.CountAsync(token));
+        Assert.AreEqual(3, await dbVerify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await dbVerify.RuntimeObservations.CountAsync(token));
+        var stored = await dbVerify.HostMetrics.SingleAsync(token);
+        Assert.AreEqual(agentId, stored.AgentId);
+        Assert.AreEqual(4096d, stored.Value);
+        Assert.AreEqual(point.OccurredAt, stored.OccurredAt);
+        var rejected = await Assert.ThrowsAsync<SqlException>(() => dbVerify.GetService<IMigrator>().MigrateAsync("20261109181213_AgentInboxUsage", token));
+        Assert.AreEqual(51000, rejected.Number);
+        Assert.AreEqual(1, await dbVerify.HostMetrics.AsNoTracking().CountAsync(token));
+        Assert.AreEqual(3, await dbVerify.ReceivedBatches.AsNoTracking().CountAsync(token));
+        await dbVerify.HostMetrics.ExecuteDeleteAsync(token);
+        await dbVerify.GetService<IMigrator>().MigrateAsync("20261109181213_AgentInboxUsage", token);
+        await dbVerify.Database.MigrateAsync(token);
+        Assert.AreEqual(0, await dbVerify.HostMetrics.AsNoTracking().CountAsync(token));
+        Assert.AreEqual(3, await dbVerify.ReceivedBatches.AsNoTracking().CountAsync(token));
+    });
+
+    [TestMethod]
     public Task InboxCleanup_ProtectsOldGenerationAndDoesNotReopenDeletedRange() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
@@ -190,6 +428,119 @@ public sealed class AgentIdentitySqlTests
             await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailFirstInbox]", token);
         }
         Assert.AreEqual(1, await cleanup.RunAsync(token));
+    });
+
+    [TestMethod]
+    public Task MetricSettings_InheritsOverridesAndRollsBackWhenAuditFails() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("metric server", "127.0.0.8", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var settings = new AgentMetricConfiguration(agents, source, identity, clock);
+        var actor = Guid.CreateVersion7();
+        var platform = await settings.GetAsync(null, token);
+        Assert.IsNotNull(platform);
+        Assert.AreEqual(AgentMetricSettings.Default, platform.Effective.Settings);
+        var updated = await settings.UpdateAsync(null, new(new(45, 90), platform.Version), actor, token);
+        Assert.IsNotNull(updated);
+        var inherited = await settings.GetAsync(device.Id, token);
+        Assert.IsNotNull(inherited);
+        Assert.AreEqual(updated.Effective, inherited.Effective);
+        var custom = await settings.UpdateAsync(device.Id, new(new(null, 120), inherited.Version), actor, token);
+        Assert.IsNotNull(custom);
+        Assert.AreEqual(new AgentMetricSettings(45, 120), custom.Effective.Settings);
+        Assert.IsNull(await settings.UpdateAsync(device.Id, new(new(null, 180), inherited.Version), actor, token));
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        Assert.AreEqual(custom.Effective, await settings.GetForAgentAsync(Credential(registration.AgentId!.Value, secret), token));
+        Assert.IsNull(await settings.GetForAgentAsync("invalid", token));
+        var page = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.HasCount(2, page.Items);
+        var entry = page.Items.Single(x => x.SubjectId == device.Id);
+        Assert.AreEqual(AuditFeedAction.AgentMetricSettingsChanged, entry.Action);
+        Assert.AreEqual(45, entry.MetricSettings!.EffectiveHostIntervalSeconds);
+        Assert.AreEqual(120, entry.MetricSettings.EffectiveProcessIntervalSeconds);
+        Assert.AreEqual(custom.Version, entry.MetricSettings.Version);
+        var processRevisionBytes = new byte[24];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes, 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes.AsSpan(4), 45);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes.AsSpan(8), 90);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes.AsSpan(12), 1500);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes.AsSpan(16), 768);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(processRevisionBytes.AsSpan(20), 2500);
+        var processRevision = Convert.ToHexStringLower(SHA256.HashData(processRevisionBytes));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = 1500, EffectiveCpuMillisecondsPerMinute = 1500, WorkingSetLimitMiB = 768, EffectiveWorkingSetLimitMiB = 768, ProcessCollectionBudgetMs = 2500, EffectiveProcessCollectionBudgetMs = 2500, EffectiveRevision = {processRevision} WHERE DeviceId IS NULL", token);
+        var processLegacyPage = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.AgentMetricSettingsChanged, processLegacyPage.Items.Single(x => x.SubjectId is null).Action);
+        var memoryRevisionBytes = new byte[20];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(memoryRevisionBytes, 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(memoryRevisionBytes.AsSpan(4), 45);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(memoryRevisionBytes.AsSpan(8), 90);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(memoryRevisionBytes.AsSpan(12), 1500);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(memoryRevisionBytes.AsSpan(16), 768);
+        var memoryRevision = Convert.ToHexStringLower(SHA256.HashData(memoryRevisionBytes));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = 1500, EffectiveCpuMillisecondsPerMinute = 1500, WorkingSetLimitMiB = 768, EffectiveWorkingSetLimitMiB = 768, ProcessCollectionBudgetMs = NULL, EffectiveProcessCollectionBudgetMs = 2000, EffectiveRevision = {memoryRevision} WHERE DeviceId IS NULL", token);
+        var memoryLegacyPage = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.AgentMetricSettingsChanged, memoryLegacyPage.Items.Single(x => x.SubjectId is null).Action);
+        var cpuRevisionBytes = new byte[16];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(cpuRevisionBytes, 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(cpuRevisionBytes.AsSpan(4), 45);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(cpuRevisionBytes.AsSpan(8), 90);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(cpuRevisionBytes.AsSpan(12), 1500);
+        var cpuRevision = Convert.ToHexStringLower(SHA256.HashData(cpuRevisionBytes));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = 1500, EffectiveCpuMillisecondsPerMinute = 1500, WorkingSetLimitMiB = NULL, EffectiveWorkingSetLimitMiB = 512, EffectiveRevision = {cpuRevision} WHERE DeviceId IS NULL", token);
+        var cpuLegacyPage = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.AgentMetricSettingsChanged, cpuLegacyPage.Items.Single(x => x.SubjectId is null).Action);
+        var legacyBytes = new byte[12];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(legacyBytes, 1);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(legacyBytes.AsSpan(4), 45);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(legacyBytes.AsSpan(8), 90);
+        var legacyRevision = Convert.ToHexStringLower(SHA256.HashData(legacyBytes));
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = NULL, EffectiveCpuMillisecondsPerMinute = 3000, EffectiveRevision = {legacyRevision} WHERE DeviceId IS NULL", token);
+        var legacyPage = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.AgentMetricSettingsChanged, legacyPage.Items.Single(x => x.SubjectId is null).Action);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = 1000, EffectiveCpuMillisecondsPerMinute = 1000 WHERE DeviceId IS NULL", token);
+        var badLegacy = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.Unknown, badLegacy.Items.Single(x => x.SubjectId is null).Action);
+        await using (var db = agents.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("UPDATE agent.MetricSettingAudits SET CpuMillisecondsPerMinute = 3000, EffectiveCpuMillisecondsPerMinute = 3000 WHERE DeviceId IS NULL", token);
+        badLegacy = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        Assert.AreEqual(AuditFeedAction.Unknown, badLegacy.Items.Single(x => x.SubjectId is null).Action);
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(2, await db.MetricSettingAudits.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("UPDATE agent.MetricSettingAudits SET EffectiveRevision = 'invalid' WHERE DeviceId IS NOT NULL", token);
+            await db.Database.ExecuteSqlRawAsync("UPDATE agent.MetricSettingAudits SET HostIntervalSeconds = NULL, ProcessIntervalSeconds = NULL WHERE DeviceId IS NULL", token);
+        }
+        var corrupt = await new AgentAuditFeed(agents).QueryAsync(AuditFeedSource.AgentMetricSettings,
+            new OperationAuditQuery(clock.Now.AddDays(-1), clock.Now.AddDays(1)), token);
+        var corruptEntry = corrupt.Items.Single(x => x.SubjectId == device.Id);
+        Assert.AreEqual(AuditFeedAction.Unknown, corruptEntry.Action);
+        Assert.IsNull(corruptEntry.MetricSettings);
+        var corruptPlatform = corrupt.Items.Single(x => x.SubjectId is null);
+        Assert.AreEqual(AuditFeedAction.Unknown, corruptPlatform.Action);
+        Assert.IsNull(corruptPlatform.MetricSettings);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE agent.MetricSettingAudits", token);
+        }
+        await Assert.ThrowsAsync<DbUpdateException>(() => settings.UpdateAsync(device.Id, new(new(60, null), custom.Version), actor, token));
+        Assert.AreEqual(custom, await settings.GetAsync(device.Id, token));
     });
 
     [TestMethod]

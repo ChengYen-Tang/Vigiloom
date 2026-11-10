@@ -377,17 +377,12 @@ public sealed class SpeedHttpTests
         Assert.AreEqual(HttpStatusCode.OK, notFoundPage.StatusCode);
         Assert.Contains("找不到測速結果", await TextAsync(notFoundPage, token));
     }, TestContext.CancellationToken);
-    private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new("https://localhost") });
+    private static HttpClient Client(WebApplicationFactory<Program> factory) => PingTestSite.Client(factory);
     private static Dictionary<string,string> Hidden(IElement form) => form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
     private static async Task<IElement> FormAsync(HttpResponseMessage response,string handler,CancellationToken token) =>
         (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token),token)).QuerySelectorAll("form").Single(x=>x.QuerySelector("input[name='_handler']")?.GetAttribute("value")==handler);
     private static async Task<string> TextAsync(HttpResponseMessage response,CancellationToken token) => (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token),token)).Body!.TextContent;
-    private static async Task LoginAsync(HttpClient client,string name,CancellationToken token)
-    {
-        using var page=await client.GetAsync("/account/login",token); var fields=Hidden(await FormAsync(page,"login",token));
-        fields["Input.UserName"]=name;fields["Input.Password"]="Strong-Password-123";
-        using var response=await client.PostAsync("/account/login",new FormUrlEncodedContent(fields),token);Assert.AreEqual(HttpStatusCode.Redirect,response.StatusCode);
-    }
+    private static Task LoginAsync(HttpClient client, string name, CancellationToken token) => PingTestSite.LoginAsync(client, name, token);
 
     private sealed class RefreshFailure : DbCommandInterceptor
     {

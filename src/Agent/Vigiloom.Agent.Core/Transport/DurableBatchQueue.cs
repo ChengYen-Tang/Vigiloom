@@ -16,6 +16,107 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? c
     public const long DefaultCapacityBytes = 256L * 1024 * 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
 
+    /// <summary>Persist an entire sample atomically, or leave the queue unchanged when capacity is insufficient. Keep the batches and payloads unchanged until the call completes.</summary>
+    public Task<EnqueueResult> EnqueueManyAsync(IReadOnlyList<QueuedBatch> batches, CancellationToken token) =>
+        EnqueueManyCoreAsync(batches, null, token);
+
+    /// <summary>Atomically verify the registered owner and persist its sample under the same identity lease.</summary>
+    public Task<EnqueueResult> EnqueueManyForOwnerAsync(IReadOnlyList<QueuedBatch> batches, AgentSettingsOwner owner, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return EnqueueManyCoreAsync(batches, owner, token);
+    }
+
+    private async Task<EnqueueResult> EnqueueManyCoreAsync(IReadOnlyList<QueuedBatch> batches, AgentSettingsOwner? owner, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(batches);
+        if (batches.Count == 0) throw new ArgumentException("At least one batch is required.", nameof(batches));
+        if (batches.Count > MaximumQueuedBatches) throw new ArgumentOutOfRangeException(nameof(batches));
+        if (capacityBytes is < 1) throw new InvalidOperationException("Queue capacity must be positive.");
+        if (maximumBatches is < 1 or > MaximumQueuedBatches) throw new InvalidOperationException("Queue batch limit is outside the supported range.");
+        var ids = new HashSet<Guid>();
+        foreach (var batch in batches)
+        {
+            if (batch is null || batch.BatchId.Version != 7 || batch.RecordCount is < 1 or > MaximumBatchRecords ||
+                batch.Payload is not { Length: > 0 and <= MaximumBatchBytes } || !ids.Add(batch.BatchId))
+                throw new ArgumentException("Invalid or duplicate batch.", nameof(batches));
+        }
+        await gate.WaitAsync(token);
+        try
+        {
+            await using var session = await vault.AcquireForTransportAsync(token);
+            if (owner is not null)
+            {
+                var identity = await session.ReadAsync(token);
+                if (owner.AgentId != agentId || identity?.AgentId != agentId ||
+                    !string.Equals(identity.Server, owner.Server, StringComparison.Ordinal) ||
+                    !string.Equals(owner.StateDirectory, vault.StateDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    return EnqueueResult.OwnerChanged;
+            }
+            var effective = capacityBytes is null || maximumBatches is null
+                ? await AgentQueueCapacityStore.ReadEffectiveLockedAsync(session, agentId, token) : AgentQueueCapacity.Default;
+            var byteLimit = capacityBytes ?? effective.PayloadBytes;
+            var batchLimit = maximumBatches ?? effective.BatchCount;
+            using var connection = Open(session.DirectoryPath);
+            using var transaction = connection.BeginTransaction();
+            long newBytes = 0;
+            var pending = new List<QueuedBatch>(batches.Count);
+            using var existing = connection.CreateCommand();
+            existing.Transaction = transaction;
+            existing.CommandText = "SELECT created_ticks, record_count, payload FROM batches WHERE batch_id = $id";
+            var id = existing.Parameters.Add("$id", SqliteType.Text);
+            foreach (var batch in batches)
+            {
+                token.ThrowIfCancellationRequested();
+                id.Value = batch.BatchId.ToString("D");
+                using var reader = existing.ExecuteReader();
+                if (reader.Read())
+                {
+                    if (reader.GetInt64(0) != batch.EnqueuedAt.UtcTicks || reader.GetInt32(1) != batch.RecordCount ||
+                        !batch.Payload.AsSpan().SequenceEqual((byte[])reader[2])) return EnqueueResult.ConflictingBatch;
+                }
+                else { pending.Add(batch); newBytes += batch.Payload.Length; }
+            }
+            if (pending.Count == 0) return EnqueueResult.AlreadyQueued;
+            // Waiting for queued batches to drain cannot make an oversized sample fit.
+            if (newBytes > byteLimit || pending.Count > batchLimit) return EnqueueResult.ExceedsCapacity;
+            using (var size = connection.CreateCommand())
+            {
+                size.Transaction = transaction;
+                size.CommandText = "SELECT queued_bytes, queued_count FROM queue_state WHERE singleton = 1";
+                using var reader = size.ExecuteReader();
+                if (!reader.Read()) throw new InvalidDataException("Agent queue metadata is missing.");
+                if (newBytes > byteLimit - reader.GetInt64(0) || pending.Count > batchLimit - reader.GetInt64(1)) return EnqueueResult.Full;
+            }
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO batches(batch_id, created_ticks, record_count, payload) VALUES ($id, $created, $count, $payload)";
+            var insertId = insert.Parameters.Add("$id", SqliteType.Text);
+            var created = insert.Parameters.Add("$created", SqliteType.Integer);
+            var count = insert.Parameters.Add("$count", SqliteType.Integer);
+            var payload = insert.Parameters.Add("$payload", SqliteType.Blob);
+            foreach (var batch in pending)
+            {
+                token.ThrowIfCancellationRequested();
+                insertId.Value = batch.BatchId.ToString("D");
+                created.Value = batch.EnqueuedAt.UtcTicks;
+                count.Value = batch.RecordCount;
+                payload.Value = batch.Payload;
+                insert.ExecuteNonQuery();
+            }
+            using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE queue_state SET queued_bytes = queued_bytes + $bytes, queued_count = queued_count + $count WHERE singleton = 1";
+            update.Parameters.AddWithValue("$bytes", newBytes);
+            update.Parameters.AddWithValue("$count", pending.Count);
+            update.ExecuteNonQuery();
+            token.ThrowIfCancellationRequested();
+            transaction.Commit();
+            return EnqueueResult.Queued;
+        }
+        finally { gate.Release(); }
+    }
+
     /// <summary>Persist a batch before sending it. Keep payload unchanged until the call completes. A full queue rejects the batch for backpressure.</summary>
     public async Task<EnqueueResult> EnqueueAsync(Guid batchId, DateTimeOffset enqueuedAt, int recordCount,
         ReadOnlyMemory<byte> payload, CancellationToken token)
@@ -228,7 +329,7 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? c
     }
 }
 
-public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full }
+public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full, OwnerChanged, ExceedsCapacity }
 public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5, Expired = 6 }
 public sealed record QueuedBatch(Guid BatchId, DateTimeOffset EnqueuedAt, int RecordCount, byte[] Payload);
 public readonly record struct QueueStatus(long TotalBytes, long TotalBatches, long QuarantinedBatches);

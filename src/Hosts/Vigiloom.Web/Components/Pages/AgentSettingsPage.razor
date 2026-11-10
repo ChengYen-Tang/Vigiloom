@@ -8,6 +8,7 @@
 @using Vigiloom.Modules.Resources.Application
 @inject AgentConfiguration Settings
 @inject AgentQueueCapacityConfiguration CapacitySettings
+@inject AgentMetricConfiguration MetricSettings
 @inject AgentReplayPolicyService ReplayPolicy
 @inject DeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
@@ -41,6 +42,40 @@
                 <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.BatchIntervalSeconds 秒；網路失敗時會退避重試。</small>
                 <p>設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。</p>
                 <div class="device-actions"><button type="submit">儲存 Agent 設定</button></div>
+            </EditForm>
+        }
+    </section>
+    <section class="device-panel">
+        <h2>主機效能採樣</h2>
+        @if (metricLoadError) { <p class="device-alert" role="alert">無法讀取採樣設定，請稍後重新整理。</p> }
+        else if (metricCurrent is null) { <p role="alert">找不到此設備。</p> }
+        else
+        {
+            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。較短的間隔會增加資料量與設備負擔。</p>
+            @if (metricMessage is not null) { <p class="agent-settings-status" role="status">@metricMessage</p> }
+            <EditForm Model="MetricInput" FormName="agent-metrics" method="post" OnSubmit="SaveMetricsAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="MetricInput.Version" />
+                <label for="agent-metric-host">主機效能採樣間隔（10～3600 秒）</label>
+                <InputNumber id="agent-metric-host" @bind-Value="MetricInput.HostIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.HostIntervalSeconds} 秒")" />
+                <small class="agent-settings-hint">CPU、記憶體、磁碟與網路；目前目標值：@metricCurrent.Effective.Settings.HostIntervalSeconds 秒。</small>
+                <label for="agent-metric-process">程序採樣間隔（10～3600 秒）</label>
+                <InputNumber id="agent-metric-process" @bind-Value="MetricInput.ProcessIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessIntervalSeconds} 秒")" />
+                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessIntervalSeconds 秒。</small>
+                <label for="agent-metric-cpu">採樣 CPU 預算（每分鐘 100～60000 毫秒）</label>
+                <InputNumber id="agent-metric-cpu" @bind-Value="MetricInput.CpuMillisecondsPerMinute" min="100" max="60000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.CpuMillisecondsPerMinute} 毫秒")" />
+                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.CpuMillisecondsPerMinute 毫秒；達到後延後後續採樣。</small>
+                <label for="agent-metric-memory">Agent 記憶體門檻（64～4096 MiB）</label>
+                <InputNumber id="agent-metric-memory" @bind-Value="MetricInput.WorkingSetLimitMiB" min="64" max="4096" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.WorkingSetLimitMiB} MiB")" />
+                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.WorkingSetLimitMiB MiB；Agent 使用量達到門檻時延後後續採樣。</small>
+                <label for="agent-metric-process-budget">程序採集時間預算（100～30000 毫秒）</label>
+                <InputNumber id="agent-metric-process-budget" @bind-Value="MetricInput.ProcessCollectionBudgetMs" min="100" max="30000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessCollectionBudgetMs} 毫秒")" />
+                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessCollectionBudgetMs 毫秒；到期後不再開始讀取其他程序。</small>
+                <label for="agent-metric-io">採樣 I/O 預算（1～4096 MiB／分鐘）</label>
+                <InputNumber id="agent-metric-io" @bind-Value="MetricInput.IoLimitMiBPerMinute" min="1" max="4096" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.IoLimitMiBPerMinute} MiB／分鐘")" />
+                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.IoLimitMiBPerMinute MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。</small>
+                <p>設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。</p>
+                <div class="device-actions"><button type="submit">儲存採樣設定</button></div>
             </EditForm>
         }
     </section>
@@ -100,14 +135,18 @@
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-settings")] private SettingsForm Input { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-capacity")] private CapacityForm CapacityInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-metrics")] private MetricForm MetricInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-replay")] private ReplayForm ReplayInput { get; set; } = default!;
     private AgentSettingsView? current;
     private AgentQueueCapacityView? capacityCurrent;
+    private AgentMetricSettingsView? metricCurrent;
     private string? deviceName;
     private bool loadError;
     private bool capacityLoadError;
+    private bool metricLoadError;
     private string? message;
     private string? capacityMessage;
+    private string? metricMessage;
     private AgentReplayPolicyView? replay;
     private bool replayLoadError;
     private string? replayMessage;
@@ -116,9 +155,11 @@
     {
         var submittedSettings = Input is not null;
         var submittedCapacity = CapacityInput is not null;
+        var submittedMetrics = MetricInput is not null;
         var submittedReplay = ReplayInput is not null;
         Input ??= new();
         CapacityInput ??= new();
+        MetricInput ??= new();
         ReplayInput ??= new();
         try
         {
@@ -137,6 +178,16 @@
                     BatchCount = capacityCurrent.Overrides.BatchCount, Version = capacityCurrent.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityLoadError = true; }
+        try
+        {
+            metricCurrent = await MetricSettings.GetAsync(Id, HttpContext.RequestAborted);
+            if (metricCurrent is not null && !submittedMetrics)
+                MetricInput = new() { HostIntervalSeconds = metricCurrent.Overrides.HostIntervalSeconds,
+                    ProcessIntervalSeconds = metricCurrent.Overrides.ProcessIntervalSeconds, CpuMillisecondsPerMinute = metricCurrent.Overrides.CpuMillisecondsPerMinute,
+                    WorkingSetLimitMiB = metricCurrent.Overrides.WorkingSetLimitMiB, ProcessCollectionBudgetMs = metricCurrent.Overrides.ProcessCollectionBudgetMs,
+                    IoLimitMiBPerMinute = metricCurrent.Overrides.IoLimitMiBPerMinute, Version = metricCurrent.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read Agent metric settings: {ExceptionType}", exception.GetType().Name); metricLoadError = true; }
         if (Id is null)
         {
             try
@@ -193,6 +244,25 @@
         catch (Exception exception) { Logger.LogWarning("Could not save Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityMessage = "無法確認儲存結果，請重新整理並檢查。"; }
     }
 
+    private async Task SaveMetricsAsync(EditContext context)
+    {
+        if (!context.Validate() || metricCurrent is null) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new AgentMetricSettingsUpdate(new(MetricInput.HostIntervalSeconds, MetricInput.ProcessIntervalSeconds, MetricInput.CpuMillisecondsPerMinute, MetricInput.WorkingSetLimitMiB, MetricInput.ProcessCollectionBudgetMs, MetricInput.IoLimitMiBPerMinute), MetricInput.Version ?? "");
+        if (!AgentMetricConfiguration.Valid(input.Overrides)) { metricMessage = "請檢查採樣設定的允許範圍。"; return; }
+        try
+        {
+            if (await MetricSettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                metricCurrent = saved;
+                MetricInput.Version = saved.Version;
+                metricMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+            }
+            else metricMessage = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent metric settings: {ExceptionType}", exception.GetType().Name); metricMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+    }
+
     private async Task SaveAsync(EditContext context)
     {
         if (!context.Validate() || current is null) return;
@@ -223,6 +293,16 @@
     {
         [Range(1, 1024)] public int? PayloadMiB { get; set; }
         [Range(1, 100000)] public int? BatchCount { get; set; }
+        public string? Version { get; set; }
+    }
+    private sealed class MetricForm
+    {
+        [Range(10, 3600)] public int? HostIntervalSeconds { get; set; }
+        [Range(10, 3600)] public int? ProcessIntervalSeconds { get; set; }
+        [Range(100, 60000)] public int? CpuMillisecondsPerMinute { get; set; }
+        [Range(64, 4096)] public int? WorkingSetLimitMiB { get; set; }
+        [Range(100, 30000)] public int? ProcessCollectionBudgetMs { get; set; }
+        [Range(1, 4096)] public int? IoLimitMiBPerMinute { get; set; }
         public string? Version { get; set; }
     }
 }
