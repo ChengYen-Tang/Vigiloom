@@ -118,6 +118,24 @@
                     }
                 }
             </section>
+            <section class="device-panel" aria-labelledby="metric-loss-title">
+                <h2 id="metric-loss-title">Agent 指標資料完整性</h2>
+                @if (agentError) { <p role="alert">無法讀取資料完整性狀態，請稍後重新整理。</p> }
+                else if (agentStatus?.MetricLoss is not { } loss) { <p>目前沒有可用的指標遺失統計，無法判定是否有資料遺失。</p> }
+                else
+                {
+                    <dl class="device-details">
+                        <div><dt>目前統計帳本已確認遺失</dt><dd>至少 @loss.Snapshot.Records 筆指標（@loss.Snapshot.Batches 批）</dd></div>
+                        <div><dt>統計起點（Agent 時間，UTC）</dt><dd>@loss.Snapshot.StartedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                        <div><dt>最後回報（平台時間，UTC）</dt><dd>@loss.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                    </dl>
+                    @if (loss.Snapshot.CompletenessUnknown)
+                    { <p class="device-alert" role="status">部分資料的完整性無法確認，實際遺失數可能更多。</p> }
+                    <p>此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。</p>
+                    @if (loss.ReportedAt > Clock.GetUtcNow() || Clock.GetUtcNow() - loss.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
+                    { <p class="device-alert" role="status">以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。</p> }
+                }
+            </section>
             <section class="device-panel central-receipts">
                 <h2>中央收據容量</h2>
                 @if (agentError) { <p role="alert">無法讀取中央收據容量，請稍後重新整理。</p> }

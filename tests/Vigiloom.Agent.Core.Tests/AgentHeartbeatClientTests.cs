@@ -14,6 +14,53 @@ public sealed class AgentHeartbeatClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(15000, CooperativeCancellation = true)]
+    public async Task Heartbeat_ReportsLossSnapshotAndFallsBackForOlderPlatform(bool rejectLoss)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = id, MachineSecret = secret }, token);
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            await using var ledger = await MetricLossLedger.StartAsync(vault, owner, token);
+            await ledger.RecordAsync(1, 2, 7, token);
+            var handler = new LossHandler(rejectLoss);
+            using var http = new HttpClient(handler);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri(owner.Server), null, null, ledger.WriterId, token));
+            Assert.HasCount(rejectLoss ? 2 : 1, handler.Reports);
+            var loss = handler.Reports[0].MetricLoss;
+            Assert.IsNotNull(loss);
+            Assert.AreEqual(2L, loss.Batches);
+            Assert.AreEqual(7L, loss.Records);
+            Assert.IsTrue(loss.CompletenessUnknown);
+            if (rejectLoss)
+            {
+                Assert.IsNull(handler.Reports[1].MetricLoss);
+                Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
+            }
+            var staleHandler = new CaptureHandler();
+            using var staleHttp = new HttpClient(staleHandler);
+            Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(staleHttp).SendAsync(vault, new Uri(owner.Server), null, null, Guid.CreateVersion7(), token));
+            Assert.IsNull(staleHandler.Reports.Single().MetricLoss, "A different writer must not refresh an old ledger snapshot.");
+            await ledger.CompleteAsync(token);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Heartbeat_DoesNotReportAnotherIdentitysAppliedSettings()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
@@ -333,6 +380,20 @@ public sealed class AgentHeartbeatClientTests
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
             Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
+    }
+
+    private sealed class LossHandler(bool rejectLoss) : HttpMessageHandler
+    {
+        public List<AgentHeartbeatReport> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            Reports.Add((await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!);
+            return new HttpResponseMessage(rejectLoss && Reports[^1].MetricLoss is not null ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
+        }
     }
 
     private sealed class OlderConfigurationHandler(bool rejectConfiguration) : HttpMessageHandler

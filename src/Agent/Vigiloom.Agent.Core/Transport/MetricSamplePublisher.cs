@@ -7,9 +7,14 @@ namespace Vigiloom.Agent.Core.Transport;
 public sealed class MetricSamplePublisher(DurableBatchQueue queue, AgentSettingsOwner owner)
 {
     private Queue<QueuedBatch>? pending;
+    private bool outcomeUnknown;
     public bool HasPending => pending is not null;
     public int PendingBatches => pending?.Count ?? 0;
     public long PendingRecords => pending?.Sum(batch => (long)batch.RecordCount) ?? 0;
+    /// <summary>Whether a pending batch might already have committed despite an interrupted enqueue.</summary>
+    public bool PendingOutcomeUnknown => outcomeUnknown;
+    public int KnownUnqueuedBatches => PendingBatches - (outcomeUnknown && HasPending ? 1 : 0);
+    public long KnownUnqueuedRecords => PendingRecords - (outcomeUnknown && pending is not null && pending.TryPeek(out var first) ? first.RecordCount : 0);
 
     /// <summary>Prepare only when the previous sample has been durably queued.</summary>
     public void Prepare(IReadOnlyList<AgentMetricPoint> points, DateTimeOffset enqueuedAt)
@@ -26,9 +31,18 @@ public sealed class MetricSamplePublisher(DurableBatchQueue queue, AgentSettings
         var sample = pending ?? throw new InvalidOperationException("No metric sample is pending.");
         while (sample.TryPeek(out var batch))
         {
+            var previouslyUnknown = outcomeUnknown;
+            // An exception can occur after commit, so retain uncertainty until
+            // this particular batch is confirmed queued or already queued.
+            outcomeUnknown = true;
             var result = await queue.EnqueueManyForOwnerAsync([batch], owner, token);
-            if (result is not (EnqueueResult.Queued or EnqueueResult.AlreadyQueued)) return result;
+            if (result is not (EnqueueResult.Queued or EnqueueResult.AlreadyQueued))
+            {
+                outcomeUnknown = previouslyUnknown;
+                return result;
+            }
             sample.Dequeue();
+            outcomeUnknown = false;
         }
         pending = null;
         return EnqueueResult.Queued;

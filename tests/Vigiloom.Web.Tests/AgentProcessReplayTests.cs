@@ -8,10 +8,12 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -119,6 +121,51 @@ public sealed class AgentProcessReplayTests(TestContext context)
                     var items = await db.RuntimeObservations.AsNoTracking().Where(x => x.BatchId == batch.BatchId).OrderBy(x => x.Ordinal).Select(x => new { x.Ordinal, x.MessageId }).ToArrayAsync(token);
                     CollectionAssert.AreEqual(messages.Select((x, i) => (i, x.MessageId)).ToArray(), items.Select(x => (x.Ordinal, x.MessageId)).ToArray());
                 }
+
+                // Run a real metric collector and interrupt its process. The
+                // next writer must report uncertain completeness over the
+                // authenticated HTTPS heartbeat, without inventing a loss count.
+                await RunAgentAsync("unavailable", "Agent metric queue: Queued", server, stateRoot, caPath, token);
+                var ledgerPath = Path.Combine(stateRoot, "metric-loss.db");
+                Assert.IsTrue(File.Exists(ledgerPath));
+                Guid originalLedger;
+                string originalWriter;
+                using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = ledgerPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+                {
+                    db.Open();
+                    using var query = db.CreateCommand();
+                    query.CommandText = "SELECT ledger_id, writer FROM loss_state WHERE singleton = 1";
+                    using var reader = query.ExecuteReader();
+                    Assert.IsTrue(reader.Read());
+                    originalLedger = Guid.Parse(reader.GetString(0));
+                    Assert.IsFalse(reader.IsDBNull(1));
+                    originalWriter = reader.GetString(1);
+                }
+                var owner = new AgentSettingsOwner(agentId, server.AbsoluteUri, vault.StateDirectory);
+                await using var ledger = await MetricLossLedger.StartAsync(vault, owner, token);
+                var local = await ledger.ReadAsync(token);
+                Assert.AreEqual(originalLedger, local.LedgerId);
+                Assert.AreNotEqual(originalWriter, ledger.WriterId.ToString("D"));
+                Assert.IsTrue(local.CompletenessUnknown);
+                using var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (_, certificate, _, errors) =>
+                {
+                    if (certificate is null || (errors & (System.Net.Security.SslPolicyErrors.RemoteCertificateNameMismatch | System.Net.Security.SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
+                    using var chain = new X509Chain();
+                    chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                    chain.ChainPolicy.CustomTrustStore.Add(root);
+                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    return chain.Build(certificate);
+                };
+                using var heartbeatHttp = new HttpClient(handler);
+                var heartbeat = new AgentHeartbeatClient(heartbeatHttp);
+                Assert.AreEqual(HeartbeatResult.Accepted, await heartbeat.SendAsync(vault, server, null, null, ledger.WriterId, token));
+                var status = await scope.ServiceProvider.GetRequiredService<AgentMonitoring>().GetAsync(device.Id, token);
+                Assert.IsNotNull(status?.MetricLoss);
+                Assert.AreEqual(local.LedgerId, status.MetricLoss.Snapshot.LedgerId);
+                Assert.AreEqual(local.Records, status.MetricLoss.Snapshot.Records);
+                Assert.IsTrue(status.MetricLoss.Snapshot.CompletenessUnknown);
+                await ledger.CompleteAsync(token);
             }
             catch (Exception error) { primaryFailure = error; throw; }
             finally

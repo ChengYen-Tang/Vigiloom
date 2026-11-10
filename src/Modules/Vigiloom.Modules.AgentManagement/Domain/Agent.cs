@@ -73,6 +73,14 @@ public sealed class Agent
     public int? AppliedBatchIntervalSeconds { get; private set; }
     public DateTimeOffset? ConfigurationAppliedAt { get; private set; }
     public AgentConfigurationFailure? ConfigurationFailure { get; private set; }
+    public Guid? MetricLossReportEpoch { get; private set; }
+    public long? MetricLossReportSequence { get; private set; }
+    public DateTimeOffset? MetricLossReportedAt { get; private set; }
+    public Guid? MetricLossLedgerId { get; private set; }
+    public DateTimeOffset? MetricLossStartedAt { get; private set; }
+    public long? MetricLossBatches { get; private set; }
+    public long? MetricLossRecords { get; private set; }
+    public bool? MetricLossCompletenessUnknown { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -164,6 +172,23 @@ public sealed class Agent
         AppliedBatchIntervalSeconds = report.Applied?.Settings.BatchIntervalSeconds;
         ConfigurationAppliedAt = report.AppliedAt?.ToUniversalTime();
         ConfigurationFailure = report.Failure;
+    }
+
+    public void RecordMetricLossStatus(AgentMetricLossReport? report, long sequence, DateTimeOffset now)
+    {
+        // A missing or contradictory snapshot must not refresh stale values.
+        if (report is not null && MetricLossLedgerId == report.LedgerId &&
+            (MetricLossStartedAt != report.StartedAt || MetricLossBatches > report.Batches || MetricLossRecords > report.Records ||
+             MetricLossCompletenessUnknown == true && !report.CompletenessUnknown)) report = null;
+        MetricLossReportEpoch = report is null ? null : QueueReportEpoch;
+        MetricLossReportSequence = report is null ? null : sequence;
+        MetricLossReportedAt = report is null ? null : now.ToUniversalTime();
+        if (report is null) return;
+        MetricLossLedgerId = report.LedgerId;
+        MetricLossStartedAt = report.StartedAt;
+        MetricLossBatches = report.Batches;
+        MetricLossRecords = report.Records;
+        MetricLossCompletenessUnknown = report.CompletenessUnknown;
     }
     public void RecordQueueCapacityStatus(AgentQueueCapacityReport report, long sequence, DateTimeOffset now)
     {

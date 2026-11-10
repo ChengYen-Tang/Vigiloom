@@ -38,12 +38,32 @@ public sealed class IdentityVault(string directory)
     }
 
     /// <summary>Allow one running settings synchronizer for an Agent state directory.</summary>
-    public IAsyncDisposable AcquireSettingsOwnership()
+    public IAsyncDisposable AcquireSettingsOwnership() => AcquireWorkerOwnership("settings.lock");
+
+    /// <summary>Allow one metric producer for an Agent state directory.</summary>
+    public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
+
+    /// <summary>Exclusive ownership of metric production for this state directory.</summary>
+    public sealed class MetricOwnership : IAsyncDisposable
+    {
+        private readonly IdentityVault vault;
+        private IAsyncDisposable? lease;
+        internal MetricOwnership(IdentityVault vault, IAsyncDisposable lease) => (this.vault, this.lease) = (vault, lease);
+        internal bool IsHeldFor(IdentityVault candidate) => Volatile.Read(ref lease) is not null &&
+            string.Equals(vault.StateDirectory, candidate.StateDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        public async ValueTask DisposeAsync()
+        {
+            var current = Interlocked.Exchange(ref lease, null);
+            if (current is not null) await current.DisposeAsync();
+        }
+    }
+
+    private IAsyncDisposable AcquireWorkerOwnership(string fileName)
     {
         var directoryGuard = PrepareDirectory(directory);
         try
         {
-            var lockPath = Path.Combine(directory, "settings.lock");
+            var lockPath = Path.Combine(directory, fileName);
             RejectLink(lockPath);
             var options = new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = PrivateFile;
