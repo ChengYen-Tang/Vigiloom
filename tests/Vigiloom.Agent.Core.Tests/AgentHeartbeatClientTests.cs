@@ -14,6 +14,58 @@ public sealed class AgentHeartbeatClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow(HttpStatusCode.BadRequest)]
+    [DataRow(HttpStatusCode.RequestEntityTooLarge)]
+    public async Task Heartbeat_OlderServerKeepsQueueReportWhenLogStatusIsUnsupported(HttpStatusCode rejected)
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId, MachineSecret = secret }, token);
+            var snapshot = AgentLogSettingsSnapshot.Create([]);
+            var log = new AgentLogStatusObservation(owner, new(snapshot.Revision, false, []));
+            var handler = new OldLogStatusHandler(rejected);
+            using var http = new HttpClient(handler);
+            var result = await new AgentHeartbeatClient(http).SendAsync(vault, new Uri(owner.Server), null, null, null, log, token);
+            Assert.AreEqual(HeartbeatResult.Accepted, result);
+            Assert.HasCount(2, handler.Reports);
+            Assert.IsNotNull(handler.Reports[0].LogStatus);
+            Assert.IsNull(handler.Reports[1].LogStatus);
+            Assert.IsNotNull(handler.Reports[1].Queue);
+            Assert.AreEqual(handler.Reports[0].Epoch, handler.Reports[1].Epoch);
+            Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class OldLogStatusHandler(HttpStatusCode rejected) : HttpMessageHandler
+    {
+        public List<AgentHeartbeatReport> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            var report = (await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!;
+            Reports.Add(report);
+            return new HttpResponseMessage(report.LogStatus is null ? HttpStatusCode.NoContent : rejected);
+        }
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     [Timeout(15000, CooperativeCancellation = true)]
@@ -232,7 +284,7 @@ public sealed class AgentHeartbeatClientTests
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
             {
                 db.Open();
-                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 3"; command.ExecuteNonQuery();
+                using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version = 4"; command.ExecuteNonQuery();
             }
             Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, new Uri("https://example.test/"), token));
             Assert.HasCount(2, handler.Reports);

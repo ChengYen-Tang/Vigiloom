@@ -11,6 +11,7 @@ namespace Vigiloom.Agent.Core.Identity;
 public sealed class IdentityVault(string directory)
 {
     private const int MaximumBytes = 16384;
+    private const int MaximumLogSettingsBytes = 512 * 1024;
     private static readonly UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private readonly string directory = Path.IsPathFullyQualified(directory) && Path.GetPathRoot(directory) != directory
         ? Path.GetFullPath(directory) : throw new ArgumentException("A non-root absolute state directory is required.", nameof(directory));
@@ -39,6 +40,9 @@ public sealed class IdentityVault(string directory)
 
     /// <summary>Allow one running settings synchronizer for an Agent state directory.</summary>
     public IAsyncDisposable AcquireSettingsOwnership() => AcquireWorkerOwnership("settings.lock");
+
+    /// <summary>Allow one host log producer for an Agent state directory.</summary>
+    public IAsyncDisposable AcquireLogOwnership() => AcquireWorkerOwnership("logs.lock");
 
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
@@ -168,15 +172,17 @@ public sealed class IdentityVault(string directory)
 
         internal Task<AgentSavedMetricSettings?> ReadMetricSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedMetricSettings>("metric-settings.dat", token);
+        internal Task<AgentSavedLogSettings?> ReadLogSettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentSavedLogSettings>("log-settings.dat", token, MaximumLogSettingsBytes);
 
-        private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token) where T : class
+        private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token, int maximumBytes = MaximumBytes) where T : class
         {
             var path = Path.Combine(directory, fileName);
             if (!File.Exists(path)) return null;
             RejectLink(path);
             if (OperatingSystem.IsLinux()) ValidateUnixFile(path);
             await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
-            if (file.Length is <= 0 or > MaximumBytes) throw new InvalidDataException("Invalid Agent identity state size.");
+            if (file.Length <= 0 || file.Length > maximumBytes) throw new InvalidDataException("Invalid Agent identity state size.");
             var encoded = new byte[(int)file.Length];
             await file.ReadExactlyAsync(encoded, token);
             byte[]? plain = null;
@@ -198,8 +204,10 @@ public sealed class IdentityVault(string directory)
 
         internal Task WriteMetricSettingsAsync(AgentSavedMetricSettings settings, CancellationToken token) =>
             WriteFileAsync("metric-settings.dat", settings, token);
+        internal Task WriteLogSettingsAsync(AgentSavedLogSettings settings, CancellationToken token) =>
+            WriteFileAsync("log-settings.dat", settings, token, MaximumLogSettingsBytes);
 
-        private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token)
+        private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token, int maximumBytes = MaximumBytes)
         {
             var plain = JsonSerializer.SerializeToUtf8Bytes(state);
             byte[]? encoded = null;
@@ -207,7 +215,7 @@ public sealed class IdentityVault(string directory)
             try
             {
                 encoded = OperatingSystem.IsWindows() ? ProtectedData.Protect(plain, null, DataProtectionScope.CurrentUser) : plain;
-                if (encoded.Length > MaximumBytes) throw new InvalidDataException("Agent identity state is too large.");
+                if (encoded.Length > maximumBytes) throw new InvalidDataException("Agent identity state is too large.");
                 var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, Options = FileOptions.Asynchronous };
                 if (!OperatingSystem.IsWindows()) options.UnixCreateMode = PrivateFile;
                 await using (var file = new FileStream(temp, options))

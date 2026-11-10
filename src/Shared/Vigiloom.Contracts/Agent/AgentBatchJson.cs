@@ -5,7 +5,7 @@ namespace Vigiloom.Contracts.Agent;
 
 internal static class AgentBatchJson
 {
-    internal static JsonSerializerOptions CreateOptions<T>() where T : class
+    internal static JsonSerializerOptions CreateOptions<T>(int maximumItems = AgentBatchCodec.MaximumItems) where T : class
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
@@ -14,11 +14,11 @@ internal static class AgentBatchJson
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             MaxDepth = 8
         };
-        options.Converters.Add(new BoundedItemsConverter<T>());
+        options.Converters.Add(new BoundedItemsConverter<T>(maximumItems));
         return options;
     }
 
-    private sealed class BoundedItemsConverter<T> : JsonConverter<IReadOnlyList<T>> where T : class
+    private sealed class BoundedItemsConverter<T>(int maximumItems) : JsonConverter<IReadOnlyList<T>> where T : class
     {
         public override IReadOnlyList<T> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -27,7 +27,7 @@ internal static class AgentBatchJson
             while (reader.Read())
             {
                 if (reader.TokenType == JsonTokenType.EndArray) return items;
-                if (items.Count >= AgentBatchCodec.MaximumItems) throw new JsonException("Too many Agent batch items.");
+                if (items.Count >= maximumItems) throw new JsonException("Too many Agent batch items.");
                 items.Add(JsonSerializer.Deserialize<T>(ref reader, options) ?? throw new JsonException("Agent batch item is null."));
             }
             throw new JsonException("Incomplete Agent batch items.");

@@ -1,0 +1,7 @@
+@host = https://localhost:7043
+@deviceId = 00000000-0000-0000-0000-000000000000
+@apiCredential = replace-with-monitoring-read-credential
+
+### Private host records and collection gaps, ordered by platform receipt time.
+GET {{host}}/api/v1/devices/{{deviceId}}/host-logs?from=2026-11-01T00%3A00%3A00Z&until=2026-11-02T00%3A00%3A00Z
+Authorization: Bearer {{apiCredential}}

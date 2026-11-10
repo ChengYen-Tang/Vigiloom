@@ -136,6 +136,7 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
         if (report is not null && !staleSession && agent.RecordQueueStatus(report.Sequence, report.Queue, report.Quarantine, now))
         {
             agent.RecordMetricLossStatus(report.MetricLoss, report.Sequence, now);
+            agent.RecordLogStatus(report.LogStatus, report.Sequence, now);
             if (report.Configuration is { } settings) agent.RecordConfigurationStatus(settings, now);
             if (report.CapacityConfiguration is { } capacity) agent.RecordQueueCapacityStatus(capacity, report.Sequence, now);
         }
