@@ -36,6 +36,11 @@ internal sealed class MetricIngestion(IDbContextFactory<ServiceObservabilityDbCo
                 InstanceResolutionStatus.CapacityReached => MetricIngestionStatus.CapacityReached,
                 _ => MetricIngestionStatus.Busy
             };
+        // ResolveAsync takes this lock for identified instances. The unidentified path
+        // must use the same transaction fence as batched reception and rollup cleanup.
+        if (binding.Status == InstanceResolutionStatus.Unidentified &&
+            !await ServiceInstanceResolver.LockServiceAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), binding.Service!.ServiceId, token))
+            return MetricIngestionStatus.Busy;
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var timing = CheckTimes(data, binding.Service!.ApprovedAt, received);
         if (timing != MetricIngestionStatus.Accepted) return timing;
