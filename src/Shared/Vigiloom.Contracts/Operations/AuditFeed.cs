@@ -1,7 +1,7 @@
 namespace Vigiloom.Contracts.Operations;
 
 /// <summary>Safe, bounded metadata from a single owning audit source.</summary>
-public enum AuditFeedSource { Accounts = 1, ApiCredentials = 2, Devices = 3, AgentIdentity = 4, AgentSettings = 5, Scheduling = 6, AgentQueueCapacity = 7, AgentMetricSettings = 8 }
+public enum AuditFeedSource { Accounts = 1, ApiCredentials = 2, Devices = 3, AgentIdentity = 4, AgentSettings = 5, Scheduling = 6, AgentQueueCapacity = 7, AgentMetricSettings = 8, HostLogSources = 9 }
 
 public enum AuditFeedAction
 {
@@ -12,7 +12,8 @@ public enum AuditFeedAction
     DeviceCreated, DeviceUpdated, DeviceArchived, DeviceRestored,
     EnrollmentIssued, EnrollmentRevoked, AgentEnrolled, AgentRevoked, RotationStarted, RotationFinished,
     AgentSettingsChanged, ScheduleSettingsChanged, JobDeleteRequested, JobRequeueRequested, JobEnqueueRequested,
-    RecurringJobRemoveRequested, RecurringJobTriggerRequested, AgentQueueCapacityChanged, AgentMetricSettingsChanged
+    RecurringJobRemoveRequested, RecurringJobTriggerRequested, AgentQueueCapacityChanged, AgentMetricSettingsChanged,
+    HostLogSourceCreated, HostLogSourceUpdated, HostLogSourceRetired
 }
 
 public enum AuditFeedOutcome { Unknown, Recorded, Started, Accepted, Pending, Rejected }
@@ -26,9 +27,10 @@ public sealed record AgentMetricSettingsAuditDetails(int? HostIntervalSeconds, i
     int? WorkingSetLimitMiB = null, int EffectiveWorkingSetLimitMiB = 512,
     int? ProcessCollectionBudgetMs = null, int EffectiveProcessCollectionBudgetMs = 2000,
     int? IoLimitMiBPerMinute = null, int EffectiveIoLimitMiBPerMinute = 64);
+public sealed record HostLogSourceAuditDetails(Guid SourceId, Guid Generation, bool Enabled, string Version);
 public sealed record AuditFeedEntry(DateTimeOffset OccurredAt, Guid? ActorId, Guid? SubjectId, AuditFeedAction Action, AuditFeedOutcome Outcome,
     AgentSettingsAuditDetails? AgentSettings = null, string? Reference = null, Guid? AgentId = null, AgentQueueCapacityAuditDetails? QueueCapacity = null,
-    AgentMetricSettingsAuditDetails? MetricSettings = null);
+    AgentMetricSettingsAuditDetails? MetricSettings = null, HostLogSourceAuditDetails? HostLogSource = null);
 public sealed record AuditFeedPage(AuditFeedSource Source, IReadOnlyList<AuditFeedEntry> Items, int Page, bool HasMore, bool LimitReached);
 
 public static class AuditFeedLimits

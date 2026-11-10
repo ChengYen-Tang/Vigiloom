@@ -21,7 +21,7 @@ internal static class AgentBatchEndpoints
 
     private static async Task<IResult> ReceiveAsync(HttpContext context, AgentBatchReceiver receiver, CancellationToken token)
     {
-        context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] = "1, 2";
+        context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] = "1, 2, 3";
         var encodings = context.Request.Headers.ContentEncoding;
         var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
         if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)
@@ -57,14 +57,18 @@ internal static class AgentBatchEndpoints
                 catch (InvalidDataException) { return Results.BadRequest(); }
                 body = decoded!;
             }
-            var result = await receiver.ReceiveAsync(AgentEndpoints.Bearer(context), body.GetBuffer().AsMemory(0, (int)body.Length), token);
-            return result switch
+            var result = await receiver.ReceiveDetailedAsync(AgentEndpoints.Bearer(context), body.GetBuffer().AsMemory(0, (int)body.Length), token);
+            if (result.Status == BatchReceiptStatus.RateLimited && result.RetryAfter is { } retryAfter)
+                context.Response.Headers.RetryAfter = Math.Max(1, (long)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return result.Status switch
             {
                 BatchReceiptStatus.Accepted or BatchReceiptStatus.AlreadyAccepted => Results.NoContent(),
                 BatchReceiptStatus.Unauthorized => Results.Unauthorized(),
                 BatchReceiptStatus.Invalid => Results.BadRequest(),
                 BatchReceiptStatus.Conflict => Results.Conflict(),
                 BatchReceiptStatus.Expired => Results.StatusCode(StatusCodes.Status410Gone),
+                BatchReceiptStatus.RateLimited => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+                BatchReceiptStatus.LogBatchTooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
                 BatchReceiptStatus.CapacityExceeded or BatchReceiptStatus.ClockUncertain or BatchReceiptStatus.TimestampAhead => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
                 _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
             };

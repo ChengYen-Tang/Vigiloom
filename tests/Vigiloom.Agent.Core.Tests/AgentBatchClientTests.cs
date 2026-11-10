@@ -14,6 +14,45 @@ public sealed class AgentBatchClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Sender_LogBadRequestRetainsUnknownSchema(bool advertisesLogs)
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBatchClientTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1,
+                [new(Guid.CreateVersion7(), now, "record", null, null, null, null, null)]);
+            var bytes = AgentLogBatchCodec.Serialize(batch);
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token));
+            using var http = new HttpClient(new LogBadRequestHandler(advertisesLogs));
+            var result = await new AgentBatchClient(http, TimeProvider.System).SendNextAsync(vault, server, token);
+            Assert.AreEqual(advertisesLogs ? BatchSendResult.Rejected : BatchSendResult.Retry, result.Status);
+            var status = await queue.GetStatusAsync(token);
+            Assert.AreEqual(advertisesLogs ? 1 : 0, status.QuarantinedBatches);
+            if (!advertisesLogs) CollectionAssert.AreEqual(bytes, (await queue.PeekAsync(token))!.Payload);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Sender_IgnoresObsoleteUploadBudgetState()
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomOldUploadStateTests");
@@ -351,6 +390,16 @@ public sealed class AgentBatchClientTests
             if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class LogBadRequestHandler(bool advertisesLogs) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest);
+            response.Headers.Add(AgentMetricBatchCodec.SupportedSchemaHeader, advertisesLogs ? "1, 2, 3" : "1, 2");
+            return Task.FromResult(response);
         }
     }
 

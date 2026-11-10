@@ -1,0 +1,137 @@
+@page "/devices/{Id:guid}/log-sources"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Infrastructure.LogAdmission
+@inject DeviceManagement Devices
+@inject HostLogConfiguration Sources
+@inject HostLogMonitoring Monitoring
+@inject PolicyAdministration Quota
+@inject TimeProvider Clock
+@inject NavigationManager Navigation
+@inject ILogger<HostLogSources> Logger
+
+<PageTitle>主機日誌來源 - Vigiloom</PageTitle>
+<main class="device-page host-log-page">
+    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
+    <header class="device-heading"><div><h1>主機日誌來源</h1><p>@(deviceName ?? "設備") · 設定此設備 Agent 要讀取的日誌</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">無法讀取設備或來源，請稍後重新整理。</p></section> }
+    else if (items is null) { <section class="device-panel"><p role="alert">找不到設備。</p></section> }
+    else
+    {
+        <section class="device-panel">
+            <h2>已設定的來源</h2>
+            <p>設定會定期同步至 Agent；已儲存不代表設備已套用或可讀取。Agent 帳號需要來源的讀取權限。</p>
+            @if (status?.Report.Throttled == true && statusCurrent) { <p role="status">Agent 因資源門檻延後日誌採集。</p> }
+            @if (statusError) { <p role="status">無法讀取來源狀態。</p> }
+            @if (items.Count == 0) { <p>尚未設定來源。</p> }
+            else
+            {
+                <p class="host-log-scroll-hint">左右滑動查看完整來源資訊。</p>
+                <div class="host-log-table-wrap" tabindex="0" role="region" aria-label="來源清單，可左右捲動"><table class="host-log-table"><thead><tr><th>來源名稱</th><th>類型</th><th>來源位置</th><th>最近檢查</th><th>操作</th></tr></thead><tbody>
+                    @foreach (var item in items)
+                    {
+                        <tr @key="item.Settings.SourceId"><td>@item.Settings.Name</td><td>@KindName(item.Settings.Kind)</td><td>@item.Settings.Target</td><td>@SourceStatus(item)</td><td><a href="@($"/devices/{Id:D}/log-sources/{item.Settings.SourceId:D}")">編輯</a></td></tr>
+                    }
+                </tbody></table></div>
+            }
+        </section>
+        <section class="device-panel">
+            <h2>新增來源</h2>
+            <p>每台設備最多設定 @AgentLogSettingsSnapshot.MaximumSources 個來源。</p>
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="log-source-create" method="post" OnSubmit="CreateAsync">
+                <label for="source-name">來源名稱</label><InputText id="source-name" @bind-Value="Input.Name" maxlength="256" />
+                <label for="source-kind">來源類型</label><InputSelect id="source-kind" @bind-Value="Input.Kind"><option value="WindowsEvent">Windows 事件記錄</option><option value="Journal">Linux journald</option><option value="TextFile">文字檔</option></InputSelect>
+                <label for="source-target">來源位置</label><InputText id="source-target" @bind-Value="Input.Target" maxlength="1024" placeholder="例如 System 或 /var/log/syslog" />
+                <small>Windows 請輸入事件記錄名稱，文字檔請輸入絕對路徑；journald 不需填寫。</small>
+                <label for="source-mode">文字檔格式</label><InputSelect id="source-mode" @bind-Value="Input.TextMode"><option value="SingleLine">每行一筆</option><option value="IndentedContinuation">縮排行接續前一筆</option></InputSelect>
+                <small>只用於文字檔；文字檔須為 UTF-8。</small>
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用來源</label>
+                <div class="device-actions"><button type="submit">新增來源</button></div>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "log-source-create")] private SourceForm Input { get; set; } = default!;
+    private IReadOnlyList<HostLogSourceView>? items;
+    private string? deviceName;
+    private string? message;
+    private bool loadError;
+    private bool statusError;
+    private bool statusCurrent;
+    private HostLogStatusView? status;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var device = await Devices.GetAsync(Id, HttpContext.RequestAborted);
+            deviceName = device?.Name;
+            if (device is not null)
+            {
+                items = await Sources.ListAsync(Id, HttpContext.RequestAborted);
+                try
+                {
+                    status = await Monitoring.GetAsync(Id, HttpContext.RequestAborted);
+                    var limits = (await Quota.GetAsync(HttpContext.RequestAborted)).Values;
+                    if (items is not null && status is not null)
+                    {
+                        var desired = AgentLogSettingsSnapshot.Create(items.Select(x => x.Settings), Math.Min(AgentLogBatchCodec.MaximumItems, Math.Min(limits.SourceBurst, limits.GlobalBurst)));
+                        var age = Clock.GetUtcNow() - status.ReceivedAt;
+                        statusCurrent = status.Report.Revision == desired.Revision && age >= TimeSpan.Zero && age < TimeSpan.FromSeconds(status.OfflineAfterSeconds);
+                    }
+                }
+                catch (Exception ex) { Logger.LogWarning("Unable to load host log source status: {ErrorType}.", ex.GetType().Name); statusError = true; }
+            }
+        }
+        catch (Exception ex) { Logger.LogWarning("Unable to load host log sources: {ErrorType}.", ex.GetType().Name); loadError = true; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = "無法確認目前帳號。"; return; }
+        var target = Input.Kind == AgentLogSourceKind.Journal ? "local" : Input.Target?.Trim() ?? "";
+        var input = new HostLogSourceCreate(Input.Kind, Input.Name?.Trim() ?? "", target, Input.Enabled,
+            Input.Kind == AgentLogSourceKind.TextFile ? Input.TextMode : null);
+        try
+        {
+            var result = await Sources.CreateAsync(Id, input, actor, HttpContext.RequestAborted);
+            if (result.Status == HostLogConfigurationStatus.Success) { Navigation.NavigateTo($"/devices/{Id:D}/log-sources", forceLoad: true); return; }
+            message = result.Status == HostLogConfigurationStatus.LimitReached ? "來源數量已達上限。" : "設備不存在或設定已變更，請重新整理。";
+        }
+        catch (ArgumentException) { message = "請確認名稱、來源類型及位置；文字檔需使用絕對路徑。"; }
+        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to create host log source: {ErrorType}.", ex.GetType().Name); message = "無法確認新增結果，請重新整理後查看。"; }
+    }
+
+    private static string KindName(AgentLogSourceKind kind) => kind switch { AgentLogSourceKind.WindowsEvent => "Windows 事件記錄", AgentLogSourceKind.Journal => "Linux journald", AgentLogSourceKind.TextFile => "文字檔", _ => "未知" };
+    private string SourceStatus(HostLogSourceView item)
+    {
+        if (!item.Settings.Enabled) return "目標設定：已停用";
+        if (!statusCurrent || status is null) return "尚無目前設定的狀態";
+        var observation = status.Report.Sources.FirstOrDefault(x => x.SourceId == item.Settings.SourceId && x.Generation == item.Settings.Generation);
+        if (observation is null) return "尚未檢查";
+        var age = Clock.GetUtcNow() - status.ReceivedAt + TimeSpan.FromSeconds(observation.AgeSeconds);
+        if (age < TimeSpan.Zero || age >= TimeSpan.FromSeconds(status.OfflineAfterSeconds)) return "上次檢查已過期";
+        return observation.State switch
+        {
+            AgentLogSourceState.End => "暫無新紀錄",
+            AgentLogSourceState.Collected => "最近已加入 Agent 佇列",
+            AgentLogSourceState.Full => "佇列已滿，等待空間",
+            AgentLogSourceState.Unsupported => "此系統不支援來源",
+            AgentLogSourceState.Unavailable => "無法讀取來源",
+            AgentLogSourceState.Conflict => "採集狀態衝突，等待重試",
+            _ => "狀態未知"
+        };
+    }
+    private sealed class SourceForm { public string? Name { get; set; } public string? Target { get; set; } public AgentLogSourceKind Kind { get; set; } = AgentLogSourceKind.WindowsEvent; public AgentTextLogMode TextMode { get; set; } = AgentTextLogMode.SingleLine; public bool Enabled { get; set; } = true; }
+}

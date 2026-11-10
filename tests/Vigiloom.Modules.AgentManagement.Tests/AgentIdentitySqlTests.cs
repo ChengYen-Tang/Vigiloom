@@ -17,6 +17,7 @@ using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Tests;
 
@@ -25,6 +26,346 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentitySqlTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task HostLogConfiguration_ReadWaitsForRetirementAndRevocation(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("source concurrency", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var deviceSource = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, deviceSource, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var config = new HostLogConfiguration(agents, deviceSource, identity, clock);
+        var source = await config.CreateAsync(device.Id, new(AgentLogSourceKind.Journal, "system", "local", true, null), Guid.CreateVersion7(), token);
+        Assert.IsNotNull(source.Source);
+        await using (var retiring = agents.CreateDbContext())
+        await using (var transaction = await retiring.Database.BeginTransactionAsync(token))
+        {
+            var entity = await retiring.HostLogSources.SingleAsync(x => x.Id == source.Source.Settings.SourceId, token);
+            entity.Retire(Guid.CreateVersion7(), clock.Now);
+            await retiring.SaveChangesAsync(token);
+            var waiting = config.GetForAgentAsync(credential, token);
+            var committed = false;
+            try
+            {
+                await Task.Delay(250, token);
+                Assert.IsFalse(waiting.IsCompleted, "Snapshot delivery must wait for source retirement.");
+                await transaction.CommitAsync(token);
+                committed = true;
+                Assert.IsEmpty((await waiting)!.Sources);
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    try { await transaction.RollbackAsync(CancellationToken.None); }
+                    catch { try { await retiring.DisposeAsync(); } catch { /* Retain the original failure. */ } }
+                }
+                try { await waiting; } catch { /* Preserve the original test failure after releasing the lock. */ }
+            }
+        }
+        await using (var revoking = agents.CreateDbContext())
+        await using (var transaction = await revoking.Database.BeginTransactionAsync(token))
+        {
+            await using (var command = revoking.Database.GetDbConnection().CreateCommand())
+            {
+                command.Transaction = transaction.GetDbTransaction();
+                command.CommandText = "DECLARE @r int; EXEC @r = sp_getapplock @Resource = @name, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
+                var parameter = command.CreateParameter(); parameter.ParameterName = "@name"; parameter.Value = $"vigiloom.agent.device.{device.Id:D}"; command.Parameters.Add(parameter);
+                Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+            }
+            (await revoking.Agents.SingleAsync(x => x.Id == registered.AgentId, token)).Revoke(clock.Now);
+            await revoking.SaveChangesAsync(token);
+            var waiting = config.GetForAgentAsync(credential, token);
+            var committed = false;
+            try
+            {
+                await Task.Delay(250, token);
+                Assert.IsFalse(waiting.IsCompleted, "Snapshot delivery must wait for credential revocation.");
+                await transaction.CommitAsync(token);
+                committed = true;
+                Assert.IsNull(await waiting);
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    try { await transaction.RollbackAsync(CancellationToken.None); }
+                    catch { try { await revoking.DisposeAsync(); } catch { /* Retain the original failure. */ } }
+                }
+                try { await waiting; } catch { /* Preserve the original test failure after releasing the lock. */ }
+            }
+        }
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task HostLogConfiguration_ConcurrentCreatesRespectLastSourceSlot() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("source limit", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var actor = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            for (var i = 0; i < AgentLogSettingsSnapshot.MaximumSources - 1; i++)
+                db.HostLogSources.Add(new HostLogSource(device.Id, AgentLogSourceKind.TextFile, $"source-{i}", $"/var/log/test-{i}", true, AgentTextLogMode.SingleLine, actor, clock.Now));
+            await db.SaveChangesAsync(token);
+        }
+        var deviceSource = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, deviceSource, clock);
+        var service = new HostLogConfiguration(agents, deviceSource, identity, clock);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<HostLogConfigurationResult> CreateAsync(string name)
+        {
+            await start.Task.WaitAsync(token);
+            return await service.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, name, $"/var/log/{name}", true, AgentTextLogMode.SingleLine), actor, token);
+        }
+        var first = CreateAsync("race-one"); var second = CreateAsync("race-two");
+        start.SetResult();
+        var results = await Task.WhenAll(first, second);
+        CollectionAssert.AreEquivalent(new[] { HostLogConfigurationStatus.Success, HostLogConfigurationStatus.LimitReached }, results.Select(x => x.Status).ToArray());
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(AgentLogSettingsSnapshot.MaximumSources, await verify.HostLogSources.CountAsync(x => x.DeviceId == device.Id && x.RetiredAt == null, token));
+        Assert.AreEqual(1, await verify.HostLogSourceAudits.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task HostLogHistory_BoundsPagesByReceiptTimeAndDevice() => WithDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var firstDevice = new Device("first", "127.0.0.1", true, now);
+        var secondDevice = new Device("second", "127.0.0.2", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(firstDevice, secondDevice); await db.SaveChangesAsync(token); }
+        var first = new Agent(firstDevice.Id, 1, new byte[32], now);
+        var second = new Agent(secondDevice.Id, 1, new byte[32], now);
+        var source = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            var indexCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID(N'[agent].[HostLogs]') AND name = N'IX_HostLogs_AgentId_SourceId_ReceivedAt_RowId'").SingleAsync(token);
+            Assert.AreEqual(1, indexCount);
+            db.Agents.AddRange(first, second);
+            var items = Enumerable.Range(0, 30).Select(i => new AgentLogRecord(Guid.CreateVersion7(), i == 0 ? null : now.AddMinutes(-1),
+                i == 0 ? "" : $"event-{i}", null, null, null, null, null,
+                i == 0 ? new(AgentLogGapReason.CursorLost, null) : null)).ToArray();
+            var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, source, AgentLogSourceKind.Journal, "system", 1, items);
+            for (var i = 0; i < items.Length; i++) db.HostLogs.Add(new HostLog(first.Id, batch, i, now));
+            db.HostLogs.Add(new HostLog(second.Id, batch with { BatchId = Guid.CreateVersion7() }, 0, now));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostLogHistory(agents, new DeviceAgentSource(resources));
+        var from = now.AddHours(-1); var until = now.AddHours(1);
+        var page = await history.GetAsync(firstDevice.Id, from, until, null, source, token);
+        Assert.IsNotNull(page); Assert.HasCount(25, page.Items); Assert.IsNotNull(page.NextCursor);
+        var next = await history.GetAsync(firstDevice.Id, from, until, page.NextCursor, source, token);
+        Assert.IsNotNull(next); Assert.HasCount(5, next.Items); Assert.IsNull(next.NextCursor);
+        Assert.AreEqual(30, page.Items.Concat(next.Items).Select(x => x.MessageId).Distinct().Count());
+        Assert.IsTrue(page.Items.Concat(next.Items).All(x => x.AgentId == first.Id));
+        var gap = next.Items.Single(x => x.Gap is not null);
+        Assert.IsNull(gap.OccurredAt); Assert.IsNull(gap.Gap!.AffectedCount);
+        Assert.AreEqual(AgentLogGapReason.CursorLost, gap.Gap.Reason);
+        Assert.IsEmpty((await history.GetAsync(firstDevice.Id, from, until, null, Guid.CreateVersion7(), token))!.Items);
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => history.GetAsync(firstDevice.Id, from, until, "bad", null, token));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => history.GetAsync(firstDevice.Id, from, from.AddDays(32), null, null, token));
+    });
+
+    [TestMethod]
+    public Task HostLogConfiguration_CommitsAuditsAndRollsBackFailedChanges() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("log configuration", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var deviceSource = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, deviceSource, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var service = new HostLogConfiguration(agents, deviceSource, identity, clock);
+        var actor = Guid.CreateVersion7();
+        var created = await service.CreateAsync(device.Id, new(AgentLogSourceKind.Journal, "system", "local", true, null), actor, token);
+        Assert.AreEqual(HostLogConfigurationStatus.Success, created.Status);
+        Assert.IsNotNull(created.Source);
+        var id = created.Source.Settings.SourceId;
+        var settings = await service.GetForAgentAsync(credential, token);
+        Assert.IsNotNull(settings);
+        Assert.HasCount(1, settings.Sources);
+        Assert.IsNull(await service.GetForAgentAsync("invalid", token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.HostLogSourceAudits.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[HostLogSourceAudits] ADD CONSTRAINT [CK_TestSourceAuditFailure] CHECK ([Action] <> 2)", token);
+        }
+        var update = new HostLogSourceUpdate("changed", false, null, created.Source.Version);
+        var failure = await Assert.ThrowsAsync<DbUpdateException>(() => service.UpdateAsync(device.Id, id, update, actor, token));
+        Assert.AreEqual(547, Assert.IsInstanceOfType<SqlException>(failure.InnerException).Number);
+        await using (var db = agents.CreateDbContext())
+        {
+            var unchanged = await db.HostLogSources.AsNoTracking().SingleAsync(token);
+            Assert.AreEqual("system", unchanged.Name);
+            Assert.AreEqual(created.Source.Settings.Generation, unchanged.Generation);
+            Assert.AreEqual(1, await db.HostLogSourceAudits.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[HostLogSourceAudits] DROP CONSTRAINT [CK_TestSourceAuditFailure]", token);
+        }
+        var changed = await service.UpdateAsync(device.Id, id, update, actor, token);
+        Assert.AreEqual(HostLogConfigurationStatus.Success, changed.Status);
+        Assert.IsNotNull(changed.Source);
+        Assert.AreNotEqual(created.Source.Settings.Generation, changed.Source.Settings.Generation);
+        Assert.AreEqual(HostLogConfigurationStatus.Conflict, (await service.UpdateAsync(device.Id, id, update, actor, token)).Status);
+        Assert.AreEqual(HostLogConfigurationStatus.Success, (await service.RetireAsync(device.Id, id, changed.Source.Version, actor, token)).Status);
+        Assert.IsEmpty((await service.GetForAgentAsync(credential, token))!.Sources);
+        await using var verify = agents.CreateDbContext();
+        Assert.IsNotNull((await verify.HostLogSources.SingleAsync(token)).RetiredAt);
+        Assert.AreEqual(3, await verify.HostLogSourceAudits.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task HostLogSource_PreservesIdentityAndRejectsConcurrentChangesAndDowngrade() => WithDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("log source", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var actor = Guid.CreateVersion7();
+        var source = new HostLogSource(device.Id, AgentLogSourceKind.Journal, "system", "local", true, null, actor, now);
+        await using (var db = agents.CreateDbContext()) { db.HostLogSources.Add(source); await db.SaveChangesAsync(token); }
+        await using (var db = agents.CreateDbContext())
+        {
+            db.HostLogSources.Add(new HostLogSource(Guid.CreateVersion7(), AgentLogSourceKind.Journal, "invalid", "local", true, null, actor, now));
+            var failure = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(token));
+            Assert.AreEqual(547, Assert.IsInstanceOfType<SqlException>(failure.InnerException).Number);
+        }
+        Assert.AreEqual(7, source.Id.Version);
+        Assert.HasCount(8, source.Version);
+        await using var first = agents.CreateDbContext();
+        await using var second = agents.CreateDbContext();
+        var changed = await first.HostLogSources.SingleAsync(token);
+        var stale = await second.HostLogSources.SingleAsync(token);
+        changed.Retire(actor, now);
+        await first.SaveChangesAsync(token);
+        stale.Update("changed", true, null, actor, now);
+        await Assert.ThrowsExactlyAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync(token));
+        await using var verify = agents.CreateDbContext();
+        var retired = await verify.HostLogSources.AsNoTracking().SingleAsync(token);
+        Assert.AreEqual(source.Id, retired.Id);
+        Assert.IsNotNull(retired.RetiredAt);
+        Assert.IsFalse(retired.Enabled);
+        var error = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261110100956_HostLogGaps", token));
+        Assert.AreEqual(51000, error.Number);
+        Assert.AreEqual(source.Id, (await verify.HostLogSources.AsNoTracking().SingleAsync(token)).Id);
+    });
+
+    [TestMethod]
+    public Task HostLogGap_PersistsUnknownCountAndProtectsDowngrade() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("gap receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        await using (var db = agents.CreateDbContext())
+        {
+            var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(db.Database.GetConnectionString(),
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+            await using var quota = new LogAdmissionDbContext(options);
+            await quota.Database.MigrateAsync(token);
+        }
+        var gap = new AgentLogRecord(Guid.CreateVersion7(), clock.Now, "", null, null, null, null, null,
+            new(AgentLogGapReason.CursorLost, null));
+        var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), clock.Now,
+            Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [gap]);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var payload = AgentLogBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [gap with { Gap = new(AgentLogGapReason.CursorLost, 1) }] }), token));
+        await using var verify = agents.CreateDbContext();
+        var stored = await verify.HostLogs.AsNoTracking().SingleAsync(token);
+        Assert.AreEqual(AgentLogGapReason.CursorLost, stored.GapReason);
+        Assert.IsNull(stored.GapAffectedCount);
+        Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+        var error = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261110093307_HostLogs", token));
+        Assert.AreEqual(51000, error.Number);
+        Assert.AreEqual(AgentLogGapReason.CursorLost, (await verify.HostLogs.AsNoTracking().SingleAsync(token)).GapReason);
+    });
+
+    [TestMethod]
+    public Task HostLogBatch_ReceiptAndQuotaCommitOrRollBackTogether() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("log receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+
+        await using (var db = agents.CreateDbContext())
+        {
+            var quotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(db.Database.GetConnectionString(),
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+            await using var quota = new LogAdmissionDbContext(quotaOptions);
+            await quota.Database.MigrateAsync(token);
+        }
+
+        var record = new AgentLogRecord(Guid.CreateVersion7(), clock.Now, "first\nsecond", "provider", 42, "info", null, null);
+        var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), clock.Now,
+            Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [record]);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var payload = AgentLogBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        long tokensAfterFirst;
+        await using (var db = agents.CreateDbContext())
+            tokensAfterFirst = await db.Database.SqlQuery<long>($"SELECT [Microtokens] AS [Value] FROM [logquota].[Buckets] WHERE [Kind] = 0").SingleAsync(token);
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [record with { Content = "changed" }] }), token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(tokensAfterFirst, await db.Database.SqlQuery<long>($"SELECT [Microtokens] AS [Value] FROM [logquota].[Buckets] WHERE [Kind] = 0").SingleAsync(token));
+            Assert.AreEqual(1, await db.HostLogs.CountAsync(token));
+            Assert.AreEqual(2, await db.ReceivedBatches.CountAsync(token));
+            Assert.AreEqual(record.Content, (await db.HostLogs.SingleAsync(token)).Content);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[HostLogs] ADD CONSTRAINT [CK_TestHostLogFailure] CHECK ([Content] <> N'fail')", token);
+        }
+
+        var fail = batch with { BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7(), Content = "fail" }] };
+        var failure = await Assert.ThrowsAsync<DbUpdateException>(() => receiver.ReceiveAsync(credential, AgentLogBatchCodec.Serialize(fail), token));
+        var sqlError = Assert.IsInstanceOfType<SqlException>(failure.InnerException);
+        Assert.AreEqual(547, sqlError.Number);
+        Assert.Contains("CK_TestHostLogFailure", sqlError.Message);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.HostLogs.CountAsync(token));
+        Assert.AreEqual(2, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(tokensAfterFirst, await verify.Database.SqlQuery<long>($"SELECT [Microtokens] AS [Value] FROM [logquota].[Buckets] WHERE [Kind] = 0").SingleAsync(token));
+        var runtime = new AgentBatch(1, Guid.CreateVersion7(), clock.Now,
+            [new(record.MessageId, AgentBatchCodec.RuntimeKind, clock.Now, "test", "x64", ".NET 10")]);
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential, AgentBatchCodec.Serialize(runtime), token));
+        await verify.Database.ExecuteSqlRawAsync("UPDATE [logquota].[Buckets] SET [Microtokens] = 0, [LastRefill] = TODATETIMEOFFSET(DATEADD(hour, 1, SYSUTCDATETIME()), '+00:00') WHERE [Kind] = 0", token);
+        var limited = await receiver.ReceiveDetailedAsync(credential, AgentLogBatchCodec.Serialize(batch with
+        {
+            BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7() }]
+        }), token);
+        Assert.AreEqual(BatchReceiptStatus.RateLimited, limited.Status);
+        Assert.IsNotNull(limited.RetryAfter);
+        Assert.IsGreaterThan(TimeSpan.Zero, limited.RetryAfter.Value);
+        Assert.AreEqual(2, await verify.ReceivedBatches.CountAsync(token));
+        var downgrade = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261110080138_AgentMetricLoss", token));
+        Assert.AreEqual(51000, downgrade.Number);
+        Assert.AreEqual(1, await verify.HostLogs.AsNoTracking().CountAsync(token));
+    });
+
     [TestMethod]
     public Task MetricLossMigration_UpgradesAndProtectsReportedDataFromDowngrade() => WithDatabase(async (resources, agents, token) =>
     {
@@ -47,7 +388,9 @@ public sealed class AgentIdentitySqlTests
             await db.SaveChangesAsync(token);
             var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
             Assert.AreEqual(51000, error.Number);
-            Assert.AreEqual(2L, (await db.Agents.AsNoTracking().SingleAsync(token)).MetricLossRecords);
+            // A failed downgrade can already have removed newer migrations. Query only
+            // the historical column rather than projecting the current Agent model.
+            Assert.AreEqual(2L, await db.Database.SqlQuery<long>($"SELECT [MetricLossRecords] AS [Value] FROM [agent].[Agents] WHERE [Id] = {agent.Id}").SingleAsync(token));
         }
     });
 

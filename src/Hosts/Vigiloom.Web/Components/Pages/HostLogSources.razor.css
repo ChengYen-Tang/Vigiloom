@@ -1,0 +1,19 @@
+.host-log-table-wrap { overflow-x: auto; }
+.host-log-table { border-collapse: collapse; width: 100%; min-width: 42rem; text-align: left; }
+.host-log-table th { background: #eff5fc; color: #526783; }
+.host-log-table th, .host-log-table td { border-bottom: 1px solid #e2eaf2; padding: .75rem; vertical-align: top; }
+.host-log-table td:nth-child(3) { overflow-wrap: anywhere; }
+.host-log-page ::deep form { display: grid; grid-template-columns: 9rem minmax(0, 1fr); align-items: center; gap: 10px; }
+.host-log-page ::deep form small,
+.host-log-page ::deep form .device-checkbox,
+.host-log-page ::deep form .device-actions { grid-column: 2; }
+.host-log-scroll-hint { display: none; }
+@media (max-width: 850px) {
+    .host-log-scroll-hint { display: block; color: #294c79; font-weight: 600; }
+}
+@media (max-width: 650px) {
+    .host-log-page ::deep form { grid-template-columns: minmax(0, 1fr); }
+    .host-log-page ::deep form small,
+    .host-log-page ::deep form .device-checkbox,
+    .host-log-page ::deep form .device-actions { grid-column: 1; }
+}

@@ -8,7 +8,7 @@ namespace Vigiloom.Web.Api;
 
 internal static class AgentHeartbeatEndpoint
 {
-    public const int MaximumBytes = 2048;
+    public const int MaximumBytes = 8192;
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         AllowDuplicateProperties = false,

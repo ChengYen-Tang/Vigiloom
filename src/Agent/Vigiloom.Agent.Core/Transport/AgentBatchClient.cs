@@ -18,7 +18,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         var queue = new DurableBatchQueue(vault, id);
         var pending = await queue.PeekAsync(token);
         if (pending is null) return new(BatchSendResult.NoPendingBatch);
-        if (!MatchesQueueEntry(pending, out var isMetricBatch))
+        if (!MatchesQueueEntry(pending, out var schemaVersion))
         {
             await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
             return new(BatchSendResult.InvalidLocalBatch);
@@ -41,13 +41,13 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             await queue.AcknowledgeAsync(pending.BatchId, token);
             return new(BatchSendResult.Delivered);
         }
-        // A v1-only server rejects a valid v2 body with 400. Preserve its bytes until
-        // the server explicitly advertises v2 before treating that response as permanent.
-        var unknownMetricSchema = isMetricBatch && response.StatusCode == HttpStatusCode.BadRequest && !SupportsMetrics(response);
+        // Older servers can reject a newer valid schema with 400. Preserve its bytes
+        // until the server explicitly advertises that schema.
+        var unknownSchema = schemaVersion > 1 && response.StatusCode == HttpStatusCode.BadRequest && !SupportsSchema(response, schemaVersion);
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
-            HttpStatusCode.BadRequest when unknownMetricSchema => BatchSendResult.Retry,
+            HttpStatusCode.BadRequest when unknownSchema => BatchSendResult.Retry,
             HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Gone or HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnsupportedMediaType => BatchSendResult.Rejected,
             _ => BatchSendResult.Retry
         };
@@ -70,19 +70,24 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         return new(status, delay);
     }
 
-    private static bool SupportsMetrics(HttpResponseMessage response) =>
+    private static bool SupportsSchema(HttpResponseMessage response, int schemaVersion) =>
         response.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var values) &&
-        values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), "2", StringComparison.Ordinal));
+        values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
 
-    private static bool MatchesQueueEntry(QueuedBatch pending, out bool isMetricBatch)
+    private static bool MatchesQueueEntry(QueuedBatch pending, out int schemaVersion)
     {
-        isMetricBatch = false;
+        schemaVersion = 1;
         if (AgentBatchCodec.TryRead(pending.Payload, out var runtime))
             return runtime!.BatchId == pending.BatchId && runtime.EnqueuedAt == pending.EnqueuedAt && runtime.Items.Count == pending.RecordCount;
         if (AgentMetricBatchCodec.TryRead(pending.Payload, out var metrics))
         {
-            isMetricBatch = true;
+            schemaVersion = AgentMetricBatchCodec.SchemaVersion;
             return metrics!.BatchId == pending.BatchId && metrics.EnqueuedAt == pending.EnqueuedAt && metrics.Items.Count == pending.RecordCount;
+        }
+        if (AgentLogBatchCodec.TryRead(pending.Payload, out var logs))
+        {
+            schemaVersion = AgentLogBatchCodec.SchemaVersion;
+            return logs!.BatchId == pending.BatchId && logs.EnqueuedAt == pending.EnqueuedAt && logs.Items.Count == pending.RecordCount;
         }
         return false;
     }

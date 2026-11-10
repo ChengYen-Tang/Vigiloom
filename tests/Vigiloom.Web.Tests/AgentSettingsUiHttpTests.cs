@@ -15,6 +15,13 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.Resources.Domain;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
 
 namespace Vigiloom.Web.Tests;
 
@@ -24,6 +31,159 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task HostLogSources_AuthorizeMutationsAndIsolateAgentSettings() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            var first = new Device("first log host", "127.0.0.1", true, DateTimeOffset.UtcNow);
+            var second = new Device("second log host", "127.0.0.2", true, DateTimeOffset.UtcNow);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+            { db.Devices.AddRange(first, second); await db.SaveChangesAsync(token); }
+            async Task<string> EnrollAsync(Guid device)
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issue = await identity.IssueAsync(device, Guid.CreateVersion7(), token);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registration = await identity.RedeemAsync(issue.Secret, SHA256.HashData(secret), token);
+                return $"vla_{registration.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+            }
+            var firstToken = await EnrollAsync(first.Id);
+            var secondToken = await EnrollAsync(second.Id);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            using var agent = factory.CreateClient(options);
+            await LoginAsync(reader, "reader", token);
+            await LoginAsync(admin, "admin", token);
+            var url = $"/api/v1/agent-management/devices/{first.Id:D}/log-sources/";
+            using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            var input = new HostLogSourceCreate(AgentLogSourceKind.Journal, "system", "local", true, null);
+            using (var anti = await reader.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                reader.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            using (var denied = await reader.PostAsJsonAsync(url, input, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await admin.PostAsJsonAsync(url, input, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            using (var missing = await admin.PostAsJsonAsync(url, new { }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, missing.StatusCode);
+            using var created = await admin.PostAsJsonAsync(url, input, token);
+            Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+            Assert.IsNotNull(created.Headers.Location);
+            var source = await created.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token);
+            Assert.IsNotNull(source);
+            using (var detail = await admin.GetAsync(created.Headers.Location, token)) Assert.AreEqual(HttpStatusCode.OK, detail.StatusCode);
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
+            using (var denied = await agent.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var response = await agent.GetAsync("/api/v1/agent/log-settings", token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsTrue(response.Headers.CacheControl!.NoStore);
+            var snapshot = await response.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token);
+            Assert.IsNotNull(snapshot);
+            Assert.IsTrue(snapshot.IsValid());
+            Assert.AreEqual(100, snapshot.MaxBatchRecords);
+            Assert.AreEqual(source.Settings.SourceId, snapshot.Sources.Single().SourceId);
+            var epoch = Guid.CreateVersion7();
+            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            var observation = new AgentLogSourceObservation(source.Settings.SourceId, source.Settings.Generation,
+                AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 0);
+            var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, LogStatus: new(snapshot.Revision, false, [observation]));
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("無法讀取來源", await BodyTextAsync(statusPage, token));
+            var duplicateSource = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation, observation] } };
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", duplicateSource, token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            var wrongGeneration = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation with { Generation = Guid.CreateVersion7() }] } };
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", wrongGeneration, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            using (var stale = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token)) Assert.AreEqual(HttpStatusCode.NoContent, stale.StatusCode);
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("尚未檢查", await BodyTextAsync(statusPage, token));
+            var replacementEpoch = Guid.CreateVersion7();
+            using (var replacement = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(epoch, replacementEpoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, replacement.StatusCode);
+            using (var oldSession = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Sequence = 5 }, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, oldSession.StatusCode);
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("尚無目前設定的狀態", await BodyTextAsync(statusPage, token));
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 1 }, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            var largeStatus = new AgentLogStatusReport(snapshot.Revision, true, Enumerable.Range(0, AgentLogSettingsSnapshot.MaximumSources)
+                .Select(_ => new AgentLogSourceObservation(Guid.CreateVersion7(), Guid.CreateVersion7(), AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 2_592_000)).ToArray());
+            Assert.IsLessThan(8192, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(heartbeat with { LogStatus = largeStatus }).Length);
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 2, LogStatus = largeStatus }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("尚未檢查", await BodyTextAsync(statusPage, token));
+            using (var older = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 3, LogStatus = null }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, older.StatusCode);
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("尚無目前設定的狀態", await BodyTextAsync(statusPage, token));
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 4 }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            agent.DefaultRequestHeaders.IfNoneMatch.Add(response.Headers.ETag!);
+            using (var unchanged = await agent.GetAsync("/api/v1/agent/log-settings", token)) Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            var quota = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/log-quota/", token);
+            Assert.IsNotNull(quota);
+            using (var limited = await admin.PutAsJsonAsync("/api/v1/log-quota/", quota with { SourceBurst = 1 }, token))
+                Assert.AreEqual(HttpStatusCode.OK, limited.StatusCode);
+            using (var changed = await agent.GetAsync("/api/v1/agent/log-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, changed.StatusCode);
+                var smaller = await changed.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(smaller);
+                Assert.IsTrue(smaller.IsValid());
+                Assert.AreEqual(1, smaller.MaxBatchRecords);
+                Assert.AreNotEqual(snapshot.Revision, smaller.Revision);
+            }
+            using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("尚無目前設定的狀態", await BodyTextAsync(statusPage, token));
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(Guid.Parse(firstToken.AsSpan(4, 36)), Guid.CreateVersion7(), token));
+            }
+            using (var revoked = await agent.GetAsync("/api/v1/agent/log-settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            agent.DefaultRequestHeaders.IfNoneMatch.Clear();
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secondToken);
+            var isolated = await agent.GetFromJsonAsync<AgentLogSettingsSnapshot>("/api/v1/agent/log-settings", token);
+            Assert.IsEmpty(isolated!.Sources);
+            var update = new HostLogSourceUpdate("renamed", false, null, source.Version);
+            using var updated = await admin.PutAsJsonAsync(url + source.Settings.SourceId, update, token);
+            Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            var saved = await updated.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token);
+            Assert.IsNotNull(saved);
+            using (var stale = await admin.PutAsJsonAsync(url + source.Settings.SourceId, update, token)) Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            using (var staleRetire = await admin.PostAsJsonAsync(url + source.Settings.SourceId + "/retire", new HostLogSourceRetire(source.Version), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleRetire.StatusCode);
+            using (var retired = await admin.PostAsJsonAsync(url + source.Settings.SourceId + "/retire", new HostLogSourceRetire(saved.Version), token))
+                Assert.AreEqual(HttpStatusCode.OK, retired.StatusCode);
+            using (var gone = await admin.GetAsync(url + source.Settings.SourceId, token)) Assert.AreEqual(HttpStatusCode.NotFound, gone.StatusCode);
+            var now = DateTimeOffset.UtcNow;
+            var auditUrl = $"/api/v1/operations/audit-feed/host-log-sources?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using (var denied = await reader.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await anonymous.GetAsync(auditUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            var audit = await admin.GetFromJsonAsync<AuditFeedPage>(auditUrl, token);
+            Assert.IsNotNull(audit);
+            CollectionAssert.AreEquivalent(new[] { AuditFeedAction.HostLogSourceCreated, AuditFeedAction.HostLogSourceUpdated, AuditFeedAction.HostLogSourceRetired }, audit.Items.Select(x => x.Action).ToArray());
+            Assert.IsTrue(audit.Items.All(x => x.SubjectId == first.Id && x.HostLogSource?.SourceId == source.Settings.SourceId));
+            using var auditPage = await admin.GetAsync("/settings/audit?source=host-log-sources", token);
+            Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+            Assert.Contains("新增主機日誌來源", await BodyTextAsync(auditPage, token));
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task LogQuota_SettingsRequireAdministratorAndRecordChanges() =>

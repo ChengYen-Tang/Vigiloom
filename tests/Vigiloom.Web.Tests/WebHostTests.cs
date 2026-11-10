@@ -159,6 +159,13 @@ public sealed class WebHostTests(TestContext testContext)
         var metricAgentSecurity = paths.GetProperty("/api/v1/agent/metric-settings").GetProperty("get").GetProperty("security");
         Assert.AreEqual(1, metricAgentSecurity.GetArrayLength());
         Assert.IsTrue(metricAgentSecurity[0].TryGetProperty("AgentBearer", out _));
+        var logAgentSecurity = paths.GetProperty("/api/v1/agent/log-settings").GetProperty("get").GetProperty("security");
+        Assert.AreEqual(1, logAgentSecurity.GetArrayLength());
+        Assert.IsTrue(logAgentSecurity[0].TryGetProperty("AgentBearer", out _));
+        var hostLogSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-logs").GetProperty("get").GetProperty("security");
+        Assert.AreEqual(2, hostLogSecurity.GetArrayLength());
+        Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
+        Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
         var accessSecurity = paths.GetProperty("/api/v1/access").GetProperty("get").GetProperty("security")[0];
         Assert.IsTrue(accessSecurity.TryGetProperty("ApiBearer", out _));
         var audit = paths.GetProperty("/api/v1/operations/audit").GetProperty("get");

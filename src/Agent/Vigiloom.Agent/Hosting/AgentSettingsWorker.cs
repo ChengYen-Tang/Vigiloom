@@ -2,11 +2,12 @@ using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Agent.Hosting.Metrics;
+using Vigiloom.Agent.Hosting.Logs;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Restores local settings and periodically synchronizes them without blocking other workers.</summary>
-internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, IConfiguration configuration,
+internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration,
     TimeProvider clock, ILogger<AgentSettingsWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -20,6 +21,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 runtime.Bind(null);
                 capacity.Bind(null);
                 metrics.Bind(null);
+                logs.Bind(null);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
                 continue;
             }
@@ -32,6 +34,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 runtime.Bind(null);
                 capacity.Bind(null);
                 metrics.Bind(null);
+                logs.Bind(null);
                 try
                 {
                     owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
@@ -39,6 +42,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     runtime.Bind(owner);
                     capacity.Bind(owner);
                     metrics.Bind(owner);
+                    logs.Bind(owner);
                     var saved = await client.LoadSavedAsync(vault, uri, stoppingToken);
                     if (IsCurrent(directory, server) && saved.Settings is not null) runtime.Publish(owner, saved.Settings);
                 }
@@ -56,6 +60,16 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                     logger.LogWarning("Agent saved metric settings could not be loaded: {ErrorType}.", ex.GetType().Name);
                 }
+                try
+                {
+                    var savedLogs = await logClient.LoadSavedAsync(vault, uri, stoppingToken);
+                    if (IsCurrent(directory, server) && savedLogs.Settings is not null) logs.Publish(owner, savedLogs.Settings);
+                }
+                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                {
+                    logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                    logger.LogWarning("Agent saved log settings could not be loaded: {ErrorType}.", ex.GetType().Name);
+                }
                 do
                 {
                     if (!IsCurrent(directory, server)) break;
@@ -66,6 +80,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         runtime.Bind(owner);
                         capacity.Bind(owner);
                         metrics.Bind(owner);
+                        logs.Bind(owner);
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Settings is not null) runtime.Publish(owner, result.Settings);
@@ -131,6 +146,31 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     {
                         metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent metric settings synchronization failed: {ErrorType}.", ex.GetType().Name);
+                    }
+                    try
+                    {
+                        if (!IsCurrent(directory, server)) break;
+                        var logResult = await logClient.SyncAsync(vault, uri, stoppingToken);
+                        if (!IsCurrent(directory, server)) break;
+                        if (logResult.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) logs.Bind(null);
+                        else if (logResult.Settings is not null) logs.Publish(owner, logResult.Settings);
+                        else
+                        {
+                            var failure = logResult.Status switch
+                            {
+                                AgentSettingsSyncStatus.Unavailable => AgentConfigurationFailure.Unavailable,
+                                AgentSettingsSyncStatus.Invalid => AgentConfigurationFailure.Invalid,
+                                AgentSettingsSyncStatus.Unauthorized => AgentConfigurationFailure.Unauthorized,
+                                AgentSettingsSyncStatus.Conflict => AgentConfigurationFailure.Conflict,
+                                _ => (AgentConfigurationFailure?)null
+                            };
+                            if (failure is { } failureCode) logs.MarkFailure(owner, failureCode);
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                    {
+                        logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                        logger.LogWarning("Agent log settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
                     var seconds = runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
                     if (!await DelayAsync(TimeSpan.FromSeconds(seconds), stoppingToken)) return;
