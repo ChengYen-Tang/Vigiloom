@@ -6,6 +6,8 @@ REQ-23 owns the application metric calculation and its results; REQ-39 owns rete
 
 Five-minute windows use UTC, with start `floor(unixNanoseconds / 300_000_000_000) * 300_000_000_000` and a half-open `[start, start + 5 minutes)` boundary. Results must preserve actual observation times, record type and quality; empty, missing, unsupported, overlapping, invalid and incomplete data must not become zero or normal. An absent optional field, including histogram sum, min and max, is distinct from a numeric zero. Resource and point attributes can contain sensitive information, so results retain the authorization of raw application telemetry and never enter anonymous projections or diagnostic logs.
 
+The result contract must identify its mode: a snapshot is an observation at its recorded time, not a five-minute total; sample statistics describe only the observed samples; an interval aggregate requires evidence that its inputs cover that interval. Where a compatible aggregate cannot be calculated, retain an explicitly qualified snapshot or incomplete result rather than inventing an aggregate. Summary quantiles can describe a more recent period than the cumulative count and sum; retain the snapshot without asserting that their populations match. The 365-day history remains a delivery requirement, not an implication of producing an in-memory snapshot.
+
 Aggregation must follow the [OpenTelemetry metrics data model](https://opentelemetry.io/docs/specs/otel/metrics/data-model/):
 
 - Gauge is a sample: a latest observation and explicitly sample-based statistics do not imply a time-weighted average.
