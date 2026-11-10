@@ -66,6 +66,13 @@ internal static class TelemetryHistoryEndpoints
             catch (ArgumentException) { return Results.BadRequest(); }
         }).Produces<TelemetryPage<TelemetryMetricPoint, MetricTelemetryContext>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Query a service's retained OTLP metric points");
+        group.MapGet("/metrics/windows", async (Guid serviceId, DateTimeOffset from, DateTimeOffset to, TelemetryHistory history,
+            CancellationToken token, DateTimeOffset? before = null) =>
+        {
+            try { return Results.Ok(await history.MetricWindowsAsync(serviceId, from, to, before, token)); }
+            catch (ArgumentException) { return Results.BadRequest(); }
+        }).Produces<MetricRollupWindowPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+            .WithSummary("List a service's five-minute metric window status");
     }
 
     private static bool TryTraceId(string? value, out byte[]? trace)
