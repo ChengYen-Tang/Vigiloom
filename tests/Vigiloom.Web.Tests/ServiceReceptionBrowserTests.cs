@@ -125,12 +125,28 @@ public sealed class ServiceReceptionBrowserTests(TestContext context)
         Assert.Contains("collector-node-a", await page.Locator("main").InnerTextAsync());
         Assert.Contains("尚無資料", await page.Locator("main").InnerTextAsync());
         await page.GetByText("登記此 Collector", new() { Exact = true }).ClickAsync();
-        await page.GetByLabel("Collector 名稱", new() { Exact = true }).FillAsync("Demo Collector");
+        await page.GetByLabel("Collector 名稱", new() { Exact = true }).FillAsync("Demo Collector " + new string('W', 100));
         await page.GetByLabel("我已確認此服務使用僅供 Collector 自身監控的來源憑證").CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "登記 Collector", Exact = true }).ClickAsync();
         await page.GetByText("Collector 已登記。", new() { Exact = true }).WaitForAsync();
         Assert.Contains("Demo Collector", await page.Locator("main").InnerTextAsync());
-        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        try
+        {
+            await page.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= innerWidth", null, new() { Timeout = 5000 });
+        }
+        catch (TimeoutException)
+        {
+            var dimensions = await page.EvaluateAsync<string>("""
+                () => JSON.stringify({ viewport: innerWidth, document: document.documentElement.scrollWidth,
+                  outside: [...document.querySelectorAll('body *')].map(e => ({ tag: e.tagName, cls: String(e.className),
+                    left: Math.round(e.getBoundingClientRect().left), right: Math.round(e.getBoundingClientRect().right) }))
+                    .filter(e => e.left < 0 || e.right > innerWidth).slice(0, 20) })
+                """);
+            var screenshot = Path.Combine(evidence, "collector-overflow-failure.png");
+            await page.ScreenshotAsync(new() { Path = screenshot, FullPage = true });
+            context.AddResultFile(screenshot);
+            Assert.Fail($"Collector page exceeds the viewport: {dimensions}; screenshot: {screenshot}");
+        }
         var reportRegion = page.GetByRole(AriaRole.Region, new() { Name = "Collector 執行個體回報，可左右滑動" });
         await reportRegion.FocusAsync();
         await reportRegion.PressAsync("ArrowRight");
