@@ -1049,6 +1049,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<int>("InputCount")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("InstanceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<byte>("Mode")
                         .HasColumnType("tinyint");
 
@@ -1064,12 +1067,19 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<int>("ResultVersion")
                         .HasColumnType("int");
 
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<long>("WindowRowId")
                         .HasColumnType("bigint");
 
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("InstanceId", "ServiceId");
+
+                    b.HasIndex("WindowRowId", "ServiceId");
 
                     b.HasIndex("WindowRowId", "IdentityHash", "CollisionOrdinal")
                         .IsUnique();
@@ -1416,9 +1426,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupSeries", b =>
                 {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.ServiceInstance", null)
+                        .WithMany()
+                        .HasForeignKey("InstanceId", "ServiceId")
+                        .HasPrincipalKey("Id", "ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupWindow", null)
                         .WithMany()
-                        .HasForeignKey("WindowRowId")
+                        .HasForeignKey("WindowRowId", "ServiceId")
+                        .HasPrincipalKey("RowId", "ServiceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

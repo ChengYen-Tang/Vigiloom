@@ -323,6 +323,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         });
         window.HasKey(x => x.RowId).IsClustered();
         window.Property(x => x.RowId).UseIdentityColumn();
+        window.HasAlternateKey(x => new { x.RowId, x.ServiceId });
         window.HasIndex(x => new { x.ServiceId, x.WindowStart }).IsUnique();
         window.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
 
@@ -339,6 +340,9 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         rollupSeries.Property(x => x.IdentityBytes).HasColumnType("varbinary(max)").IsRequired();
         rollupSeries.Property(x => x.ResultPayload).HasColumnType("varbinary(max)");
         rollupSeries.HasIndex(x => new { x.WindowRowId, x.IdentityHash, x.CollisionOrdinal }).IsUnique();
-        rollupSeries.HasOne<MetricRollupWindow>().WithMany().HasForeignKey(x => x.WindowRowId).OnDelete(DeleteBehavior.Cascade);
+        rollupSeries.HasOne<MetricRollupWindow>().WithMany().HasForeignKey(x => new { x.WindowRowId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Cascade);
+        rollupSeries.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -126,6 +126,7 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
             var resource = new ResourceMetrics { Resource = new Resource() };
             resource.Resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "test" } });
             resource.Resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.instance.id", Value = new AnyValue { StringValue = "node-a" } });
             var metric = new Metric { Name = "load", Gauge = new Gauge { DataPoints = { extended } } };
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
             Assert.AreEqual(MetricIngestionStatus.Accepted, await new MetricIngestion(factory).WriteAsync(source.Id, resource, new ScopeMetrics(), metric, token));
@@ -133,7 +134,10 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
             Assert.AreEqual(MetricRollupStatus.Incomplete, await materializer.MaterializeAsync(service.Id, start, token));
             await using var verify = new ServiceObservabilityDbContext(options);
             Assert.IsFalse((await verify.MetricRollupWindows.SingleAsync(token)).IsComplete);
-            Assert.IsTrue((await verify.MetricRollupSeries.SingleAsync(token)).RequiresRaw);
+            var series = await verify.MetricRollupSeries.SingleAsync(token);
+            Assert.IsTrue(series.RequiresRaw);
+            Assert.IsNotNull(series.InstanceId);
+            Assert.IsTrue(await verify.Instances.AnyAsync(x => x.Id == series.InstanceId && x.ServiceId == service.Id, token));
             Assert.AreEqual(1, await verify.MetricPoints.CountAsync(token));
         }, context.CancellationToken);
 }

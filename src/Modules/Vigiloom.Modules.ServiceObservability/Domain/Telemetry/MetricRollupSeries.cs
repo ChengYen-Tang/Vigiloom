@@ -15,6 +15,8 @@ public sealed class MetricRollupSeries
 {
     public long RowId { get; set; }
     public long WindowRowId { get; set; }
+    public Guid ServiceId { get; set; }
+    public Guid? InstanceId { get; set; }
     public required byte[] IdentityHash { get; set; }
     public required byte[] IdentityBytes { get; set; }
     public int CollisionOrdinal { get; set; }
