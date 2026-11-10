@@ -1,6 +1,6 @@
 # Application metric rollups
 
-Status: design in progress; no five-minute rollup is currently produced or retained by this document.
+Status: the bounded materializer can produce an explicitly requested closed window. Automatic scheduling, historical discovery, retention and cleanup are not yet enabled.
 
 REQ-23 owns the application metric calculation and its results; REQ-39 owns retention policy, cleanup coordination and deletion. OpenTelemetry resource, scope, metric and point attributes identify a series. `MetricContext.RowId` identifies one received context, not a durable series. Source and service authorization, instance, schema URLs, metric name, unit, type, temporality and Sum monotonicity must remain distinct. Attribute identity must be deterministic and equality-checked; a fingerprint alone is not proof of equality. The original protobuf timestamps retain nanoseconds even though SQL timestamps have 100-nanosecond precision. A timestamp or value is not a general-purpose OTLP deduplication key.
 
