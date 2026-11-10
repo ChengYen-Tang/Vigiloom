@@ -111,6 +111,46 @@ public sealed class SqlTestDatabaseTests
     }
 
     [TestMethod]
+    public async Task ConcurrentDatabaseInitializersCanRunTogether()
+    {
+        var server = TestDatabaseServer.FromEnvironment();
+        var bothEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
+        async Task Initialize(SqlTestDatabase _, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref entered) == 2) bothEntered.TrySetResult();
+            await bothEntered.Task.WaitAsync(TimeSpan.FromSeconds(90), token);
+        }
+        var creations = new[] { SqlTestDatabase.CreateAsync(server, Initialize, TestContext.CancellationToken),
+            SqlTestDatabase.CreateAsync(server, Initialize, TestContext.CancellationToken) };
+        Exception? failure = null;
+        try
+        {
+            var databases = await Task.WhenAll(creations);
+            Assert.AreEqual(2, entered);
+            Assert.AreNotEqual(databases[0].DatabaseName, databases[1].DatabaseName);
+        }
+        catch (Exception exception) { failure = exception; }
+        finally
+        {
+            bothEntered.TrySetResult();
+            try { await Task.WhenAll(creations); } catch (Exception) { }
+            var errors = new List<Exception>();
+            foreach (var creation in creations.Where(task => task.IsCompletedSuccessfully))
+            {
+                try { await creation.Result.DisposeAsync(); }
+                catch (Exception exception) { errors.Add(exception); }
+            }
+            if (errors.Count > 0)
+            {
+                if (failure is not null) errors.Insert(0, failure);
+                throw new AggregateException("Test and/or database cleanup failed.", errors);
+            }
+        }
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    [TestMethod]
     public async Task Create_WithCanceledToken_CleansPartialInitialization()
     {
         var server = TestDatabaseServer.FromEnvironment();
