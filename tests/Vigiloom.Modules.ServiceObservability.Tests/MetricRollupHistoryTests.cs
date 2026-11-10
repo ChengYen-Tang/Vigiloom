@@ -49,7 +49,7 @@ public sealed class MetricRollupHistoryTests(TestContext context)
                 {
                     var hash = new byte[32]; BitConverter.GetBytes(i).CopyTo(hash, 0);
                     setup.MetricRollupSeries.Add(new MetricRollupSeries { WindowRowId = target.RowId, ServiceId = service.Id,
-                        InstanceId = i == 0 ? instance : null, IdentityHash = hash, IdentityBytes = [1], CollisionOrdinal = 0,
+                        InstanceId = i <= 1 ? instance : null, IdentityHash = hash, IdentityBytes = [1], CollisionOrdinal = 0,
                         Mode = i == 0 ? MetricRollupMode.Unsupported : MetricRollupMode.GaugeSnapshot,
                         QualityFlags = i == 0 ? (long)MetricRollupQuality.Unsupported | 1L << 40 : 0,
                         RequiresRaw = i == 0, ResultVersion = i == 2 ? 2 : 1, InputCount = 1, ResultPayload = i == 0 ? null : [1, 2] });
@@ -89,7 +89,10 @@ public sealed class MetricRollupHistoryTests(TestContext context)
                 (await history.MetricPayloadAsync(service.Id, selected.WindowStart, selected.VersionToken, 1, 2, null, token)).Status);
             await Assert.ThrowsAsync<ArgumentException>(() => history.MetricPayloadAsync(service.Id, selected.WindowStart, selected.VersionToken, 1, 50, null, token));
             var filtered = await history.MetricSeriesAsync(service.Id, selected.WindowStart, selected.VersionToken, 1, instance, token);
-            Assert.HasCount(1, filtered.Page!.Items);
+            Assert.HasCount(2, filtered.Page!.Items);
+            var filteredPayload = await history.MetricPayloadAsync(service.Id, selected.WindowStart, selected.VersionToken, 1, 1, instance, token);
+            Assert.AreEqual(MetricRollupReadStatus.Found, filteredPayload.Status);
+            CollectionAssert.AreEqual(new byte[] { 1, 2 }, filteredPayload.Payload);
             var nextSeries = await history.MetricSeriesAsync(service.Id, selected.WindowStart, selected.VersionToken, 2, null, token);
             Assert.HasCount(5, nextSeries.Page!.Items);
             Assert.IsFalse(nextSeries.Page.HasMore);
