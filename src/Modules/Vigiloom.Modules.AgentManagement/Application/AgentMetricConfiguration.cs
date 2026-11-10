@@ -66,7 +66,6 @@ public sealed class AgentMetricConfiguration(IDbContextFactory<AgentManagementDb
         setting.CpuMillisecondsPerMinute = update.Overrides.CpuMillisecondsPerMinute;
         setting.WorkingSetLimitMiB = update.Overrides.WorkingSetLimitMiB;
         setting.ProcessCollectionBudgetMs = update.Overrides.ProcessCollectionBudgetMs;
-        setting.UploadLimitMiBPerMinute = update.Overrides.UploadLimitMiBPerMinute;
         setting.IoLimitMiBPerMinute = update.Overrides.IoLimitMiBPerMinute;
         setting.UpdatedAt = clock.GetUtcNow();
         setting.UpdatedBy = actorId;
@@ -82,14 +81,12 @@ public sealed class AgentMetricConfiguration(IDbContextFactory<AgentManagementDb
                 CpuMillisecondsPerMinute = setting.CpuMillisecondsPerMinute,
                 WorkingSetLimitMiB = setting.WorkingSetLimitMiB,
                 ProcessCollectionBudgetMs = setting.ProcessCollectionBudgetMs,
-                UploadLimitMiBPerMinute = setting.UploadLimitMiBPerMinute,
                 IoLimitMiBPerMinute = setting.IoLimitMiBPerMinute,
                 EffectiveHostIntervalSeconds = view.Effective.Settings.HostIntervalSeconds,
                 EffectiveProcessIntervalSeconds = view.Effective.Settings.ProcessIntervalSeconds,
                 EffectiveCpuMillisecondsPerMinute = view.Effective.Settings.CpuMillisecondsPerMinute,
                 EffectiveWorkingSetLimitMiB = view.Effective.Settings.WorkingSetLimitMiB,
                 EffectiveProcessCollectionBudgetMs = view.Effective.Settings.ProcessCollectionBudgetMs,
-                EffectiveUploadLimitMiBPerMinute = view.Effective.Settings.UploadLimitMiBPerMinute,
                 EffectiveIoLimitMiBPerMinute = view.Effective.Settings.IoLimitMiBPerMinute,
                 EffectiveRevision = view.Effective.Revision, ChangeVersion = setting.Version.ToArray()
             });
@@ -105,9 +102,9 @@ public sealed class AgentMetricConfiguration(IDbContextFactory<AgentManagementDb
     private static AgentMetricSettings Resolve(AgentMetricSettings basis, AgentMetricSettingsOverrides layer) =>
         new(layer.HostIntervalSeconds ?? basis.HostIntervalSeconds, layer.ProcessIntervalSeconds ?? basis.ProcessIntervalSeconds,
             layer.CpuMillisecondsPerMinute ?? basis.CpuMillisecondsPerMinute, layer.WorkingSetLimitMiB ?? basis.WorkingSetLimitMiB,
-            layer.ProcessCollectionBudgetMs ?? basis.ProcessCollectionBudgetMs, layer.UploadLimitMiBPerMinute ?? basis.UploadLimitMiBPerMinute,
+            layer.ProcessCollectionBudgetMs ?? basis.ProcessCollectionBudgetMs,
             layer.IoLimitMiBPerMinute ?? basis.IoLimitMiBPerMinute);
-    private static AgentMetricSettingsOverrides Values(AgentMetricSetting? row) => new(row?.HostIntervalSeconds, row?.ProcessIntervalSeconds, row?.CpuMillisecondsPerMinute, row?.WorkingSetLimitMiB, row?.ProcessCollectionBudgetMs, row?.UploadLimitMiBPerMinute, row?.IoLimitMiBPerMinute);
+    private static AgentMetricSettingsOverrides Values(AgentMetricSetting? row) => new(row?.HostIntervalSeconds, row?.ProcessIntervalSeconds, row?.CpuMillisecondsPerMinute, row?.WorkingSetLimitMiB, row?.ProcessCollectionBudgetMs, row?.IoLimitMiBPerMinute);
     internal static AgentMetricSettingsView ToView(Guid? deviceId, IReadOnlyList<AgentMetricSetting> rows)
     {
         var platform = rows.SingleOrDefault(x => x.DeviceId is null);

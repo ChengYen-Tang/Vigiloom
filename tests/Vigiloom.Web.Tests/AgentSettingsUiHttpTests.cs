@@ -640,7 +640,7 @@ public sealed class AgentSettingsUiHttpTests
                 var metrics = scope.ServiceProvider.GetRequiredService<Vigiloom.Modules.AgentManagement.Application.AgentMetricConfiguration>();
                 var current = await metrics.GetAsync(null, token);
                 Assert.IsNotNull(current);
-                Assert.IsNotNull(await metrics.UpdateAsync(null, new(new(45, 90, 2500, 768, 2500, 32, 96), current.Version), Guid.CreateVersion7(), token));
+                Assert.IsNotNull(await metrics.UpdateAsync(null, new(new(45, 90, 2500, 768, 2500, 96), current.Version), Guid.CreateVersion7(), token));
             }
             using (var metricAudit = await admin.GetAsync("/settings/audit?source=agent-metric-settings", token))
             {
@@ -652,7 +652,6 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains("有效採樣 CPU 預算：2500 毫秒／分鐘", text);
                 Assert.Contains("有效 Agent 記憶體門檻：768 MiB", text);
                 Assert.Contains("有效程序採集時間預算：2500 毫秒", text);
-                Assert.Contains("有效資料上傳額度：32 MiB／分鐘", text);
             }
             using (var deniedMetricAudit = await reader.GetAsync("/settings/audit?source=agent-metric-settings", token))
                 Assert.AreEqual(HttpStatusCode.Redirect, deniedMetricAudit.StatusCode);
@@ -661,6 +660,7 @@ public sealed class AgentSettingsUiHttpTests
             {
                 var metricFields = await FieldsAsync(metricPage, token, "agent-metrics");
                 Assert.AreEqual("45", metricFields["MetricInput.HostIntervalSeconds"]);
+                Assert.IsFalse(metricFields.ContainsKey("MetricInput.UploadLimitMiBPerMinute"));
                 using var readerAntiforgery = await reader.GetAsync("/api/v1/session/antiforgery", token);
                 var readerToken = await readerAntiforgery.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
                 var readerFields = new Dictionary<string, string>(metricFields)
@@ -674,7 +674,6 @@ public sealed class AgentSettingsUiHttpTests
                 metricFields["MetricInput.CpuMillisecondsPerMinute"] = "2000";
                 metricFields["MetricInput.WorkingSetLimitMiB"] = "1024";
                 metricFields["MetricInput.ProcessCollectionBudgetMs"] = "3000";
-                metricFields["MetricInput.UploadLimitMiBPerMinute"] = "24";
                 metricFields["MetricInput.IoLimitMiBPerMinute"] = "128";
                 using (var saved = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(metricFields), token))
                 {
@@ -748,19 +747,18 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual("沿用 2000 毫秒", doc.QuerySelector("#agent-metric-cpu")!.GetAttribute("placeholder"));
                 Assert.AreEqual("沿用 1024 MiB", doc.QuerySelector("#agent-metric-memory")!.GetAttribute("placeholder"));
                 Assert.AreEqual("沿用 3000 毫秒", doc.QuerySelector("#agent-metric-process-budget")!.GetAttribute("placeholder"));
-                Assert.AreEqual("沿用 24 MiB／分鐘", doc.QuerySelector("#agent-metric-upload")!.GetAttribute("placeholder"));
+                Assert.IsNull(doc.QuerySelector("#agent-metric-upload"));
+                Assert.AreEqual("沿用 128 MiB／分鐘", doc.QuerySelector("#agent-metric-io")!.GetAttribute("placeholder"));
                 var metricFields = await FieldsAsync(deviceMetricPage, token, "agent-metrics");
                 metricFields["MetricInput.HostIntervalSeconds"] = "75";
                 metricFields["MetricInput.CpuMillisecondsPerMinute"] = "1000";
                 metricFields["MetricInput.WorkingSetLimitMiB"] = "256";
                 metricFields["MetricInput.ProcessCollectionBudgetMs"] = "1000";
-                metricFields["MetricInput.UploadLimitMiBPerMinute"] = "8";
                 metricFields["MetricInput.IoLimitMiBPerMinute"] = "32";
                 using var saved = await admin.PostAsync(deviceUrl, new FormUrlEncodedContent(metricFields), token);
                 Assert.Contains("目前目標值：75 秒", await BodyTextAsync(saved, token));
                 Assert.Contains("目前目標值：1000 毫秒", await BodyTextAsync(saved, token));
                 Assert.AreEqual("1000", (await FieldsAsync(saved, token, "agent-metrics"))["MetricInput.ProcessCollectionBudgetMs"]);
-                Assert.AreEqual("8", (await FieldsAsync(saved, token, "agent-metrics"))["MetricInput.UploadLimitMiBPerMinute"]);
                 Assert.AreEqual("32", (await FieldsAsync(saved, token, "agent-metrics"))["MetricInput.IoLimitMiBPerMinute"]);
                 Assert.Contains("目前目標值：256 MiB", await BodyTextAsync(saved, token));
                 Assert.Contains("目前目標值：1000 毫秒", await BodyTextAsync(saved, token));
@@ -769,7 +767,6 @@ public sealed class AgentSettingsUiHttpTests
                 resetMetric["MetricInput.CpuMillisecondsPerMinute"] = "";
                 resetMetric["MetricInput.WorkingSetLimitMiB"] = "";
                 resetMetric["MetricInput.ProcessCollectionBudgetMs"] = "";
-                resetMetric["MetricInput.UploadLimitMiBPerMinute"] = "";
                 resetMetric["MetricInput.IoLimitMiBPerMinute"] = "";
                 using var metricResetResponse = await admin.PostAsync(deviceUrl, new FormUrlEncodedContent(resetMetric), token);
                 Assert.Contains("目前目標值：50 秒", await BodyTextAsync(metricResetResponse, token));

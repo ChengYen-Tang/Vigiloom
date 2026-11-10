@@ -13,7 +13,6 @@ public sealed class AgentMetricSetting
     public int? CpuMillisecondsPerMinute { get; set; }
     public int? WorkingSetLimitMiB { get; set; }
     public int? ProcessCollectionBudgetMs { get; set; }
-    public int? UploadLimitMiBPerMinute { get; set; }
     public int? IoLimitMiBPerMinute { get; set; }
     public Guid UpdatedBy { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

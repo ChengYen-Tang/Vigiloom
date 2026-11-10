@@ -56,7 +56,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     public Task MetricIoBudgetMigration_DowngradePreservesSettingsAndAudit() => WithDatabase(async (resources, agents, token) =>
     {
-        const string previousMigration = "20261109213427_AgentUploadBudget";
+        const string previousMigration = "20261109212419_ProcessCollectionBudget";
         await using (var db = agents.CreateDbContext())
         {
             var migrator = db.GetService<IMigrator>();

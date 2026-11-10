@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
 using Vigiloom.Agent.Core.Identity;
-using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Transport;
@@ -26,20 +25,13 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         }
         var credential = $"vla_{id:D}.{identity.MachineSecret}";
         using var compressed = await CompressIfUsefulAsync(pending.Payload, token);
-        var owner = new AgentSettingsOwner(id, expected.AbsoluteUri, vault.StateDirectory);
-        var reservation = await queue.ReserveUploadAsync(owner, compressed is null ? pending.Payload.Length : checked((int)compressed.Length),
-            null, clock, token);
-        if (reservation.OwnerChanged) return new(BatchSendResult.ServerMismatch);
-        if (!reservation.Allowed) return new(BatchSendResult.Throttled, reservation.RetryAfter);
         using var first = await SendAsync(expected, credential, pending.Payload, compressed, token);
         // Older platforms explicitly reject Content-Encoding. Retry the same stored bytes
         // uncompressed instead of treating their 415 as a permanent batch rejection.
         HttpResponseMessage? fallbackResponse = null;
         if (compressed is not null && first.StatusCode == HttpStatusCode.UnsupportedMediaType)
         {
-            reservation = await queue.ReserveUploadAsync(owner, pending.Payload.Length, null, clock, token);
-            if (reservation.OwnerChanged) return new(BatchSendResult.ServerMismatch);
-            if (!reservation.Allowed) return new(BatchSendResult.Throttled, reservation.RetryAfter);
+            token.ThrowIfCancellationRequested();
             fallbackResponse = await SendAsync(expected, credential, pending.Payload, null, token);
         }
         using var fallback = fallbackResponse;
@@ -121,5 +113,5 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
     }
 }
 
-public enum BatchSendResult { NoPendingBatch, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch, Throttled }
+public enum BatchSendResult { NoPendingBatch, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch }
 public readonly record struct BatchSendOutcome(BatchSendResult Status, TimeSpan? RetryAfter = null);

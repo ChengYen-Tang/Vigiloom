@@ -136,7 +136,7 @@ public sealed class AgentIdentityTlsTests
                     var metricCurrent = await metricConfiguration.GetAsync(device.Id, token);
                     Assert.IsNotNull(metricCurrent);
                     configuredMetrics = (await metricConfiguration.UpdateAsync(device.Id,
-                        new(new(10, 20, 2000, 1024, 2500, 8, 96), metricCurrent.Version), Guid.CreateVersion7(), token))!;
+                        new(new(10, 20, 2000, 1024, 2500, 96), metricCurrent.Version), Guid.CreateVersion7(), token))!;
                     Assert.IsNotNull(configuredMetrics);
                 }
                 var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);

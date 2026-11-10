@@ -2,8 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Time.Testing;
-using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
@@ -16,9 +14,9 @@ public sealed class AgentBatchClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public async Task Sender_FallbackOverBudgetRetainsBatchUntilNextWindow()
+    public async Task Sender_IgnoresObsoleteUploadBudgetState()
     {
-        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBatchFallbackBudgetTests");
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomOldUploadStateTests");
         var root = Path.Combine(parent, Path.GetRandomFileName());
         try
         {
@@ -26,82 +24,27 @@ public sealed class AgentBatchClientTests
             var id = Guid.CreateVersion7();
             var server = new Uri("https://example.test/");
             var vault = new IdentityVault(root);
-            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             await using (var session = vault.Acquire())
-                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = secret }, token);
-            var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-            var now = clock.GetUtcNow();
-            var items = Enumerable.Range(0, 12).Select(_ => new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind,
-                now, new string('A', 200), "X64", ".NET 10")).ToArray();
-            var batch = new AgentBatch(1, Guid.CreateVersion7(), now, items);
-            var bytes = AgentBatchCodec.Serialize(batch);
-            var queue = new DurableBatchQueue(vault, id);
-            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, items.Length, bytes, token));
-            var owner = new AgentSettingsOwner(id, server.AbsoluteUri, vault.StateDirectory);
-            var limit = (long)AgentMetricSettings.Default.UploadLimitMiBPerMinute * 1024 * 1024;
-            var remaining = limit - bytes.Length;
-            while (remaining > 0)
-            {
-                var size = (int)Math.Min(remaining, DurableBatchQueue.MaximumBatchBytes);
-                Assert.IsTrue((await queue.ReserveUploadAsync(owner, size, limit, clock, token)).Allowed);
-                remaining -= size;
-            }
-            var handler = new CompressionHandler(true, null);
-            using var http = new HttpClient(handler);
-            var sender = new AgentBatchClient(http, clock);
-            Assert.AreEqual(BatchSendResult.Throttled, (await sender.SendNextAsync(vault, server, token)).Status);
-            Assert.HasCount(1, handler.Payloads);
-            Assert.IsTrue(handler.Encodings[0]);
-            Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
-            clock.Advance(TimeSpan.FromMinutes(1));
-            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
-            Assert.HasCount(3, handler.Payloads);
-            Assert.IsFalse(handler.Encodings[2]);
-            Assert.IsNull(await queue.PeekAsync(token));
-        }
-        finally
-        {
-            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
-            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [TestMethod]
-    public async Task Sender_ThrottlesWithoutSendingOrDiscardingAndResumesNextWindow()
-    {
-        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBatchBudgetTests");
-        var root = Path.Combine(parent, Path.GetRandomFileName());
-        try
-        {
-            var token = TestContext.CancellationToken;
-            var id = Guid.CreateVersion7();
-            var server = new Uri("https://example.test/");
-            var vault = new IdentityVault(root);
-            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            await using (var session = vault.Acquire())
-                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = secret }, token);
-            var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-            var now = clock.GetUtcNow();
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var now = DateTimeOffset.UtcNow;
             var batch = new AgentBatch(1, Guid.CreateVersion7(), now,
                 [new(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "host", "X64", ".NET 10")]);
-            var bytes = AgentBatchCodec.Serialize(batch);
             var queue = new DurableBatchQueue(vault, id);
-            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token));
-            var owner = new AgentSettingsOwner(id, server.AbsoluteUri, vault.StateDirectory);
-            for (var i = 0; i < 16; i++)
-                Assert.IsTrue((await queue.ReserveUploadAsync(owner, DurableBatchQueue.MaximumBatchBytes, (long)AgentMetricSettings.Default.UploadLimitMiBPerMinute * 1024 * 1024, clock, token)).Allowed);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, AgentBatchCodec.Serialize(batch), token));
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                await db.OpenAsync(token);
+                using var command = db.CreateCommand();
+                command.CommandText = "CREATE TABLE upload_budget (singleton INTEGER PRIMARY KEY, started INTEGER NOT NULL, frequency INTEGER NOT NULL, used INTEGER NOT NULL); INSERT INTO upload_budget VALUES (1, $start, $frequency, 16777216)";
+                command.Parameters.AddWithValue("$start", TimeProvider.System.GetTimestamp());
+                command.Parameters.AddWithValue("$frequency", TimeProvider.System.TimestampFrequency);
+                await command.ExecuteNonQueryAsync(token);
+            }
             var handler = new CompressionHandler(false, null);
             using var http = new HttpClient(handler);
-            var sender = new AgentBatchClient(http, clock);
-            var blocked = await sender.SendNextAsync(vault, server, token);
-            Assert.AreEqual(BatchSendResult.Throttled, blocked.Status);
-            Assert.AreEqual(TimeSpan.FromMinutes(1), blocked.RetryAfter);
-            Assert.IsEmpty(handler.Payloads);
-            Assert.AreEqual(batch.BatchId, (await queue.PeekAsync(token))!.BatchId);
-            clock.Advance(TimeSpan.FromMinutes(1));
-            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Delivered, (await new AgentBatchClient(http, TimeProvider.System).SendNextAsync(vault, server, token)).Status);
+            Assert.HasCount(1, handler.Payloads);
             Assert.IsNull(await queue.PeekAsync(token));
         }
         finally
@@ -285,14 +228,7 @@ public sealed class AgentBatchClientTests
             Assert.IsTrue(handler.Encodings[0]);
             if (rejectGzip && !cancelBeforeFallback) Assert.IsFalse(handler.Encodings[1]);
             foreach (var observed in handler.Payloads) CollectionAssert.AreEqual(bytes, observed);
-            if (!cancelBeforeFallback)
-            {
-                await using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
-                await db.OpenAsync(token);
-                await using var command = db.CreateCommand();
-                command.CommandText = "SELECT used FROM upload_budget WHERE singleton = 1";
-                Assert.AreEqual((long)handler.WireLengths.Sum(), (long)(await command.ExecuteScalarAsync(token))!);
-            }
+
         }
         finally
         {
@@ -443,13 +379,11 @@ public sealed class AgentBatchClientTests
     {
         public List<byte[]> Payloads { get; } = [];
         public List<bool> Encodings { get; } = [];
-        public List<int> WireLengths { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var encoded = request.Content!.Headers.ContentEncoding.Contains("gzip");
             Encodings.Add(encoded);
             var body = await request.Content.ReadAsByteArrayAsync(token);
-            WireLengths.Add(body.Length);
             if (encoded)
             {
                 using var compressed = new MemoryStream(body);

@@ -34,7 +34,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
             var runtime = new AgentMetricSettingsRuntime();
             runtime.Bind(owner);
             void Publish(bool restrictive) => runtime.Publish(owner, new AgentSavedMetricSettings(
-                AgentMetricSettingsSnapshot.Create(new(10, 10, cpu && restrictive ? 100 : 60000, 4096, 2000, 16, !cpu && restrictive ? 1 : 4096)),
+                AgentMetricSettingsSnapshot.Create(new(10, 10, cpu && restrictive ? 100 : 60000, 4096, 2000, !cpu && restrictive ? 1 : 4096)),
                 DateTimeOffset.UtcNow, Guid.CreateVersion7(), owner.AgentId, owner.Server));
             Publish(true);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -120,7 +120,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
             var runtime = new AgentMetricSettingsRuntime();
             runtime.Bind(owner);
             void Publish(int memory) => runtime.Publish(owner, new AgentSavedMetricSettings(
-                AgentMetricSettingsSnapshot.Create(new(10, 10, 60000, memory, 2000, 16, 4096)), DateTimeOffset.UtcNow,
+                AgentMetricSettingsSnapshot.Create(new(10, 10, 60000, memory, 2000, 4096)), DateTimeOffset.UtcNow,
                 Guid.CreateVersion7(), owner.AgentId, owner.Server));
             Publish(64);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
