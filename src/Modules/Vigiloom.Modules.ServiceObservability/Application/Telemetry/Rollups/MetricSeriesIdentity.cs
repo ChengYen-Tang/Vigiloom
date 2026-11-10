@@ -81,7 +81,7 @@ internal sealed class MetricSeriesIdentity
         return true;
     }
 
-    private static bool PointFree(Metric metric) => metric.DataCase switch
+    internal static bool PointFree(Metric metric) => metric.DataCase switch
     {
         Metric.DataOneofCase.Gauge => metric.Gauge.DataPoints.Count == 0,
         Metric.DataOneofCase.Sum => metric.Sum.DataPoints.Count == 0 && ValidTemporality(metric.Sum.AggregationTemporality),
