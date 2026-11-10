@@ -396,7 +396,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -404,6 +404,9 @@ public sealed class AgentIdentityHttpTests
                 using var apiRead = await api.GetAsync(path, token);
                 Assert.AreEqual(HttpStatusCode.OK, apiRead.StatusCode, path);
             }
+            var aggregatePath = $"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={Guid.CreateVersion7():D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=300";
+            using (var anonymousAggregate = await agent.GetAsync(aggregatePath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousAggregate.StatusCode);
+            using (var apiAggregate = await api.GetAsync(aggregatePath, token)) Assert.AreEqual(HttpStatusCode.NotFound, apiAggregate.StatusCode);
             using (var anonymousStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousStatus.StatusCode);
             using (var apiStatus = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
@@ -598,6 +601,15 @@ public sealed class AgentIdentityHttpTests
             using (var oneTimeNotMachine = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oneTimeNotMachine.StatusCode);
             var machineSecret = Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
+            using (var aggregate = await api.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={result.AgentId:D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=300", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, aggregate.StatusCode);
+                var body = await aggregate.Content.ReadFromJsonAsync<HostMetricAggregate>(cancellationToken: token);
+                Assert.IsNotNull(body);
+                Assert.IsEmpty(body.Buckets);
+            }
+            using (var invalidAggregate = await api.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={result.AgentId:D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidAggregate.StatusCode);
             foreach (var path in new[] { $"/devices/{device.Id:D}", $"/api/v1/devices/{device.Id:D}/agent-status" })
             {
                 using var visible = await reader.GetAsync(path, token);
@@ -701,7 +713,11 @@ public sealed class AgentIdentityHttpTests
             using (var changedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(batch with { Items = [observation with { RuntimeVersion = "changed" }] })), token))
                 Assert.AreEqual(HttpStatusCode.Conflict, changedBatch.StatusCode);
             using (var invalidBatch = await agent.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token))
+            {
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
+                Assert.IsTrue(invalidBatch.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var supported));
+                Assert.Contains("2", string.Join(",", supported));
+            }
             using (var unsupported = JsonBytes(batchBytes))
             {
                 unsupported.Headers.ContentEncoding.Add("br");

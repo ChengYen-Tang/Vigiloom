@@ -18,8 +18,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         var queue = new DurableBatchQueue(vault, id);
         var pending = await queue.PeekAsync(token);
         if (pending is null) return new(BatchSendResult.NoPendingBatch);
-        if (!AgentBatchCodec.TryRead(pending.Payload, out var batch) || batch!.BatchId != pending.BatchId ||
-            batch.EnqueuedAt != pending.EnqueuedAt || batch.Items.Count != pending.RecordCount)
+        if (!MatchesQueueEntry(pending, out var isMetricBatch))
         {
             await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
             return new(BatchSendResult.InvalidLocalBatch);
@@ -29,17 +28,26 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         using var first = await SendAsync(expected, credential, pending.Payload, compressed, token);
         // Older platforms explicitly reject Content-Encoding. Retry the same stored bytes
         // uncompressed instead of treating their 415 as a permanent batch rejection.
-        using var fallback = compressed is not null && first.StatusCode == HttpStatusCode.UnsupportedMediaType
-            ? await SendAsync(expected, credential, pending.Payload, null, token) : null;
+        HttpResponseMessage? fallbackResponse = null;
+        if (compressed is not null && first.StatusCode == HttpStatusCode.UnsupportedMediaType)
+        {
+            token.ThrowIfCancellationRequested();
+            fallbackResponse = await SendAsync(expected, credential, pending.Payload, null, token);
+        }
+        using var fallback = fallbackResponse;
         var response = fallback ?? first;
         if (response.StatusCode == HttpStatusCode.NoContent)
         {
             await queue.AcknowledgeAsync(pending.BatchId, token);
             return new(BatchSendResult.Delivered);
         }
+        // A v1-only server rejects a valid v2 body with 400. Preserve its bytes until
+        // the server explicitly advertises v2 before treating that response as permanent.
+        var unknownMetricSchema = isMetricBatch && response.StatusCode == HttpStatusCode.BadRequest && !SupportsMetrics(response);
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
+            HttpStatusCode.BadRequest when unknownMetricSchema => BatchSendResult.Retry,
             HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Gone or HttpStatusCode.RequestEntityTooLarge or HttpStatusCode.UnsupportedMediaType => BatchSendResult.Rejected,
             _ => BatchSendResult.Retry
         };
@@ -60,6 +68,23 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         var delay = retry?.Delta ?? (retry?.Date is { } date ? date - clock.GetUtcNow() : (TimeSpan?)null);
         if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
         return new(status, delay);
+    }
+
+    private static bool SupportsMetrics(HttpResponseMessage response) =>
+        response.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var values) &&
+        values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), "2", StringComparison.Ordinal));
+
+    private static bool MatchesQueueEntry(QueuedBatch pending, out bool isMetricBatch)
+    {
+        isMetricBatch = false;
+        if (AgentBatchCodec.TryRead(pending.Payload, out var runtime))
+            return runtime!.BatchId == pending.BatchId && runtime.EnqueuedAt == pending.EnqueuedAt && runtime.Items.Count == pending.RecordCount;
+        if (AgentMetricBatchCodec.TryRead(pending.Payload, out var metrics))
+        {
+            isMetricBatch = true;
+            return metrics!.BatchId == pending.BatchId && metrics.EnqueuedAt == pending.EnqueuedAt && metrics.Items.Count == pending.RecordCount;
+        }
+        return false;
     }
 
     private static async Task<MemoryStream?> CompressIfUsefulAsync(byte[] payload, CancellationToken token)

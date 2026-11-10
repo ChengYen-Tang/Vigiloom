@@ -156,6 +156,9 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.AreEqual("bearer", schemes.GetProperty("ApiBearer").GetProperty("scheme").GetString());
         Assert.AreEqual("cookie", schemes.GetProperty("BrowserSession").GetProperty("in").GetString());
         var paths = document.RootElement.GetProperty("paths");
+        var metricAgentSecurity = paths.GetProperty("/api/v1/agent/metric-settings").GetProperty("get").GetProperty("security");
+        Assert.AreEqual(1, metricAgentSecurity.GetArrayLength());
+        Assert.IsTrue(metricAgentSecurity[0].TryGetProperty("AgentBearer", out _));
         var accessSecurity = paths.GetProperty("/api/v1/access").GetProperty("get").GetProperty("security")[0];
         Assert.IsTrue(accessSecurity.TryGetProperty("ApiBearer", out _));
         var audit = paths.GetProperty("/api/v1/operations/audit").GetProperty("get");

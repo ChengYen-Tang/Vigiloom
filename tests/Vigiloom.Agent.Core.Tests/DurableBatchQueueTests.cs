@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Core.Configuration;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Tests;
 
@@ -8,6 +10,168 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class DurableBatchQueueTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task MetricSettingsStore_PreservesLastGoodAndFencesStaleOrOtherIdentity()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id, MachineSecret = "test" }, token);
+            var store = new AgentMetricSettingsStore(vault, server, id);
+            Assert.IsNull(await store.ReadAsync(token));
+            var first = await store.SaveAsync(AgentMetricSettingsSnapshot.Create(AgentMetricSettings.Default), null, DateTimeOffset.UtcNow, token);
+            var second = await store.SaveAsync(AgentMetricSettingsSnapshot.Create(new(45, 90)), first.SaveToken, DateTimeOffset.UtcNow, token);
+            await Assert.ThrowsAsync<AgentSettingsConflictException>(() => store.SaveAsync(first.Snapshot, first.SaveToken, DateTimeOffset.UtcNow, token));
+            Assert.AreEqual(second, await store.ReadAsync(token));
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = Guid.CreateVersion7(), MachineSecret = "test" }, token);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.ReadAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task MetricPublisher_SampleLargerThanQueueProgressesInOrder()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = id, MachineSecret = "test" }, token);
+            var queue = new DurableBatchQueue(vault, id, 1024 * 1024, 1);
+            var now = DateTimeOffset.UtcNow;
+            var points = Enumerable.Range(0, 501).Select(i => new AgentMetricPoint(Guid.CreateVersion7(), now,
+                AgentMetricKind.MemoryTotalBytes, "test", null, i)).ToArray();
+            var publisher = new MetricSamplePublisher(queue, owner);
+            publisher.Prepare(points, now);
+            var actual = new List<Guid>();
+            for (var i = 0; i < 3; i++)
+            {
+                var status = await publisher.FlushAsync(token);
+                Assert.AreEqual(i < 2 ? EnqueueResult.Full : EnqueueResult.Queued, status);
+                var batch = await queue.PeekAsync(token);
+                Assert.IsNotNull(batch);
+                Assert.IsTrue(AgentMetricBatchCodec.TryRead(batch.Payload, out var decoded));
+                Assert.IsNotNull(decoded);
+                actual.AddRange(decoded.Items.Select(x => x.MessageId));
+                Assert.IsTrue(await queue.AcknowledgeAsync(batch.BatchId, token));
+            }
+            Assert.IsFalse(publisher.HasPending);
+            CollectionAssert.AreEqual(points.Select(x => x.MessageId).ToArray(), actual);
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task MetricPublisher_RetainsSampleWhileQueueIsFullAndRetriesSamePoints()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = id, MachineSecret = "test" }, token);
+            var queue = new DurableBatchQueue(vault, id, 100_000, 1);
+            var existing = Guid.CreateVersion7();
+            await queue.EnqueueAsync(existing, DateTimeOffset.UtcNow, 1, new byte[] { 1 }, token);
+            var now = DateTimeOffset.UtcNow;
+            var point = new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, 1024);
+            var publisher = new MetricSamplePublisher(queue, owner);
+            publisher.Prepare([point], now);
+            Assert.AreEqual(EnqueueResult.Full, await publisher.FlushAsync(token));
+            Assert.IsTrue(publisher.HasPending);
+            Assert.Throws<InvalidOperationException>(() => publisher.Prepare([point], now));
+            Assert.IsTrue(await queue.AcknowledgeAsync(existing, token));
+            Assert.AreEqual(EnqueueResult.Queued, await publisher.FlushAsync(token));
+            Assert.IsFalse(publisher.HasPending);
+            var saved = await queue.PeekAsync(token);
+            Assert.IsNotNull(saved);
+            Assert.IsTrue(AgentMetricBatchCodec.TryRead(saved.Payload, out var batch));
+            Assert.IsNotNull(batch);
+            Assert.AreEqual(point, batch.Items.Single());
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task Queue_OwnerIsRecheckedUnderIdentityLeaseBeforeWriting()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var agentId = Guid.CreateVersion7();
+            var owner = new AgentSettingsOwner(agentId, "https://example.test/", vault.StateDirectory);
+            var queue = new DurableBatchQueue(vault, agentId, 100, 4);
+            var batch = new QueuedBatch(Guid.CreateVersion7(), DateTimeOffset.UtcNow, 1, [1]);
+            Assert.AreEqual(EnqueueResult.OwnerChanged, await queue.EnqueueManyForOwnerAsync([batch], owner, token));
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = agentId, MachineSecret = "test" }, token);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueManyForOwnerAsync([batch], owner, token));
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = "https://other.test/", AgentId = agentId, MachineSecret = "test" }, token);
+            var next = new QueuedBatch(Guid.CreateVersion7(), DateTimeOffset.UtcNow, 1, [2]);
+            Assert.AreEqual(EnqueueResult.OwnerChanged, await queue.EnqueueManyForOwnerAsync([next], owner, token));
+            Assert.AreEqual(new QueueStatus(1, 1, 0), await queue.GetStatusAsync(token));
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
+    public async Task Queue_MultipleBatchesAreAtomicAndRetryable()
+    {
+        var root = NewRoot();
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var owner = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            var first = new QueuedBatch(Guid.CreateVersion7(), now, 1, [1, 2]);
+            var second = new QueuedBatch(Guid.CreateVersion7(), now, 1, [3, 4]);
+            var small = new DurableBatchQueue(new IdentityVault(root), owner, 3, 2);
+            Assert.AreEqual(EnqueueResult.ExceedsCapacity, await small.EnqueueManyAsync([first, second], token));
+            Assert.AreEqual(new QueueStatus(0, 0, 0), await small.GetStatusAsync(token));
+            var queue = new DurableBatchQueue(new IdentityVault(root), owner, 10, 2);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand();
+                command.CommandText = "CREATE TRIGGER test_reject_second BEFORE INSERT ON batches WHEN NEW.payload = X'0304' BEGIN SELECT RAISE(ABORT, 'injected second insert failure'); END";
+                command.ExecuteNonQuery();
+            }
+            await Assert.ThrowsAsync<SqliteException>(() => queue.EnqueueManyAsync([first, second], token));
+            Assert.AreEqual(new QueueStatus(0, 0, 0), await queue.GetStatusAsync(token));
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var command = db.CreateCommand();
+                command.CommandText = "DROP TRIGGER test_reject_second";
+                command.ExecuteNonQuery();
+            }
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueManyAsync([first, second], token));
+            Assert.AreEqual(EnqueueResult.AlreadyQueued, await queue.EnqueueManyAsync([first, second], token));
+            Assert.AreEqual(EnqueueResult.ConflictingBatch, await queue.EnqueueManyAsync([first with { Payload = [9] }, second], token));
+            Assert.AreEqual(new QueueStatus(4, 2, 0), await queue.GetStatusAsync(token));
+            Assert.AreEqual(first.BatchId, (await queue.PeekAsync(token))!.BatchId);
+            Assert.IsTrue(await queue.AcknowledgeAsync(first.BatchId, token));
+            Assert.AreEqual(second.BatchId, (await queue.PeekAsync(token))!.BatchId);
+        }
+        finally { Cleanup(root); }
+    }
 
     [TestMethod]
     public void SqliteNativeLibrary_LoadsPinnedVersion()

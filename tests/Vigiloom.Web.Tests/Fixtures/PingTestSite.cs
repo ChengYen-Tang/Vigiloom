@@ -11,11 +11,27 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using AngleSharp.Html.Parser;
+using System.Net;
 
 namespace Vigiloom.Web.Tests.Fixtures;
 
 internal static class PingTestSite
 {
+    internal static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new("https://localhost") });
+
+    internal static async Task LoginAsync(HttpClient client, string name, CancellationToken token)
+    {
+        using var page = await client.GetAsync("/account/login", token);
+        var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+        var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+        var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+        fields["Input.UserName"] = name;
+        fields["Input.Password"] = "Strong-Password-123";
+        using var response = await client.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
+        Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
     internal static async Task<Device> InitializeAsync(WebApplicationFactory<Program> factory, CancellationToken token)
     {
         var identity = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
