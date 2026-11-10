@@ -3,7 +3,7 @@ namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 /// <summary>Five-minute UTC windows in the original OTLP nanosecond time domain.</summary>
 internal readonly record struct MetricWindow(ulong Start, ulong End)
 {
-    private const ulong Width = 300_000_000_000;
+    internal const ulong WidthNanoseconds = 300_000_000_000;
 
     internal static bool TryForSample(ulong timestamp, out MetricWindow window)
     {
@@ -20,9 +20,9 @@ internal readonly record struct MetricWindow(ulong Start, ulong End)
 
     private static bool TryCreate(ulong timestamp, out MetricWindow window)
     {
-        var start = timestamp - timestamp % Width;
-        if (start > ulong.MaxValue - Width) { window = default; return false; }
-        window = new(start, start + Width);
+        var start = timestamp - timestamp % WidthNanoseconds;
+        if (start > ulong.MaxValue - WidthNanoseconds) { window = default; return false; }
+        window = new(start, start + WidthNanoseconds);
         return true;
     }
 }
