@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using OpenTelemetry.Proto.Collector.Metrics.V1;
 using OpenTelemetry.Proto.Metrics.V1;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
@@ -63,6 +64,7 @@ internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbConte
         if (bindings is null) return new(ExportStatus.Retry, 0);
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var accepted = 0;
+        var changes = new Dictionary<Guid, HashSet<DateTimeOffset>>();
         var serviceNotAuthorized = false;
         foreach (var group in groups)
         {
@@ -77,11 +79,16 @@ internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbConte
             if (instance.Status is InstanceResolutionStatus.Busy or InstanceResolutionStatus.CapacityReached) return new(ExportStatus.Retry, 0);
             if (instance.Status is not (InstanceResolutionStatus.Resolved or InstanceResolutionStatus.Unidentified))
             { rejected += group.Data.Points.Count; continue; }
+            if (!MetricWindowRevisions.Add(changes, binding.ServiceId, group.Data)) return new(ExportStatus.Invalid, 0);
             MetricIngestion.Stage(db, group.Resource, group.Scope, group.Data, instance, received);
             accepted += group.Data.Points.Count;
         }
         if (accepted > 0)
         {
+            var revision = await MetricWindowRevisions.MarkAsync(db, changes, token);
+            if (revision == WindowRevisionResult.RawPruned)
+                return new(ExportStatus.Partial, rejected + accepted, ServiceNotAuthorized: serviceNotAuthorized, MetricWindowPruned: true);
+            if (revision == WindowRevisionResult.CapacityExceeded) return new(ExportStatus.Retry, 0);
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
         }

@@ -21,7 +21,9 @@ internal static class OtlpHttpEndpoints
         group.MapPost("/v1/metrics", (HttpContext context, TelemetryExports exports, ReceptionRejectionDiagnostics diagnostics, CancellationToken token) =>
             OtlpHttpReceiver.ReceiveAsync(context, ExportMetricsServiceRequest.Parser, exports.MetricsAsync,
                 r => new ExportMetricsServiceResponse { PartialSuccess = r.Status == ExportStatus.Partial
-                    ? new ExportMetricsPartialSuccess { RejectedDataPoints = r.Rejected, ErrorMessage = Rejected } : null }, token, diagnostics));
+                    ? new ExportMetricsPartialSuccess { RejectedDataPoints = r.Rejected, ErrorMessage = r.MetricWindowPruned
+                        ? "The request contains metrics for a window whose raw data was already pruned; no metrics in this request were stored."
+                        : Rejected } : null }, token, diagnostics));
         group.MapPost("/v1/traces", (HttpContext context, TelemetryExports exports, ReceptionRejectionDiagnostics diagnostics, CancellationToken token) =>
             OtlpHttpReceiver.ReceiveAsync(context, ExportTraceServiceRequest.Parser, exports.TracesAsync,
                 r => new ExportTraceServiceResponse { PartialSuccess = r.Status == ExportStatus.Partial
