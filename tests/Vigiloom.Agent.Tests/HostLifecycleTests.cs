@@ -59,22 +59,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.AreEqual(snapshot.Revision, saved.Snapshot.Revision);
                 var owner = new AgentSettingsOwner(id, server.AbsoluteUri, vault.StateDirectory);
                 Assert.AreEqual(snapshot.Revision, host.Services.GetRequiredService<AgentLogSettingsRuntime>().ForOwner(owner)?.Revision);
-                var queue = new DurableBatchQueue(vault, id);
-                QueuedBatch? batch = null;
-                for (var attempt = 0; attempt < 80 && batch is null; attempt++)
+                AgentLogStatusReport? report = null;
+                for (var attempt = 0; attempt < 80; attempt++)
                 {
                     clock.Advance(TimeSpan.FromSeconds(6));
-                    batch = await queue.PeekAsync(token);
-                    if (batch is null) await Task.Delay(100, token);
-                }
-                Assert.IsNotNull(batch);
-                Assert.IsTrue(AgentLogBatchCodec.TryRead(batch.Payload, out var parsed));
-                Assert.AreEqual("host-event\n", parsed!.Items[0].Content);
-                AgentLogStatusReport? report = null;
-                for (var attempt = 0; attempt < 30 && report?.Sources.Count != 1; attempt++)
-                {
                     report = host.Services.GetRequiredService<AgentLogStatusRuntime>().ForOwner(owner)?.Report;
-                    if (report?.Sources.Count != 1) await Task.Delay(50, token);
+                    if (report?.Sources.Count == 1 && report.Sources[0].State is AgentLogSourceState.Collected or AgentLogSourceState.End)
+                        break;
+                    await Task.Delay(100, token);
                 }
                 Assert.IsNotNull(report);
                 Assert.AreEqual(snapshot.Revision, report.Revision);
@@ -85,6 +77,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
                     "After the record is queued, a later check may already have reached the end of the source.");
             }
             finally { await host.StopAsync(CancellationToken.None); }
+            var batch = await new DurableBatchQueue(vault, id).PeekAsync(token);
+            Assert.IsNotNull(batch);
+            Assert.IsTrue(AgentLogBatchCodec.TryRead(batch.Payload, out var parsed));
+            Assert.AreEqual("host-event\n", parsed!.Items[0].Content);
         }
         finally
         {
@@ -448,6 +444,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:StateDirectory"] = root,
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
+            foreach (var name in new[] { "BatchWorker", "MetricWorker", "LogWorker" })
+                builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
