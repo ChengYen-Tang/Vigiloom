@@ -85,13 +85,14 @@ public sealed class MetricProjectionTests
     }
 
     [TestMethod]
-    public void SummaryWithUnknownQuantileWindowRemainsProtected()
+    public void SummaryWithUnknownQuantileWindowPreservesItsSnapshot()
     {
         var metric = new Metric { Summary = new Summary() };
         var point = new SummaryDataPoint { StartTimeUnixNano = 50, TimeUnixNano = 150, Count = 2, Sum = 10001 };
         point.QuantileValues.Add(new SummaryDataPoint.Types.ValueAtQuantile { Quantile = .5, Value = 1 });
         var result = Assert.IsInstanceOfType<MetricProjection.Summary>(MetricProjection.Reduce(metric, [point], Window));
-        Assert.IsTrue(result.RequiresRaw);
+        Assert.IsFalse(result.RequiresRaw);
+        Assert.IsTrue(result.Value.StatisticsUnverified);
         Assert.AreEqual(1d, result.Value.Epochs.Single().Last!.QuantileValues[0].Value);
     }
 }

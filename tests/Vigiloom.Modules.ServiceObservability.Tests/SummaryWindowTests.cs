@@ -61,6 +61,14 @@ public sealed class SummaryWindowTests
         Assert.AreEqual(10001d, result.Epochs.Single().Last!.Sum);
     }
 
+    [TestMethod]
+    public void DecreasingQuantileValuesAreInvalid()
+    {
+        var result = SummaryWindow.Reduce([Point(50, 110, 2, 3, 2, 1)], 100, 200);
+        Assert.AreEqual(1, result.Invalid);
+        Assert.IsNull(result.Epochs.Single().Last);
+    }
+
     private static SummaryDataPoint Point(ulong start, ulong time, ulong count, double sum, double minimum, double maximum)
     {
         var point = new SummaryDataPoint { StartTimeUnixNano = start, TimeUnixNano = time, Count = count, Sum = sum };

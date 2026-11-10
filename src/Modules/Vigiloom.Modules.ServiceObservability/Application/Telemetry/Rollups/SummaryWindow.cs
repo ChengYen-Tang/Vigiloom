@@ -13,17 +13,16 @@ internal static class SummaryWindow
     {
         if (!double.IsFinite(point.Sum) || point.Count == 0 && point.Sum != 0) return (false, false);
         var prior = -1d;
-        var unverified = false;
         double? priorValue = null;
         foreach (var quantile in point.QuantileValues)
         {
             if (!double.IsFinite(quantile.Quantile) || quantile.Quantile < 0 || quantile.Quantile > 1 ||
                 quantile.Quantile <= prior || !double.IsFinite(quantile.Value) || quantile.Value < 0) return (false, false);
-            if (priorValue is { } value && quantile.Value < value) unverified = true;
+            if (priorValue is { } value && quantile.Value < value) return (false, false);
             prior = quantile.Quantile;
             priorValue = quantile.Value;
         }
         // Quantiles may cover a recent window unrelated to the cumulative count and sum.
-        return (true, unverified || point.QuantileValues.Count > 0);
+        return (true, point.QuantileValues.Count > 0);
     }
 }

@@ -165,14 +165,14 @@ public sealed class MetricRollupEncodingTests
     }
 
     [TestMethod]
-    public void SummaryQuantileSnapshotIsPreservedButRawRemainsProtected()
+    public void SummaryQuantileSnapshotIsPreservedWithQualityFlag()
     {
         var metric = new Metric { Name = "latency", Summary = new Summary() };
         var point = new SummaryDataPoint { StartTimeUnixNano = Window.Start - 10, TimeUnixNano = Window.Start + 1, Count = 2, Sum = 10001 };
         point.QuantileValues.Add(new SummaryDataPoint.Types.ValueAtQuantile { Quantile = .5, Value = 1 });
         var result = MetricRollupEncoding.Encode(Group(metric, 5, point), Window);
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.RequiresRaw);
+        Assert.IsFalse(result.RequiresRaw);
         Assert.IsTrue(((MetricRollupQuality)result.QualityFlags).HasFlag(MetricRollupQuality.StatisticsUnverified));
         var snapshot = ResourceMetrics.Parser.ParseFrom(result.ResultPayload).ScopeMetrics.Single().Metrics.Single().Summary.DataPoints.Single();
         Assert.AreEqual(10001d, snapshot.Sum);
