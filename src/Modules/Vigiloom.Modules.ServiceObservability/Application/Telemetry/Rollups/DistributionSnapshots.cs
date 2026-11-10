@@ -8,11 +8,11 @@ internal static class DistributionSnapshots
     internal sealed record Epoch<T>(ulong Start, ulong FirstObserved, ulong LastObserved, T? First, T? Last, int Inputs) where T : class;
     internal sealed record Result<T>(IReadOnlyList<Epoch<T>> Epochs, int Missing, int Invalid, bool UnknownStart,
         bool AmbiguousTimestamps, bool OverlappingEpochs, bool CountDecreased, bool StatisticsUnverified,
-        bool UnsupportedFields, bool CapacityExceeded) where T : class;
+        bool UnsupportedFields, bool CapacityExceeded, bool DistributionIncompatible) where T : class;
 
     internal static Result<T> Reduce<T>(IReadOnlyCollection<T> points, ulong start, ulong end,
         Func<T, ulong> time, Func<T, ulong> epoch, Func<T, uint> flags, Func<T, ulong> count,
-        Func<T, (bool Valid, bool StatisticsUnverified)> validate) where T : class, IMessage<T>
+        Func<T, (bool Valid, bool StatisticsUnverified)> validate, Func<T, T, bool>? compatible = null) where T : class, IMessage<T>
     {
         ArgumentNullException.ThrowIfNull(points);
         if (end <= start || points.Count > GaugeWindow.MaximumPoints) throw new ArgumentOutOfRangeException(nameof(points));
@@ -24,7 +24,7 @@ internal static class DistributionSnapshots
         var closed = new HashSet<ulong>();
         ulong? active = null;
         var missing = 0; var invalid = 0; var unknownStart = false; var ambiguous = false; var overlap = false;
-        var decreased = false; var statistics = false; var unsupported = false; var capacity = false;
+        var decreased = false; var statistics = false; var unsupported = false; var capacity = false; var incompatible = false;
         var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
         for (var i = 0; i < ordered.Length; i++)
         {
@@ -63,19 +63,21 @@ internal static class DistributionSnapshots
             if (tied)
             {
                 if (state.FirstObserved == timestamp) state.First = null;
-                state.Last = null; state.PreviousCount = null;
+                state.Last = null; state.PreviousCount = null; state.Previous = null;
                 continue;
             }
             if (isInvalid || isMissing) { state.Last = null; continue; }
             var currentCount = count(point);
             if (state.PreviousCount is { } previousCount && currentCount < previousCount) decreased = true;
+            if (compatible is not null && state.Previous is { } previousPoint && !compatible(previousPoint, point)) incompatible = true;
             if (state.Inputs == 1) state.First = point;
             state.Last = point;
             state.PreviousCount = currentCount;
+            state.Previous = point;
         }
         return new(states.Select(pair => new Epoch<T>(pair.Key, pair.Value.FirstObserved, pair.Value.LastObserved,
                 unsupported || capacity ? null : pair.Value.First?.Clone(), unsupported || capacity ? null : pair.Value.Last?.Clone(), pair.Value.Inputs)).ToArray(),
-            missing, invalid, unknownStart, ambiguous, overlap, decreased, statistics, unsupported, capacity);
+            missing, invalid, unknownStart, ambiguous, overlap, decreased, statistics, unsupported, capacity, incompatible);
     }
 
     private sealed class State<T>(ulong firstObserved) where T : class
@@ -85,6 +87,7 @@ internal static class DistributionSnapshots
         internal T? First { get; set; }
         internal T? Last { get; set; }
         internal ulong? PreviousCount { get; set; }
+        internal T? Previous { get; set; }
         internal int Inputs { get; set; }
     }
 }

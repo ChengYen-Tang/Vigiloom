@@ -84,6 +84,17 @@ internal static class MetricRollupEncoding
                 if (histogram.Value.SumBoundsUnverified) quality |= MetricRollupQuality.StatisticsUnverified;
                 if (histogram.Value.Aggregate is { } aggregate) metric.Histogram.DataPoints.Add(aggregate);
                 return (MetricRollupMode.DeltaHistogram, quality, histogram.Value.Aggregate is not null);
+            case MetricProjection.CumulativeHistogram histogram:
+                quality |= Common(histogram.Value.Missing, histogram.Value.Invalid, histogram.Value.UnsupportedFields, histogram.Value.CapacityExceeded);
+                if (histogram.Value.UnknownStart) quality |= MetricRollupQuality.UnknownStart;
+                if (histogram.Value.AmbiguousTimestamps) quality |= MetricRollupQuality.AmbiguousTimestamp;
+                if (histogram.Value.OverlappingEpochs) quality |= MetricRollupQuality.Overlap;
+                if (histogram.Value.CountDecreased) quality |= MetricRollupQuality.Decreased;
+                if (histogram.Value.DistributionIncompatible) quality |= MetricRollupQuality.Incompatible;
+                if (histogram.Value.StatisticsUnverified) quality |= MetricRollupQuality.StatisticsUnverified;
+                if (series.Points.OfType<HistogramDataPoint>().Any(x => x.Exemplars.Count > 0)) quality |= MetricRollupQuality.ExemplarsRequireRaw;
+                foreach (var epoch in histogram.Value.Epochs) AddSnapshots(metric.Histogram.DataPoints, epoch.First, epoch.Last);
+                return (MetricRollupMode.CumulativeHistogramSnapshots, quality, metric.Histogram.DataPoints.Count > 0);
             case MetricProjection.Summary summary:
                 quality |= Common(summary.Value.Missing, summary.Value.Invalid, summary.Value.UnsupportedFields, summary.Value.CapacityExceeded);
                 if (summary.Value.UnknownStart) quality |= MetricRollupQuality.UnknownStart;

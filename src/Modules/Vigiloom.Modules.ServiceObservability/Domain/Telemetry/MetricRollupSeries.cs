@@ -7,7 +7,8 @@ public enum MetricRollupMode : byte
     CumulativeSumSnapshots = 3,
     DeltaHistogram = 4,
     SummarySnapshots = 5,
-    Unsupported = 6
+    Unsupported = 6,
+    CumulativeHistogramSnapshots = 7
 }
 
 /// <summary>Internal type-preserving result for one series within a materialized window.</summary>

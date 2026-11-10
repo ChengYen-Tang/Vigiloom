@@ -122,6 +122,49 @@ public sealed class MetricRollupEncodingTests
     }
 
     [TestMethod]
+    public void CumulativeHistogramRetainsSnapshotsWithoutAddingCounts()
+    {
+        var metric = new Metric { Name = "latency", Histogram = new Histogram { AggregationTemporality = AggregationTemporality.Cumulative } };
+        var a = new HistogramDataPoint { StartTimeUnixNano = Window.Start - 1, TimeUnixNano = Window.Start + 1,
+            Count = 1, ExplicitBounds = { 5 }, BucketCounts = { 1, 0 } };
+        var b = new HistogramDataPoint { StartTimeUnixNano = a.StartTimeUnixNano, TimeUnixNano = Window.Start + 2,
+            Count = 3, Sum = 8, Min = 1, Max = 6, ExplicitBounds = { 5 }, BucketCounts = { 2, 1 } };
+        var result = MetricRollupEncoding.Encode(Group(metric, 3, a, b), Window);
+        Assert.IsNotNull(result);
+        Assert.AreEqual(MetricRollupMode.CumulativeHistogramSnapshots, result.Mode);
+        Assert.IsFalse(result.RequiresRaw);
+        Assert.IsTrue(((MetricRollupQuality)result.QualityFlags).HasFlag(MetricRollupQuality.StatisticsUnverified));
+        var points = ResourceMetrics.Parser.ParseFrom(result.ResultPayload).ScopeMetrics.Single().Metrics.Single().Histogram.DataPoints;
+        Assert.HasCount(2, points);
+        Assert.AreEqual(1UL, points[0].Count);
+        Assert.AreEqual(3UL, points[1].Count);
+        Assert.IsFalse(points[0].HasSum);
+        Assert.AreEqual(8d, points[1].Sum);
+        b.BucketCounts[0] = 0;
+        b.Count = 1;
+        b.ClearSum(); b.ClearMin(); b.ClearMax();
+        var invalid = MetricRollupEncoding.Encode(Group(metric, 3, a, b), Window);
+        Assert.IsNotNull(invalid);
+        Assert.IsTrue(invalid.RequiresRaw);
+        Assert.IsTrue(((MetricRollupQuality)invalid.QualityFlags).HasFlag(MetricRollupQuality.Incompatible));
+    }
+
+    [TestMethod]
+    public void PlausibleHistogramKeepsQualityFlagWithoutPreventingRetention()
+    {
+        var metric = new Metric { Name = "latency", Histogram = new Histogram { AggregationTemporality = AggregationTemporality.Delta } };
+        var point = new HistogramDataPoint { StartTimeUnixNano = Window.Start, TimeUnixNano = Window.End,
+            Count = 4, Sum = 14, Min = 1, Max = 6, ExplicitBounds = { 5 }, BucketCounts = { 3, 1 } };
+        var result = MetricRollupEncoding.Encode(Group(metric, 3, point), Window);
+        Assert.IsNotNull(result);
+        Assert.IsFalse(result.RequiresRaw);
+        Assert.IsTrue(((MetricRollupQuality)result.QualityFlags).HasFlag(MetricRollupQuality.StatisticsUnverified));
+        var aggregate = ResourceMetrics.Parser.ParseFrom(result.ResultPayload).ScopeMetrics.Single().Metrics.Single().Histogram.DataPoints.Single();
+        Assert.AreEqual(4UL, aggregate.Count);
+        Assert.AreEqual(14d, aggregate.Sum);
+    }
+
+    [TestMethod]
     public void SummaryQuantileSnapshotIsPreservedButRawRemainsProtected()
     {
         var metric = new Metric { Name = "latency", Summary = new Summary() };

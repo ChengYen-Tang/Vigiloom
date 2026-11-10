@@ -36,7 +36,7 @@ public sealed class MetricRollupHistoryTests(TestContext context)
                     var state = new MetricRollupWindow { ServiceId = service.Id, WindowStart = newest.AddMinutes(-5 * i), InputRevision = i % 5 == 2 ? 2 : 1 };
                     if (i % 5 != 0)
                     {
-                        state.ProjectedRevision = 1; state.ProjectionVersion = i % 5 == 4 ? 2 : 1;
+                        state.ProjectedRevision = 1; state.ProjectionVersion = i % 5 == 4 ? 3 : 1;
                         state.ProjectedAt = now; state.IsComplete = i % 5 != 3; state.RawPruned = i == 1;
                     }
                     setup.MetricRollupWindows.Add(state);

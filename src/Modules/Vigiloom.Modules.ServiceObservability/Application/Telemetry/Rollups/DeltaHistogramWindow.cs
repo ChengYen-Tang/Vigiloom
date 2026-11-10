@@ -43,7 +43,7 @@ internal static class DeltaHistogramWindow
             if ((point.Flags & ~1u) != 0) { invalid++; continue; }
             if ((point.Flags & 1u) != 0 || point.StartTimeUnixNano == 0) { missing++; continue; }
             if (point.StartTimeUnixNano >= point.TimeUnixNano) { invalid++; continue; }
-            if (!Valid(point, out var unverified)) { invalid++; continue; }
+            if (!HistogramValidation.Valid(point, out var unverified)) { invalid++; continue; }
             sumBoundsUnverified |= unverified;
             if (!coverage.Observe(point.StartTimeUnixNano, point.TimeUnixNano)) continue;
             exemplars |= point.Exemplars.Count > 0;
@@ -82,37 +82,4 @@ internal static class DeltaHistogramWindow
         return new(complete ? result : null, missing, invalid, coverage.Gap, coverage.Overlap, coverage.CrossesBoundary, incompatible, overflow, capacity, exemplars, sumBoundsUnverified, unsupported);
     }
 
-    private static bool Valid(HistogramDataPoint point, out bool sumBoundsUnverified)
-    {
-        if (point.BucketCounts.Count == 0 && point.ExplicitBounds.Count != 0 ||
-            point.BucketCounts.Count != 0 && point.BucketCounts.Count != point.ExplicitBounds.Count + 1)
-        {
-            sumBoundsUnverified = false;
-            return false;
-        }
-        if (!HistogramStatistics.Valid(point.Count, point.HasSum, point.Sum, point.HasMin, point.Min, point.HasMax, point.Max,
-                out sumBoundsUnverified)) return false;
-        for (var i = 0; i < point.ExplicitBounds.Count; i++)
-            if (!double.IsFinite(point.ExplicitBounds[i]) || i > 0 && point.ExplicitBounds[i - 1] >= point.ExplicitBounds[i]) return false;
-        ulong total = 0;
-        try { foreach (var count in point.BucketCounts) total = checked(total + count); }
-        catch (OverflowException) { return false; }
-        if (point.BucketCounts.Count == 0)
-        {
-            if (point.Count == 1 && point.HasSum && !point.HasMin && !point.HasMax) sumBoundsUnverified = true;
-            return true;
-        }
-        if (total != point.Count) return false;
-        if (point.Count == 0) return true;
-        var first = 0;
-        while (point.BucketCounts[first] == 0) first++;
-        var last = point.BucketCounts.Count - 1;
-        while (point.BucketCounts[last] == 0) last--;
-        if (point.Count == 1 && point.HasSum && !InBucket(point.ExplicitBounds, first, point.Sum)) return false;
-        return (!point.HasMin || InBucket(point.ExplicitBounds, first, point.Min)) &&
-            (!point.HasMax || InBucket(point.ExplicitBounds, last, point.Max));
-    }
-
-    private static bool InBucket(IList<double> bounds, int bucket, double value) =>
-        (bucket == 0 || value > bounds[bucket - 1]) && (bucket == bounds.Count || value <= bounds[bucket]);
 }

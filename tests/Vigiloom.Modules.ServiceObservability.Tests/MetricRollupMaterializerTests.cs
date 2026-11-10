@@ -90,19 +90,33 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
                 Assert.AreEqual(12L, ResourceMetrics.Parser.ParseFrom(saved.ResultPayload).ScopeMetrics.Single().Metrics.Single().Gauge.DataPoints.Single().AsInt);
                 Assert.AreEqual(1L, (await backfill.MetricRollupWindows.SingleAsync(token)).InputRevision);
                 var window = await backfill.MetricRollupWindows.SingleAsync(token);
-                window.ProjectionVersion = 2;
+                window.ProjectionVersion = 1;
                 await backfill.SaveChangesAsync(token);
+            }
+            // An older algorithm result with raw data is rebuilt with the current algorithm.
+            Assert.AreEqual(MetricRollupStatus.Complete, await materializer.MaterializeAsync(service.Id, start, token));
+            await using (var future = new ServiceObservabilityDbContext(options))
+            {
+                var window = await future.MetricRollupWindows.SingleAsync(token);
+                Assert.AreEqual(MetricRollupMaterializer.ProjectionVersion, window.ProjectionVersion);
+                window.ProjectionVersion = 3;
+                await future.SaveChangesAsync(token);
             }
             Assert.AreEqual(MetricRollupStatus.VersionUnsupported, await materializer.MaterializeAsync(service.Id, start, token));
             await using (var pruned = new ServiceObservabilityDbContext(options))
             {
                 var window = await pruned.MetricRollupWindows.SingleAsync(token);
                 window.ProjectionVersion = 1;
-                window.InputRevision++;
                 window.RawPruned = true;
                 await pruned.SaveChangesAsync(token);
             }
             Assert.AreEqual(MetricRollupStatus.RawPruned, await materializer.MaterializeAsync(service.Id, start, token));
+            await using (var retained = new ServiceObservabilityDbContext(options))
+            {
+                Assert.AreEqual(1, (await retained.MetricRollupWindows.SingleAsync(token)).ProjectionVersion);
+                var saved = await retained.MetricRollupSeries.SingleAsync(token);
+                Assert.AreEqual(12L, ResourceMetrics.Parser.ParseFrom(saved.ResultPayload).ScopeMetrics.Single().Metrics.Single().Gauge.DataPoints.Single().AsInt);
+            }
             Assert.AreEqual(MetricRollupStatus.WindowOpen, await materializer.MaterializeAsync(service.Id, start.AddDays(1), token));
         }, context.CancellationToken);
 
