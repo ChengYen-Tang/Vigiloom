@@ -25,7 +25,11 @@ public sealed class AgentHeartbeatClient(HttpClient http)
         SendAsync(vault, server, configuration, null, token);
 
     public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
-        AgentQueueCapacityObservation? capacityObservation, CancellationToken token)
+        AgentQueueCapacityObservation? capacityObservation, CancellationToken token) =>
+        await SendAsync(vault, server, configuration, capacityObservation, null, token);
+
+    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
+        AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, CancellationToken token)
     {
         await gate.WaitAsync(token);
         try
@@ -68,6 +72,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     AgentQueueSnapshot? snapshot = null;
                     AgentQuarantineBreakdown? quarantine = null;
                     AgentQueueCapacityReport? capacityReport = null;
+                    AgentMetricLossReport? metricLoss = null;
                     try
                     {
                         var (status, details) = new DurableBatchQueue(vault, id).ReadDiagnosticsLocked(lease);
@@ -83,7 +88,17 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                         // Unavailable differs from an empty queue; do not claim capacity was applied.
                         if (capacityOwnerMatches) capacityReport = new(null, null, AgentConfigurationFailure.LocalStorage);
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport);
+                    try
+                    {
+                        var owner = new AgentSettingsOwner(id, expected.AbsoluteUri, vault.StateDirectory);
+                        var loss = metricLossWriter is { Version: 7 } writer ? MetricLossLedger.ReadLocked(lease, owner, writer) : null;
+                        if (loss is not null) metricLoss = new(loss.LedgerId, loss.StartedAt, loss.Batches, loss.Records, loss.CompletenessUnknown);
+                    }
+                    catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
+                    {
+                        // An unavailable ledger is unknown, not an empty loss snapshot.
+                    }
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -97,7 +112,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
                     return await HandleResponseAsync(response, expected, credential, candidate, token);
                 // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
-                if (candidate.CapacityConfiguration is not null) candidate = candidate with { CapacityConfiguration = null };
+                if (candidate.MetricLoss is not null) candidate = candidate with { MetricLoss = null };
+                else if (candidate.CapacityConfiguration is not null) candidate = candidate with { CapacityConfiguration = null };
                 else if (candidate.Quarantine is not null) candidate = candidate with { Quarantine = null };
                 else if (candidate.Configuration is not null) candidate = candidate with { Configuration = null };
                 else return await HandleResponseAsync(response, expected, credential, candidate, token);

@@ -11,7 +11,7 @@ public enum AgentConnectionState { Disabled, NotRegistered, AwaitingFirstHeartbe
 public sealed record AgentConnectionStatus(Guid DeviceId, AgentConnectionState State, DateTimeOffset? LastHeartbeatAt,
     int OfflineAfterSeconds, AgentQueueMonitoring? Queue = null, DateTimeOffset? LastCommittedBatchAt = null,
     AgentBatchTimeObservation? LastBatchTime = null, AgentReceiptCapacity? ReceiptCapacity = null,
-    AgentReplayIssueObservation? LastReplayIssue = null);
+    AgentReplayIssueObservation? LastReplayIssue = null, AgentMetricLossMonitoring? MetricLoss = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<AgentReplayIssue>))]
 public enum AgentReplayIssue { ClockUncertain = 1, TimestampAhead = 2, Expired = 3 }
@@ -27,3 +27,6 @@ public sealed record AgentBatchTimeObservation(DateTimeOffset EnqueuedAt, DateTi
 
 /// <summary>Most recent queue report received by the platform; null snapshot means the Agent could not read the queue.</summary>
 public sealed record AgentQueueMonitoring(DateTimeOffset ReportedAt, AgentQueueSnapshot? Snapshot, AgentQuarantineBreakdown? Quarantine = null);
+
+/// <summary>Latest authenticated metric-loss snapshot, not proof of complete historical accounting.</summary>
+public sealed record AgentMetricLossMonitoring(DateTimeOffset ReportedAt, AgentMetricLossReport Snapshot);

@@ -34,6 +34,7 @@ public sealed class MetricSamplingCycleTests(TestContext context)
             Assert.AreEqual(EnqueueResult.Full, (await cycle.RunAsync(AgentMetricSettings.Default, token)).Status);
             Assert.IsGreaterThan(0, cycle.PendingBatches);
             Assert.IsGreaterThan(0L, cycle.PendingRecords);
+            Assert.IsFalse(cycle.PendingOutcomeUnknown, "An explicit full response is backpressure, not an ambiguous enqueue.");
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(10));
             var flushing = cycle.FlushForShutdownAsync(deadline.Token);
@@ -84,9 +85,11 @@ public sealed class MetricSamplingCycleTests(TestContext context)
             await using (var held = vault.Acquire())
                 await Assert.ThrowsExactlyAsync<IOException>(() => cycle.RunAsync(AgentMetricSettings.Default, token));
             Assert.IsTrue(cycle.HasPending);
+            Assert.IsTrue(cycle.PendingOutcomeUnknown, "An interrupted enqueue must not be classified as a confirmed loss.");
             clock.Advance(TimeSpan.FromSeconds(30));
             var result = await cycle.RunAsync(AgentMetricSettings.Default, token);
             Assert.AreEqual(EnqueueResult.Queued, result.Status);
+            Assert.IsFalse(cycle.PendingOutcomeUnknown);
             var foundProcess = false;
             var foundSecondHost = false;
             while (await queue.PeekAsync(token) is { } batch)

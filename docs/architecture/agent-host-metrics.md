@@ -60,7 +60,7 @@ A sample is split into wire batches of at most 250 points and one MiB per batch.
 
 Unqueued batches remain only in memory. Stopping or crashing the Agent can lose those points, and a producer blocked on a pending sample can miss later sampling intervals. Production scheduling must expose and account for these gaps rather than treating them as zero or claiming the entire sample is durable. The publisher must be called by one producer at a time and must never transfer pending points to a different Agent identity.
 
-During orderly shutdown the sampler retries a full queue for up to five seconds, allowing a still-running sender to free space. The producer must be registered after the sender so the default sequential host shutdown stops it first. Any batches still pending are reported with their record count in the Agent log. Logs are not a durable loss ledger, and neither a hard crash nor an I/O failure is guaranteed to leave an exact loss count.
+During orderly shutdown the sampler retries a full queue for up to five seconds, allowing a still-running sender to free space. The producer must be registered after the sender so the default sequential host shutdown stops it first. Known batches that cannot be queued are recorded in a durable loss ledger when possible; interrupted or ambiguous operations are reported as having unknown completeness rather than an exact loss count. See [Agent data loss reporting](agent-data-loss.md).
 
 ## Resource-policy boundary
 

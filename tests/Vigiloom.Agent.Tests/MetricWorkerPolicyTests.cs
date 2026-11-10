@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Metrics;
@@ -14,6 +15,86 @@ namespace Vigiloom.Agent.Tests;
 [DoNotParallelize]
 public sealed class MetricWorkerPolicyTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(60000, CooperativeCancellation = true)]
+    public async Task Worker_ContinuesSamplingWithCorruptLedgerAndResumesAccountingAfterRepair()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomMetricLedgerTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        var stopped = true;
+        Exception? failure = null;
+        try
+        {
+            var token = context.CancellationToken;
+            var vault = new IdentityVault(root);
+            var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            await using (var identity = vault.Acquire())
+                await identity.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId, MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            await using (var ledger = await MetricLossLedger.StartAsync(vault, owner, token)) await ledger.CompleteAsync(token);
+            void UpdateLedger(string statement)
+            {
+                using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "metric-loss.db"), Pooling = false }.ToString());
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = statement;
+                command.ExecuteNonQuery();
+            }
+            UpdateLedger("UPDATE loss_state SET unknown = 0.5");
+            var runtime = new AgentMetricSettingsRuntime();
+            runtime.Bind(owner);
+            runtime.Publish(owner, new AgentSavedMetricSettings(AgentMetricSettingsSnapshot.Create(AgentMetricSettings.Default),
+                DateTimeOffset.UtcNow, Guid.CreateVersion7(), owner.AgentId, owner.Server));
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = vault.StateDirectory,
+                ["Vigiloom:Agent:Server"] = owner.Server
+            }).Build();
+            var logger = new CapturingLogger();
+            using var worker = new MetricWorker(runtime, config, TimeProvider.System, logger);
+            try
+            {
+                stopped = false;
+                await worker.StartAsync(token);
+                await WaitForAsync(() => logger.Contains("Agent metric loss accounting unavailable; collection continues: InvalidDataException"), token);
+                await WaitForAsync(() => logger.Contains("Agent metric queue: Queued"), token);
+                Assert.IsNull(runtime.LossWriterFor(owner), "A corrupt ledger must not produce a fresh loss snapshot.");
+                IAsyncDisposable? contender = null;
+                try { Assert.Throws<IOException>(() => contender = new IdentityVault(root).AcquireMetricOwnership()); }
+                finally { if (contender is not null) await contender.DisposeAsync(); }
+                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 1");
+                await WaitForAsync(() => runtime.LossWriterFor(owner) is not null, token);
+                var firstWriter = runtime.LossWriterFor(owner);
+                var queue = new DurableBatchQueue(vault, owner.AgentId);
+                var beforeFailure = (await queue.GetStatusAsync(token)).TotalBatches;
+                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 0.5");
+                await WaitForAsync(() => runtime.LossWriterFor(owner) is null, token);
+                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 1");
+                await WaitForAsync(() => runtime.LossWriterFor(owner) is { } current && current != firstWriter, token);
+                Assert.IsGreaterThanOrEqualTo(beforeFailure, (await queue.GetStatusAsync(token)).TotalBatches);
+            }
+            finally
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await worker.StopAsync(deadline.Token);
+                if (worker.ExecuteTask is { } execution) await execution.WaitAsync(deadline.Token);
+                stopped = true;
+            }
+        }
+        catch (Exception ex) { failure = ex; throw; }
+        finally
+        {
+            try
+            {
+                if (!stopped) throw new InvalidOperationException($"Worker did not stop; test directory was retained: {root}");
+                var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch (Exception cleanupError) when (failure is not null) { throw new AggregateException(failure, cleanupError); }
+        }
+    }
+
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]

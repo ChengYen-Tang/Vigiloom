@@ -7,15 +7,24 @@ public sealed record AgentHeartbeatReport([property: JsonRequired] int Version, 
     [property: JsonRequired] AgentQueueSnapshot? Queue,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentConfigurationReport? Configuration = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQuarantineBreakdown? Quarantine = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQueueCapacityReport? CapacityConfiguration = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQueueCapacityReport? CapacityConfiguration = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentMetricLossReport? MetricLoss = null)
 {
     public bool IsValid() => Version == 1 && Epoch.Version == 7 && Sequence >= 1 &&
         (Queue is null || Queue.IsValid()) && (Configuration is null || Configuration.IsValid()) &&
-        (Quarantine is null || Queue is not null && Quarantine.IsValid(Queue.QuarantinedBatches)) &&
+        (Quarantine is null || Queue is not null && Quarantine.IsValid(Queue.QuarantinedBatches)) && (MetricLoss is null || MetricLoss.IsValid()) &&
         (CapacityConfiguration is null || CapacityConfiguration.IsValid() &&
             (CapacityConfiguration.Applied is null || Queue is not null &&
                 Queue.CapacityBytes == CapacityConfiguration.Applied.Capacity.PayloadBytes &&
                 Queue.CapacityBatches == CapacityConfiguration.Applied.Capacity.BatchCount));
+}
+
+/// <summary>Cumulative confirmed losses since ledger creation; unknown completeness is separate from the count.</summary>
+public sealed record AgentMetricLossReport([property: JsonRequired] Guid LedgerId, [property: JsonRequired] DateTimeOffset StartedAt,
+    [property: JsonRequired] long Batches, [property: JsonRequired] long Records, [property: JsonRequired] bool CompletenessUnknown)
+{
+    public bool IsValid() => LedgerId.Version == 7 && StartedAt != default && StartedAt.Offset == TimeSpan.Zero &&
+        Batches >= 0 && Records >= Batches;
 }
 
 /// <summary>Applied state of the independently versioned queue capacity group.</summary>

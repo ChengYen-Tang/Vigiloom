@@ -100,6 +100,27 @@ public sealed class AgentSettingsStoreTests(TestContext testContext)
     }
 
     [TestMethod]
+    public async Task MetricOwnership_ExcludesAnotherProducerWithoutBlockingSettingsOrIdentity()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsStoreTests", Path.GetRandomFileName());
+        try
+        {
+            var vault = new IdentityVault(root);
+            await using (vault.AcquireMetricOwnership())
+            {
+                IAsyncDisposable? contender = null;
+                try { Assert.Throws<IOException>(() => contender = new IdentityVault(root).AcquireMetricOwnership()); }
+                finally { if (contender is not null) await contender.DisposeAsync(); }
+                await using var settings = vault.AcquireSettingsOwnership();
+                await using var identity = vault.Acquire();
+                Assert.IsNull(await identity.ReadAsync(testContext.CancellationToken));
+            }
+            await using var next = new IdentityVault(root).AcquireMetricOwnership();
+        }
+        finally { Cleanup(root); }
+    }
+
+    [TestMethod]
     public async Task SavedSettings_SurviveRestartAndInvalidUpdatesDoNotReplaceThem()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsStoreTests", Path.GetRandomFileName());

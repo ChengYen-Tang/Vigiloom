@@ -651,8 +651,9 @@ public sealed class AgentIdentityHttpTests
             using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, queueEpoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             var settingsReport = new AgentConfigurationReport(configured.Effective, DateTimeOffset.UtcNow, null);
+            var lossReport = new AgentMetricLossReport(Guid.CreateVersion7(), clock.Now, 2, 7, true);
             var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport,
-                new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0));
+                new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0), MetricLoss: lossReport);
             using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
             using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings-status", token))
@@ -668,11 +669,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = null }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, MetricLoss = lossReport with { Records = -1 } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
                 var status = await statusResponse.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
                 Assert.AreEqual(queueReport.Queue, status!.Queue!.Snapshot);
                 Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
+                Assert.AreEqual(lossReport, status.MetricLoss!.Snapshot);
             }
             using (var wrongVersion = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Version = 2 }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
@@ -778,6 +782,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("不代表 Agent 已收到確認", page.Body!.TextContent);
                 Assert.Contains("批次內容衝突：2 批", page.Body.TextContent);
                 Assert.Contains("可能不是目前狀態", page.Body!.TextContent);
+                Assert.Contains("至少 7 筆指標（2 批）", page.Body.TextContent);
+                Assert.Contains("部分資料的完整性無法確認", page.Body.TextContent);
             }
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
@@ -787,6 +793,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("3 批", page.Body.TextContent);
                 Assert.Contains("中央收據容量", page.Body.TextContent);
                 Assert.Contains("不代表 SQL 磁碟用量", page.Body.TextContent);
+                Assert.Contains("至少 7 筆指標（2 批）", page.Body.TextContent);
                 Assert.DoesNotContain("入列時間，比平台記錄的接收時間超前", page.Body.TextContent);
             }
             var futureBatch = batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = clock.Now.AddMinutes(6), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
@@ -811,6 +818,7 @@ public sealed class AgentIdentityHttpTests
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("佇列回報已過時或時間異常", page.Body!.TextContent);
+                Assert.Contains("統計已過時或平台時間異常", page.Body.TextContent);
                 Assert.Contains("已連線", page.Body.TextContent);
             }
             using (var full = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = queueReport.Queue! with { TotalBatches = 10 } }, token))

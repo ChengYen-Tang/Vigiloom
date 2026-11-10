@@ -8,12 +8,31 @@ namespace Vigiloom.Agent.Hosting.Metrics;
 internal sealed class AgentMetricSettingsRuntime
 {
     private State state = new(null, null, null);
+    private LossWriter? lossWriter;
     public AgentMetricSettings Current => Volatile.Read(ref state).Saved?.Snapshot.Settings ?? AgentMetricSettings.Default;
 
     public AgentMetricSettings? ForOwner(AgentSettingsOwner owner)
     {
         var current = Volatile.Read(ref state);
         return current.Owner == owner ? current.Saved?.Snapshot.Settings ?? AgentMetricSettings.Default : null;
+    }
+
+    public Guid? LossWriterFor(AgentSettingsOwner? owner)
+    {
+        var current = Volatile.Read(ref lossWriter);
+        return owner is not null && current?.Owner == owner ? current.Writer : null;
+    }
+
+    public void PublishLossWriter(AgentSettingsOwner owner, Guid writer) => Volatile.Write(ref lossWriter, new(owner, writer));
+
+    public void ClearLossWriter(AgentSettingsOwner owner)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref lossWriter);
+            if (current is null || current.Owner != owner) return;
+            if (ReferenceEquals(Interlocked.CompareExchange(ref lossWriter, null, current), current)) return;
+        }
     }
 
     public void Bind(AgentSettingsOwner? owner)
@@ -48,4 +67,5 @@ internal sealed class AgentMetricSettingsRuntime
     }
 
     private sealed record State(AgentSettingsOwner? Owner, AgentSavedMetricSettings? Saved, AgentConfigurationFailure? Failure);
+    private sealed record LossWriter(AgentSettingsOwner Owner, Guid Writer);
 }

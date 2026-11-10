@@ -26,6 +26,76 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task MetricLossMigration_UpgradesAndProtectsReportedDataFromDowngrade() => WithDatabase(async (resources, agents, token) =>
+    {
+        const string previous = "20261110040210_AgentSamplingIoBudget";
+        await using (var db = agents.CreateDbContext())
+        {
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync(previous, token);
+            await migrator.MigrateAsync(null, token);
+        }
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("migration loss test", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        await using (var db = agents.CreateDbContext())
+        {
+            var agent = new Agent(device.Id, 1, new byte[32], now);
+            agent.BeginQueueSession(Guid.CreateVersion7());
+            agent.RecordMetricLossStatus(new(Guid.CreateVersion7(), now, 1, 2, true), 1, now);
+            db.Agents.Add(agent);
+            await db.SaveChangesAsync(token);
+            var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
+            Assert.AreEqual(51000, error.Number);
+            Assert.AreEqual(2L, (await db.Agents.AsNoTracking().SingleAsync(token)).MetricLossRecords);
+        }
+    });
+
+    [TestMethod]
+    public Task MetricLossReports_RespectSessionOrderingAndNeverRefreshMissingOrDecreasingTotals() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("loss reporting", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var monitoring = new AgentMonitoring(agents, source, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registration.AgentId!.Value, secret);
+        var epoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(null, epoch), token));
+        var loss = new AgentMetricLossReport(Guid.CreateVersion7(), clock.Now, 2, 7, true);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 1, null, MetricLoss: loss), token));
+        Assert.AreEqual(loss, (await monitoring.GetAsync(device.Id, token))!.MetricLoss!.Snapshot);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 2, null), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 1, null, MetricLoss: loss), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss, "A replayed older report must not restore a stale snapshot.");
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 3, null, MetricLoss: loss with { Records = 6 }), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss, "A declining cumulative value must be unknown.");
+        var newer = loss with { Batches = 3, Records = 10 };
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 4, null, MetricLoss: newer), token));
+        Assert.AreEqual(newer, (await monitoring.GetAsync(device.Id, token))!.MetricLoss!.Snapshot);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 5, null, MetricLoss: newer with { CompletenessUnknown = false }), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 6, null, MetricLoss: newer with { StartedAt = newer.StartedAt.AddSeconds(1) }), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+        var replacement = new AgentMetricLossReport(Guid.CreateVersion7(), clock.Now, 0, 0, true);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 7, null, MetricLoss: replacement), token));
+        Assert.AreEqual(replacement, (await monitoring.GetAsync(device.Id, token))!.MetricLoss!.Snapshot);
+        await using (var legacy = agents.CreateDbContext())
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"UPDATE agent.Agents SET QueueReportSequence = {8L} WHERE Id = {registration.AgentId!.Value}", token);
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss, "A legacy server updating sequence must not refresh loss details.");
+        var nextEpoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(epoch, nextEpoch), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+        Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 9, null, MetricLoss: newer), token));
+        Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+    });
+
+    [TestMethod]
     public Task HostMetricAggregate_MaximumAcceptedValuesHaveFiniteAverage() => WithDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;

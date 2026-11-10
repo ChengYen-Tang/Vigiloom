@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
@@ -20,10 +21,12 @@ namespace Vigiloom.Agent.Tests;
 public sealed class MetricShutdownTests(TestContext context)
 {
     [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
+    [DataRow(true, false, false)]
+    [DataRow(false, false, false)]
+    [DataRow(false, true, false)]
+    [DataRow(false, false, true)]
     [Timeout(45000, CooperativeCancellation = true)]
-    public async Task Host_StopsWithFullQueueWithoutLosingPersistedBatch(bool releaseSender)
+    public async Task Host_StopsWithFullQueueWithoutLosingPersistedBatch(bool releaseSender, bool corruptQueue, bool corruptLedger)
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomMetricShutdownTests");
         var root = Path.Combine(parent, Path.GetRandomFileName());
@@ -36,6 +39,15 @@ public sealed class MetricShutdownTests(TestContext context)
             var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
             await using (var lease = vault.Acquire())
                 await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId, MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            if (corruptLedger)
+            {
+                await using (var loss = await MetricLossLedger.StartAsync(vault, owner, token)) await loss.CompleteAsync(token);
+                using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "metric-loss.db"), Pooling = false }.ToString());
+                db.Open();
+                using var command = db.CreateCommand();
+                command.CommandText = "UPDATE loss_state SET unknown = 0.5";
+                command.ExecuteNonQuery();
+            }
             await new AgentQueueCapacityStore(vault, new Uri(owner.Server), owner.AgentId).SaveAsync(
                 AgentQueueCapacitySnapshot.Create(new(1024 * 1024, 1)), null, DateTimeOffset.UtcNow, token);
             var queue = new DurableBatchQueue(vault, owner.AgentId);
@@ -70,15 +82,27 @@ public sealed class MetricShutdownTests(TestContext context)
                 await host.StartAsync(token);
                 await handler.FirstRequest.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
                 await WaitForAsync(() => logger.Contains("Agent metric queue: Full"), token);
+                if (corruptQueue)
+                {
+                    await using (vault.Acquire()) SetQueueVersion(root, 999);
+                }
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 var stop = host.StopAsync(deadline.Token);
-                await Task.Delay(250, token);
-                Assert.IsFalse(stop.IsCompleted, "The metric producer should wait for the full queue to drain.");
+                if (!corruptQueue)
+                {
+                    await Task.Delay(250, token);
+                    Assert.IsFalse(stop.IsCompleted, "The metric producer should wait for the full queue to drain.");
+                }
                 if (releaseSender) handler.Release.TrySetResult();
                 await stop;
                 foreach (var service in host.Services.GetServices<IHostedService>().OfType<BackgroundService>())
                     if (service.ExecuteTask is { } execution) await execution.WaitAsync(deadline.Token);
                 stopped = true;
+                if (corruptQueue)
+                {
+                    Assert.IsTrue(logger.Contains("InvalidDataException"));
+                    await using (vault.Acquire()) SetQueueVersion(root, 2);
+                }
                 var pending = await queue.PeekAsync(token);
                 if (releaseSender)
                 {
@@ -91,6 +115,19 @@ public sealed class MetricShutdownTests(TestContext context)
                     Assert.AreEqual(original.BatchId, pending.BatchId);
                     CollectionAssert.AreEqual(AgentBatchCodec.Serialize(original), pending.Payload);
                     Assert.IsTrue(logger.Matches(@"Agent shutdown left [1-9][0-9]* metric batches and [1-9][0-9]* records not queued"));
+                }
+                if (corruptLedger)
+                {
+                    Assert.IsTrue(logger.Contains("loss accounting unavailable; collection continues"));
+                    await using var ownership = vault.AcquireMetricOwnership();
+                }
+                else await using (var ledger = await MetricLossLedger.StartAsync(vault, owner, token))
+                {
+                    var loss = await ledger.ReadAsync(token);
+                    if (releaseSender) Assert.AreEqual(0L, loss.Records);
+                    else if (corruptQueue) Assert.IsTrue(loss.CompletenessUnknown, "A failed enqueue cannot be claimed as a known loss.");
+                    else Assert.IsGreaterThan(0L, loss.Records, "The confirmed unqueued tail should be recorded on shutdown.");
+                    await ledger.CompleteAsync(token);
                 }
                 Assert.AreEqual(0L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
                 Assert.AreEqual(0, handler.ActiveRequests);
@@ -127,6 +164,15 @@ public sealed class MetricShutdownTests(TestContext context)
             }
             catch (Exception cleanupError) when (failure is not null) { throw new AggregateException(failure, cleanupError); }
         }
+    }
+
+    private static void SetQueueVersion(string root, int version)
+    {
+        using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+        db.Open();
+        using var command = db.CreateCommand();
+        command.CommandText = version == 2 ? "PRAGMA user_version = 2" : "PRAGMA user_version = 999";
+        command.ExecuteNonQuery();
     }
 
     private static async Task WaitForAsync(Func<bool> condition, CancellationToken token)
