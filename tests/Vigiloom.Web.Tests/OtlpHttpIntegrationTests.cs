@@ -213,9 +213,21 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(1).ToString("O"));
             var history = $"/api/v1/service-telemetry/{approved.ServiceId:D}";
             var window = $"from={from}&to={to}";
+            var rollupFrom = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O"));
+            var rollupQuery = $"{history}/metrics/windows?from={rollupFrom}&to={to}";
             using (var noAccess = await reader.GetAsync($"{history}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            using (var noAccess = await reader.GetAsync(rollupQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
             using (var machineDenied = await client.GetAsync($"{history}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
+            using (var machineDenied = await client.GetAsync(rollupQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             await LoginAsync(reader, "reader", token);
+            using (var response = await reader.GetAsync(rollupQuery, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+                var windows = await response.Content.ReadFromJsonAsync<MetricRollupWindowPage>(cancellationToken: token);
+                Assert.IsNotNull(windows);
+                Assert.IsTrue(windows.Items.Single().RawPruned);
+            }
             using (var deniedOverview = await reader.GetAsync("/api/v1/service-reception", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedOverview.StatusCode);
             using (var deniedPage = await reader.GetAsync("/settings/service-reception", token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedPage.StatusCode);
             using (var admin = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false }))
@@ -260,6 +272,8 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 using var response = await api.GetAsync($"{history}/logs?{window}", token);
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+                using var windowResponse = await api.GetAsync(rollupQuery, token);
+                Assert.AreEqual(HttpStatusCode.OK, windowResponse.StatusCode);
             }
             var logPage = await reader.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"{history}/logs?{window}&traceId={Convert.ToHexString(log.TraceId.ToByteArray())}", token);
             Assert.IsNotNull(logPage);

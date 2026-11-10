@@ -20,3 +20,10 @@ public sealed record TelemetrySpan(Guid? InstanceId, DateTimeOffset StartedAt, D
 /// <summary>An OTLP metric data point. Kind identifies the original OTLP point message type.</summary>
 public sealed record TelemetryMetricPoint(Guid? InstanceId, DateTimeOffset OccurredAt, DateTimeOffset ReceivedAt,
     byte Kind, int Context, byte[] Point);
+
+/// <summary>A five-minute application metric window. IsComplete describes the last projection; check HasProjection and IsStale as well. A missing window does not establish that no data existed.</summary>
+public sealed record MetricRollupWindowResponse(DateTimeOffset WindowStart, DateTimeOffset WindowEnd,
+    string Status, DateTimeOffset? ProjectedAt, bool HasProjection, bool IsStale, bool IsComplete, bool IsSupported, bool RawPruned);
+
+/// <summary>A live page filtered by WindowStart and ordered newest first; use NextBefore as an exclusive cursor. Late arrivals may change earlier pages.</summary>
+public sealed record MetricRollupWindowPage(IReadOnlyList<MetricRollupWindowResponse> Items, DateTimeOffset? NextBefore);

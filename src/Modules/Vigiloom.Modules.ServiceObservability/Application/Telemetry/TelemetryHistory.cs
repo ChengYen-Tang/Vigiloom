@@ -1,12 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Produces bounded transport DTOs without exposing internal database keys.</summary>
 public sealed class TelemetryHistory(IDbContextFactory<ServiceObservabilityDbContext> contexts)
 {
+    public Task<MetricRollupWindowPage> MetricWindowsAsync(Guid serviceId, DateTimeOffset from, DateTimeOffset to,
+        DateTimeOffset? before, CancellationToken token) => new MetricRollupHistory(contexts).WindowsAsync(serviceId, from, to, before, token);
+
     public async Task<TelemetryPage<TelemetryLog, TelemetryContext>> LogsAsync(Guid serviceId, DateTimeOffset from, DateTimeOffset to,
         int page, byte[]? traceId, CancellationToken token)
     {
