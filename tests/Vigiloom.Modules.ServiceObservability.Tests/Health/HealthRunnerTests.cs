@@ -59,6 +59,123 @@ public sealed class HealthRunnerTests(TestContext context)
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task Restart_AfterAbandonedLease_ResumesAndRejectsOldResult() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cancellation.CancelAfter(TimeSpan.FromSeconds(30));
+            Task? server = null;
+            try
+            {
+                var options = Options(database.ConnectionString);
+                var targetId = await SeedAsync(options, ((IPEndPoint)listener.LocalEndpoint).Port, token);
+                var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+                var previousStore = new HealthStore(factory);
+                var lease = Assert.ContainsSingle(await previousStore.ClaimAsync(1, token));
+                var work = await previousStore.LoadAsync(lease, token);
+                var network = await previousStore.NetworkAsync(token);
+                Assert.IsNotNull(work);
+                Assert.IsNotNull(network);
+
+                // A second worker cannot take over until the previous worker's lease has expired.
+                Assert.IsEmpty(await new HealthStore(factory).ClaimAsync(1, token));
+                await using (var db = new ServiceObservabilityDbContext(options))
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [LeaseUntil] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {targetId}", token);
+
+                var replacement = Assert.ContainsSingle(await new HealthStore(factory).ClaimAsync(1, token));
+                Assert.IsGreaterThan(lease.Generation, replacement.Generation);
+                Assert.IsFalse(await previousStore.CommitAsync(work, network, HealthObservationKind.Unhealthy, DateTimeOffset.UtcNow, token));
+                await using (var db = new ServiceObservabilityDbContext(options))
+                {
+                    var held = await db.HealthSchedules.SingleAsync(token);
+                    Assert.AreEqual(replacement.Owner, held.LeaseOwner);
+                    Assert.AreEqual(replacement.Generation, held.Generation);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [LeaseUntil] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {targetId}", token);
+                }
+
+                server = ServeAsync(listener, null, null, cancellation.Token);
+                using (var restarted = new HealthRunner(factory, TimeProvider.System))
+                    await restarted.RunOnceAsync(cancellation.Token);
+                await server;
+
+                Assert.IsFalse(await previousStore.CommitAsync(work, network, HealthObservationKind.Unhealthy, DateTimeOffset.UtcNow, token));
+                await using var verify = new ServiceObservabilityDbContext(options);
+                var observation = await verify.HealthObservations.SingleAsync(token);
+                Assert.AreEqual(targetId, observation.TargetId);
+                Assert.AreEqual(HealthObservationKind.Healthy, observation.Kind);
+                var schedule = await verify.HealthSchedules.SingleAsync(token);
+                Assert.IsNull(schedule.LeaseOwner);
+                Assert.IsNull(schedule.LeaseUntil);
+                Assert.AreEqual((byte)EvaluatedHealth.Unknown, schedule.State);
+            }
+            finally
+            {
+                cancellation.Cancel(); listener.Stop();
+                if (server is not null) try { await server; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task TimedOutProbe_RecordsTimeout_AndSuccessfulChecksRecover() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cancellation.CancelAfter(TimeSpan.FromSeconds(30));
+            Task? server = null;
+            Task? scan = null;
+            HealthRunner? runner = null;
+            Exception? failure = null;
+            try
+            {
+                var options = Options(database.ConnectionString);
+                var targetId = await SeedAsync(options, ((IPEndPoint)listener.LocalEndpoint).Port, token);
+                var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+                server = ServeAsync(listener, received, release, cancellation.Token);
+                scan = runner.RunOnceAsync(cancellation.Token);
+                await received.Task.WaitAsync(cancellation.Token);
+                await scan;
+                release.SetResult();
+                try { await server; } catch (IOException) { }
+                server = null;
+                await using (var db = new ServiceObservabilityDbContext(options))
+                {
+                    Assert.AreEqual(HealthObservationKind.Timeout, (await db.HealthObservations.SingleAsync(token)).Kind);
+                    Assert.AreEqual((byte)EvaluatedHealth.Unknown, (await db.HealthSchedules.SingleAsync(token)).State);
+                }
+
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    await using (var db = new ServiceObservabilityDbContext(options))
+                        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {targetId}", token);
+                    server = ServeAsync(listener, null, null, cancellation.Token);
+                    await runner.RunOnceAsync(cancellation.Token);
+                    await server;
+                    if (attempt == 0)
+                    {
+                        await using var db = new ServiceObservabilityDbContext(options);
+                        Assert.AreEqual((byte)EvaluatedHealth.Unknown, (await db.HealthSchedules.SingleAsync(token)).State);
+                    }
+                }
+                await using var verify = new ServiceObservabilityDbContext(options);
+                Assert.AreEqual(3, await verify.HealthObservations.CountAsync(token));
+                Assert.AreEqual((byte)EvaluatedHealth.Healthy, (await verify.HealthSchedules.SingleAsync(token)).State);
+            }
+            catch (Exception ex) { failure = ex; }
+            finally
+            {
+                await CleanupScanAsync(cancellation, listener, scan, runner, server, failure);
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task TwoRecordedHealthyChecks_CreateARealHealthyInterval() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -303,6 +420,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [DataRow(0)]
     [DataRow(1)]
     [DataRow(2)]
+    [DataRow(3)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task RunOnce_RejectsObservationAfterAuthorizationOrSettingsChange(int change) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -314,17 +432,21 @@ public sealed class HealthRunnerTests(TestContext context)
             var requestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             Task? server = null;
+            Task? scan = null;
+            HealthRunner? runner = null;
+            Exception? failure = null;
             try
             {
                 var options = Options(database.ConnectionString);
                 var targetId = await SeedAsync(options, ((IPEndPoint)listener.LocalEndpoint).Port, token);
                 server = ServeAsync(listener, requestReceived, release, cancellation.Token);
-                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
-                var scan = runner.RunOnceAsync(cancellation.Token);
+                runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+                scan = runner.RunOnceAsync(cancellation.Token);
                 await requestReceived.Task.WaitAsync(cancellation.Token);
                 await using (var db = new ServiceObservabilityDbContext(options))
                 {
                     if (change == 1) (await db.HealthNetworkPolicies.SingleAsync(token)).ReplaceNetworks([], DateTimeOffset.UtcNow);
+                    else if (change == 3) (await db.Sources.SingleAsync(token)).Revoke(DateTimeOffset.UtcNow);
                     else if (change == 2)
                     {
                         var service = await db.Services.SingleAsync(token);
@@ -346,10 +468,10 @@ public sealed class HealthRunnerTests(TestContext context)
                 Assert.AreEqual(0, await verify.HealthObservations.CountAsync(token));
                 if (change == 0) Assert.IsFalse((await verify.HealthSchedules.SingleAsync(x => x.TargetId == targetId, token)).Enabled);
             }
+            catch (Exception ex) { failure = ex; }
             finally
             {
-                cancellation.Cancel(); listener.Stop();
-                if (server is not null) try { await server; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+                await CleanupScanAsync(cancellation, listener, scan, runner, server, failure);
             }
         }, context.CancellationToken);
 
@@ -365,13 +487,16 @@ public sealed class HealthRunnerTests(TestContext context)
             var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             Task? server = null;
+            Task? scan = null;
+            HealthRunner? runner = null;
+            Exception? failure = null;
             try
             {
                 var options = Options(database.ConnectionString);
                 await SeedAsync(options, ((IPEndPoint)listener.LocalEndpoint).Port, token);
                 server = ServeAsync(listener, received, release, cancellation.Token);
-                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
-                var scan = runner.RunOnceAsync(cancellation.Token);
+                runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+                scan = runner.RunOnceAsync(cancellation.Token);
                 await received.Task.WaitAsync(cancellation.Token);
                 await using (var db = new ServiceObservabilityDbContext(options))
                 {
@@ -383,12 +508,35 @@ public sealed class HealthRunnerTests(TestContext context)
                 await using var verify = new ServiceObservabilityDbContext(options);
                 Assert.AreEqual(0, await verify.HealthObservations.CountAsync(token));
             }
+            catch (Exception ex) { failure = ex; }
             finally
             {
-                cancellation.Cancel(); listener.Stop();
-                if (server is not null) try { await server; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+                await CleanupScanAsync(cancellation, listener, scan, runner, server, failure);
             }
         }, context.CancellationToken);
+
+    private static async Task CleanupScanAsync(CancellationTokenSource cancellation, TcpListener listener,
+        Task? scan, HealthRunner? runner, Task? server, Exception? failure)
+    {
+        cancellation.Cancel();
+        listener.Stop();
+        var errors = new List<Exception>();
+        if (scan is not null)
+            try { await scan; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            catch (Exception ex) { if (!ReferenceEquals(ex, failure)) errors.Add(ex); }
+        try { runner?.Dispose(); } catch (Exception ex) { errors.Add(ex); }
+        if (server is not null)
+            try { await server; }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
+            catch (Exception ex) { if (!ReferenceEquals(ex, failure)) errors.Add(ex); }
+        if (errors.Count > 0)
+        {
+            if (failure is not null) errors.Insert(0, failure);
+            throw new AggregateException(errors);
+        }
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
 
     private static DbContextOptions<ServiceObservabilityDbContext> Options(string connection) =>
         new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(connection,
