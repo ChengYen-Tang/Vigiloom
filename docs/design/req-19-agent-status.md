@@ -11,3 +11,20 @@ This is preliminary visual verification, not full REQ-19 acceptance. The selecte
 ## Agent delivery snapshot
 
 Extend the same device details page with a separate Agent delivery panel, using the existing card, labelled values and alert styling. Read only and administrators see the same non-secret snapshot. Show pending batches separately from retained quarantined batches, logical bytes and batch capacities, and the server receipt time. A missing report and a failed local queue read have distinct messages; never show unknown as zero. A full queue is called out without claiming data was lost. Every snapshot is labelled as last reported; show an explicit stale or clock-uncertain warning when the server receipt time is in the future or at least the conservative offline threshold old, even if empty heartbeats keep the Agent online. This panel is observational; it does not add an action to discard or alter queued data.
+
+## Confirmed metric loss
+
+Use the same labelled card on the authenticated device detail page. Show the
+confirmed count as a minimum, identify it as metric records rather than all
+Agent data, and show both ledger start and last report time in UTC. Distinguish
+an unavailable snapshot from zero, and warn when the report is stale or its
+time is uncertain. Explain that incomplete accounting means other loss may be
+unknown, and that queue backpressure and retained quarantine are not loss.
+Both signed-in roles may read this non-secret information; public views must
+not expose it. This design supplements the existing selected visual system and
+does not assert that the screen has already passed visual or accessibility QA.
+
+An isolated test site with a synthetic seven-record loss snapshot was viewed
+in the in-app browser at desktop width and 390 px. The count, timestamps and
+incomplete-accounting notice were visible on both layouts. This is a visual
+smoke check; it does not establish screen-reader or complete keyboard coverage.

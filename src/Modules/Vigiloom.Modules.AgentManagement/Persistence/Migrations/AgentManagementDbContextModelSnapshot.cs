@@ -97,6 +97,30 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastReplayIssueAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<long?>("MetricLossBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool?>("MetricLossCompletenessUnknown")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("MetricLossLedgerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("MetricLossRecords")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("MetricLossReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("MetricLossReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("MetricLossReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("MetricLossStartedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("PendingUntil")
                         .HasColumnType("datetimeoffset");
 

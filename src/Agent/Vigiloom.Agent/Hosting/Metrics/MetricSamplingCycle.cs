@@ -14,6 +14,9 @@ internal sealed class MetricSamplingCycle(AgentSettingsOwner owner, DurableBatch
     public bool HasPending => publisher.HasPending;
     public int PendingBatches => publisher.PendingBatches;
     public long PendingRecords => publisher.PendingRecords;
+    public bool PendingOutcomeUnknown => publisher.PendingOutcomeUnknown;
+    public int KnownUnqueuedBatches => publisher.KnownUnqueuedBatches;
+    public long KnownUnqueuedRecords => publisher.KnownUnqueuedRecords;
 
     /// <summary>Try to persist the current pending sample without starting another collection.</summary>
     public Task<EnqueueResult>? FlushPendingAsync(CancellationToken token) => publisher.HasPending ? publisher.FlushAsync(token) : null;
