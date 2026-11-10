@@ -42,7 +42,7 @@ public sealed class MetricRollupSchemaTests(TestContext context)
             }
             MetricRollupSeries Series(int ordinal, MetricRollupMode mode = MetricRollupMode.GaugeSnapshot, bool requiresRaw = false) => new()
             {
-                WindowRowId = window.RowId, IdentityHash = new byte[32], IdentityBytes = [(byte)(ordinal + 1)],
+                WindowRowId = window.RowId, ServiceId = service.Id, IdentityHash = new byte[32], IdentityBytes = [(byte)(ordinal + 1)],
                 CollisionOrdinal = ordinal, Mode = mode, RequiresRaw = requiresRaw, ResultVersion = 1,
                 InputCount = 1, InputBytes = 2, ResultPayload = requiresRaw ? null : [1]
             };

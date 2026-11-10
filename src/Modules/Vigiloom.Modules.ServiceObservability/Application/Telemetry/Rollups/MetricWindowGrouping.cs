@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 /// <summary>Identifies complete OTLP streams without treating hashes or matching payloads as unique events.</summary>
 internal static class MetricWindowGrouping
 {
-    internal sealed record Series(MetricSeriesIdentity Identity, Resource Resource, InstrumentationScope? Scope,
+    internal sealed record Series(MetricSeriesIdentity Identity, Guid ServiceId, Guid? InstanceId, Resource Resource, InstrumentationScope? Scope,
         string ResourceSchema, string ScopeSchema, Metric Metadata, List<IMessage> Points)
     {
         internal long InputBytes { get; set; }
@@ -60,7 +60,7 @@ internal static class MetricWindowGrouping
                     existing.Points.Add(point);
                     existing.InputBytes = checked(existing.InputBytes + bytes);
                 }
-                else matches.Add(new(identity, resource, scope, row.Context.ResourceSchemaUrl,
+                else matches.Add(new(identity, serviceId, row.InstanceId, resource, scope, row.Context.ResourceSchemaUrl,
                     row.Context.ScopeSchemaUrl, metric, [point]) { InputBytes = bytes });
             }
             catch (InvalidProtocolBufferException) { requiresRaw = true; }

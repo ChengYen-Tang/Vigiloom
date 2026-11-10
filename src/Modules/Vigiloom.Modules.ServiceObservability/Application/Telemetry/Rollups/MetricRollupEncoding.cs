@@ -30,6 +30,7 @@ internal static class MetricRollupEncoding
         if (payload is null) quality |= MetricRollupQuality.NoResult;
         return new MetricRollupSeries
         {
+            ServiceId = series.ServiceId, InstanceId = series.InstanceId,
             IdentityHash = series.Identity.Fingerprint.ToByteArray(), IdentityBytes = series.Identity.Encoded.ToByteArray(),
             Mode = mode, QualityFlags = (long)quality, RequiresRaw = projected.RequiresRaw || payload is null,
             ResultVersion = Version, InputCount = series.Points.Count, InputBytes = series.InputBytes, ResultPayload = payload
