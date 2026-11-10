@@ -1121,6 +1121,12 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<Guid>("ServiceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<DateTimeOffset>("WindowStart")
                         .HasColumnType("datetimeoffset");
 

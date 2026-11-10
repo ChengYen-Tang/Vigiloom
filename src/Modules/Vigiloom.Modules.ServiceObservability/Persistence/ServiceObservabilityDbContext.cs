@@ -323,6 +323,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         });
         window.HasKey(x => x.RowId).IsClustered();
         window.Property(x => x.RowId).UseIdentityColumn();
+        window.Property(x => x.Version).IsRowVersion();
         window.HasAlternateKey(x => new { x.RowId, x.ServiceId });
         window.HasIndex(x => new { x.ServiceId, x.WindowStart }).IsUnique();
         window.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
