@@ -9,7 +9,7 @@ internal static class DeltaHistogramWindow
     // A verified bound is only a necessary consistency check, not proof that every source sample is truthful.
     internal sealed record Result(HistogramDataPoint? Aggregate, int Missing, int Invalid, bool Gap,
         bool Overlap, bool CrossesBoundary, bool IncompatibleBounds, bool Overflow, bool CapacityExceeded,
-        bool ExemplarsOmitted, bool SumBoundsUnverified);
+        bool ExemplarsOmitted, bool SumBoundsUnverified, bool UnsupportedFields);
 
     internal static Result Reduce(IReadOnlyCollection<HistogramDataPoint> points, ulong start, ulong end)
     {
@@ -26,6 +26,8 @@ internal static class DeltaHistogramWindow
         var incompatible = false;
         var overflow = false;
         var capacity = false;
+        var unsupported = false;
+        var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
         var exemplars = false;
         var sumBoundsUnverified = false;
         var bucketWork = 0;
@@ -33,6 +35,9 @@ internal static class DeltaHistogramWindow
         double correction = 0;
         foreach (var point in ordered)
         {
+            var fields = KnownProtobufFields.Inspect(point, ref remainingBytes);
+            if (fields == KnownProtobufFields.Check.Capacity) { capacity = true; break; }
+            if (fields == KnownProtobufFields.Check.Unsupported) { unsupported = true; continue; }
             if (point.BucketCounts.Count > MaximumBucketWork - bucketWork) { capacity = true; break; }
             bucketWork += point.BucketCounts.Count;
             if ((point.Flags & ~1u) != 0) { invalid++; continue; }
@@ -72,38 +77,21 @@ internal static class DeltaHistogramWindow
             result.TimeUnixNano = point.TimeUnixNano;
         }
         coverage.Complete();
-        var complete = ordered.Length > 0 && missing == 0 && invalid == 0 && !coverage.Gap && !coverage.Overlap && !coverage.CrossesBoundary && !incompatible && !overflow && !capacity;
+        var complete = ordered.Length > 0 && missing == 0 && invalid == 0 && !coverage.Gap && !coverage.Overlap && !coverage.CrossesBoundary && !incompatible && !overflow && !capacity && !unsupported;
         if (complete) { result!.StartTimeUnixNano = start; result.TimeUnixNano = end; }
-        return new(complete ? result : null, missing, invalid, coverage.Gap, coverage.Overlap, coverage.CrossesBoundary, incompatible, overflow, capacity, exemplars, sumBoundsUnverified);
+        return new(complete ? result : null, missing, invalid, coverage.Gap, coverage.Overlap, coverage.CrossesBoundary, incompatible, overflow, capacity, exemplars, sumBoundsUnverified, unsupported);
     }
 
     private static bool Valid(HistogramDataPoint point, out bool sumBoundsUnverified)
     {
-        sumBoundsUnverified = false;
         if (point.BucketCounts.Count == 0 && point.ExplicitBounds.Count != 0 ||
-            point.BucketCounts.Count != 0 && point.BucketCounts.Count != point.ExplicitBounds.Count + 1 ||
-            point.HasSum && !double.IsFinite(point.Sum) || point.HasMin && !double.IsFinite(point.Min) ||
-            point.HasMax && !double.IsFinite(point.Max) || point.HasMin && point.HasMax && point.Min > point.Max ||
-            point.Count == 0 && (point.HasMin || point.HasMax || point.HasSum && point.Sum != 0)) return false;
-        if (point.Count == 1 && (point.HasMin && point.HasMax && point.Min != point.Max ||
-            point.HasSum && point.HasMin && point.Sum != point.Min ||
-            point.HasSum && point.HasMax && point.Sum != point.Max)) return false;
-        if (point.Count == 2 && point.HasSum && point.HasMin && point.HasMax && point.Sum != point.Min + point.Max) return false;
-        if (point.Count > 1 && point.HasSum)
+            point.BucketCounts.Count != 0 && point.BucketCounts.Count != point.ExplicitBounds.Count + 1)
         {
-            // The sender's sum may carry ordinary floating-point rounding. Bound the
-            // accumulated error conservatively; do not invent missing extrema.
-            var factor = ((double)point.Count + 8) * 2.220446049250313e-16;
-            if (!point.HasMin || !point.HasMax || factor >= 0.25 || point.Count > 2)
-                sumBoundsUnverified = true;
-            if (point.HasMin && point.HasMax && factor < 0.25)
-            {
-                var mean = point.Sum / point.Count;
-                var scale = Math.Max(Math.Abs(mean), Math.Max(Math.Abs(point.Min), Math.Abs(point.Max)));
-                var slack = scale * factor / (1 - factor) + double.Epsilon * Math.Min((double)point.Count, 1_000_000);
-                if (mean < point.Min - slack || mean > point.Max + slack) return false;
-            }
+            sumBoundsUnverified = false;
+            return false;
         }
+        if (!HistogramStatistics.Valid(point.Count, point.HasSum, point.Sum, point.HasMin, point.Min, point.HasMax, point.Max,
+                out sumBoundsUnverified)) return false;
         for (var i = 0; i < point.ExplicitBounds.Count; i++)
             if (!double.IsFinite(point.ExplicitBounds[i]) || i > 0 && point.ExplicitBounds[i - 1] >= point.ExplicitBounds[i]) return false;
         ulong total = 0;

@@ -6,7 +6,7 @@ namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 internal static class DeltaSumWindow
 {
     internal sealed record Result(long? Integer, double? Floating, int Inputs, int Missing, int Invalid,
-        bool Gap, bool Overlap, bool CrossesBoundary, bool Overflow);
+        bool Gap, bool Overlap, bool CrossesBoundary, bool Overflow, bool UnsupportedFields, bool CapacityExceeded);
 
     internal static Result Reduce(IReadOnlyCollection<NumberDataPoint> points, ulong start, ulong end, bool monotonic)
     {
@@ -20,12 +20,18 @@ internal static class DeltaSumWindow
         var invalid = 0;
         var coverage = new DeltaCoverage(start, end);
         var overflow = false;
+        var unsupported = false;
+        var capacity = false;
+        var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
         long integer = 0;
         double floating = 0;
         double correction = 0;
         var hasDouble = false;
         foreach (var point in ordered)
         {
+            var fields = KnownProtobufFields.Inspect(point, ref remainingBytes);
+            if (fields == KnownProtobufFields.Check.Capacity) { capacity = true; break; }
+            if (fields == KnownProtobufFields.Check.Unsupported) { unsupported = true; continue; }
             if ((point.Flags & ~1u) != 0) { invalid++; continue; }
             if ((point.Flags & 1u) != 0 || point.ValueCase == NumberDataPoint.ValueOneofCase.None || point.StartTimeUnixNano == 0)
             { missing++; continue; }
@@ -51,9 +57,9 @@ internal static class DeltaSumWindow
         if (hasDouble && !overflow) CompensatedSum.Add(ref floating, ref correction, integer);
         floating += correction;
         if (!double.IsFinite(floating)) overflow = true;
-        var complete = ordered.Length > 0 && missing == 0 && invalid == 0 && !coverage.Gap && !coverage.Overlap && !coverage.CrossesBoundary && !overflow;
+        var complete = ordered.Length > 0 && missing == 0 && invalid == 0 && !coverage.Gap && !coverage.Overlap && !coverage.CrossesBoundary && !overflow && !unsupported && !capacity;
         return new(complete && !hasDouble ? integer : null, complete && hasDouble ? floating : null,
-            ordered.Length, missing, invalid, coverage.Gap, coverage.Overlap, coverage.CrossesBoundary, overflow);
+            ordered.Length, missing, invalid, coverage.Gap, coverage.Overlap, coverage.CrossesBoundary, overflow, unsupported, capacity);
     }
 
 }
