@@ -11,6 +11,8 @@ public enum MetricRollupStatus { Complete, Incomplete, Current, Busy, ServiceNot
 /// <summary>Materializes one closed service window. Scheduling and retention belong to the retention coordinator.</summary>
 public sealed class MetricRollupMaterializer(IDbContextFactory<ServiceObservabilityDbContext> contexts)
 {
+    internal const int ProjectionVersion = 2;
+
     /// <remarks>Call only after all metric writers have been upgraded to track window revisions.
     /// Results marked incomplete, pruned or outdated must never authorize raw cleanup.</remarks>
     public async Task<MetricRollupStatus> MaterializeAsync(Guid serviceId, DateTimeOffset windowStart, CancellationToken token)
@@ -32,8 +34,8 @@ public sealed class MetricRollupMaterializer(IDbContextFactory<ServiceObservabil
         if (windowStart.AddMinutes(5) > now) return MetricRollupStatus.WindowOpen;
 
         var state = await db.MetricRollupWindows.SingleOrDefaultAsync(x => x.ServiceId == serviceId && x.WindowStart == windowStart, token);
-        if (state?.ProjectionVersion > MetricRollupEncoding.Version) return MetricRollupStatus.VersionUnsupported;
-        if (state?.ProjectedRevision == state?.InputRevision && state?.ProjectionVersion == MetricRollupEncoding.Version)
+        if (state?.ProjectionVersion > ProjectionVersion) return MetricRollupStatus.VersionUnsupported;
+        if (state?.ProjectedRevision == state?.InputRevision && state?.ProjectionVersion == ProjectionVersion)
             return state!.IsComplete ? MetricRollupStatus.Current : MetricRollupStatus.Incomplete;
         if (state?.RawPruned == true) return MetricRollupStatus.RawPruned;
         var input = await MetricWindowInputs.ReadAsync(db, serviceId, window, token);
@@ -63,7 +65,7 @@ public sealed class MetricRollupMaterializer(IDbContextFactory<ServiceObservabil
             complete &= !result.RequiresRaw;
         }
         state.ProjectedRevision = state.InputRevision;
-        state.ProjectionVersion = MetricRollupEncoding.Version;
+        state.ProjectionVersion = ProjectionVersion;
         state.ProjectedAt = now;
         state.IsComplete = complete;
         await db.SaveChangesAsync(token);

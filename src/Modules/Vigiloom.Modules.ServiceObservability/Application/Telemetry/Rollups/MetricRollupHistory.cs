@@ -35,10 +35,10 @@ internal sealed class MetricRollupHistory(IDbContextFactory<ServiceObservability
             .Take(PageSize + 1).ToArrayAsync(token);
         var items = rows.Take(PageSize).Select(x => new MetricRollupWindowResponse(x.WindowStart, x.WindowStart.AddMinutes(5),
             x.ProjectedRevision is null ? "Pending" :
-            x.ProjectionVersion != MetricRollupEncoding.Version ? "UnsupportedVersion" :
+            x.ProjectionVersion is < 1 or > MetricRollupMaterializer.ProjectionVersion ? "UnsupportedVersion" :
             x.ProjectedRevision != x.InputRevision ? "Stale" : x.IsComplete ? "Current" : "Incomplete",
             x.ProjectedAt, x.ProjectedRevision is not null, x.ProjectedRevision is not null && x.ProjectedRevision != x.InputRevision,
-            x.IsComplete, x.ProjectionVersion is null || x.ProjectionVersion == MetricRollupEncoding.Version, x.RawPruned,
+            x.IsComplete, x.ProjectionVersion is null or >= 1 and <= MetricRollupMaterializer.ProjectionVersion, x.RawPruned,
             Convert.ToBase64String(x.Version))).ToArray();
         return new(items, rows.Length > PageSize ? items[^1].WindowStart : null);
     }
@@ -52,7 +52,7 @@ internal sealed class MetricRollupHistory(IDbContextFactory<ServiceObservability
             .Select(x => new { x.RowId, x.Version, x.ProjectionVersion }).SingleOrDefaultAsync(token);
         if (state is null) return new(MetricRollupReadStatus.NotFound, null);
         if (!state.Version.AsSpan().SequenceEqual(versionBytes)) return new(MetricRollupReadStatus.Changed, null);
-        if (state.ProjectionVersion is { } projection && projection != MetricRollupEncoding.Version)
+        if (state.ProjectionVersion is { } projection && projection is < 1 or > MetricRollupMaterializer.ProjectionVersion)
             return new(MetricRollupReadStatus.UnsupportedVersion, null);
         var query = db.MetricRollupSeries.AsNoTracking().Where(x => x.WindowRowId == state.RowId && x.ServiceId == serviceId);
         if (instanceId is { } instance) query = query.Where(x => x.InstanceId == instance);
@@ -78,7 +78,7 @@ internal sealed class MetricRollupHistory(IDbContextFactory<ServiceObservability
             .Select(x => new { x.RowId, x.Version, x.ProjectionVersion }).SingleOrDefaultAsync(token);
         if (state is null) return new(MetricRollupReadStatus.NotFound, null);
         if (!state.Version.AsSpan().SequenceEqual(versionBytes)) return new(MetricRollupReadStatus.Changed, null);
-        if (state.ProjectionVersion is { } projection && projection != MetricRollupEncoding.Version)
+        if (state.ProjectionVersion is { } projection && projection is < 1 or > MetricRollupMaterializer.ProjectionVersion)
             return new(MetricRollupReadStatus.UnsupportedVersion, null);
         var query = db.MetricRollupSeries.AsNoTracking().Where(x => x.WindowRowId == state.RowId && x.ServiceId == serviceId);
         if (instanceId is { } instance) query = query.Where(x => x.InstanceId == instance);

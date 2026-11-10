@@ -85,5 +85,17 @@ public sealed class MetricRollupSchemaTests(TestContext context)
                 Assert.AreEqual(1, await guard.MetricRollupWindows.CountAsync(token));
                 Assert.AreEqual(2, await guard.MetricRollupSeries.CountAsync(token));
             }
+            await using (var newer = new ServiceObservabilityDbContext(options))
+            {
+                await newer.Database.MigrateAsync(token);
+                newer.MetricRollupSeries.Add(Series(2, MetricRollupMode.CumulativeHistogramSnapshots));
+                await newer.SaveChangesAsync(token);
+                var versionMigration = (await newer.Database.GetAppliedMigrationsAsync(token))
+                    .Single(x => x.EndsWith("_MetricRollupVersion", StringComparison.Ordinal));
+                var error = await Assert.ThrowsAsync<SqlException>(() => newer.GetService<IMigrator>().MigrateAsync(versionMigration, token));
+                Assert.AreEqual(547, error.Number);
+                Assert.AreEqual(3, await newer.MetricRollupSeries.CountAsync(token));
+                Assert.IsTrue((await newer.Database.GetAppliedMigrationsAsync(token)).Any(x => x.EndsWith("_MetricRollupHistogramModes", StringComparison.Ordinal)));
+            }
         }, context.CancellationToken);
 }

@@ -1086,7 +1086,7 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.ToTable("MetricRollupSeries", "service", t =>
                         {
-                            t.HasCheckConstraint("CK_MetricRollupSeries_Bounds", "DATALENGTH([IdentityHash]) = 32 AND DATALENGTH([IdentityBytes]) BETWEEN 1 AND 524288 AND ([ResultPayload] IS NULL OR DATALENGTH([ResultPayload]) <= 16777216) AND [CollisionOrdinal] >= 0 AND [Mode] BETWEEN 1 AND 6 AND [QualityFlags] >= 0 AND [ResultVersion] > 0 AND [InputCount] > 0 AND [InputBytes] >= 0");
+                            t.HasCheckConstraint("CK_MetricRollupSeries_Bounds", "DATALENGTH([IdentityHash]) = 32 AND DATALENGTH([IdentityBytes]) BETWEEN 1 AND 524288 AND ([ResultPayload] IS NULL OR DATALENGTH([ResultPayload]) <= 16777216) AND [CollisionOrdinal] >= 0 AND [Mode] BETWEEN 1 AND 7 AND [QualityFlags] >= 0 AND [ResultVersion] > 0 AND [InputCount] > 0 AND [InputBytes] >= 0");
 
                             t.HasCheckConstraint("CK_MetricRollupSeries_Preservation", "([Mode] <> 6 OR [RequiresRaw] = 1) AND ([RequiresRaw] = 1 OR [ResultPayload] IS NOT NULL)");
                         });

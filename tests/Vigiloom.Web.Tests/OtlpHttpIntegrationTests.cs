@@ -385,7 +385,7 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             await using (var db = await factoryDb.CreateDbContextAsync(token))
             {
                 var future = await db.MetricRollupWindows.SingleAsync(token);
-                future.ProjectionVersion = 2;
+                future.ProjectionVersion = 3;
                 await db.SaveChangesAsync(token);
             }
             var refreshed = await reader.GetFromJsonAsync<MetricRollupWindowPage>(rollupQuery, token);

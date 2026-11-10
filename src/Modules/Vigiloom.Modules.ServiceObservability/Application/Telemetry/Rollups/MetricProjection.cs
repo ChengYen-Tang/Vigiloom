@@ -12,6 +12,7 @@ internal abstract record MetricProjection(bool RequiresRaw)
     internal sealed record DeltaSum(DeltaSumWindow.Result Value, bool PreserveRaw) : MetricProjection(PreserveRaw);
     internal sealed record CumulativeSum(CumulativeSumWindow.Result Value, bool PreserveRaw) : MetricProjection(PreserveRaw);
     internal sealed record DeltaHistogram(DeltaHistogramWindow.Result Value, bool PreserveRaw) : MetricProjection(PreserveRaw);
+    internal sealed record CumulativeHistogram(DistributionSnapshots.Result<HistogramDataPoint> Value, bool PreserveRaw) : MetricProjection(PreserveRaw);
     internal sealed record Summary(DistributionSnapshots.Result<SummaryDataPoint> Value, bool PreserveRaw) : MetricProjection(PreserveRaw);
     internal sealed record Unsupported() : MetricProjection(true);
 
@@ -56,7 +57,16 @@ internal abstract record MetricProjection(bool RequiresRaw)
                 var value = DeltaHistogramWindow.Reduce(histogram, window.Start, window.End);
                 return new DeltaHistogram(value, value.Aggregate is null || value.Missing > 0 || value.Invalid > 0 ||
                     value.Gap || value.Overlap || value.CrossesBoundary || value.IncompatibleBounds || value.Overflow ||
-                    value.CapacityExceeded || value.ExemplarsOmitted || value.SumBoundsUnverified || value.UnsupportedFields);
+                    value.CapacityExceeded || value.ExemplarsOmitted || value.UnsupportedFields);
+            }
+            case Metric.DataOneofCase.Histogram when metric.Histogram.AggregationTemporality == AggregationTemporality.Cumulative &&
+                                                     Typed(points, out HistogramDataPoint[] histogram):
+            {
+                var value = CumulativeHistogramWindow.Reduce(histogram, window.Start, window.End);
+                return new CumulativeHistogram(value, value.Epochs.Count == 0 || value.Epochs.Any(x => x.First is null || x.Last is null) ||
+                    value.Missing > 0 || value.Invalid > 0 || value.UnknownStart || value.AmbiguousTimestamps ||
+                    value.OverlappingEpochs || value.CountDecreased || value.DistributionIncompatible || value.UnsupportedFields || value.CapacityExceeded ||
+                    histogram.Any(x => x.Exemplars.Count > 0));
             }
             case Metric.DataOneofCase.Summary when Typed(points, out SummaryDataPoint[] summary):
             {
