@@ -40,6 +40,13 @@ internal sealed class MetricSeriesIdentity
             (scope?.CalculateSize() ?? 0) > 65_536 || inputAttributes.Sum(item => (long)item.CalculateSize()) > 262_144 ||
             !PointFree(metadata) || metadata.CalculateSize() > 65_536 || resourceSchema.Length > 2048 || scopeSchema.Length > 2048 ||
             metadata.Name.Length == 0) return false;
+        var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
+        var sourceAttributes = new KeyValueList();
+        sourceAttributes.Values.Add(inputAttributes);
+        if (KnownProtobufFields.Inspect(resource, ref remainingBytes) != KnownProtobufFields.Check.Known ||
+            scope is not null && KnownProtobufFields.Inspect(scope, ref remainingBytes) != KnownProtobufFields.Check.Known ||
+            KnownProtobufFields.Inspect(metadata, ref remainingBytes) != KnownProtobufFields.Check.Known ||
+            KnownProtobufFields.Inspect(sourceAttributes, ref remainingBytes) != KnownProtobufFields.Check.Known) return false;
         var canonicalResource = resource.Clone();
         var canonicalScope = scope?.Clone() ?? new InstrumentationScope();
         var canonicalMetric = metadata.Clone();

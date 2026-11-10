@@ -14,6 +14,7 @@ Aggregation must follow the [OpenTelemetry metrics data model](https://opentelem
 - Histogram bounds and exponential-histogram scale and bucket mapping must be compatible before merging; count, sum, min and max retain their optional and temporal semantics.
 - Summary quantiles cannot be averaged or summed. Preserve the relevant snapshot and identify it as such.
 - Unknown temporality, conflicting writers, malformed points, unsupported types, overflow, non-finite values and `NoRecordedValue` must not silently become valid values. Preserve enough evidence or an explicit quality state for consumers and cleanup to make a safe decision.
+- Unknown protobuf extensions must not be silently discarded by a reducer. The current calculation primitives reject unsupported fields; their future caller must preserve the affected raw data or provide a verified lossless representation. Preserving unknown bytes in a series identity alone would not establish that the reducer understands their meaning.
 
 OTLP delta intervals are `(start, end]`: an interval ending exactly at a five-minute boundary belongs to the window ending at that boundary, rather than the following window. A point sample such as a gauge at the boundary belongs to the following half-open window. Retain the original nanosecond endpoints; an interval crossing the window cannot be split without source evidence.
 

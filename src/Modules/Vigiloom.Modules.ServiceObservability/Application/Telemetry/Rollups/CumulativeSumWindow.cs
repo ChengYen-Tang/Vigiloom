@@ -8,7 +8,8 @@ internal static class CumulativeSumWindow
     internal sealed record Epoch(ulong Start, ulong FirstObserved, ulong LastObserved,
         NumberDataPoint? First, NumberDataPoint? Last, int Inputs);
     internal sealed record Result(IReadOnlyList<Epoch> Epochs, int Missing, int Invalid,
-        bool UnknownStart, bool AmbiguousTimestamps, bool OverlappingEpochs, bool Decreased, bool MonotonicityUnknown);
+        bool UnknownStart, bool AmbiguousTimestamps, bool OverlappingEpochs, bool Decreased, bool MonotonicityUnknown,
+        bool UnsupportedFields, bool CapacityExceeded);
 
     internal static Result Reduce(IReadOnlyCollection<NumberDataPoint> points, ulong start, ulong end, bool monotonic)
     {
@@ -28,9 +29,15 @@ internal static class CumulativeSumWindow
         var overlap = false;
         var decreased = false;
         var unknownOrder = false;
+        var unsupported = false;
+        var capacity = false;
+        var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
         for (var i = 0; i < ordered.Length; i++)
         {
             var point = ordered[i];
+            var fields = KnownProtobufFields.Inspect(point, ref remainingBytes);
+            if (fields == KnownProtobufFields.Check.Capacity) { capacity = true; break; }
+            if (fields == KnownProtobufFields.Check.Unsupported) { unsupported = true; continue; }
             var timestamp = point.TimeUnixNano;
             if (i > 0 && ordered[i - 1].TimeUnixNano == timestamp) ambiguous = true;
             if (!epochs.TryGetValue(point.StartTimeUnixNano, out var state))
@@ -85,8 +92,8 @@ internal static class CumulativeSumWindow
             state.Previous = point;
         }
         return new(epochs.Select(pair => new Epoch(pair.Key, pair.Value.FirstObserved, pair.Value.LastObserved,
-                pair.Value.First?.Clone(), pair.Value.Last?.Clone(), pair.Value.Inputs)).ToArray(),
-            missing, invalid, unknownStart, ambiguous, overlap, decreased, unknownOrder);
+                unsupported || capacity ? null : pair.Value.First?.Clone(), unsupported || capacity ? null : pair.Value.Last?.Clone(), pair.Value.Inputs)).ToArray(),
+            missing, invalid, unknownStart, ambiguous, overlap, decreased, unknownOrder, unsupported, capacity);
     }
 
     private sealed class State(ulong firstObserved)

@@ -8,7 +8,7 @@ internal static class GaugeWindow
     internal const int MaximumPoints = 100_000;
 
     internal sealed record Result(NumberDataPoint? Latest, int Inputs, int Missing, int Invalid,
-        bool AmbiguousTimestamps, ulong? FirstObserved, ulong? LastObserved);
+        bool AmbiguousTimestamps, bool UnsupportedFields, bool CapacityExceeded, ulong? FirstObserved, ulong? LastObserved);
 
     /// <remarks>
     /// Callers must supply points for one authenticated stream. A missing or ambiguous latest
@@ -25,9 +25,15 @@ internal static class GaugeWindow
         var missing = 0;
         var invalid = 0;
         var ambiguous = false;
+        var unsupported = false;
+        var capacity = false;
+        var remainingBytes = KnownProtobufFields.MaximumWindowBytes;
         for (var i = 0; i < ordered.Length; i++)
         {
             var point = ordered[i];
+            var fields = KnownProtobufFields.Inspect(point, ref remainingBytes);
+            if (fields == KnownProtobufFields.Check.Capacity) { capacity = true; break; }
+            if (fields == KnownProtobufFields.Check.Unsupported) { unsupported = true; continue; }
             if (i > 0 && ordered[i - 1].TimeUnixNano == point.TimeUnixNano) ambiguous = true;
             if ((point.Flags & ~1u) != 0)
                 invalid++;
@@ -37,7 +43,7 @@ internal static class GaugeWindow
                 invalid++;
         }
         NumberDataPoint? latest = null;
-        if (ordered.Length > 0)
+        if (ordered.Length > 0 && !unsupported && !capacity)
         {
             var last = ordered[^1];
             var tied = ordered.Length > 1 && ordered[^2].TimeUnixNano == last.TimeUnixNano;
@@ -45,7 +51,7 @@ internal static class GaugeWindow
                 (last.ValueCase != NumberDataPoint.ValueOneofCase.AsDouble || double.IsFinite(last.AsDouble)))
                 latest = last.Clone();
         }
-        return new(latest, ordered.Length, missing, invalid, ambiguous,
+        return new(latest, ordered.Length, missing, invalid, ambiguous, unsupported, capacity,
             ordered.Length == 0 ? null : ordered[0].TimeUnixNano, ordered.Length == 0 ? null : ordered[^1].TimeUnixNano);
     }
 }

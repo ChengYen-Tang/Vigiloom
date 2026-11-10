@@ -54,7 +54,7 @@ public sealed class MetricSeriesIdentityTests
         differentDescription.Metadata.Add(Attr("hint", "changed"));
         Assert.IsTrue(original.SameSeries(Create(source, service, null, resource, new InstrumentationScope(), differentDescription, [])));
         var unknownExtension = Metric.Parser.ParseFrom(metric.ToByteArray().Concat(new byte[] { 0xa0, 0x06, 0x01 }).ToArray());
-        Assert.IsFalse(original.SameSeries(Create(source, service, null, resource, null, unknownExtension, [])),
+        Assert.IsFalse(MetricSeriesIdentity.TryCreate(source, service, null, resource, null, "", "", unknownExtension, [], out _),
             "Unknown protocol fields must not be silently merged into a known series.");
     }
 
