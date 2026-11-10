@@ -1,0 +1,99 @@
+@page "/devices/{Id:guid}/log-sources/{SourceId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@inject HostLogConfiguration Sources
+@inject NavigationManager Navigation
+@inject ILogger<HostLogSourceEdit> Logger
+
+<PageTitle>編輯日誌來源 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <a href="@($"/devices/{Id:D}/log-sources")">← 返回日誌來源</a>
+    <header class="device-heading"><div><h1>編輯日誌來源</h1><p>來源位置與類型不能變更；如要改讀其他位置，請建立新來源。</p></div></header>
+    <section class="device-panel">
+        @if (source is null) { <p role="alert">找不到來源或暫時無法讀取，請返回後重試。</p> }
+        <div hidden="@(source is null)">
+            <p>目前來源位置：@source?.Settings.Target</p>
+            <p>設定儲存後會定期同步；設備可能尚未套用。</p>
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="log-source-edit" method="post" OnSubmit="SaveAsync">
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="source-edit-name">來源名稱</label><InputText id="source-edit-name" @bind-Value="Input.Name" maxlength="256" />
+                @if (source?.Settings.Kind == AgentLogSourceKind.TextFile)
+                {
+                    <label for="source-edit-mode">文字檔格式</label><InputSelect id="source-edit-mode" @bind-Value="Input.TextMode"><option value="SingleLine">每行一筆</option><option value="IndentedContinuation">縮排行接續前一筆</option></InputSelect>
+                }
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用來源</label>
+                <div class="device-actions"><button type="submit">儲存設定</button><a href="@($"/devices/{Id:D}/log-sources")">取消</a></div>
+            </EditForm>
+            <hr />
+            <h2>移除來源</h2><p>Agent 同步後會停止採集；移除不會立即刪除已接收的日誌。</p>
+            <EditForm Model="Retire" FormName="log-source-retire" method="post" OnSubmit="RetireAsync">
+                <InputHidden @bind-Value="Retire.Version" />
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Retire.Confirm" /> 我了解移除後會停止採集</label>
+                <button type="submit">移除來源</button>
+            </EditForm>
+        </div>
+    </section>
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Parameter] public Guid SourceId { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "log-source-edit")] private EditInput Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "log-source-retire")] private RetireInput Retire { get; set; } = default!;
+    private HostLogSourceView? source;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new(); Retire ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            source = (await Sources.ListAsync(Id, HttpContext.RequestAborted))?.FirstOrDefault(x => x.Settings.SourceId == SourceId);
+            if (source is not null)
+            {
+                var handler = HttpMethods.IsPost(HttpContext.Request.Method)
+                    ? (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"].ToString() : null;
+                if (handler != "log-source-edit")
+                    Input = new() { Name = source.Settings.Name, Enabled = source.Settings.Enabled, TextMode = source.Settings.TextMode ?? AgentTextLogMode.SingleLine, Version = source.Version };
+                if (handler != "log-source-retire") Retire = new() { Version = source.Version };
+            }
+        }
+        catch (Exception ex) { Logger.LogWarning("Unable to load host log source: {ErrorType}.", ex.GetType().Name); }
+    }
+
+    private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ? actor : null;
+    private async Task SaveAsync()
+    {
+        if (source is null || Actor() is not { } actor) { message = "無法確認來源或帳號，請重新整理。"; return; }
+        try
+        {
+            var result = await Sources.UpdateAsync(Id, SourceId, new(Input.Name?.Trim() ?? "", Input.Enabled,
+                source.Settings.Kind == AgentLogSourceKind.TextFile ? Input.TextMode : null, Input.Version ?? ""), actor, HttpContext.RequestAborted);
+            await HandleResultAsync(result);
+        }
+        catch (ArgumentException) { message = "請確認來源名稱及文字檔格式。"; }
+        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to update host log source: {ErrorType}.", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後查看。"; }
+    }
+
+    private async Task RetireAsync()
+    {
+        if (!Retire.Confirm || Actor() is not { } actor) { message = "請先確認移除來源的影響。"; return; }
+        try { await HandleResultAsync(await Sources.RetireAsync(Id, SourceId, Retire.Version ?? "", actor, HttpContext.RequestAborted)); }
+        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to retire host log source: {ErrorType}.", ex.GetType().Name); message = "無法確認移除結果，請重新整理後查看。"; }
+    }
+
+    private Task HandleResultAsync(HostLogConfigurationResult result)
+    {
+        if (result.Status == HostLogConfigurationStatus.Success) Navigation.NavigateTo($"/devices/{Id:D}/log-sources", forceLoad: true);
+        else message = "來源已變更或不存在，請重新整理後再試。";
+        return Task.CompletedTask;
+    }
+    private sealed class EditInput { public string? Name { get; set; } public string? Version { get; set; } public bool Enabled { get; set; } public AgentTextLogMode TextMode { get; set; } }
+    private sealed class RetireInput { public string? Version { get; set; } public bool Confirm { get; set; } }
+}

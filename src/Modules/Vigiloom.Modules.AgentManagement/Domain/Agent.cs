@@ -1,6 +1,7 @@
 using Vigiloom.BuildingBlocks.Identifiers;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Devices;
+using System.Text.Json;
 
 namespace Vigiloom.Modules.AgentManagement.Domain;
 
@@ -81,6 +82,10 @@ public sealed class Agent
     public long? MetricLossBatches { get; private set; }
     public long? MetricLossRecords { get; private set; }
     public bool? MetricLossCompletenessUnknown { get; private set; }
+    public Guid? LogStatusReportEpoch { get; private set; }
+    public long? LogStatusReportSequence { get; private set; }
+    public DateTimeOffset? LogStatusReportedAt { get; private set; }
+    public string? LogStatusJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -190,6 +195,13 @@ public sealed class Agent
         MetricLossRecords = report.Records;
         MetricLossCompletenessUnknown = report.CompletenessUnknown;
     }
+    public void RecordLogStatus(AgentLogStatusReport? report, long sequence, DateTimeOffset now)
+    {
+        LogStatusReportEpoch = report is null ? null : QueueReportEpoch;
+        LogStatusReportSequence = report is null ? null : sequence;
+        LogStatusReportedAt = report is null ? null : now.ToUniversalTime();
+        LogStatusJson = report is null ? null : JsonSerializer.Serialize(report);
+    }
     public void RecordQueueCapacityStatus(AgentQueueCapacityReport report, long sequence, DateTimeOffset now)
     {
         QueueCapacityReportEpoch = QueueReportEpoch;
@@ -235,6 +247,10 @@ public sealed class Agent
         AppliedBatchIntervalSeconds = null;
         ConfigurationAppliedAt = null;
         ConfigurationFailure = null;
+        LogStatusReportEpoch = null;
+        LogStatusReportSequence = null;
+        LogStatusReportedAt = null;
+        LogStatusJson = null;
     }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }

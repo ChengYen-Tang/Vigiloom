@@ -8,11 +8,13 @@ public sealed record AgentHeartbeatReport([property: JsonRequired] int Version, 
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentConfigurationReport? Configuration = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQuarantineBreakdown? Quarantine = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentQueueCapacityReport? CapacityConfiguration = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentMetricLossReport? MetricLoss = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentMetricLossReport? MetricLoss = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentLogStatusReport? LogStatus = null)
 {
     public bool IsValid() => Version == 1 && Epoch.Version == 7 && Sequence >= 1 &&
         (Queue is null || Queue.IsValid()) && (Configuration is null || Configuration.IsValid()) &&
         (Quarantine is null || Queue is not null && Quarantine.IsValid(Queue.QuarantinedBatches)) && (MetricLoss is null || MetricLoss.IsValid()) &&
+        (LogStatus is null || LogStatus.IsValid()) &&
         (CapacityConfiguration is null || CapacityConfiguration.IsValid() &&
             (CapacityConfiguration.Applied is null || Queue is not null &&
                 Queue.CapacityBytes == CapacityConfiguration.Applied.Capacity.PayloadBytes &&

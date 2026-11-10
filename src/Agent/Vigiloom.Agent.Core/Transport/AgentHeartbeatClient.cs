@@ -30,6 +30,10 @@ public sealed class AgentHeartbeatClient(HttpClient http)
 
     public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
         AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, CancellationToken token)
+        => await SendAsync(vault, server, configuration, capacityObservation, metricLossWriter, null, token);
+
+    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
+        AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, AgentLogStatusObservation? logObservation, CancellationToken token)
     {
         await gate.WaitAsync(token);
         try
@@ -40,6 +44,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             var id = state.AgentId!.Value;
             var settingsReport = configuration is not null && configuration.Owner.Matches(id, expected, vault) ? configuration.Report : null;
             var capacityOwnerMatches = capacityObservation is not null && capacityObservation.Owner.Matches(id, expected, vault);
+            var logReport = logObservation is not null && logObservation.Owner.Matches(id, expected, vault) && logObservation.Report.IsValid()
+                ? logObservation.Report : null;
             if (agentId != id || serverUri != expected)
             {
                 agentId = id;
@@ -98,7 +104,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     {
                         // An unavailable ledger is unknown, not an empty loss snapshot.
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss, logReport);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -109,10 +115,16 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             while (true)
             {
                 using var response = await PostHeartbeatAsync(expected, credential, candidate, token);
+                if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge && candidate?.LogStatus is not null)
+                {
+                    candidate = candidate with { LogStatus = null };
+                    continue;
+                }
                 if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
                     return await HandleResponseAsync(response, expected, credential, candidate, token);
                 // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
-                if (candidate.MetricLoss is not null) candidate = candidate with { MetricLoss = null };
+                if (candidate.LogStatus is not null) candidate = candidate with { LogStatus = null };
+                else if (candidate.MetricLoss is not null) candidate = candidate with { MetricLoss = null };
                 else if (candidate.CapacityConfiguration is not null) candidate = candidate with { CapacityConfiguration = null };
                 else if (candidate.Quarantine is not null) candidate = candidate with { Quarantine = null };
                 else if (candidate.Configuration is not null) candidate = candidate with { Configuration = null };

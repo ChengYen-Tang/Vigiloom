@@ -34,6 +34,9 @@ using System.Data.Common;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Api;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
 
@@ -42,6 +45,80 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentityHttpTests
 {
+    [TestMethod]
+    [Timeout(180000, CooperativeCancellation = true)]
+    public Task HostLogBatch_HttpPreservesReceiptAndReportsQuota() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString
+                }));
+            });
+            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var quota = factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
+            await using (var db = await quota.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var administration = new PolicyAdministration(quota);
+            Assert.IsNotNull(await administration.UpdateAsync(new(1, 1, 1, 1), "", Guid.CreateVersion7(),
+                (_, _, _, _) => Task.CompletedTask, token));
+            var now = DateTimeOffset.UtcNow;
+            var device = new Device("log host", "127.0.0.1", true, now);
+            await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            string credential;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                credential = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+            }
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            var item = new AgentLogRecord(Guid.CreateVersion7(), now, "event", null, null, null, null, null);
+            var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [item]);
+            var bytes = AgentLogBatchCodec.Serialize(batch);
+            using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(bytes), token))
+            {
+                Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+                Assert.IsTrue(accepted.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var supported));
+                Assert.Contains("3", string.Join(",", supported));
+            }
+            await using (var db = await agents.CreateDbContextAsync(token))
+                await db.Database.ExecuteSqlRawAsync("UPDATE [logquota].[Buckets] SET [Microtokens] = 0, [LastRefill] = TODATETIMEOFFSET(DATEADD(hour, 1, SYSUTCDATETIME()), '+00:00') WHERE [Kind] = 0", token);
+            using (var duplicate = await client.PostAsync("/api/v1/agent/batches", JsonBytes(bytes), token)) Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
+            var next = batch with { BatchId = Guid.CreateVersion7(), Items = [item with { MessageId = Guid.CreateVersion7() }] };
+            using (var limited = await client.PostAsync("/api/v1/agent/batches", JsonBytes(AgentLogBatchCodec.Serialize(next)), token))
+            {
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+                Assert.IsNotNull(limited.Headers.RetryAfter?.Delta);
+                Assert.IsGreaterThan(TimeSpan.Zero, limited.Headers.RetryAfter.Delta.Value);
+            }
+            var tooLarge = next with { BatchId = Guid.CreateVersion7(), Items = [item with { MessageId = Guid.CreateVersion7() }, item with { MessageId = Guid.CreateVersion7() }] };
+            using (var rejected = await client.PostAsync("/api/v1/agent/batches", JsonBytes(AgentLogBatchCodec.Serialize(tooLarge)), token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+            await using var verify = await agents.CreateDbContextAsync(token);
+            Assert.AreEqual(1, await verify.HostLogs.CountAsync(token));
+            Assert.AreEqual(1, await verify.ReceivedBatches.CountAsync(token));
+            await PingTestSite.InitializeAsync(factory, token);
+            var historyUrl = $"/api/v1/devices/{device.Id:D}/host-logs?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using (var machineDenied = await client.GetAsync(historyUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
+            using var reader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            using var response = await reader.GetAsync(historyUrl, token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            var history = await response.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
+            Assert.IsNotNull(history); Assert.HasCount(1, history.Items);
+            Assert.AreEqual("event", history.Items[0].Content);
+        }, TestContext.CancellationToken);
+
     [TestMethod]
     public void WebRuntimeConfiguration_RejectsTruncatedCompressedStreams()
     {
@@ -396,7 +473,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z", $"/api/v1/devices/{device.Id:D}/host-logs?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -452,6 +529,9 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
                 using var status = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token);
                 Assert.AreEqual(HttpStatusCode.OK, status.StatusCode);
+                using var logHistory = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/host-logs?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z", token);
+                Assert.AreEqual(HttpStatusCode.OK, logHistory.StatusCode);
+                Assert.IsTrue(logHistory.Headers.CacheControl?.NoStore);
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await status.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
                 using var effectiveSettings = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings", token);
                 Assert.AreEqual(HttpStatusCode.OK, effectiveSettings.StatusCode);
@@ -477,9 +557,76 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("未註冊或已撤銷", detailsDoc.Body.TextContent);
                 Assert.Contains("尚無佇列回報", detailsDoc.Body.TextContent);
                 Assert.IsNull(detailsDoc.QuerySelector($"a[href='/devices/{device.Id:D}/agent']"));
+                Assert.IsNull(detailsDoc.QuerySelector($"a[href='/devices/{device.Id:D}/log-sources']"));
+                using var deniedLogPage = await reader.GetAsync($"/devices/{device.Id:D}/log-sources", token);
+                Assert.AreEqual(HttpStatusCode.Redirect, deniedLogPage.StatusCode);
+                Assert.AreEqual("/account/access-denied", deniedLogPage.Headers.Location!.AbsolutePath);
                 using var denied = await reader.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             }
+            var logPagePath = $"/devices/{device.Id:D}/log-sources";
+            using (var forgedLogCreate = await admin.PostAsync(logPagePath, new FormUrlEncodedContent(new Dictionary<string, string>
+            { ["_handler"] = "log-source-create", ["Input.Name"] = "forged", ["Input.Kind"] = "WindowsEvent", ["Input.Target"] = "System" }), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedLogCreate.StatusCode);
+            using (var page = await admin.GetAsync(logPagePath, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+                var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "log-source-create");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["Input.Name"] = "Application"; fields["Input.Kind"] = "WindowsEvent"; fields["Input.Target"] = "Application";
+                fields["Input.TextMode"] = "SingleLine"; fields["Input.Enabled"] = "true";
+                using var post = await admin.PostAsync(logPagePath, new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, post.StatusCode);
+                Assert.AreEqual(logPagePath, post.Headers.Location!.AbsolutePath);
+            }
+            var source = (await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token))!.Single();
+            Assert.AreEqual("Application", source.Settings.Name);
+            var editLogPath = $"{logPagePath}/{source.Settings.SourceId:D}";
+            using (var page = await admin.GetAsync(editLogPath, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+                var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var retireForm = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "log-source-retire");
+                var retireFields = retireForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                using var unconfirmed = await admin.PostAsync(editLogPath, new FormUrlEncodedContent(retireFields), token);
+                doc = await new HtmlParser().ParseDocumentAsync(await unconfirmed.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("請先確認移除", doc.Body!.TextContent);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "log-source-edit");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["Input.Name"] = "Renamed"; fields["Input.Enabled"] = "true";
+                using var post = await admin.PostAsync(editLogPath, new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, post.StatusCode);
+                Assert.AreEqual(logPagePath, post.Headers.Location!.AbsolutePath);
+            }
+            var updatedSource = (await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token))!.Single();
+            Assert.AreEqual("Renamed", updatedSource.Settings.Name);
+            using (var page = await admin.GetAsync(editLogPath, token))
+            {
+                var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "log-source-edit");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["Input.Version"] = source.Version; fields["Input.Name"] = "Stale"; fields["Input.Enabled"] = "true";
+                using var post = await admin.PostAsync(editLogPath, new FormUrlEncodedContent(fields), token);
+                var conflictDoc = await new HtmlParser().ParseDocumentAsync(await post.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("來源已變更或不存在", conflictDoc.Body!.TextContent);
+            }
+            using (var page = await admin.GetAsync(editLogPath, token))
+            {
+                var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "log-source-retire");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["Retire.Confirm"] = "true";
+                using var post = await admin.PostAsync(editLogPath, new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, post.StatusCode);
+                Assert.AreEqual(logPagePath, post.Headers.Location!.AbsolutePath);
+                using var repeated = await admin.PostAsync(editLogPath, new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.OK, repeated.StatusCode);
+                var repeatedDoc = await new HtmlParser().ParseDocumentAsync(await repeated.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("找不到來源", repeatedDoc.Body!.TextContent);
+            }
+            var retiredSources = await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token);
+            Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
@@ -682,9 +829,9 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
             using (var duplicate = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes("{\"version\":1,\"version\":1,\"queue\":null}"u8.ToArray()), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.StatusCode);
-            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes(new byte[2049]), token))
+            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes(new byte[8193]), token))
                 Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
-            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", new UnknownLengthJsonContent(2049), token))
+            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", new UnknownLengthJsonContent(8193), token))
                 Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
             var now = DateTimeOffset.UtcNow;
             var observation = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test operating system", "X64", ".NET 10");

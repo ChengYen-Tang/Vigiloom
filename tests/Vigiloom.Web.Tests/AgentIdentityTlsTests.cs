@@ -20,6 +20,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -76,6 +77,8 @@ public sealed class AgentIdentityTlsTests
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
             await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
             var device = new Device("TLS test server", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             EnrollmentIssue issued;
@@ -123,6 +126,8 @@ public sealed class AgentIdentityTlsTests
                     Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
 
                 // Exercise the actual host workers against the real TLS listener and SQL database.
+                var logPath = Path.Combine(statePath, "integration.log");
+                await File.WriteAllTextAsync(logPath, "tls-log-one\ntls-log-two\n", token);
                 AgentSettingsView configured;
                 AgentMetricSettingsView configuredMetrics;
                 await using (var scope = factory.Services.CreateAsyncScope())
@@ -138,6 +143,9 @@ public sealed class AgentIdentityTlsTests
                     configuredMetrics = (await metricConfiguration.UpdateAsync(device.Id,
                         new(new(10, 20, 2000, 1024, 2500, 96), metricCurrent.Version), Guid.CreateVersion7(), token))!;
                     Assert.IsNotNull(configuredMetrics);
+                    var logs = scope.ServiceProvider.GetRequiredService<HostLogConfiguration>();
+                    var logSource = await logs.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, "TLS log", logPath, true, AgentTextLogMode.SingleLine), Guid.CreateVersion7(), token);
+                    Assert.AreEqual(HostLogConfigurationStatus.Success, logSource.Status);
                 }
                 var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
                 var agentBuilder = AgentHost.CreateBuilder([]);
@@ -149,6 +157,7 @@ public sealed class AgentIdentityTlsTests
                 agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
                 agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, agentClock));
                 agentBuilder.Services.AddSingleton(new AgentMetricSettingsClient(http, agentClock));
+                agentBuilder.Services.AddSingleton(new AgentLogSettingsClient(http, agentClock));
                 agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
                 agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
                 using (var agentHost = agentBuilder.Build())
@@ -192,6 +201,52 @@ public sealed class AgentIdentityTlsTests
                             agentClock.Advance(TimeSpan.FromSeconds(2));
                             await Task.Delay(250, deadline.Token);
                         }
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            if (await logDb.HostLogs.CountAsync(x => x.AgentId == id && x.SourceName == "TLS log", deadline.Token) == 2) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
+                        {
+                            var collected = await logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log")
+                                .OrderBy(x => x.RowId).Select(x => x.Content).ToArrayAsync(deadline.Token);
+                            CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }, collected);
+                        }
+                        await using (var scope = factory.Services.CreateAsyncScope())
+                        {
+                            var history = scope.ServiceProvider.GetRequiredService<HostLogHistory>();
+                            var logs = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1), null, null, deadline.Token);
+                            Assert.IsNotNull(logs);
+                            Assert.HasCount(2, logs.Items);
+                            Assert.AreEqual("tls-log-two\n", logs.Items[0].Content);
+                            Assert.AreEqual("tls-log-one\n", logs.Items[1].Content);
+                        }
+                        // Continue writing while the real hosted collector and TLS sender run.
+                        var streamed = Enumerable.Range(0, 100).Select(i => $"tls-stream-{i:D3}\n").ToArray();
+                        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                        for (var offset = 0; offset < streamed.Length; offset += 10)
+                        {
+                            await File.AppendAllTextAsync(logPath, string.Concat(streamed.AsSpan(offset, 10).ToArray()), deadline.Token);
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            if (await logDb.HostLogs.CountAsync(x => x.AgentId == id && x.SourceName == "TLS log", deadline.Token) >= 102) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        elapsed.Stop();
+                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
+                        {
+                            var collected = await logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log")
+                                .OrderBy(x => x.RowId).Select(x => x.Content).ToArrayAsync(deadline.Token);
+                            CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }.Concat(streamed).ToArray(), collected);
+                        }
+                        TestContext.WriteLine($"100 streamed records delivered over TLS in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
                             var history = scope.ServiceProvider.GetRequiredService<HostMetricHistory>();

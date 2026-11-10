@@ -6,7 +6,7 @@ using Vigiloom.Agent.Core.Configuration;
 namespace Vigiloom.Agent.Core.Transport;
 
 /// <summary>A persistent, bounded queue of immutable wire payloads belonging to one Agent identity.</summary>
-public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? capacityBytes = null, int? maximumBatches = null)
+public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId, long? capacityBytes = null, int? maximumBatches = null)
 {
     public const int MaximumBatchBytes = 1024 * 1024;
     public const int MaximumBatchRecords = 1000;
@@ -295,8 +295,8 @@ public sealed class DurableBatchQueue(IdentityVault vault, Guid agentId, long? c
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
             var version = (long)command.ExecuteScalar()!;
-            if (version is not (0 or 1 or 2)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
-            if (version is 1 or 2)
+            if (version is not (0 or 1 or 2 or 3)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
+            if (version is 1 or 2 or 3)
             {
                 command.CommandText = "SELECT agent_id FROM queue_state WHERE singleton = 1";
                 if (!string.Equals(command.ExecuteScalar() as string, agentId.ToString("D"), StringComparison.Ordinal))

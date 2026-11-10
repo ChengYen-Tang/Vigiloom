@@ -20,6 +20,7 @@ builder.Services.AddHttpClient<IdentityClient>().ConfigurePrimaryHttpMessageHand
 builder.Services.AddHttpClient<AgentHeartbeatClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentSettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentQueueCapacityClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<AgentLogSettingsClient>(client => client.MaxResponseContentBufferSize = 512 * 1024).ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentBatchClient>().ConfigurePrimaryHttpMessageHandler(() => new InjectBatchResponse(mode) { InnerHandler = CreateHandler() });
 using var host = builder.Build();
 await host.RunAsync();
