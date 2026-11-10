@@ -84,6 +84,17 @@ public sealed class MetricWindowRevisionTests(TestContext context)
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
             var export = new MetricExport(factory, new CandidateDiscovery(factory));
             Assert.AreEqual(ExportStatus.Complete, (await export.WriteAsync(source.Id, request, token)).Status);
+            await using (var projected = new ServiceObservabilityDbContext(options))
+            {
+                foreach (var window in await projected.MetricRollupWindows.ToArrayAsync(token))
+                {
+                    window.ProjectedRevision = window.InputRevision;
+                    window.ProjectionVersion = 1;
+                    window.ProjectedAt = now;
+                    window.IsComplete = true;
+                }
+                await projected.SaveChangesAsync(token);
+            }
             Assert.AreEqual(ExportStatus.Complete, (await export.WriteAsync(source.Id, request, token)).Status);
             await using (var verify = new ServiceObservabilityDbContext(options))
             {
@@ -92,6 +103,7 @@ public sealed class MetricWindowRevisionTests(TestContext context)
                 Assert.AreEqual(boundary.AddMinutes(-5), windows[0].WindowStart);
                 Assert.AreEqual(boundary, windows[1].WindowStart);
                 Assert.IsTrue(windows.All(x => x.InputRevision == 2));
+                Assert.IsTrue(windows.All(x => x.ProjectedRevision == 1));
                 Assert.AreEqual(8, await verify.MetricPoints.CountAsync(token));
                 windows[0].ProjectedRevision = 2;
                 windows[0].ProjectionVersion = 1;
