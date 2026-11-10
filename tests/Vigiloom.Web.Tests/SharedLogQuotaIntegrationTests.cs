@@ -10,6 +10,7 @@ using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Logs.V1;
 using OpenTelemetry.Proto.Resource.V1;
 using Vigiloom.Agent.Core.Logs;
+using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.LogAdmission;
@@ -36,6 +37,7 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             var path = Path.Combine(Path.GetTempPath(), $"vigiloom-quota-{Guid.CreateVersion7():N}.log");
+            var statePath = Path.Combine(Path.GetTempPath(), $"vigiloom-quota-agent-{Guid.CreateVersion7():N}");
             try
             {
                 await File.WriteAllTextAsync(path, "host quota event\n", token);
@@ -53,8 +55,11 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                     ScopeLogs = { new ScopeLogs { LogRecords = { new LogRecord { Body = new AnyValue { StringValue = "application quota event" } } } } }
                 } } }.ToByteArray();
 
-                string agentSecret;
                 string appSecret;
+                Guid agentId;
+                bool firstHostDelivered;
+                var server = new Uri("https://localhost/");
+                var vault = new IdentityVault(statePath);
                 using (var factory = PingTestSite.CreateFactory(database.ConnectionString))
                 {
                     await PingTestSite.InitializeAsync(factory, token);
@@ -73,7 +78,10 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                         var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
                         var secret = RandomNumberGenerator.GetBytes(32);
                         var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
-                        agentSecret = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+                        Assert.IsNotNull(registered.AgentId);
+                        agentId = registered.AgentId.Value;
+                        await using (var lease = vault.Acquire())
+                            await lease.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = agentId, MachineSecret = WebEncoders.Base64UrlEncode(secret) }, token);
                         var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("quota-source", token);
                         appSecret = source.Secret;
                         var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
@@ -88,15 +96,19 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                         await db.Database.ExecuteSqlRawAsync("INSERT INTO [logquota].[Buckets] ([Kind],[SourceId],[Microtokens],[LastRefill],[PolicyVersion]) SELECT 0,'00000000-0000-0000-0000-000000000000',1000000,TODATETIMEOFFSET(DATEADD(hour,1,SYSUTCDATETIME()),'+00:00'),[Version] FROM [logquota].[Policies] WHERE [Name]=N'central'", token);
                     using var agent = PingTestSite.Client(factory);
                     using var app = PingTestSite.Client(factory);
-                    agent.DefaultRequestHeaders.Authorization = new("Bearer", agentSecret);
                     app.DefaultRequestHeaders.Authorization = new("Bearer", appSecret);
-                    var requests = await Task.WhenAll(SendAsync(agent, "/api/v1/agent/batches", hostPayload, "application/json", token),
-                        SendAsync(app, "/api/v1/otlp/v1/logs", otlpPayload, "application/x-protobuf", token));
-                    using var hostResponse = requests[0];
-                    using var appResponse = requests[1];
-                    Assert.IsTrue((hostResponse.StatusCode == HttpStatusCode.NoContent && appResponse.StatusCode == HttpStatusCode.ServiceUnavailable) ||
-                        (hostResponse.StatusCode == HttpStatusCode.TooManyRequests && appResponse.StatusCode == HttpStatusCode.OK));
-                    Assert.IsNotNull((hostResponse.StatusCode == HttpStatusCode.TooManyRequests ? hostResponse : appResponse).Headers.RetryAfter);
+                    var queue = new DurableBatchQueue(vault, agentId);
+                    Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, batch.EnqueuedAt, 1, hostPayload, token));
+                    var hostRequest = new AgentBatchClient(agent, TimeProvider.System).SendNextAsync(vault, server, token);
+                    var appRequest = SendAsync(app, "/api/v1/otlp/v1/logs", otlpPayload, "application/x-protobuf", token);
+                    await Task.WhenAll(hostRequest, appRequest);
+                    var hostOutcome = await hostRequest;
+                    using var appResponse = await appRequest;
+                    firstHostDelivered = hostOutcome.Status == BatchSendResult.Delivered;
+                    Assert.IsTrue((firstHostDelivered && appResponse.StatusCode == HttpStatusCode.ServiceUnavailable) ||
+                        (hostOutcome.Status == BatchSendResult.Retry && appResponse.StatusCode == HttpStatusCode.OK));
+                    if (firstHostDelivered) Assert.IsNotNull(appResponse.Headers.RetryAfter);
+                    else Assert.IsNotNull(hostOutcome.RetryAfter);
                     await using var agentDb = await agents.CreateDbContextAsync(token);
                     await using var serviceDb = await services.CreateDbContextAsync(token);
                     Assert.AreEqual(1, await agentDb.HostLogs.CountAsync(token) + await serviceDb.LogRecords.CountAsync(token));
@@ -106,12 +118,23 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                 {
                     using var agent = PingTestSite.Client(restarted);
                     using var app = PingTestSite.Client(restarted);
-                    agent.DefaultRequestHeaders.Authorization = new("Bearer", agentSecret);
                     app.DefaultRequestHeaders.Authorization = new("Bearer", appSecret);
-                    // New identities prevent a previously accepted Agent batch from taking the idempotent replay path.
+                    // Preserve the unsent batch; only create another when the original was acknowledged.
                     var nextBatch = batch with { BatchId = Guid.CreateVersion7(), Items = [batch.Items[0] with { MessageId = Guid.CreateVersion7() }] };
-                    using (var denied = await SendAsync(agent, "/api/v1/agent/batches", AgentLogBatchCodec.Serialize(nextBatch), "application/json", token))
-                        Assert.AreEqual(HttpStatusCode.TooManyRequests, denied.StatusCode);
+                    var reopenedVault = new IdentityVault(statePath);
+                    var queue = new DurableBatchQueue(reopenedVault, agentId);
+                    if (firstHostDelivered)
+                        Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(nextBatch.BatchId, nextBatch.EnqueuedAt, 1, AgentLogBatchCodec.Serialize(nextBatch), token));
+                    var pending = await queue.PeekAsync(token);
+                    Assert.IsNotNull(pending);
+                    Assert.AreEqual(firstHostDelivered ? nextBatch.BatchId : batch.BatchId, pending.BatchId);
+                    CollectionAssert.AreEqual(firstHostDelivered ? AgentLogBatchCodec.Serialize(nextBatch) : hostPayload, pending.Payload);
+                    var batchClient = new AgentBatchClient(agent, TimeProvider.System);
+                    Assert.AreEqual(BatchSendResult.Retry, (await batchClient.SendNextAsync(reopenedVault, server, token)).Status);
+                    var afterRejection = await queue.PeekAsync(token);
+                    Assert.IsNotNull(afterRejection);
+                    Assert.AreEqual(pending.BatchId, afterRejection.BatchId);
+                    CollectionAssert.AreEqual(pending.Payload, afterRejection.Payload);
                     using (var denied = await SendAsync(app, "/api/v1/otlp/v1/logs", otlpPayload, "application/x-protobuf", token))
                         Assert.AreEqual(HttpStatusCode.ServiceUnavailable, denied.StatusCode);
                     var quota = restarted.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
@@ -121,9 +144,10 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                     // Fix the observation time and available budget so runner speed cannot refill a bucket mid-test.
                     await using (var db = await quota.CreateDbContextAsync(token))
                         await db.Database.ExecuteSqlRawAsync("UPDATE [logquota].[Buckets] SET [Microtokens]=2000000,[LastRefill]=TODATETIMEOFFSET(DATEADD(hour,1,SYSUTCDATETIME()),'+00:00')", token);
-                    using var hostAccepted = await SendAsync(agent, "/api/v1/agent/batches", AgentLogBatchCodec.Serialize(nextBatch), "application/json", token);
+                    var hostAccepted = await batchClient.SendNextAsync(reopenedVault, server, token);
                     using var appAccepted = await SendAsync(app, "/api/v1/otlp/v1/logs", otlpPayload, "application/x-protobuf", token);
-                    Assert.AreEqual(HttpStatusCode.NoContent, hostAccepted.StatusCode);
+                    Assert.AreEqual(BatchSendResult.Delivered, hostAccepted.Status);
+                    Assert.IsNull(await queue.PeekAsync(token));
                     Assert.AreEqual(HttpStatusCode.OK, appAccepted.StatusCode);
                     Assert.IsNull(ExportLogsServiceResponse.Parser.ParseFrom(await appAccepted.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
                     var agents = restarted.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
@@ -135,7 +159,11 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                     Assert.AreEqual(0L, await quotaDb.Database.SqlQueryRaw<long>("SELECT [Microtokens] AS [Value] FROM [logquota].[Buckets] WHERE [Kind]=0").SingleAsync(token));
                 }
             }
-            finally { if (File.Exists(path)) File.Delete(path); }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+                if (Directory.Exists(statePath)) Directory.Delete(statePath, recursive: true);
+            }
         }, context.CancellationToken);
 
     private static Task<HttpResponseMessage> SendAsync(HttpClient client, string path, byte[] payload, string contentType, CancellationToken token)
