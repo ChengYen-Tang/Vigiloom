@@ -85,6 +85,7 @@ builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<CollectorAdministration>();
 builder.Services.AddSingleton<OtlpConcurrency>();
+builder.Services.AddSingleton<MetricRollupPayloadGate>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
     provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));

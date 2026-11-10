@@ -8,6 +8,7 @@ using AngleSharp.Html.Parser;
 using Google.Protobuf;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.WebUtilities;
@@ -27,6 +28,9 @@ using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Web.Telemetry;
 using Vigiloom.Web.Api;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
+using MetricRollupMode = Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupMode;
+using MetricRollupSeries = Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupSeries;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -172,6 +176,9 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 rollupWindow.ProjectedAt = DateTimeOffset.UtcNow;
                 rollupWindow.IsComplete = true;
                 rollupWindow.RawPruned = true;
+                db.MetricRollupSeries.Add(new MetricRollupSeries { WindowRowId = rollupWindow.RowId, ServiceId = rollupWindow.ServiceId,
+                    IdentityHash = new byte[32], IdentityBytes = [1], Mode = MetricRollupMode.GaugeSnapshot,
+                    ResultVersion = 1, InputCount = 1, ResultPayload = [1, 2] });
                 await db.SaveChangesAsync(token);
             }
             using (var pruned = await client.PostAsync("/api/v1/otlp/v1/metrics", Body(metricRequest.ToByteArray()), token))
@@ -220,14 +227,98 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             using (var machineDenied = await client.GetAsync($"{history}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             using (var machineDenied = await client.GetAsync(rollupQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             await LoginAsync(reader, "reader", token);
+            string seriesQuery;
+            MetricRollupWindowResponse selectedWindow;
             using (var response = await reader.GetAsync(rollupQuery, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 Assert.IsTrue(response.Headers.CacheControl?.NoStore);
                 var windows = await response.Content.ReadFromJsonAsync<MetricRollupWindowPage>(cancellationToken: token);
                 Assert.IsNotNull(windows);
-                Assert.IsTrue(windows.Items.Single().RawPruned);
+                selectedWindow = windows.Items.Single();
+                Assert.IsTrue(selectedWindow.RawPruned);
+                seriesQuery = $"{history}/metrics/windows/series?start={Uri.EscapeDataString(selectedWindow.WindowStart.ToString("O"))}&version={Uri.EscapeDataString(selectedWindow.VersionToken)}";
             }
+            using (var response = await reader.GetAsync(seriesQuery, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var series = await response.Content.ReadFromJsonAsync<MetricRollupSeriesPage>(cancellationToken: token);
+                Assert.IsNotNull(series);
+                Assert.AreEqual(2, series.Items.Single().PayloadBytes);
+            }
+            var payloadQuery = seriesQuery.Replace("/series?", "/payload?", StringComparison.Ordinal);
+            using (var sourceDenied = await client.GetAsync(payloadQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, sourceDenied.StatusCode);
+            var payloadGate = factory.Services.GetRequiredService<MetricRollupPayloadGate>().Gate;
+            for (var i = 0; i < 4; i++) await payloadGate.WaitAsync(token);
+            try
+            {
+                using var busyPayload = await reader.GetAsync(payloadQuery, token);
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, busyPayload.StatusCode);
+                Assert.AreEqual("1", busyPayload.Headers.RetryAfter?.Delta?.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            finally { payloadGate.Release(4); }
+            using (var payload = await reader.GetAsync(payloadQuery, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, payload.StatusCode);
+                Assert.AreEqual("application/x-protobuf", payload.Content.Headers.ContentType?.MediaType);
+                Assert.IsTrue(payload.Headers.CacheControl?.NoStore);
+                CollectionAssert.AreEqual(new byte[] { 1, 2 }, await payload.Content.ReadAsByteArrayAsync(token));
+            }
+            using (var invalidPosition = await reader.GetAsync(payloadQuery + "&position=50", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPosition.StatusCode);
+            using (var blockedStream = new BlockingPayloadStream())
+            using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                var blockedContext = new DefaultHttpContext();
+                blockedContext.Response.Body = blockedStream;
+                var admission = factory.Services.GetRequiredService<MetricRollupPayloadGate>();
+                var operation = TelemetryHistoryEndpoints.SendMetricPayloadAsync(blockedContext, approved.ServiceId ?? throw new InvalidOperationException("Missing service ID."), selectedWindow.WindowStart,
+                    selectedWindow.VersionToken, scope.ServiceProvider.GetRequiredService<TelemetryHistory>(), admission, cancel.Token, 1, 0, null);
+                try
+                {
+                    await blockedStream.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                    Assert.AreEqual(3, admission.Gate.CurrentCount);
+                    cancel.Cancel();
+                    await Assert.ThrowsAsync<OperationCanceledException>(() => operation);
+                    Assert.AreEqual(4, admission.Gate.CurrentCount);
+                }
+                finally { cancel.Cancel(); try { await operation; } catch (OperationCanceledException) { } }
+            }
+            async Task VerifyDeadline(bool responseStarted)
+            {
+                var responseFeature = new TestResponseFeature();
+                var lifetime = new AbortTrackingFeature();
+                using var blockedStream = new BlockingPayloadStream(() => responseFeature.Started = responseStarted);
+                using var deadlineSignal = new CancellationTokenSource();
+                using var deadlineGate = new MetricRollupPayloadGate(TimeSpan.FromMinutes(2), deadlineSignal.Token);
+                using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var blockedContext = new DefaultHttpContext();
+                blockedContext.Features.Set<IHttpResponseFeature>(responseFeature);
+                blockedContext.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
+                blockedContext.Response.Body = blockedStream;
+                var operation = TelemetryHistoryEndpoints.SendMetricPayloadAsync(blockedContext, approved.ServiceId ?? throw new InvalidOperationException("Missing service ID."),
+                    selectedWindow.WindowStart, selectedWindow.VersionToken, scope.ServiceProvider.GetRequiredService<TelemetryHistory>(), deadlineGate, cancel.Token, 1, 0, null);
+                try
+                {
+                    await blockedStream.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), token);
+                    deadlineSignal.Cancel();
+                    var timeout = await operation.WaitAsync(TimeSpan.FromSeconds(10), token);
+                    if (responseStarted)
+                    {
+                        Assert.IsTrue(lifetime.Aborted);
+                        Assert.IsFalse(timeout is IStatusCodeHttpResult);
+                    }
+                    else
+                    {
+                        var status = Assert.IsInstanceOfType<IStatusCodeHttpResult>(timeout);
+                        Assert.AreEqual(StatusCodes.Status504GatewayTimeout, status.StatusCode);
+                        Assert.IsNull(blockedContext.Response.ContentLength);
+                        Assert.IsNull(blockedContext.Response.ContentType);
+                    }
+                    Assert.AreEqual(4, deadlineGate.Gate.CurrentCount);
+                }
+                finally { cancel.Cancel(); try { await operation; } catch (OperationCanceledException) { } }
+            }
+            await Task.WhenAll(VerifyDeadline(false), VerifyDeadline(true));
             using (var deniedOverview = await reader.GetAsync("/api/v1/service-reception", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedOverview.StatusCode);
             using (var deniedPage = await reader.GetAsync("/settings/service-reception", token)) Assert.AreNotEqual(HttpStatusCode.OK, deniedPage.StatusCode);
             using (var admin = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false }))
@@ -274,6 +365,37 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 Assert.IsTrue(response.Headers.CacheControl?.NoStore);
                 using var windowResponse = await api.GetAsync(rollupQuery, token);
                 Assert.AreEqual(HttpStatusCode.OK, windowResponse.StatusCode);
+                using var seriesResponse = await api.GetAsync(seriesQuery, token);
+                Assert.AreEqual(HttpStatusCode.OK, seriesResponse.StatusCode);
+                using var payloadResponse = await api.GetAsync(payloadQuery, token);
+                Assert.AreEqual(HttpStatusCode.OK, payloadResponse.StatusCode);
+            }
+            await using (var db = await factoryDb.CreateDbContextAsync(token))
+            {
+                var changed = await db.MetricRollupWindows.SingleAsync(token);
+                changed.InputRevision++;
+                await db.SaveChangesAsync(token);
+            }
+            using (var changed = await reader.GetAsync(seriesQuery, token))
+            {
+                Assert.AreEqual(HttpStatusCode.Conflict, changed.StatusCode);
+                Assert.Contains("window_changed", await changed.Content.ReadAsStringAsync(token));
+            }
+            using (var changed = await reader.GetAsync(payloadQuery, token)) Assert.AreEqual(HttpStatusCode.Conflict, changed.StatusCode);
+            await using (var db = await factoryDb.CreateDbContextAsync(token))
+            {
+                var future = await db.MetricRollupWindows.SingleAsync(token);
+                future.ProjectionVersion = 2;
+                await db.SaveChangesAsync(token);
+            }
+            var refreshed = await reader.GetFromJsonAsync<MetricRollupWindowPage>(rollupQuery, token);
+            Assert.IsNotNull(refreshed);
+            var futureWindow = refreshed.Items.Single();
+            var futureQuery = $"{history}/metrics/windows/series?start={Uri.EscapeDataString(futureWindow.WindowStart.ToString("O"))}&version={Uri.EscapeDataString(futureWindow.VersionToken)}";
+            using (var unsupported = await reader.GetAsync(futureQuery, token))
+            {
+                Assert.AreEqual(HttpStatusCode.Conflict, unsupported.StatusCode);
+                Assert.Contains("unsupported_version", await unsupported.Content.ReadAsStringAsync(token));
             }
             var logPage = await reader.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"{history}/logs?{window}&traceId={Convert.ToHexString(log.TraceId.ToByteArray())}", token);
             Assert.IsNotNull(logPage);
@@ -333,6 +455,72 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             Assert.IsNotNull(lastMetrics); Assert.IsFalse(lastMetrics.Truncated); Assert.IsFalse(lastMetrics.HasMore);
         }, context.CancellationToken);
 
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task MetricRollupPayload_RoundTripsFromOtlpThroughSqlAndHttp() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            var factoryDb = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            await using (var db = await factoryDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var credential = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("rollup source", token);
+            var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+            Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(credential.SourceId, "orders", "prod", "Orders", token));
+            var candidate = (await discovery.ListAsync(1, token)).Single(x => x.SourceId == credential.SourceId);
+            var approved = await scope.ServiceProvider.GetRequiredService<ServiceApproval>().ApproveAsync(candidate.Id, Guid.CreateVersion7(), token);
+            var serviceId = approved.ServiceId ?? throw new InvalidOperationException("Missing service ID.");
+            var now = DateTimeOffset.UtcNow;
+            var start = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300).AddMinutes(-10);
+            await using (var db = await factoryDb.CreateDbContextAsync(token))
+            {
+                var approvedAt = start.AddMinutes(-1);
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Services] SET [ApprovedAt] = {approvedAt} WHERE [Id] = {serviceId}", token);
+            }
+            var timestamp = (ulong)start.AddSeconds(10).ToUnixTimeMilliseconds() * 1_000_000;
+            var resource = new Resource();
+            resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "orders" } });
+            resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            var metric = new Metric { Name = "load", Gauge = new Gauge { DataPoints = { new NumberDataPoint { TimeUnixNano = timestamp, AsDouble = 3.5 } } } };
+            var request = new ExportMetricsServiceRequest { ResourceMetrics = { new ResourceMetrics { Resource = resource, SchemaUrl = "resource-v1",
+                ScopeMetrics = { new ScopeMetrics { Scope = new InstrumentationScope { Name = "meter" }, SchemaUrl = "scope-v1", Metrics = { metric } } } } } };
+            using var producer = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            producer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential.Secret);
+            using (var body = new ByteArrayContent(request.ToByteArray()))
+            {
+                body.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+                using var accepted = await producer.PostAsync("/api/v1/otlp/v1/metrics", body, token);
+                Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+                Assert.IsNull(ExportMetricsServiceResponse.Parser.ParseFrom(await accepted.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
+            }
+            Assert.AreEqual(MetricRollupStatus.Complete, await new MetricRollupMaterializer(factoryDb).MaterializeAsync(serviceId, start, token));
+            using var reader = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            await LoginAsync(reader, "reader", token);
+            var prefix = $"/api/v1/service-telemetry/{serviceId:D}/metrics/windows";
+            var from = Uri.EscapeDataString(start.ToString("O"));
+            var to = Uri.EscapeDataString(start.AddMinutes(5).ToString("O"));
+            var windows = await reader.GetFromJsonAsync<MetricRollupWindowPage>($"{prefix}?from={from}&to={to}", token);
+            Assert.IsNotNull(windows);
+            var window = windows.Items.Single();
+            Assert.AreEqual("Current", window.Status);
+            var query = $"start={from}&version={Uri.EscapeDataString(window.VersionToken)}";
+            var series = await reader.GetFromJsonAsync<MetricRollupSeriesPage>($"{prefix}/series?{query}", token);
+            Assert.IsNotNull(series);
+            Assert.AreEqual("GaugeSnapshot", series.Items.Single().Mode);
+            using var response = await reader.GetAsync($"{prefix}/payload?{query}", token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var decoded = ResourceMetrics.Parser.ParseFrom(await response.Content.ReadAsByteArrayAsync(token));
+            Assert.AreEqual("resource-v1", decoded.SchemaUrl);
+            var decodedScope = decoded.ScopeMetrics.Single();
+            Assert.AreEqual("scope-v1", decodedScope.SchemaUrl);
+            Assert.AreEqual("meter", decodedScope.Scope.Name);
+            var saved = decodedScope.Metrics.Single();
+            Assert.AreEqual("load", saved.Name);
+            Assert.AreEqual(timestamp, saved.Gauge.DataPoints.Single().TimeUnixNano);
+            Assert.AreEqual(3.5, saved.Gauge.DataPoints.Single().AsDouble);
+        }, context.CancellationToken);
+
     private static async Task LoginAsync(HttpClient client, string username, CancellationToken token)
     {
         using var page = await client.GetAsync("/account/login", token);
@@ -343,5 +531,39 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
         fields["Input.Password"] = "Strong-Password-123";
         using var response = await client.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
         Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
+    private sealed class BlockingPayloadStream(Action? onWrite = null) : Stream
+    {
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            onWrite?.Invoke();
+            Started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+    }
+
+    private sealed class TestResponseFeature : HttpResponseFeature
+    {
+        internal bool Started { get; set; }
+        public override bool HasStarted => Started;
+    }
+
+    private sealed class AbortTrackingFeature : IHttpRequestLifetimeFeature
+    {
+        public CancellationToken RequestAborted { get; set; }
+        internal bool Aborted { get; private set; }
+        public void Abort() => Aborted = true;
     }
 }

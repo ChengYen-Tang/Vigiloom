@@ -31,7 +31,7 @@ public sealed class MetricRollupSchemaTests(TestContext context)
             {
                 await setup.Database.MigrateAsync(token);
                 var applied = (await setup.Database.GetAppliedMigrationsAsync(token)).ToArray();
-                previousMigration = applied[^2];
+                previousMigration = applied.Single(x => x.EndsWith("_MetricRollups", StringComparison.Ordinal));
                 var migrator = setup.GetService<IMigrator>();
                 await migrator.MigrateAsync(previousMigration, token);
                 await migrator.MigrateAsync(null, token);

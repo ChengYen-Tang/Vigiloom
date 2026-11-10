@@ -12,4 +12,5 @@ public sealed class MetricRollupWindow
     public DateTimeOffset? ProjectedAt { get; set; }
     public bool IsComplete { get; set; }
     public bool RawPruned { get; set; }
+    public byte[] Version { get; private set; } = [];
 }
