@@ -122,6 +122,44 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task CumulativeHistogramMaterializesThroughSql() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var start = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300).AddMinutes(-10);
+            var source = new ServiceSource("monitor", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "test", "prod", "Test", now), start.AddMinutes(-5));
+            await using (var setup = new ServiceObservabilityDbContext(options))
+            {
+                await setup.Database.MigrateAsync(token);
+                setup.Sources.Add(source); setup.Services.Add(service); await setup.SaveChangesAsync(token);
+            }
+            var resource = new ResourceMetrics { Resource = new Resource() };
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "test" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            var epoch = (ulong)start.AddSeconds(-10).ToUnixTimeMilliseconds() * 1_000_000;
+            var first = new HistogramDataPoint { StartTimeUnixNano = epoch, TimeUnixNano = (ulong)start.AddSeconds(1).ToUnixTimeMilliseconds() * 1_000_000,
+                Count = 1, ExplicitBounds = { 5 }, BucketCounts = { 1, 0 } };
+            var last = new HistogramDataPoint { StartTimeUnixNano = epoch, TimeUnixNano = (ulong)start.AddSeconds(2).ToUnixTimeMilliseconds() * 1_000_000,
+                Count = 3, Sum = 8, Min = 1, Max = 6, ExplicitBounds = { 5 }, BucketCounts = { 2, 1 } };
+            var metric = new Metric { Name = "latency", Histogram = new Histogram { AggregationTemporality = AggregationTemporality.Cumulative,
+                DataPoints = { first, last } } };
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            Assert.AreEqual(MetricIngestionStatus.Accepted, await new MetricIngestion(factory).WriteAsync(source.Id, resource, new ScopeMetrics(), metric, token));
+            Assert.AreEqual(MetricRollupStatus.Complete, await new MetricRollupMaterializer(factory).MaterializeAsync(service.Id, start, token));
+            await using var verify = new ServiceObservabilityDbContext(options);
+            var series = await verify.MetricRollupSeries.SingleAsync(token);
+            Assert.AreEqual(Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupMode.CumulativeHistogramSnapshots, series.Mode);
+            Assert.IsFalse(series.RequiresRaw);
+            var points = ResourceMetrics.Parser.ParseFrom(series.ResultPayload).ScopeMetrics.Single().Metrics.Single().Histogram.DataPoints;
+            CollectionAssert.AreEqual(new ulong[] { 1, 3 }, points.Select(x => x.Count).ToArray());
+            CollectionAssert.AreEqual(new ulong[] { 2, 1 }, points[1].BucketCounts.ToArray());
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task UnknownPointIsPersistedAsIncompleteAndCannotAppearClean() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
