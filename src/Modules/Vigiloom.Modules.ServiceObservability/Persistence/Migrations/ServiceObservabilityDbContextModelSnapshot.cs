@@ -1024,6 +1024,113 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupSeries", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("CollisionOrdinal")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("IdentityBytes")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("IdentityHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<long>("InputBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("InputCount")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("Mode")
+                        .HasColumnType("tinyint");
+
+                    b.Property<long>("QualityFlags")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("RequiresRaw")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("ResultPayload")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int>("ResultVersion")
+                        .HasColumnType("int");
+
+                    b.Property<long>("WindowRowId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("WindowRowId", "IdentityHash", "CollisionOrdinal")
+                        .IsUnique();
+
+                    b.ToTable("MetricRollupSeries", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_MetricRollupSeries_Bounds", "DATALENGTH([IdentityHash]) = 32 AND DATALENGTH([IdentityBytes]) BETWEEN 1 AND 524288 AND ([ResultPayload] IS NULL OR DATALENGTH([ResultPayload]) <= 16777216) AND [CollisionOrdinal] >= 0 AND [Mode] BETWEEN 1 AND 6 AND [QualityFlags] >= 0 AND [ResultVersion] > 0 AND [InputCount] > 0 AND [InputBytes] >= 0");
+
+                            t.HasCheckConstraint("CK_MetricRollupSeries_Preservation", "([Mode] <> 6 OR [RequiresRaw] = 1) AND ([RequiresRaw] = 1 OR [ResultPayload] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupWindow", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("InputRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsComplete")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("ProjectedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("ProjectedRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("ProjectionVersion")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RawPruned")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ServiceId", "WindowStart")
+                        .IsUnique();
+
+                    b.ToTable("MetricRollupWindows", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_MetricRollupWindows_Aligned", "DATEPART(MINUTE, [WindowStart]) % 5 = 0 AND DATEPART(SECOND, [WindowStart]) = 0 AND DATEPART(NANOSECOND, [WindowStart]) = 0");
+
+                            t.HasCheckConstraint("CK_MetricRollupWindows_Revisions", "[InputRevision] > 0 AND (([ProjectedRevision] IS NULL AND [ProjectionVersion] IS NULL AND [ProjectedAt] IS NULL AND [IsComplete] = 0 AND [RawPruned] = 0) OR ([ProjectedRevision] IS NOT NULL AND [ProjectedRevision] > 0 AND [ProjectedRevision] <= [InputRevision] AND [ProjectionVersion] IS NOT NULL AND [ProjectionVersion] > 0 AND [ProjectedAt] IS NOT NULL))");
+
+                            t.HasCheckConstraint("CK_MetricRollupWindows_Utc", "DATEPART(TZOFFSET, [WindowStart]) = 0 AND ([ProjectedAt] IS NULL OR DATEPART(TZOFFSET, [ProjectedAt]) = 0)");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", b =>
                 {
                     b.Property<long>("RowId")
@@ -1305,6 +1412,24 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Context");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupSeries", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupWindow", null)
+                        .WithMany()
+                        .HasForeignKey("WindowRowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.MetricRollupWindow", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.ServiceObservability.Domain.MonitoredService", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", b =>
