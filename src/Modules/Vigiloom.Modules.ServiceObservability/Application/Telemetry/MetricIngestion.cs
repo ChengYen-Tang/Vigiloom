@@ -4,10 +4,11 @@ using Microsoft.EntityFrameworkCore.Storage;
 using OpenTelemetry.Proto.Metrics.V1;
 using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
-internal enum MetricIngestionStatus { Accepted, Unauthorized, Invalid, BeforeApproval, FutureTimestamp, RetiredInstance, CapacityReached, Busy }
+internal enum MetricIngestionStatus { Accepted, Unauthorized, Invalid, BeforeApproval, FutureTimestamp, RetiredInstance, CapacityReached, Busy, WindowPruned }
 
 /// <summary>Persists one metric and its bounded data points for one authorized service.</summary>
 internal sealed class MetricIngestion(IDbContextFactory<ServiceObservabilityDbContext> contexts)
@@ -36,9 +37,19 @@ internal sealed class MetricIngestion(IDbContextFactory<ServiceObservabilityDbCo
                 InstanceResolutionStatus.CapacityReached => MetricIngestionStatus.CapacityReached,
                 _ => MetricIngestionStatus.Busy
             };
+        // ResolveAsync takes this lock for identified instances. The unidentified path
+        // must use the same transaction fence as batched reception and rollup cleanup.
+        if (binding.Status == InstanceResolutionStatus.Unidentified &&
+            !await ServiceInstanceResolver.LockServiceAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), binding.Service!.ServiceId, token))
+            return MetricIngestionStatus.Busy;
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var timing = CheckTimes(data, binding.Service!.ApprovedAt, received);
         if (timing != MetricIngestionStatus.Accepted) return timing;
+        var changes = new Dictionary<Guid, HashSet<DateTimeOffset>>();
+        if (!MetricWindowRevisions.Add(changes, binding.Service.ServiceId, data)) return MetricIngestionStatus.Invalid;
+        var revision = await MetricWindowRevisions.MarkAsync(db, changes, token);
+        if (revision == WindowRevisionResult.RawPruned) return MetricIngestionStatus.WindowPruned;
+        if (revision == WindowRevisionResult.CapacityExceeded) return MetricIngestionStatus.CapacityReached;
         Stage(db, resource, scope, data, binding, received);
         await db.SaveChangesAsync(token);
         await tx.CommitAsync(token);

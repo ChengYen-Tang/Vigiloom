@@ -12,6 +12,7 @@ public sealed class SqlTestDatabase : IAsyncDisposable
     private static readonly string RunId = Guid.CreateVersion7().ToString("N");
     private static readonly string Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomSqlTests"));
     private static readonly object RunGate = new();
+    private static readonly SemaphoreSlim LocalDbDdlGate = new(1, 1);
     private static FileStream? runLease;
     private readonly TestDatabaseServer server;
     private readonly DatabaseManifest manifest;
@@ -93,22 +94,23 @@ public sealed class SqlTestDatabase : IAsyncDisposable
             }
             File.Move(temporaryManifest, manifestPath);
 
-            await using var connection = new SqlConnection(server.ConnectionString);
-            await connection.OpenAsync(cancellationToken);
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT DB_ID(@database)";
-            command.Parameters.AddWithValue("@database", name);
-            if (await command.ExecuteScalarAsync(cancellationToken) is not DBNull)
+            await WithLocalDbDdlGateAsync(server, "create", async () =>
             {
-                throw new InvalidOperationException("Generated test database already exists; it will not be modified.");
-            }
-
-            command.Parameters.Clear();
-            database.createAttempted = true;
-            command.CommandText = IsLocalDb(server)
-                ? $"CREATE DATABASE [{name}] ON PRIMARY (NAME = N'{name}', FILENAME = N'{SqlLiteral(DataFile(manifest))}') LOG ON (NAME = N'{name}_log', FILENAME = N'{SqlLiteral(LogFile(manifest))}')"
-                : $"CREATE DATABASE [{name}]";
-            await command.ExecuteNonQueryAsync(cancellationToken);
+                await using var connection = new SqlConnection(server.ConnectionString);
+                await connection.OpenAsync(cancellationToken);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT DB_ID(@database)";
+                command.Parameters.AddWithValue("@database", name);
+                if (await command.ExecuteScalarAsync(cancellationToken) is not DBNull)
+                    throw new InvalidOperationException("Generated test database already exists; it will not be modified.");
+                command.Parameters.Clear();
+                database.createAttempted = true;
+                if (IsLocalDb(server)) command.CommandTimeout = 60;
+                command.CommandText = IsLocalDb(server)
+                    ? $"CREATE DATABASE [{name}] ON PRIMARY (NAME = N'{name}', FILENAME = N'{SqlLiteral(DataFile(manifest))}') LOG ON (NAME = N'{name}_log', FILENAME = N'{SqlLiteral(LogFile(manifest))}')"
+                    : $"CREATE DATABASE [{name}]";
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }, cancellationToken);
             if (initialize is not null) await initialize(database, cancellationToken);
             return database;
         }
@@ -136,7 +138,7 @@ public sealed class SqlTestDatabase : IAsyncDisposable
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(IsLocalDb(server) ? 120 : 30));
         if (createAttempted)
         {
             await DropOwnedAsync(server, manifest, manifestPath, timeout.Token);
@@ -170,7 +172,7 @@ public sealed class SqlTestDatabase : IAsyncDisposable
                 throw new InvalidOperationException("The test run still owns this database.");
             }
 
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(IsLocalDb(server) ? 120 : 30));
             await DropOwnedAsync(server, manifest, fullPath, timeout.Token);
             EnsureNoUnexpectedFiles(manifest.DirectoryPath, fullPath, Path.Combine(manifest.DirectoryPath, "lease.lock"));
             File.Delete(fullPath);
@@ -289,6 +291,11 @@ public sealed class SqlTestDatabase : IAsyncDisposable
     private static async Task DropOwnedAsync(TestDatabaseServer server, DatabaseManifest manifest, string manifestPath, CancellationToken cancellationToken)
     {
         ValidateManifest(server, manifest, manifestPath);
+        await WithLocalDbDdlGateAsync(server, "cleanup", () => DropOwnedCoreAsync(server, manifest, cancellationToken), cancellationToken);
+    }
+
+    private static async Task DropOwnedCoreAsync(TestDatabaseServer server, DatabaseManifest manifest, CancellationToken cancellationToken)
+    {
         // Only clear this test database's pool; administrative connections remain unpooled.
         using (var pooledConnection = new SqlConnection(server.ForDatabase(manifest.DatabaseName)))
         {
@@ -331,6 +338,7 @@ public sealed class SqlTestDatabase : IAsyncDisposable
 
             command.Parameters.Clear();
             // The name is generated locally and checked against the manifest, never taken as arbitrary SQL.
+            if (IsLocalDb(server)) command.CommandTimeout = 60;
             command.CommandText = $"ALTER DATABASE [{manifest.DatabaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{manifest.DatabaseName}];";
             await command.ExecuteNonQueryAsync(cancellationToken);
             command.CommandText = "SELECT DB_ID(@database)";
@@ -350,6 +358,23 @@ public sealed class SqlTestDatabase : IAsyncDisposable
             {
                 throw new IOException("Test database files remain after cleanup.");
             }
+        }
+    }
+
+    private static async Task WithLocalDbDdlGateAsync(TestDatabaseServer server, string operation, Func<Task> action, CancellationToken token)
+    {
+        if (!IsLocalDb(server)) { await action(); return; }
+        var start = Stopwatch.GetTimestamp();
+        await LocalDbDdlGate.WaitAsync(token);
+        var entered = Stopwatch.GetTimestamp();
+        try { await action(); }
+        finally
+        {
+            var waited = Stopwatch.GetElapsedTime(start, entered);
+            var elapsed = Stopwatch.GetElapsedTime(entered);
+            LocalDbDdlGate.Release();
+            if (waited > TimeSpan.FromSeconds(5) || elapsed > TimeSpan.FromSeconds(5))
+                Console.Error.WriteLine($"LocalDB test {operation}: wait {waited.TotalSeconds:F1}s, execution {elapsed.TotalSeconds:F1}s.");
         }
     }
 

@@ -18,6 +18,8 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<TraceSpan> TraceSpans => Set<TraceSpan>();
     public DbSet<MetricContext> MetricContexts => Set<MetricContext>();
     public DbSet<MetricPoint> MetricPoints => Set<MetricPoint>();
+    public DbSet<MetricRollupWindow> MetricRollupWindows => Set<MetricRollupWindow>();
+    public DbSet<MetricRollupSeries> MetricRollupSeries => Set<MetricRollupSeries>();
     public DbSet<CollectorRegistration> Collectors => Set<CollectorRegistration>();
     public DbSet<CollectorRoute> CollectorRoutes => Set<CollectorRoute>();
     public DbSet<ReceptionRejectionSummary> ReceptionRejections => Set<ReceptionRejectionSummary>();
@@ -310,6 +312,38 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         point.HasOne(x => x.Context).WithMany().HasForeignKey(x => new { x.ContextId, x.ServiceId })
             .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
         point.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var window = modelBuilder.Entity<MetricRollupWindow>();
+        window.ToTable("MetricRollupWindows", table =>
+        {
+            table.HasCheckConstraint("CK_MetricRollupWindows_Utc", "DATEPART(TZOFFSET, [WindowStart]) = 0 AND ([ProjectedAt] IS NULL OR DATEPART(TZOFFSET, [ProjectedAt]) = 0)");
+            table.HasCheckConstraint("CK_MetricRollupWindows_Aligned", "DATEPART(MINUTE, [WindowStart]) % 5 = 0 AND DATEPART(SECOND, [WindowStart]) = 0 AND DATEPART(NANOSECOND, [WindowStart]) = 0");
+            table.HasCheckConstraint("CK_MetricRollupWindows_Revisions", "[InputRevision] > 0 AND (([ProjectedRevision] IS NULL AND [ProjectionVersion] IS NULL AND [ProjectedAt] IS NULL AND [IsComplete] = 0 AND [RawPruned] = 0) OR ([ProjectedRevision] IS NOT NULL AND [ProjectedRevision] > 0 AND [ProjectedRevision] <= [InputRevision] AND [ProjectionVersion] IS NOT NULL AND [ProjectionVersion] > 0 AND [ProjectedAt] IS NOT NULL))");
+        });
+        window.HasKey(x => x.RowId).IsClustered();
+        window.Property(x => x.RowId).UseIdentityColumn();
+        window.Property(x => x.Version).IsRowVersion();
+        window.HasAlternateKey(x => new { x.RowId, x.ServiceId });
+        window.HasIndex(x => new { x.ServiceId, x.WindowStart }).IsUnique();
+        window.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        var rollupSeries = modelBuilder.Entity<MetricRollupSeries>();
+        rollupSeries.ToTable("MetricRollupSeries", table =>
+        {
+            table.HasCheckConstraint("CK_MetricRollupSeries_Bounds", "DATALENGTH([IdentityHash]) = 32 AND DATALENGTH([IdentityBytes]) BETWEEN 1 AND 524288 AND ([ResultPayload] IS NULL OR DATALENGTH([ResultPayload]) <= 16777216) AND [CollisionOrdinal] >= 0 AND [Mode] BETWEEN 1 AND 7 AND [QualityFlags] >= 0 AND [ResultVersion] > 0 AND [InputCount] > 0 AND [InputBytes] >= 0");
+            table.HasCheckConstraint("CK_MetricRollupSeries_Preservation", "([Mode] <> 6 OR [RequiresRaw] = 1) AND ([RequiresRaw] = 1 OR [ResultPayload] IS NOT NULL)");
+        });
+        rollupSeries.HasKey(x => x.RowId).IsClustered();
+        rollupSeries.Property(x => x.RowId).UseIdentityColumn();
+        rollupSeries.Property(x => x.Mode).HasConversion<byte>();
+        rollupSeries.Property(x => x.IdentityHash).HasColumnType("binary(32)").IsRequired();
+        rollupSeries.Property(x => x.IdentityBytes).HasColumnType("varbinary(max)").IsRequired();
+        rollupSeries.Property(x => x.ResultPayload).HasColumnType("varbinary(max)");
+        rollupSeries.HasIndex(x => new { x.WindowRowId, x.IdentityHash, x.CollisionOrdinal }).IsUnique();
+        rollupSeries.HasOne<MetricRollupWindow>().WithMany().HasForeignKey(x => new { x.WindowRowId, x.ServiceId })
+            .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Cascade);
+        rollupSeries.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
             .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
     }
 }

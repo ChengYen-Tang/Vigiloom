@@ -20,3 +20,19 @@ public sealed record TelemetrySpan(Guid? InstanceId, DateTimeOffset StartedAt, D
 /// <summary>An OTLP metric data point. Kind identifies the original OTLP point message type.</summary>
 public sealed record TelemetryMetricPoint(Guid? InstanceId, DateTimeOffset OccurredAt, DateTimeOffset ReceivedAt,
     byte Kind, int Context, byte[] Point);
+
+/// <summary>A five-minute application metric window. IsComplete describes the last projection; check HasProjection and IsStale as well. A missing window does not establish that no data existed.</summary>
+public sealed record MetricRollupWindowResponse(DateTimeOffset WindowStart, DateTimeOffset WindowEnd,
+    string Status, DateTimeOffset? ProjectedAt, bool HasProjection, bool IsStale, bool IsComplete, bool IsSupported, bool RawPruned,
+    string VersionToken);
+
+/// <summary>A live page filtered by WindowStart and ordered newest first; use NextBefore as an exclusive cursor. Late arrivals may change earlier pages.</summary>
+public sealed record MetricRollupWindowPage(IReadOnlyList<MetricRollupWindowResponse> Items, DateTimeOffset? NextBefore);
+
+/// <summary>One series in a five-minute result; PayloadBytes is null when no payload is stored.</summary>
+public sealed record MetricRollupSeriesResponse(Guid? InstanceId, string Mode, long QualityFlags, string[] QualityReasons,
+    bool RequiresRaw, int ResultVersion, int InputCount, int? PayloadBytes);
+
+/// <summary>A version-bound page. If the window changes, restart using its latest VersionToken.</summary>
+public sealed record MetricRollupSeriesPage(string VersionToken, int Page, bool HasMore, bool Truncated,
+    IReadOnlyList<MetricRollupSeriesResponse> Items);
