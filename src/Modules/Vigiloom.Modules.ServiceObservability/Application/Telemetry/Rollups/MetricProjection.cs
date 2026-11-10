@@ -73,7 +73,7 @@ internal abstract record MetricProjection(bool RequiresRaw)
                 var value = SummaryWindow.Reduce(summary, window.Start, window.End);
                 return new Summary(value, value.Epochs.Count == 0 || value.Epochs.Any(x => x.First is null || x.Last is null) ||
                     value.Missing > 0 || value.Invalid > 0 || value.UnknownStart || value.AmbiguousTimestamps ||
-                    value.OverlappingEpochs || value.CountDecreased || value.StatisticsUnverified || value.UnsupportedFields || value.CapacityExceeded);
+                    value.OverlappingEpochs || value.CountDecreased || value.UnsupportedFields || value.CapacityExceeded);
             }
             default:
                 // Unsupported kinds/temporality and type mismatches must retain raw inputs.
