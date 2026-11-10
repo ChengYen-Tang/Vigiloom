@@ -164,6 +164,24 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, metrics.StatusCode);
                 Assert.IsNull(ExportMetricsServiceResponse.Parser.ParseFrom(await metrics.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
             }
+            await using (var db = await factoryDb.CreateDbContextAsync(token))
+            {
+                var rollupWindow = await db.MetricRollupWindows.SingleAsync(token);
+                rollupWindow.ProjectedRevision = rollupWindow.InputRevision;
+                rollupWindow.ProjectionVersion = 1;
+                rollupWindow.ProjectedAt = DateTimeOffset.UtcNow;
+                rollupWindow.IsComplete = true;
+                rollupWindow.RawPruned = true;
+                await db.SaveChangesAsync(token);
+            }
+            using (var pruned = await client.PostAsync("/api/v1/otlp/v1/metrics", Body(metricRequest.ToByteArray()), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, pruned.StatusCode);
+                var partial = ExportMetricsServiceResponse.Parser.ParseFrom(await pruned.Content.ReadAsByteArrayAsync(token)).PartialSuccess;
+                Assert.IsNotNull(partial);
+                Assert.AreEqual(1L, partial.RejectedDataPoints);
+                Assert.Contains("no metrics in this request were stored", partial.ErrorMessage);
+            }
             using (var traces = await client.PostAsync("/api/v1/otlp/v1/traces", Body(traceRequest.ToByteArray()), token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, traces.StatusCode);
