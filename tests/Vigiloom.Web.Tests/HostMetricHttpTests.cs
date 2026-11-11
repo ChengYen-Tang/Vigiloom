@@ -30,16 +30,15 @@ public sealed class HostMetricHttpTests
         var root = Path.Combine(Path.GetTempPath(), "VigiloomMetricTransportTests", Path.GetRandomFileName());
         try
         {
-            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+            await ReusableWebDatabase.ExecuteAsync( async (database, token) =>
             {
                 using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-                await PingTestSite.InitializeAsync(factory, token);
+                await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
                 var now = DateTimeOffset.UtcNow;
                 var device = new Device("metric transport", "127.0.0.1", true, now);
                 var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
                 await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
                 var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-                await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                 var secret = RandomNumberGenerator.GetBytes(32);
                 Guid agentId;
                 await using (var scope = factory.Services.CreateAsyncScope())
@@ -88,10 +87,10 @@ public sealed class HostMetricHttpTests
         }
     }
     [TestMethod]
-    public Task HostMetrics_AuthorizesReadersAndRejectsInvalidRanges() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task HostMetrics_AuthorizesReadersAndRejectsInvalidRanges() => ReusableWebDatabase.ExecuteAsync( async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         var now = DateTimeOffset.UtcNow;
         var device = new Device("metric history", "127.0.0.1", true, now);
         var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
@@ -99,7 +98,6 @@ public sealed class HostMetricHttpTests
         var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
         await using (var db = await agents.CreateDbContextAsync(token))
         {
-            await db.Database.MigrateAsync(token);
             var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
             db.Agents.Add(agent);
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,

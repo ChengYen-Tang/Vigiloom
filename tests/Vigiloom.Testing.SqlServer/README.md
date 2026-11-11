@@ -12,7 +12,7 @@ The database test category has been exercised on Windows LocalDB and on Linux wi
 
 Each run has a `run.json`, a run lease and individual case manifests under the operating system temporary directory `VigiloomSqlTests`. The manifest is written before database creation. Normal cleanup checks the generated name and source; for LocalDB it also verifies the database's exact owned file paths before DROP and checks those files are removed.
 
-The Agent management test project has a narrow opt-in pilot for identity cases that change data but do not change schema or the seeded replay policy. Its fixture exclusively leases one run-owned database, applies migrations once, and uses Respawn to reset the `agent` and `resources` data after each case while preserving migration history and the verified policy seed. Reset or seed verification failure removes the database from reuse; failed disposal is retained for assembly cleanup and manifest recovery. Migration, schema-changing and snapshot-configuration tests retain a database per case. Other test projects do not implicitly use this pilot.
+Selected Agent, service and Web tests can explicitly opt in to an exclusively leased run-owned database. Each fixture applies its migrations once, uses Respawn to reset data between cases and verifies its preserved migration seeds. The Web fixture creates a new host and clients for each case. Reset or seed verification failure removes the database from reuse; failed disposal is retained for assembly cleanup and manifest recovery. Migration, schema-changing and snapshot-configuration tests retain a database per case. Other cases do not implicitly use a shared database.
 
 If a test host is forcibly terminated, after it has exited recover its exact run manifest:
 

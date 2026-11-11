@@ -52,7 +52,11 @@ public sealed class DiscoverySchemaTests(TestContext context)
         }, context.CancellationToken);
 
     [AssemblyCleanup]
-    public static void Cleanup() => SqlTestDatabase.CompleteRun();
+    public static async Task Cleanup()
+    {
+        await Fixtures.ReusableServiceDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public Task CandidateDiscovery_ContinuedReportsRemainVisibleAfterFirstSeenWindow() =>
