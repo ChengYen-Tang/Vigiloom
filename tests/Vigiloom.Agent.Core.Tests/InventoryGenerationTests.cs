@@ -190,7 +190,21 @@ public sealed class InventoryGenerationTests
                     MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
             var owner = new AgentSettingsOwner(agentId, "https://example.test/", vault.StateDirectory);
             var queues = Enumerable.Range(0, 6).Select(_ => new DurableBatchQueue(vault, agentId)).ToArray();
-            var values = await Task.WhenAll(queues.Select(q => q.ReserveInventoryGenerationAsync(owner, InventorySource.LinuxRpm, 0, token)));
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(15));
+            async Task<long> ReserveWithRetry(DurableBatchQueue queue)
+            {
+                while (true)
+                {
+                    try { return await queue.ReserveInventoryGenerationAsync(owner, InventorySource.LinuxRpm, 0, deadline.Token); }
+                    catch (IOException ex) when (!deadline.IsCancellationRequested &&
+                        (OperatingSystem.IsWindows() && (ex.HResult & 0xffff) is 32 or 33 ||
+                         OperatingSystem.IsLinux() && (ex.HResult & 0xffff) == 11))
+                    { await Task.Delay(50, deadline.Token); }
+                }
+            }
+            // The identity lease has a bounded wait; a busy producer retries without reusing a generation.
+            var values = await Task.WhenAll(queues.Select(ReserveWithRetry));
             CollectionAssert.AreEquivalent(new long[] { 1, 2, 3, 4, 5, 6 }, values);
             var reopened = new DurableBatchQueue(new IdentityVault(root), agentId);
             Assert.AreEqual(7L, await reopened.ReserveInventoryGenerationAsync(owner, InventorySource.LinuxRpm, 0, token));
