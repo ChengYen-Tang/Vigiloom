@@ -1,0 +1,16 @@
+.package-page .device-panel h2 { margin-top: 0; }
+.package-page .device-panel p { line-height: 1.6; }
+.package-page details { margin: 16px 0; }
+.package-page summary { color: var(--vigiloom-primary); cursor: pointer; }
+.package-page ::deep .package-form { display: grid; gap: 10px; max-width: 640px; margin-top: 16px; }
+.package-page ::deep .package-form[hidden] { display: none; }
+.package-page ::deep .package-form p { margin: 0 0 4px; }
+.package-page ::deep .package-action { margin-top: 18px; }
+.package-page ::deep .package-cache-form { margin-top: 24px; }
+.package-page .package-hash { display: block; margin-top: 10px; overflow-wrap: anywhere; }
+.package-page .package-status { padding: 10px 12px; background: #eff6ff; border-radius: 6px; color: var(--vigiloom-ink); }
+.package-page thead { background: #f1f6fc; }
+.package-page .package-scroll-hint { display: none; color: var(--vigiloom-ink); font-weight: 600; }
+@media (max-width: 600px) {
+    .package-page .package-scroll-hint { display: block; }
+}

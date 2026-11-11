@@ -1,0 +1,171 @@
+@page "/settings/agent-packages"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@inject AgentPackageSourceSettings Sources
+@inject AgentPackageQuery Packages
+@inject UpdateTrustStore Trust
+@inject PackageLibrary Library
+@inject TimeProvider Clock
+@inject ILogger<AgentPackages> Logger
+
+<PageTitle>Agent 套件管理 - Vigiloom</PageTitle>
+<main class="device-page package-page">
+    <header class="device-heading"><div><h1>Agent 套件管理</h1><p>管理套件來源，查看已驗證的版本與狀態。</p></div></header>
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取套件管理資料，請稍後重新整理。</p> }
+    else
+    {
+        <section class="device-panel" aria-labelledby="package-trust-title">
+            <h2 id="package-trust-title">發布者信任</h2>
+            @if (trust?.Initialized == true)
+            {
+                <p>信任根已設定，版本 @trust.RootVersion。</p>
+                <details><summary>查看目前 SHA-256 指紋</summary><code class="package-hash">@trust.Sha256</code></details>
+            }
+            else
+            {
+                <p>尚未設定信任根。請使用從可信管道取得的發布者檔案與另行確認的指紋；僅有來源網址不足以確認發布者身分。</p>
+                <form method="post" action="/settings/agent-packages/trust" enctype="multipart/form-data" class="package-form">
+                    <AntiforgeryToken />
+                    <label for="trust-root">發布者信任根檔案</label><input id="trust-root" type="file" name="root" accept=".json,application/json" required />
+                    <label for="trust-fingerprint">獨立取得的 SHA-256 指紋</label><input id="trust-fingerprint" name="sha256" maxlength="64" minlength="64" autocomplete="off" required />
+                    <p>初始化後不能直接替換信任根，後續更新由已信任的發布者簽章驗證。</p>
+                    <div><button type="submit">初始化信任</button></div>
+                </form>
+            }
+            @if (TrustMessage is not null) { <p class="package-status" role="status">@TrustMessage</p> }
+        </section>
+
+        <section class="device-panel" aria-labelledby="package-source-title">
+            <h2 id="package-source-title">套件來源</h2>
+            <p>@(source is null ? "尚未設定來源。" : $"目前來源：{source.BaseUri}")</p>
+            <p>@(source?.HasCredential == true ? "已設定來源憑證；憑證內容不會再次顯示。" : "目前未設定來源憑證。")</p>
+            @if (sourceMessage is not null) { <p class="package-status" role="status">@sourceMessage</p> }
+            <details open="@sourceEditOpen"><summary>編輯來源</summary>
+                <EditForm Model="SourceInput" FormName="package-source" method="post" OnSubmit="SaveSourceAsync" class="package-form">
+                    <InputHidden @bind-Value="SourceInput.Version" />
+                    <label for="package-origin">來源網址（HTTPS）</label><InputText id="package-origin" @bind-Value="SourceInput.BaseUri" />
+                    <label for="package-credential-action">來源憑證</label><InputSelect id="package-credential-action" @bind-Value="SourceInput.Action">
+                        <option value="0">保留目前憑證</option><option value="1">設定或更換憑證</option><option value="2">清除憑證</option>
+                    </InputSelect>
+                    <label for="package-credential">新憑證（僅在設定或更換時填寫）</label><InputText id="package-credential" type="password" autocomplete="new-password" @bind-Value="SourceInput.Credential" />
+                    <p>更換來源網址時，請同時清除或更換現有憑證。</p><div><button type="submit">儲存來源</button></div>
+                </EditForm>
+            </details>
+            <EditForm Model="RefreshInput" FormName="package-refresh" method="post" OnSubmit="RefreshAsync" class="package-action">
+                <button type="submit" disabled="@(source is null || trust?.Initialized != true)">立即刷新套件清單</button>
+            </EditForm>
+            <p>平台也會定期刷新清單。來源或驗證資料變更時，會先暫停使用舊清單。</p>
+        </section>
+
+        <section class="device-panel" aria-labelledby="package-list-title">
+            <h2 id="package-list-title">套件版本</h2>
+            <p>此處顯示發布者清單；是否能套用到設備，仍取決於平台、相容性與版本指派。</p>
+            @if (cacheMessage is not null) { <p class="package-status" role="status">@cacheMessage</p> }
+            @if (packageListError) { <p role="alert">目前無法讀取套件清單，請重新整理。</p> }
+            else if (page?.Items.Count > 0)
+            {
+                <p class="package-scroll-hint">左右滑動查看完整的套件狀態與有效期限。</p>
+                <div class="device-table-wrap" role="region" aria-label="套件版本，可左右捲動" tabindex="0"><table>
+                    <thead><tr><th>版本</th><th>平台</th><th>大小</th><th>清單狀態</th><th>驗證有效期限（UTC）</th></tr></thead>
+                    <tbody>@foreach (var item in page.Items) { <tr @key="item.Id"><td>@item.Version</td><td>@item.RuntimeIdentifier</td><td>@((item.Size / 1048576d).ToString("N1")) MiB</td><td>@Status(item)</td><td>@item.VerifiedUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td></tr> }</tbody>
+                </table></div>
+                <nav class="device-pagination" aria-label="套件清單分頁">@if (page.Page > 1) { <a href="@($"?page={page.Page - 1}")">上一頁</a> }<span>第 @(page.Page) 頁</span>@if (page.HasMore) { <a href="@($"?page={page.Page + 1}")">下一頁</a> }</nav>
+            }
+            else if (page?.Page > 1) { <p>此頁沒有套件版本。</p><a href="@($"?page={page.Page - 1}")">上一頁</a> }
+            else { <p>目前沒有套件版本。設定來源與信任根後，可刷新清單。</p> }
+            <EditForm Model="CacheInput" FormName="package-cache" method="post" OnSubmit="CacheAsync" class="package-form package-cache-form" hidden="@(!Eligible.Any())">
+                <label for="package-cache-id">預先快取版本到此節點</label>
+                <InputSelect id="package-cache-id" @bind-Value="CacheInput.Id"><option value="">請選擇版本</option>@foreach (var item in Eligible) { <option value="@item.Id">@item.Version · @item.RuntimeIdentifier</option> }</InputSelect>
+                <div><button type="submit">預先快取</button></div>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "page")] private int? PageNumber { get; set; }
+    [SupplyParameterFromQuery(Name = "trust")] private string? TrustResult { get; set; }
+    [SupplyParameterFromForm(FormName = "package-source")] private SourceForm SourceInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "package-refresh")] private EmptyForm RefreshInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "package-cache")] private CacheForm CacheInput { get; set; } = default!;
+    private AgentPackageSourceView? source;
+    private AgentPackageTrustView? trust;
+    private AgentPackagePage? page;
+    private bool loadError;
+    private bool packageListError;
+    private bool sourceEditOpen;
+    private string? sourceMessage;
+    private string? cacheMessage;
+    private IEnumerable<AgentPackageView> Eligible => page?.Items.Where(item => item.Listed && !item.Revoked && item.VerifiedUntil > Clock.GetUtcNow()) ?? [];
+    private string? TrustMessage => TrustResult switch { "saved" => "信任根已初始化。", "invalid" => "檔案或指紋無效，請確認兩者來自可信管道。", "exists" => "信任根已設定，請重新整理。", "error" => "無法確認初始化結果，請重新整理並檢查。", _ => null };
+    private string Status(AgentPackageView item) => item.Revoked ? "已撤銷" : !item.Listed ? "已不在清單中" : item.VerifiedUntil <= Clock.GetUtcNow() ? "驗證已過期" : "已驗證";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var submittedSource = SourceInput is not null;
+        SourceInput ??= new(); RefreshInput ??= new(); CacheInput ??= new();
+        try
+        {
+            source = await Sources.GetAsync(HttpContext.RequestAborted);
+            trust = await Trust.GetStatusAsync(HttpContext.RequestAborted);
+            page = await Packages.GetAsync(Math.Clamp(PageNumber ?? 1, 1, 20000), HttpContext.RequestAborted);
+            if (!submittedSource && source is not null) { SourceInput.BaseUri = source.BaseUri; SourceInput.Version = source.Version; }
+        }
+        catch (Exception error) { Logger.LogWarning("Could not read Agent package management: {ErrorType}", error.GetType().Name); loadError = true; }
+    }
+
+    private async Task SaveSourceAsync(EditContext context)
+    {
+        if (!Actor(out var actor)) return;
+        sourceEditOpen = true;
+        var request = new AgentPackageSourceUpdate(SourceInput.BaseUri ?? "", SourceInput.Action,
+            SourceInput.Action == PackageCredentialAction.Replace ? SourceInput.Credential : null, SourceInput.Version ?? "");
+        var unexpectedCredential = SourceInput.Action != PackageCredentialAction.Replace && !string.IsNullOrEmpty(SourceInput.Credential);
+        SourceInput.Credential = null;
+        if (unexpectedCredential) { sourceMessage = "若要儲存新憑證，請選擇「設定或更換憑證」。"; return; }
+        if (!AgentPackageSourceSettings.Valid(request)) { sourceMessage = "請確認來源網址以 https:// 開頭、以 / 結尾，並檢查憑證格式。"; return; }
+        try
+        {
+            var saved = await Sources.UpdateAsync(request, actor, HttpContext.RequestAborted);
+            if (saved is null) sourceMessage = "來源已被其他操作變更，請重新整理後再試。";
+            else { source = saved; SourceInput.Version = saved.Version; SourceInput.Action = PackageCredentialAction.Keep; sourceMessage = "來源已儲存；請刷新清單。"; sourceEditOpen = false; }
+        }
+        catch (ArgumentException) { sourceMessage = "更換來源網址時，請清除或更換現有憑證。"; }
+        catch (Exception error) { Logger.LogWarning("Could not save package source: {ErrorType}", error.GetType().Name); sourceMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+        await ReloadPackagesAsync();
+    }
+
+    private async Task RefreshAsync(EditContext context)
+    {
+        if (!Actor(out var actor)) return;
+        try
+        {
+            var completed = await Sources.RefreshAsync(Trust, actor, HttpContext.RequestAborted);
+            sourceMessage = completed ? "清單已驗證並更新。" : "請先設定套件來源。";
+        }
+        catch (Exception error) { Logger.LogWarning("Could not refresh package catalogue: {ErrorType}", error.GetType().Name); sourceMessage = "無法刷新清單，請檢查來源、信任根與網路後重試。"; }
+        await ReloadPackagesAsync();
+    }
+
+    private async Task CacheAsync(EditContext context)
+    {
+        if (CacheInput.Id is not { } id || id == Guid.Empty) { cacheMessage = "請選擇要快取的版本。"; return; }
+        try { cacheMessage = await Library.CacheAsync(id, HttpContext.RequestAborted) ? "套件已驗證並快取到此節點。" : "套件或來源狀態已變更，請刷新清單後再試。"; }
+        catch (Exception error) { Logger.LogWarning("Could not cache Agent package: {ErrorType}", error.GetType().Name); cacheMessage = "無法驗證或快取套件，請檢查來源、網路與磁碟空間。"; }
+        await ReloadPackagesAsync();
+    }
+
+    private bool Actor(out Guid actor) => Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out actor) && actor != Guid.Empty;
+    private async Task ReloadPackagesAsync()
+    {
+        try { page = await Packages.GetAsync(1, HttpContext.RequestAborted); packageListError = false; }
+        catch (Exception error) { Logger.LogWarning("Could not reload package list: {ErrorType}", error.GetType().Name); page = null; packageListError = true; }
+    }
+    private sealed class SourceForm { public string? BaseUri { get; set; } public string? Version { get; set; } public PackageCredentialAction Action { get; set; } public string? Credential { get; set; } }
+    private sealed class EmptyForm { }
+    private sealed class CacheForm { public Guid? Id { get; set; } }
+}
