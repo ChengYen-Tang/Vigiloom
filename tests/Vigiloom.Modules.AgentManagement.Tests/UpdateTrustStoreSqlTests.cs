@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -64,7 +65,7 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
     });
 
     [TestMethod]
-    public Task TrustLock_DetectsKilledSqlSession() => WithDatabase(async (factory, token) =>
+    public Task TrustLock_DetectsKilledSqlSession() => WithIsolatedDatabase(async (factory, token) =>
     {
         var store = new UpdateTrustStore(factory, new OperationAuditWriter());
         await store.ProvisionAsync(Envelope("root", 1), token);
@@ -127,7 +128,7 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
     });
 
     [TestMethod]
-    public Task Catalogue_TrustAdvanceAndInvalidationCommitTogetherAndRecover() => WithDatabase(async (factory, token) =>
+    public Task Catalogue_TrustAdvanceAndInvalidationCommitTogetherAndRecover() => WithIsolatedDatabase(async (factory, token) =>
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var store = new UpdateTrustStore(factory, new OperationAuditWriter());
@@ -249,21 +250,31 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
         $$"""{"schema":1,"packages":[{"version":"1.2.3","rid":"win-x64","size":123,"sha256":"{{string.Concat(Enumerable.Repeat(hashByte, 32))}}","manifestSha256":"0000000000000000000000000000000000000000000000000000000000000000","revoked":{{revoked.ToString().ToLowerInvariant()}}}]}""");
 
     private Task WithDatabase(Func<IDbContextFactory<AgentManagementDbContext>, CancellationToken, Task> test) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableIdentityDatabase.ExecuteAsync((connectionString, token) => RunTest(connectionString, token, false, test), testContext.CancellationToken);
+
+    private Task WithIsolatedDatabase(Func<IDbContextFactory<AgentManagementDbContext>, CancellationToken, Task> test) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), (database, token) => RunTest(database.ConnectionString, token, true, test), testContext.CancellationToken);
+
+    private static async Task RunTest(string connectionString, CancellationToken token, bool initializeSchema,
+        Func<IDbContextFactory<AgentManagementDbContext>, CancellationToken, Task> test)
+    {
+        if (initializeSchema)
         {
             await using (var resources = new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
-                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options))
+                .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options))
                 await resources.Database.MigrateAsync(token);
-            var factory = new Factory(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
-                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
-            await using (var context = factory.CreateDbContext())
-            {
+        }
+        var factory = new Factory(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
+            .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
+        await using (var context = factory.CreateDbContext())
+        {
+            if (initializeSchema)
                 await context.Database.MigrateAsync(token);
-                context.PackageSources.Add(new AgentPackageSource { Id = Guid.CreateVersion7(), BaseUri = "https://updates.example.test/" });
-                await context.SaveChangesAsync(token);
-            }
-            await test(factory, token);
-        }, testContext.CancellationToken);
+            context.PackageSources.Add(new AgentPackageSource { Id = Guid.CreateVersion7(), BaseUri = "https://updates.example.test/" });
+            await context.SaveChangesAsync(token);
+        }
+        await test(factory, token);
+    }
 
     private static byte[] Envelope(string type, int version) => Encoding.UTF8.GetBytes(
         $$"""{"signed":{"_type":"{{type}}","version":{{version}}},"signatures":[{}]}""");
