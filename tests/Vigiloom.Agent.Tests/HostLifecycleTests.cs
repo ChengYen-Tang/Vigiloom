@@ -266,7 +266,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
-            builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "LogWorker"));
+            DisableCollectors(builder);
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));

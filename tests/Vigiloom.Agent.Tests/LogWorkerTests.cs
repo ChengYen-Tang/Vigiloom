@@ -47,7 +47,8 @@ public sealed class LogWorkerTests(TestContext context)
             var budget = new SamplingBudgetCoordinator(TimeProvider.System);
             var held = await budget.AcquireAsync(token);
             var logger = new BudgetLogger();
-            using var worker = new LogWorker(logs, metrics, configuration, TimeProvider.System, logger, new LowUsageMonitor(100L * 1024 * 1024), budget);
+            var status = new AgentLogStatusRuntime(TimeProvider.System);
+            using var worker = new LogWorker(logs, metrics, configuration, TimeProvider.System, logger, new LowUsageMonitor(100L * 1024 * 1024), budget, status);
             try
             {
                 stopped = false;
@@ -69,10 +70,7 @@ public sealed class LogWorkerTests(TestContext context)
                 var queue = new DurableBatchQueue(vault, owner.AgentId);
                 Assert.IsNull(await queue.PeekAsync(token));
                 Publish(512);
-                QueuedBatch? batch = null;
-                for (var attempt = 0; attempt < 100 && batch is null; attempt++)
-                { batch = await queue.PeekAsync(token); if (batch is null) await Task.Delay(100, token); }
-                Assert.IsNotNull(batch);
+                await WaitForCollectionAsync(worker, status, owner, source, snapshot.Revision, token);
             }
             finally
             {
@@ -82,6 +80,7 @@ public sealed class LogWorkerTests(TestContext context)
                 if (worker.ExecuteTask is { } execution) await execution.WaitAsync(deadline.Token);
                 stopped = true;
             }
+            Assert.IsNotNull(await new DurableBatchQueue(vault, owner.AgentId).PeekAsync(token));
         }
         finally
         {
@@ -118,18 +117,13 @@ public sealed class LogWorkerTests(TestContext context)
             var metrics = new AgentMetricSettingsRuntime(); metrics.Bind(owner);
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = owner.Server }).Build();
-            using var worker = new LogWorker(logs, metrics, configuration, TimeProvider.System, NullLogger<LogWorker>.Instance, new LowUsageMonitor());
+            var status = new AgentLogStatusRuntime(TimeProvider.System);
+            using var worker = new LogWorker(logs, metrics, configuration, TimeProvider.System, NullLogger<LogWorker>.Instance, new LowUsageMonitor(), statusRuntime: status);
             try
             {
                 stopped = false;
                 await worker.StartAsync(token);
-                var queue = new DurableBatchQueue(vault, owner.AgentId);
-                QueuedBatch? batch = null;
-                for (var attempt = 0; attempt < 100 && batch is null; attempt++)
-                { batch = await queue.PeekAsync(token); if (batch is null) await Task.Delay(100, token); }
-                Assert.IsNotNull(batch);
-                Assert.IsTrue(AgentLogBatchCodec.TryRead(batch.Payload, out var parsed));
-                Assert.AreEqual("worker-event\n", parsed!.Items[0].Content);
+                await WaitForCollectionAsync(worker, status, owner, source, snapshot.Revision, token);
                 IAsyncDisposable? contender = null;
                 try { Assert.ThrowsExactly<IOException>(() => contender = new IdentityVault(root).AcquireLogOwnership()); }
                 finally { if (contender is not null) await contender.DisposeAsync(); }
@@ -141,6 +135,10 @@ public sealed class LogWorkerTests(TestContext context)
                 if (worker.ExecuteTask is { } execution) await execution.WaitAsync(deadline.Token);
                 stopped = true;
             }
+            var batch = await new DurableBatchQueue(vault, owner.AgentId).PeekAsync(token);
+            Assert.IsNotNull(batch);
+            Assert.IsTrue(AgentLogBatchCodec.TryRead(batch.Payload, out var parsed));
+            Assert.AreEqual("worker-event\n", parsed!.Items[0].Content);
             await using var nextOwner = new IdentityVault(root).AcquireLogOwnership();
         }
         finally
@@ -150,6 +148,25 @@ public sealed class LogWorkerTests(TestContext context)
             if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 throw new InvalidOperationException("Test cleanup escaped its temporary root.");
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task WaitForCollectionAsync(LogWorker worker, AgentLogStatusRuntime status,
+        AgentSettingsOwner owner, AgentLogSourceSetting source, string revision, CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            var report = status.ForOwner(owner)?.Report;
+            if (report?.Revision == revision && report.Sources.Any(item => item.SourceId == source.SourceId &&
+                item.Generation == source.Generation && item.State is AgentLogSourceState.Collected or AgentLogSourceState.End)) return;
+            if (worker.ExecuteTask is { IsCompleted: true } execution)
+            {
+                await execution;
+                throw new InvalidOperationException("Log worker stopped before reporting collection.");
+            }
+            await Task.Delay(50, timeout.Token);
         }
     }
 

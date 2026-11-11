@@ -51,8 +51,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
           "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
-        # LocalDB is shared by test projects; limit concurrent project hosts on Windows.
-        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:1
+        # Bound concurrent project hosts while allowing independent test databases to overlap.
+        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:2
       - name: Test Agent release publisher
         shell: pwsh
         run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
