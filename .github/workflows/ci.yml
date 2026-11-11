@@ -71,18 +71,7 @@ jobs:
       - name: Build solution
         run: dotnet build Vigiloom.slnx --configuration Release --no-restore
       - name: Install Chromium and dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          # GitHub's Azure mirror occasionally fails DNS resolution on hosted runners.
-          if [[ -f /etc/apt/apt-mirrors.txt ]] &&
-             grep -q 'azure\.archive\.ubuntu\.com' /etc/apt/apt-mirrors.txt &&
-             grep -rq --include='*.list' --include='*.sources' 'file:/etc/apt/apt-mirrors.txt' /etc/apt &&
-             ! getent ahosts azure.archive.ubuntu.com > /dev/null &&
-             getent ahosts archive.ubuntu.com > /dev/null; then
-            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          fi
-          pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Start isolated SQL Server
         id: sql
         shell: bash
