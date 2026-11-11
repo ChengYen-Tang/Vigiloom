@@ -15,7 +15,11 @@ public sealed class SqlTestDatabaseTests
     public TestContext TestContext { get; set; } = null!;
 
     [AssemblyCleanup]
-    public static void VerifyRunCleanup() => SqlTestDatabase.CompleteRun();
+    public static async Task VerifyRunCleanup()
+    {
+        await ReusableLogQuotaDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public async Task CreateAndDispose_UsesOwnedDatabaseAndRemovesIt()
