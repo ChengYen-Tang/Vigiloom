@@ -41,7 +41,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
         foreach (var (path, item) in document.Paths)
         foreach (var (method, operation) in item.Operations ?? [])
         {
-            if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase))
+            if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
             {
                 var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
                 if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
@@ -49,6 +50,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [session];
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/update/metadata/{name}", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/heartbeat", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/queue-session", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/settings", StringComparison.OrdinalIgnoreCase) ||
@@ -67,7 +69,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [];
             else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
-            else if (path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.Equals("/api/v1/agent-packages", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/groups", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/groups/", StringComparison.OrdinalIgnoreCase))

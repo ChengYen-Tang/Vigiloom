@@ -37,9 +37,25 @@ jobs:
       - name: Install Chromium
         shell: pwsh
         run: ./tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install chromium
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Agent release test dependencies
+        shell: pwsh
+        run: |
+          $pythonRoot = Join-Path $env:RUNNER_TEMP 'vigiloom-agent-python'
+          python -m venv $pythonRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create Python test environment.' }
+          $python = if ($IsWindows) { Join-Path $pythonRoot 'Scripts/python.exe' } else { Join-Path $pythonRoot 'bin/python' }
+          & $python -m pip install --require-hashes -r tools/agent-release/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
+          "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
         # LocalDB is shared by test projects; limit concurrent project hosts on Windows.
         run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:1
+      - name: Test Agent release publisher
+        shell: pwsh
+        run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
 
   ubuntu:
     name: Ubuntu build and test
@@ -89,8 +105,24 @@ jobs:
           echo "SQLCMDPASSWORD=$password" >> "$GITHUB_ENV"
           echo 'VIGILOOM_TEST_SQL_ALLOW_SOURCE=localhost,1433' >> "$GITHUB_ENV"
           printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Agent release test dependencies
+        shell: pwsh
+        run: |
+          $pythonRoot = Join-Path $env:RUNNER_TEMP 'vigiloom-agent-python'
+          python -m venv $pythonRoot
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create Python test environment.' }
+          $python = if ($IsWindows) { Join-Path $pythonRoot 'Scripts/python.exe' } else { Join-Path $pythonRoot 'bin/python' }
+          & $python -m pip install --require-hashes -r tools/agent-release/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
+          "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
         run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
+      - name: Test Agent release publisher
+        shell: pwsh
+        run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |

@@ -18,3 +18,5 @@ appsettings.Local.json
 appsettings.*.Local.json
 *.pfx
 *.p12
+__pycache__/
+*.pyc

@@ -22,10 +22,68 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentQueueCapacityAudit> QueueCapacityAudits => Set<AgentQueueCapacityAudit>();
     public DbSet<AgentMetricSetting> MetricSettings => Set<AgentMetricSetting>();
     public DbSet<AgentMetricSettingAudit> MetricSettingAudits => Set<AgentMetricSettingAudit>();
+    public DbSet<UpdateTrustState> UpdateTrustStates => Set<UpdateTrustState>();
+    public DbSet<AgentPackage> Packages => Set<AgentPackage>();
+    public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
+    public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("agent");
+        var trust = modelBuilder.Entity<UpdateTrustState>();
+        trust.ToTable("UpdateTrustStates", table =>
+        {
+            table.HasCheckConstraint("CK_UpdateTrustStates_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_UpdateTrustStates_Scope", "[Scope] = 1");
+            table.HasCheckConstraint("CK_UpdateTrustStates_SnapshotSize", "DATALENGTH([Snapshot]) BETWEEN 1 AND 6291456");
+        });
+        trust.HasKey(x => x.Id).IsClustered(false);
+        trust.Property(x => x.Id).ValueGeneratedNever();
+        trust.Property(x => x.RowId).UseIdentityColumn();
+        trust.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        trust.HasIndex(x => x.Scope).IsUnique();
+        trust.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        trust.Property(x => x.Snapshot).IsRequired();
+        var root = modelBuilder.Entity<UpdateRoot>();
+        root.ToTable("UpdateRoots", table =>
+        {
+            table.HasCheckConstraint("CK_UpdateRoots_Version", "[Version] > 0");
+            table.HasCheckConstraint("CK_UpdateRoots_MetadataSize", "DATALENGTH([Metadata]) BETWEEN 1 AND 1048576");
+        });
+        root.HasKey(x => x.RowId).IsClustered();
+        root.Property(x => x.RowId).UseIdentityColumn();
+        root.HasIndex(x => x.Version).IsUnique();
+        root.Property(x => x.Metadata).IsRequired();
+        root.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        var source = modelBuilder.Entity<AgentPackageSource>();
+        source.ToTable("PackageSources", table =>
+        {
+            table.HasCheckConstraint("CK_PackageSources_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_PackageSources_Scope", "[Scope] = 1");
+        });
+        source.HasKey(x => x.Id).IsClustered(false);
+        source.Property(x => x.Id).ValueGeneratedNever();
+        source.Property(x => x.RowId).UseIdentityColumn();
+        source.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        source.HasIndex(x => x.Scope).IsUnique();
+        source.Property(x => x.BaseUri).HasMaxLength(2048).IsRequired();
+        source.Property(x => x.ProtectedCredential).HasMaxLength(8192);
+        source.Property(x => x.Version).IsRowVersion();
+        var package = modelBuilder.Entity<AgentPackage>();
+        package.ToTable("Packages", table =>
+        {
+            table.HasCheckConstraint("CK_Packages_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_Packages_Size", "[Size] BETWEEN 1 AND 2147483648");
+        });
+        package.HasKey(x => x.Id).IsClustered(false);
+        package.Property(x => x.Id).ValueGeneratedNever();
+        package.Property(x => x.RowId).UseIdentityColumn();
+        package.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        package.Property(x => x.Version).HasMaxLength(128).IsRequired();
+        package.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsRequired();
+        package.Property(x => x.Sha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        package.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        package.HasIndex(x => new { x.Version, x.RuntimeIdentifier }).IsUnique();
         var agent = modelBuilder.Entity<Agent>();
         agent.ToTable("Agents", table =>
         {

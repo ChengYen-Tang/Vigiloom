@@ -20,4 +20,7 @@ internal static class AuditKinds
     public const short SpeedRetentionChangedV1 = 15;
     public const short AgentInboxSettingsChangedV1 = 16;
     public const short AgentInboxCleanupActivatedV1 = 17;
+    public const short AgentPackageSourceChangedV1 = 18;
+    public const short AgentPackageCatalogueRefreshedV1 = 19;
+    public const short AgentPackageTrustInitializedV1 = 20;
 }

@@ -445,6 +445,9 @@ public sealed class AgentIdentityHttpTests
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var rootMetadata = System.Text.Encoding.UTF8.GetBytes("""{"signed":{"_type":"root","version":1},"signatures":[{}]}""");
+            await using (var scope = factory.Services.CreateAsyncScope())
+                await scope.ServiceProvider.GetRequiredService<UpdateTrustStore>().ProvisionAsync(rootMetadata, token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(identities, token);
@@ -473,7 +476,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z", $"/api/v1/devices/{device.Id:D}/host-logs?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
+            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z", $"/api/v1/devices/{device.Id:D}/host-logs?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -492,6 +495,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
             }
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
+            using (var apiCannotReadUpdateMetadata = await api.GetAsync("/api/v1/agent/update/metadata/timestamp.json", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadUpdateMetadata.StatusCode);
+            using (var invalidPackagePage = await api.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPackagePage.StatusCode);
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
@@ -527,6 +532,10 @@ public sealed class AgentIdentityHttpTests
                 fields["Input.UserName"] = "reader"; fields["Input.Password"] = "Strong-Password-123";
                 using var login = await reader.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+                using var packages = await reader.GetAsync("/api/v1/agent-packages", token);
+                Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+                Assert.IsTrue(packages.Headers.CacheControl?.NoStore);
+                Assert.IsEmpty((await packages.Content.ReadFromJsonAsync<AgentPackagePage>(cancellationToken: token))!.Items);
                 using var status = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token);
                 Assert.AreEqual(HttpStatusCode.OK, status.StatusCode);
                 using var logHistory = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/host-logs?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z", token);
@@ -631,6 +640,21 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
+            using (var forgedPackageSource = await admin.PutAsJsonAsync("/api/v1/agent-management/package-source/",
+                new AgentPackageSourceUpdate("https://packages.example.test/", PackageCredentialAction.Keep, null, ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedPackageSource.StatusCode);
+            using (var forgedTrust = await admin.PostAsJsonAsync("/api/v1/agent-management/package-source/trust",
+                new AgentPackageTrustRequest(rootMetadata, new string('0', 64)), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedTrust.StatusCode);
+            using (var forgedCache = await admin.PostAsync($"/api/v1/agent-packages/{Guid.CreateVersion7():D}/cache", null, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedCache.StatusCode);
+            using (var upload = new MultipartFormDataContent())
+            {
+                upload.Add(new ByteArrayContent(rootMetadata), "root", "root.json");
+                upload.Add(new StringContent(new string('0', 64)), "sha256");
+                using var forgedUpload = await admin.PostAsync("/settings/agent-packages/trust", upload, token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedUpload.StatusCode);
+            }
             using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
             using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
@@ -780,6 +804,108 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
+            using (var missingMetadata = await agent.GetAsync("/api/v1/agent/update/metadata/timestamp.json", token)) Assert.AreEqual(HttpStatusCode.NotFound, missingMetadata.StatusCode);
+            using (var forbiddenCatalogue = await agent.GetAsync("/api/v1/agent/update/metadata/catalog.json", token)) Assert.AreEqual(HttpStatusCode.NotFound, forbiddenCatalogue.StatusCode);
+            using (var rootResponse = await agent.GetAsync("/api/v1/agent/update/metadata/1.root.json", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, rootResponse.StatusCode);
+                Assert.IsTrue(rootResponse.Headers.CacheControl?.NoStore);
+                CollectionAssert.AreEqual(rootMetadata, await rootResponse.Content.ReadAsByteArrayAsync(token));
+            }
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                await db.UpdateRoots.ExecuteDeleteAsync(token);
+            using (var unavailableRoot = await agent.GetAsync("/api/v1/agent/update/metadata/1.root.json", token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, unavailableRoot.StatusCode);
+            using (var readerSource = await reader.GetAsync("/api/v1/agent-management/package-source/", token)) Assert.AreEqual(HttpStatusCode.Forbidden, readerSource.StatusCode);
+            using (var readerTrust = await reader.GetAsync("/api/v1/agent-management/package-source/trust", token)) Assert.AreEqual(HttpStatusCode.Forbidden, readerTrust.StatusCode);
+            using (var machineTrust = await agent.GetAsync("/api/v1/agent-management/package-source/trust", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineTrust.StatusCode);
+            using (var readerCache = await reader.PostAsync($"/api/v1/agent-packages/{Guid.CreateVersion7():D}/cache", null, token)) Assert.AreEqual(HttpStatusCode.Forbidden, readerCache.StatusCode);
+            using (var machineCache = await agent.PostAsync($"/api/v1/agent-packages/{Guid.CreateVersion7():D}/cache", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineCache.StatusCode);
+            using (var currentTrust = await admin.GetAsync("/api/v1/agent-management/package-source/trust", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, currentTrust.StatusCode);
+                Assert.IsTrue(currentTrust.Headers.CacheControl?.NoStore);
+                var trust = await currentTrust.Content.ReadFromJsonAsync<AgentPackageTrustView>(token);
+                Assert.IsNotNull(trust);
+                Assert.IsTrue(trust.Initialized);
+                Assert.AreEqual(1, trust.RootVersion);
+            }
+            using (var apiSource = await api.GetAsync("/api/v1/agent-management/package-source/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiSource.StatusCode);
+            using (var machineSource = await agent.GetAsync("/api/v1/agent-management/package-source/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineSource.StatusCode);
+            using (var unsetSource = await admin.GetAsync("/api/v1/agent-management/package-source/", token)) Assert.AreEqual(HttpStatusCode.NoContent, unsetSource.StatusCode);
+            const string packageSecret = "write-only-package-secret";
+            using (var savedSource = await admin.PutAsJsonAsync("/api/v1/agent-management/package-source/",
+                new AgentPackageSourceUpdate("https://packages.example.test/", PackageCredentialAction.Replace, packageSecret, ""), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, savedSource.StatusCode);
+                Assert.IsTrue(savedSource.Headers.CacheControl?.NoStore);
+                Assert.DoesNotContain(packageSecret, await savedSource.Content.ReadAsStringAsync(token));
+            }
+            using (var readSource = await admin.GetAsync("/api/v1/agent-management/package-source/", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, readSource.StatusCode);
+                Assert.IsTrue(readSource.Headers.CacheControl?.NoStore);
+                var content = await readSource.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain(packageSecret, content);
+                Assert.IsTrue(JsonSerializer.Deserialize<AgentPackageSourceView>(content, new JsonSerializerOptions(JsonSerializerDefaults.Web))!.HasCredential);
+            }
+            using (var forbiddenPage = await reader.GetAsync("/settings/agent-packages", token))
+            {
+                Assert.AreEqual(HttpStatusCode.Redirect, forbiddenPage.StatusCode);
+                Assert.Contains("access-denied", forbiddenPage.Headers.Location!.OriginalString, StringComparison.OrdinalIgnoreCase);
+            }
+            using (var packagePage = await admin.GetAsync("/settings/agent-packages", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, packagePage.StatusCode);
+                var html = await packagePage.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain(packageSecret, html);
+                var doc = await new HtmlParser().ParseDocumentAsync(html, token);
+                var form = doc.QuerySelectorAll("form").Single(e => e.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "package-source");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(e => e.GetAttribute("name")!, e => e.GetAttribute("value") ?? "");
+                fields["SourceInput.Action"] = "0";
+                fields["SourceInput.Credential"] = "";
+                fields["SourceInput.BaseUri"] = "http://packages.example.test/";
+                using (var invalidSource = await admin.PostAsync("/settings/agent-packages", new FormUrlEncodedContent(fields), token))
+                {
+                    var invalidDocument = await new HtmlParser().ParseDocumentAsync(await invalidSource.Content.ReadAsStringAsync(token), token);
+                    Assert.Contains("請確認來源網址", invalidDocument.Body!.TextContent);
+                    Assert.IsTrue(invalidDocument.QuerySelector("form.package-form")!.ParentElement!.HasAttribute("open"));
+                    Assert.AreEqual("http://packages.example.test/", invalidDocument.QuerySelector("#package-origin")!.GetAttribute("value"));
+                }
+                fields["SourceInput.BaseUri"] = "https://packages.example.test/";
+                using var saved = await admin.PostAsync("/settings/agent-packages", new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+                var savedHtml = await saved.Content.ReadAsStringAsync(token);
+                Assert.Contains("來源已儲存", (await new HtmlParser().ParseDocumentAsync(savedHtml, token)).Body!.TextContent);
+                Assert.DoesNotContain(packageSecret, savedHtml);
+            }
+            var cachedPackageId = Guid.CreateVersion7();
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            {
+                db.Packages.Add(new AgentPackage { Id = cachedPackageId, Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = 1,
+                    Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddHours(1) });
+                await db.SaveChangesAsync(token);
+            }
+            using (var emptyPage = await admin.GetAsync("/settings/agent-packages?page=2", token))
+            {
+                var html = await new HtmlParser().ParseDocumentAsync(await emptyPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("此頁沒有套件版本", html.Body!.TextContent);
+                Assert.IsNotNull(html.QuerySelector("a[href='?page=1']"));
+            }
+            using (var beforeRevocation = await admin.GetAsync("/settings/agent-packages", token))
+            {
+                var html = await new HtmlParser().ParseDocumentAsync(await beforeRevocation.Content.ReadAsStringAsync(token), token);
+                var form = html.QuerySelectorAll("form").Single(e => e.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "package-cache");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(e => e.GetAttribute("name")!, e => e.GetAttribute("value") ?? "");
+                fields["CacheInput.Id"] = cachedPackageId.ToString("D");
+                await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                    await db.Packages.Where(x => x.Id == cachedPackageId).ExecuteUpdateAsync(x => x.SetProperty(p => p.Revoked, true), token);
+                using var stale = await admin.PostAsync("/settings/agent-packages", new FormUrlEncodedContent(fields), token);
+                Assert.AreEqual(HttpStatusCode.OK, stale.StatusCode);
+                var staleDocument = await new HtmlParser().ParseDocumentAsync(await stale.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("套件或來源狀態已變更", staleDocument.Body!.TextContent);
+            }
+            Assert.IsFalse(captured.Messages.Any(message => message.Contains(packageSecret, StringComparison.Ordinal)));
             using (var settingsResponse = await agent.GetAsync("/api/v1/agent/settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, settingsResponse.StatusCode);

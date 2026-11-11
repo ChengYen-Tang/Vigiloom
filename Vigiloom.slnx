@@ -28,6 +28,7 @@
   <Folder Name="/src/Shared/">
     <Project Path="src/Shared/Vigiloom.BuildingBlocks/Vigiloom.BuildingBlocks.csproj" />
     <Project Path="src/Shared/Vigiloom.Contracts/Vigiloom.Contracts.csproj" />
+    <Project Path="src/Shared/Vigiloom.UpdateSecurity/Vigiloom.UpdateSecurity.csproj" />
   </Folder>
   <Folder Name="/src/Updater/">
     <Project Path="src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
@@ -57,6 +58,7 @@
     <Project Path="tests/Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
     <Project Path="tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj" />
     <Project Path="tests/Vigiloom.Updater.Tests/Vigiloom.Updater.Tests.csproj" />
+    <Project Path="tests/Vigiloom.UpdateSecurity.Tests/Vigiloom.UpdateSecurity.Tests.csproj" />
     <Project Path="tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj" />
     <Project Path="tests/Vigiloom.Worker.Tests/Vigiloom.Worker.Tests.csproj" />
   </Folder>

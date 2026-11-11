@@ -107,6 +107,22 @@ builder.Services.AddScoped<AgentConfiguration>();
 builder.Services.AddScoped<AgentQueueCapacityConfiguration>();
 builder.Services.AddScoped<AgentMetricConfiguration>();
 builder.Services.AddScoped<HostLogConfiguration>();
+builder.Services.AddScoped<AgentPackageQuery>();
+builder.Services.AddScoped<UpdateTrustStore>();
+builder.Services.AddScoped<AgentPackageSourceSettings>();
+builder.Services.AddScoped<PackageLibrary>();
+builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
+{
+    var directory = builder.Configuration["Vigiloom:AgentPackages:CachePath"];
+    if (string.IsNullOrWhiteSpace(directory))
+    {
+        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localData)) throw new InvalidOperationException("Set Vigiloom:AgentPackages:CachePath to a private node-local directory.");
+        directory = Path.Combine(localData, "Vigiloom", "agent-packages");
+    }
+    return new PackageLibraryTransport(directory, builder.Configuration.GetValue<long?>("Vigiloom:AgentPackages:CacheQuotaBytes") ?? 5L * 1024 * 1024 * 1024,
+        services.GetRequiredService<TimeProvider>());
+});
 builder.Services.AddScoped<HostLogMonitoring>();
 builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddScoped<AgentReplayPolicyService>();
@@ -236,7 +252,8 @@ else
     app.UseHsts();
 }
 
-app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs"), web =>
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs") &&
+    !context.Request.Path.Equals("/settings/agent-packages/trust", StringComparison.OrdinalIgnoreCase), web =>
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
@@ -276,6 +293,10 @@ app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
+app.MapAgentPackageEndpoints();
+app.MapAgentUpdateMetadataEndpoints();
+app.MapAgentPackageSourceEndpoints();
+app.MapAgentPackageUiEndpoints();
 app.MapHostMetricEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentQueueCapacityEndpoints();

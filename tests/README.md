@@ -16,6 +16,8 @@
 dotnet test Vigiloom.slnx --configuration Release --no-build
 ```
 
+Agent 套件發布的跨程序整合測試會啟動本機 Python 來源，並使用獨立產生的測試簽章與 TLS 憑證。請先以 Python 3.12 建立隔離環境，安裝 `tools/agent-release/requirements.txt`，再將 `VIGILOOM_RELEASE_PYTHON` 設為該環境的 Python 執行檔絕對路徑。CI 已在執行方案測試前建立此環境，並以套件雜湊鎖定相依版本。測試不使用正式發布金鑰、正式資料庫或正式網路來源。
+
 所有 SQL schema／索引／約束的後續測試必須使用真實 SQL Server；不可把本輪 provider 註冊測試、EF InMemory 或 SQLite 視為 ADR-0001 驗證。OS 矩陣、Auto 首次／快取後瀏覽器互動、容量、更新故障演練也尚待後續需求。
 
 ## 開發／測試資料庫

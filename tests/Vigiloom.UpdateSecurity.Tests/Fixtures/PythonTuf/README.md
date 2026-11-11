@@ -1,0 +1,1 @@
+Public verification fixture generated with python-tuf 7.0.1 and securesystemslib 1.6.0 using ephemeral ECDSA P-256 keys. The private keys were never written to this directory. Its long expiration keeps the interoperability test stable; it is not a production trust root.
