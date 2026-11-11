@@ -105,7 +105,7 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task HostLogConfiguration_ConcurrentCreatesRespectLastSourceSlot() => WithDatabase(async (resources, agents, token) =>
+    public Task HostLogConfiguration_ConcurrentCreatesRespectLastSourceSlot() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("source limit", "127.0.0.1", true, clock.Now);
@@ -136,7 +136,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task HostLogHistory_BoundsPagesByReceiptTimeAndDevice() => WithDatabase(async (resources, agents, token) =>
+    public Task HostLogHistory_BoundsPagesByReceiptTimeAndDevice() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;
         var firstDevice = new Device("first", "127.0.0.1", true, now);
@@ -396,7 +396,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task MetricLossReports_RespectSessionOrderingAndNeverRefreshMissingOrDecreasingTotals() => WithDatabase(async (resources, agents, token) =>
+    public Task MetricLossReports_RespectSessionOrderingAndNeverRefreshMissingOrDecreasingTotals() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("loss reporting", "127.0.0.1", true, clock.Now);
@@ -440,7 +440,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task HostMetricAggregate_MaximumAcceptedValuesHaveFiniteAverage() => WithDatabase(async (resources, agents, token) =>
+    public Task HostMetricAggregate_MaximumAcceptedValuesHaveFiniteAverage() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;
         var device = new Device("extreme metrics", "127.0.0.1", true, now);
@@ -501,7 +501,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task HostMetricAggregate_SeparatesSeriesAndUsesUtcBuckets() => WithDatabase(async (resources, agents, token) =>
+    public Task HostMetricAggregate_SeparatesSeriesAndUsesUtcBuckets() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
         var device = new Device("aggregate", "127.0.0.1", true, start);
@@ -551,7 +551,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task HostMetricHistory_BoundsPagesAndKeepsDevicesSeparate() => WithDatabase(async (resources, agents, token) =>
+    public Task HostMetricHistory_BoundsPagesAndKeepsDevicesSeparate() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;
         var device = new Device("metrics history", "127.0.0.1", true, now);
@@ -1024,7 +1024,7 @@ public sealed class AgentIdentitySqlTests
     }
 
     [TestMethod]
-    public Task QueueCapacityStatus_DoesNotExposeOutdatedReportsDuringRollingUpgrade() => WithDatabase(async (resources, agents, token) =>
+    public Task QueueCapacityStatus_DoesNotExposeOutdatedReportsDuringRollingUpgrade() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("capacity status", "127.0.0.10", true, clock.Now);
@@ -1054,7 +1054,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task Configuration_ReportsPendingAppliedFailureAndOfflineWithoutAcceptingStaleStatus() => WithDatabase(async (resources, agents, token) =>
+    public Task Configuration_ReportsPendingAppliedFailureAndOfflineWithoutAcceptingStaleStatus() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("settings status server", "127.0.0.1", true, clock.Now);
@@ -1105,7 +1105,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task Configuration_SqlEnforcesResourceKeysAndAuditReferences() => WithDatabase(async (resources, agents, token) =>
+    public Task Configuration_SqlEnforcesResourceKeysAndAuditReferences() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var actor = Guid.CreateVersion7();
         var missingDevice = Guid.CreateVersion7();
@@ -1246,7 +1246,7 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task Configuration_AgentReadsOnlyItsCurrentDeviceAndRevocationTakesEffect() => WithDatabase(async (resources, agents, token) =>
+    public Task Configuration_AgentReadsOnlyItsCurrentDeviceAndRevocationTakesEffect() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("configured machine", "127.0.0.1", true, clock.Now);
@@ -2065,7 +2065,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task Batches_AcknowledgmentRetrySucceedsEvenWhenCapacityIsFull() => WithDatabase(async (resources, agents, token) =>
+    public Task Batches_AcknowledgmentRetrySucceedsEvenWhenCapacityIsFull() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("batch server", "127.0.0.1", true, clock.Now);
