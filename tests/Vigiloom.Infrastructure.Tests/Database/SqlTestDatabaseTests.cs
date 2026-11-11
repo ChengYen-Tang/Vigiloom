@@ -17,8 +17,11 @@ public sealed class SqlTestDatabaseTests
     [AssemblyCleanup]
     public static async Task VerifyRunCleanup()
     {
-        await ReusableLogQuotaDatabase.DisposeAsync();
-        SqlTestDatabase.CompleteRun();
+        List<Exception> failures = [];
+        try { await ReusableLogQuotaDatabase.DisposeAsync(); } catch (Exception error) { failures.Add(error); }
+        try { await ReusableOutboxDatabase.DisposeAsync(); } catch (Exception error) { failures.Add(error); }
+        try { SqlTestDatabase.CompleteRun(); } catch (Exception error) { failures.Add(error); }
+        if (failures.Count != 0) throw new AggregateException("Test database cleanup failed.", failures);
     }
 
     [TestMethod]
