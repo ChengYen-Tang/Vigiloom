@@ -105,7 +105,7 @@ public sealed class WorkspaceBrowserTests
             var reachedWebAssembly = await page.Locator("[data-runtime='WebAssembly']").CountAsync() > 0;
             for (var attempt = 0; attempt < 2 && !reachedWebAssembly; attempt++)
             {
-                await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+                await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
                 await page.ReloadAsync();
                 try
                 {
@@ -187,9 +187,10 @@ public sealed class WorkspaceBrowserTests
         await using var wasmGate = await AutoRenderGate.HoldAsync(page);
         await page.GotoAsync(factory.ClientOptions.BaseAddress.ToString().TrimEnd('/') + "/__test/chart");
         await AssertChartAsync(page, "Server");
+        Assert.IsNull(await page.EvaluateAsync<string?>("() => localStorage.getItem('blazor-resource-hash:Vigiloom.Web.Client')"));
         await wasmGate.ReleaseAsync();
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await AssertChartAsync(page, "WebAssembly");
     }

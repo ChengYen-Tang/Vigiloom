@@ -8,6 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
@@ -20,7 +21,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task RunOnce_ProbesAllowedEndpointAndSavesObservation() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -60,7 +61,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Restart_AfterAbandonedLease_ResumesAndRejectsOldResult() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -120,7 +121,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task TimedOutProbe_RecordsTimeout_AndSuccessfulChecksRecover() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -177,7 +178,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task TwoRecordedHealthyChecks_CreateARealHealthyInterval() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -236,7 +237,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ServiceResumed_RequiresNewRecoveryEvidence() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -317,7 +318,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task DelayedObservation_IsExpiredAtItsEvidenceDeadline() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
@@ -347,7 +348,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task PolicyChangeBeforeExpiry_EndsHistoryAtPolicyBoundary(bool invalidateService) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
@@ -394,7 +395,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ExpiryWithoutNewObservation_ClosesAtEvidenceDeadlineOnce() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
@@ -423,7 +424,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [DataRow(3)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task RunOnce_RejectsObservationAfterAuthorizationOrSettingsChange(int change) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -478,7 +479,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task PolicyRefresh_CancelsAnInFlightProbeWithoutWaitingForScan() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();

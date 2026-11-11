@@ -263,10 +263,10 @@ public sealed class SpeedHttpTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task RetentionSettings_RequireAdministratorAndPreviewBeforeConfirmation() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task RetentionSettings_RequireAdministratorAndPreviewBeforeConfirmation() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync("/api/v1/settings/speed-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
@@ -318,7 +318,7 @@ public sealed class SpeedHttpTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task RetentionSave_ReportsSuccessWhenScheduleRefreshFails() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task RetentionSave_ReportsSuccessWhenScheduleRefreshFails() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         var failure = new RefreshFailure();
         using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder => builder.ConfigureServices(services =>
@@ -330,7 +330,7 @@ public sealed class SpeedHttpTests
             services.RemoveAll<IOperationAuditWriter<OperationAudit>>();
             services.AddSingleton<IOperationAuditWriter<OperationAudit>>(new ArmFailureAfterAudit(failure));
         }));
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
         using var initial = await admin.GetAsync("/settings/speed-tests", token);
         var fields = Hidden(await FormAsync(initial, "speed-retention", token));
@@ -348,10 +348,10 @@ public sealed class SpeedHttpTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task Details_ShowCoordinatesOnlyWhenProvided() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task Details_ShowCoordinatesOnlyWhenProvided() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         var withCoordinates = new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow,
             State = SpeedTestState.Success, Latitude = 25.033, Longitude = 121.5654 };
         var missing = new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow, State = SpeedTestState.NoServer };

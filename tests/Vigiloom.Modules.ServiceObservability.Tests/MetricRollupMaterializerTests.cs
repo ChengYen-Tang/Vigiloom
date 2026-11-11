@@ -123,7 +123,7 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task CumulativeHistogramMaterializesThroughSql() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync( async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -161,7 +161,7 @@ public sealed class MetricRollupMaterializerTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task UnknownPointIsPersistedAsIncompleteAndCannotAppearClean() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync( async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;

@@ -22,7 +22,11 @@ public sealed class InitialAdministratorTests
     public TestContext TestContext { get; set; } = null!;
 
     [AssemblyCleanup]
-    public static void VerifyRunCleanup() => SqlTestDatabase.CompleteRun();
+    public static async Task VerifyRunCleanup()
+    {
+        await Fixtures.ReusableWebDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public Task SetupAndLogin_RequireAntiforgeryAndRejectExternalRedirects() =>

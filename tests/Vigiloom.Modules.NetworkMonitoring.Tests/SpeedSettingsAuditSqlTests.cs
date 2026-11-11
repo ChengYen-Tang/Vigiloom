@@ -8,6 +8,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -51,7 +52,7 @@ public sealed class SpeedSettingsAuditSqlTests
     });
 
     [TestMethod]
-    public Task Update_AuditInsertFailureRollsBackSettings() => WithDatabase(async (factory, _, token) =>
+    public Task Update_AuditInsertFailureRollsBackSettings() => WithIsolatedDatabase(async (factory, _, token) =>
     {
         var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var before = await settings.GetAsync(token);
@@ -148,19 +149,28 @@ public sealed class SpeedSettingsAuditSqlTests
     });
 
     private Task WithDatabase(Func<IDbContextFactory<NetworkDbContext>, string, CancellationToken, Task> action) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableNetworkDatabase.ExecuteAsync((database, token) => RunTest(database.ConnectionString, token, false, action), TestContext.CancellationToken);
+
+    private Task WithIsolatedDatabase(Func<IDbContextFactory<NetworkDbContext>, string, CancellationToken, Task> action) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), (database, token) => RunTest(database.ConnectionString, token, true, action), TestContext.CancellationToken);
+
+    private static async Task RunTest(string connectionString, CancellationToken token, bool initializeSchema,
+        Func<IDbContextFactory<NetworkDbContext>, string, CancellationToken, Task> action)
+    {
+        var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(connectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+        if (initializeSchema)
         {
-            var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
-            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(connectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+            var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(connectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
             await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
             await using (var db = new NetworkDbContext(network)) await db.Database.MigrateAsync(token);
             await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
-            await action(new Factory(network), database.ConnectionString, token);
-        }, TestContext.CancellationToken);
+        }
+        await action(new Factory(network), connectionString, token);
+    }
 
     private sealed class Factory(DbContextOptions<NetworkDbContext> options) : IDbContextFactory<NetworkDbContext>
     {

@@ -10,7 +10,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
-using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 
@@ -22,7 +22,7 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Save_UsesServiceAuthorizationVersionAndAtomicAudit() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var serviceOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -33,12 +33,10 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             await using (var db = new ServiceObservabilityDbContext(serviceOptions))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.Add(service);
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operationOptions)) await db.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(serviceOptions);
             var administration = new HealthTargetAdministration(factory, TimeProvider.System, new OperationAuditWriter());
             var actor = Guid.CreateVersion7();
@@ -89,7 +87,7 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Update_AfterPolicyChange_PreservesUnknownGap() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -105,7 +103,6 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
             var schedule = new HealthSchedule(target.Id, true, observed);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); db.HealthTargets.Add(target);
                 db.HealthSchedules.Add(schedule); db.HealthNetworkPolicies.Add(policy);
                 db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 1, 1, observed));
@@ -118,7 +115,6 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
                 db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), changed));
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var administration = new HealthTargetAdministration(new PooledDbContextFactory<ServiceObservabilityDbContext>(options),
                 TimeProvider.System, new OperationAuditWriter());
             var result = await administration.UpdateAsync(target.Id, new HealthTargetInput(target.Endpoint, 60, 5, 3, 2, true,
@@ -137,7 +133,7 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ConcurrentCreates_CannotExceedPerServiceLimit() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var serviceOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -148,13 +144,11 @@ public sealed class HealthTargetAdministrationTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             await using (var db = new ServiceObservabilityDbContext(serviceOptions))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service);
                 db.HealthTargets.AddRange(Enumerable.Range(0, HealthTargetAdministration.MaxTargetsPerService - 1)
                     .Select(i => new HealthTarget(service.Id, null, $"https://example.test/{i}", 30, 5, 3, 2, now)));
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operationOptions)) await db.Database.MigrateAsync(token);
             var admin = new HealthTargetAdministration(new PooledDbContextFactory<ServiceObservabilityDbContext>(serviceOptions),
                 TimeProvider.System, new OperationAuditWriter());
             var input = new HealthTargetInput("https://example.test/health", 30, 5, 3, 2, true, "");

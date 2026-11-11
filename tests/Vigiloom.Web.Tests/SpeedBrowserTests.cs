@@ -8,7 +8,6 @@ using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
-using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -21,10 +20,10 @@ public sealed class SpeedBrowserTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
-    public Task HistoryUsesServerThenWebAssemblyAndKeepsFailedPointsEmpty() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task HistoryUsesServerThenWebAssemblyAndKeepsFailedPointsEmpty() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
         {
             var now = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -58,7 +57,7 @@ public sealed class SpeedBrowserTests
         var returnHref = await page.Locator(".device-table-wrap a").First.GetAttributeAsync("href");
         Assert.Contains("returnUrl=%2Fspeed-tests%3Ffrom%3D", returnHref!);
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
         await AssertChartAsync(page);
@@ -98,10 +97,10 @@ public sealed class SpeedBrowserTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task History_PagesFilteredResultsInBrowser() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task History_PagesFilteredResultsInBrowser() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
         {
             var now = DateTimeOffset.UtcNow.AddMinutes(-52);
@@ -130,7 +129,7 @@ public sealed class SpeedBrowserTests
         var filteredUrl = await page.GetByRole(AriaRole.Link, new() { Name = "開啟目前篩選的連結" }).GetAttributeAsync("href");
         await wasmGate.ReleaseAsync();
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.GotoAsync(new Uri(factory.ClientOptions.BaseAddress, filteredUrl!).ToString());
         await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
         await page.WaitForFunctionAsync("() => document.querySelector('.device-pagination')?.innerText.includes('第 2 頁') && document.querySelectorAll('.device-table-wrap tbody tr').length === 1");
@@ -138,10 +137,10 @@ public sealed class SpeedBrowserTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task AdministratorCanConfigureScheduleAndCancelWithoutManualStart() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task AdministratorCanConfigureScheduleAndCancelWithoutManualStart() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 390, Height = 844 } });

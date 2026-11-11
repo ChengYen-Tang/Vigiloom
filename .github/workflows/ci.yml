@@ -52,7 +52,7 @@ jobs:
           "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
         # Bound concurrent project hosts while allowing independent test databases to overlap.
-        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:2
+        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:3
       - name: Test Agent release publisher
         shell: pwsh
         run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
@@ -71,7 +71,22 @@ jobs:
       - name: Build solution
         run: dotnet build Vigiloom.slnx --configuration Release --no-restore
       - name: Install Chromium and dependencies
-        run: pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! sudo apt-get -o APT::Update::Error-Mode=any update; then
+            # Retry with an alternate Ubuntu mirror while preserving signing settings.
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+              if [[ -f "$source" ]]; then
+                sudo sed -i -E \
+                  -e 's#(^|[[:space:]])mirror\+file:/etc/apt/apt-mirrors\.txt([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\2#g' \
+                  -e 's#(^|[[:space:]])https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\3#g' \
+                  "$source"
+              fi
+            done
+            sudo apt-get -o APT::Update::Error-Mode=any update
+          fi
+          pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Start isolated SQL Server
         id: sql
         shell: bash

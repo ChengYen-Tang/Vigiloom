@@ -15,6 +15,7 @@ using Vigiloom.Testing.SqlServer;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 
@@ -24,10 +25,14 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 public sealed class PingSqlTests
 {
     public TestContext TestContext { get; set; } = null!;
-    [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+    [AssemblyCleanup] public static async Task Cleanup()
+    {
+        await ReusableNetworkDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
-    public Task PingSettingsAuditCommitsAndRollsBackWithSettings() => WithDatabase(async (resources, network, token) =>
+    public Task PingSettingsAuditCommitsAndRollsBackWithSettings() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var actor = Guid.CreateVersion7();
@@ -113,7 +118,7 @@ public sealed class PingSqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task LeasesSamplesTransitionsAndStaleness(bool snapshotReads) => WithDatabase(async (resources, network, token) =>
+    public Task LeasesSamplesTransitionsAndStaleness(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (device, other) = await SeedAsync(resources, token);
@@ -160,7 +165,7 @@ public sealed class PingSqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task FencingDeviceChangesAndSettingsConflicts() => WithDatabase(async (resources, network, token) =>
+    public Task FencingDeviceChangesAndSettingsConflicts() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
@@ -199,7 +204,7 @@ public sealed class PingSqlTests
     });
 
     [TestMethod]
-    public Task RunnerSamplesEachConfiguredTargetExactlyOnce() => WithDatabase(async (resources, network, token) =>
+    public Task RunnerSamplesEachConfiguredTargetExactlyOnce() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
@@ -229,7 +234,7 @@ public sealed class PingSqlTests
     [DataRow("disable")]
     [DataRow("archive")]
     [DataRow("remove-target")]
-    public Task DeviceLifecycleRejectsAlreadyClaimedWork(string change) => WithDatabase(async (resources, network, token) =>
+    public Task DeviceLifecycleRejectsAlreadyClaimedWork(string change) => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (_, device) = await SeedAsync(resources, token);
@@ -258,7 +263,7 @@ public sealed class PingSqlTests
     });
 
     [TestMethod]
-    public Task BadTargetIsRecordedWithoutPreventingOtherTargets() => WithDatabase(async (resources, network, token) =>
+    public Task BadTargetIsRecordedWithoutPreventingOtherTargets() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
@@ -306,7 +311,7 @@ public sealed class PingSqlTests
     [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public Task StaleGapBreaksReachabilityAndConsecutiveSuccess(bool wasReachable) => WithDatabase(async (resources, network, token) =>
+    public Task StaleGapBreaksReachabilityAndConsecutiveSuccess(bool wasReachable) => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
         var (device, _) = await SeedAsync(resources, token);
@@ -345,6 +350,19 @@ public sealed class PingSqlTests
             Task.FromResult(target.EndsWith(".invalid", StringComparison.Ordinal)
                 ? new PingMeasurement(PingOutcome.DnsError, null, null) : new(PingOutcome.Success, target, 1));
     }
+
+    private Task WithOptionalSnapshotDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads) =>
+        snapshotReads ? WithDatabase(test, true) : WithReusableDatabase(test);
+
+    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test) =>
+        ReusableNetworkDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var resources = new Factory<ResourcesDbContext>(() => new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
+            var network = new Factory<NetworkDbContext>(() => new NetworkDbContext(new DbContextOptionsBuilder<NetworkDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options));
+            await test(resources, network, token);
+        }, TestContext.CancellationToken);
 
     private Task WithDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads = false) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

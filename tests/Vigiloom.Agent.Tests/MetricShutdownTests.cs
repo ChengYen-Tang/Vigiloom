@@ -126,7 +126,14 @@ public sealed class MetricShutdownTests(TestContext context)
                     var loss = await ledger.ReadAsync(token);
                     if (releaseSender) Assert.AreEqual(0L, loss.Records);
                     else if (corruptQueue) Assert.IsTrue(loss.CompletenessUnknown, "A failed enqueue cannot be claimed as a known loss.");
-                    else Assert.IsGreaterThan(0L, loss.Records, "The confirmed unqueued tail should be recorded on shutdown.");
+                    else
+                    {
+                        var accounting = Assert.ContainsSingle(logger.Accounting);
+                        Assert.AreEqual((long)accounting.KnownBatches, loss.Batches);
+                        Assert.AreEqual(accounting.KnownRecords, loss.Records);
+                        if (accounting.KnownRecords == 0)
+                            Assert.IsTrue(accounting.OutcomeUnknown, "A pending batch without a confirmed loss must have an unknown outcome.");
+                    }
                     await ledger.CompleteAsync(token);
                 }
                 Assert.AreEqual(0L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
@@ -185,11 +192,18 @@ public sealed class MetricShutdownTests(TestContext context)
     private sealed class CaptureLogger : ILogger<MetricWorker>
     {
         private readonly ConcurrentQueue<string> messages = new();
+        public ConcurrentQueue<(int KnownBatches, long KnownRecords, bool OutcomeUnknown)> Accounting { get; } = new();
         public bool Contains(string value) => messages.Any(message => message.Contains(value, StringComparison.Ordinal));
         public bool Matches(string pattern) => messages.Any(message => Regex.IsMatch(message, pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)));
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => messages.Enqueue(formatter(state, exception));
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            messages.Enqueue(formatter(state, exception));
+            if (eventId.Name != "MetricPendingAccounting" || state is not IEnumerable<KeyValuePair<string, object?>> fields) return;
+            var values = fields.ToDictionary(item => item.Key, item => item.Value);
+            Accounting.Enqueue(((int)values["KnownBatches"]!, (long)values["KnownRecords"]!, (bool)values["OutcomeUnknown"]!));
+        }
     }
 
     private sealed class HeldFirstBatchHandler : HttpMessageHandler

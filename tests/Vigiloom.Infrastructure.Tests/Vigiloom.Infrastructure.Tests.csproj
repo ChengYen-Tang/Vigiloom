@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Respawn" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Migrator/Vigiloom.Migrator.csproj" />
     <ProjectReference Include="../../src/Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.IdentityAccess/Vigiloom.Modules.IdentityAccess.csproj" />

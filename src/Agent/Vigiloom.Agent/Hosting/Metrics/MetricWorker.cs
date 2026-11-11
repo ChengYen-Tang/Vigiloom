@@ -250,9 +250,15 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
             if (ledger is null) return;
             if (cycle.HasPending)
             {
-                if (cycle.KnownUnqueuedBatches > 0)
-                    await ledger.RecordAsync(1, cycle.KnownUnqueuedBatches, cycle.KnownUnqueuedRecords, deadline.Token);
-                if (cycle.PendingOutcomeUnknown) await ledger.MarkIncompleteAsync(deadline.Token);
+                var knownBatches = cycle.KnownUnqueuedBatches;
+                var knownRecords = cycle.KnownUnqueuedRecords;
+                var outcomeUnknown = cycle.PendingOutcomeUnknown;
+                if (knownBatches > 0)
+                    await ledger.RecordAsync(1, knownBatches, knownRecords, deadline.Token);
+                if (outcomeUnknown) await ledger.MarkIncompleteAsync(deadline.Token);
+                logger.LogDebug(new EventId(1001, "MetricPendingAccounting"),
+                    "Metric accounting recorded {KnownBatches} known batches and {KnownRecords} records; outcome unknown: {OutcomeUnknown}.",
+                    knownBatches, knownRecords, outcomeUnknown);
             }
             await ledger.CompleteAsync(deadline.Token);
         }

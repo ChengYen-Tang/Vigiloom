@@ -32,14 +32,17 @@ internal static class PingTestSite
         Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
     }
 
-    internal static async Task<Device> InitializeAsync(WebApplicationFactory<Program> factory, CancellationToken token)
+    internal static async Task<Device> InitializeAsync(WebApplicationFactory<Program> factory, CancellationToken token, bool schemaInitialized = false)
     {
         var identity = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-        await using (var db = await identity.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         var network = factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
-        await using (var db = await network.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        if (!schemaInitialized)
+        {
+            await using (var db = await identity.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await network.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        }
         await RoleInitializer.InitializeAsync(identity, token);
         await using (var scope = factory.Services.CreateAsyncScope())
         {

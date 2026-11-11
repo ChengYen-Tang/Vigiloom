@@ -34,14 +34,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task HostLogSources_AuthorizeMutationsAndIsolateAgentSettings() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var first = new Device("first log host", "127.0.0.1", true, DateTimeOffset.UtcNow);
             var second = new Device("second log host", "127.0.0.2", true, DateTimeOffset.UtcNow);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -187,12 +183,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task LogQuota_SettingsRequireAdministratorAndRecordChanges() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
             using var anonymous = factory.CreateClient(options);
             using var reader = factory.CreateClient(options);
@@ -265,10 +259,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task ServiceInstancePage_PolicyAndLifecycleRequireAdminAndRemainUsableAcrossPosts() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
             var now = DateTimeOffset.UtcNow;
             var source = new Vigiloom.Modules.ServiceObservability.Domain.ServiceSource("source", new byte[32], now);
@@ -277,7 +271,6 @@ public sealed class AgentSettingsUiHttpTests
             Guid instanceId;
             await using (var db = await contexts.CreateDbContextAsync(token))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
                 await using var tx = await db.Database.BeginTransactionAsync(token);
                 var result = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", "node", token);
@@ -389,12 +382,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task ServiceDiscoveryPage_ManagesSourcesAndApprovesCandidate() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
             using var admin = factory.CreateClient(options);
             using var reader = factory.CreateClient(options);
@@ -603,12 +594,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task ServiceSourceManagement_RequiresAdministratorAndAuditsChanges() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
             using var anonymous = factory.CreateClient(options);
             using var reader = factory.CreateClient(options);
@@ -703,12 +692,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task CandidateApproval_RequiresAdministratorAndAntiforgery() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             await using var scope = factory.Services.CreateAsyncScope();
             var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("source", token);
             var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
@@ -759,12 +746,10 @@ public sealed class AgentSettingsUiHttpTests
 
     [TestMethod]
     public Task AdministratorCanEditAndResetOverridesWhileReaderSeesStatusOnly() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            var device = await PingTestSite.InitializeAsync(factory, token);
-            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
+            var device = await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             {
                 var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);

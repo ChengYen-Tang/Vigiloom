@@ -21,14 +21,12 @@ public sealed class DiscoverySchemaTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Discovery_NamespacesRemainDistinctThroughApprovalAndAuthorization() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
             var discovery = new CandidateDiscovery(factory);
@@ -52,11 +50,15 @@ public sealed class DiscoverySchemaTests(TestContext context)
         }, context.CancellationToken);
 
     [AssemblyCleanup]
-    public static void Cleanup() => SqlTestDatabase.CompleteRun();
+    public static async Task Cleanup()
+    {
+        await Fixtures.ReusableServiceDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public Task CandidateDiscovery_ContinuedReportsRemainVisibleAfterFirstSeenWindow() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -116,7 +118,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task CandidateDiscovery_GlobalCapacityIsSerializedAndExpiredCapacityIsReused() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -155,7 +157,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
 
     [TestMethod]
     public Task CandidateDiscovery_HidesExpiredAndFutureRowsAndResetsOnReport() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -308,14 +310,12 @@ public sealed class DiscoverySchemaTests(TestContext context)
 
     [TestMethod]
     public Task SourceAdministration_AuditFailureRollsBackIssuanceAndRevocation() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options)) await db.Database.MigrateAsync(token);
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var actor = Guid.CreateVersion7();
             var failing = new SourceAdministration(factory, new FailingAudit());
@@ -506,7 +506,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
 
     [TestMethod]
     public Task CandidateDiscovery_UsesSourceIdentityAndRejectsRevokedSources() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -533,7 +533,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
 
     [TestMethod]
     public Task SourceCredentials_RejectWrongTypeAndRevokedSecret() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;

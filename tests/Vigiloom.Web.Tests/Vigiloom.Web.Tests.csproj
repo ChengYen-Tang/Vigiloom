@@ -14,6 +14,7 @@
     <ProjectReference Include="../../tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" Aliases="AgentHarness" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Respawn" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Microsoft.Playwright" />

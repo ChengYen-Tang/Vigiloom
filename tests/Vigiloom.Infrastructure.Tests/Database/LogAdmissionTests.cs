@@ -19,7 +19,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_WholeRequestRejectsWithoutDebitingPrefixAndCanRetry() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
@@ -63,7 +63,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Policy_ConcurrentUpdatesHaveOneWinner(bool existingPolicy) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
@@ -240,7 +240,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_RollbackDoesNotConsumeCapacity() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
@@ -265,7 +265,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_ClockRollbackDoesNotRefillOrMoveStoredTimeBackwards() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
@@ -304,7 +304,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_PolicyChangeDoesNotRefillUsingOldElapsedTime() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
@@ -335,7 +335,7 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_SourceExhaustionDoesNotDebitGlobalCapacity() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
