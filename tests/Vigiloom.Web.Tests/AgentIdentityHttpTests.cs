@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
+using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -28,6 +29,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using System.Data.Common;
@@ -45,6 +48,211 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentityHttpTests
 {
+    [TestMethod]
+    [Timeout(180000, CooperativeCancellation = true)]
+    public Task Inventory_RealAgentCycleQueuesSendsAndConfirmsThroughHttp() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryEndToEndTests");
+            var directory = Path.Combine(parent, Path.GetRandomFileName());
+            try
+            {
+                using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+                {
+                    builder.UseEnvironment("Development");
+                    builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ConnectionStrings:Vigiloom"] = database.ConnectionString
+                    }));
+                });
+                var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+                await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+                await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                var device = new Device("real inventory cycle", "127.0.0.1", true, DateTimeOffset.UtcNow);
+                await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+                Guid agentId;
+                var secret = RandomNumberGenerator.GetBytes(32);
+                await using (var scope = factory.Services.CreateAsyncScope())
+                {
+                    var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                    var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                    var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                    agentId = registered.AgentId!.Value;
+                }
+                var server = new Uri("https://localhost/");
+                var vault = new IdentityVault(directory);
+                await using (var session = vault.Acquire())
+                    await session.WriteAsync(new IdentityState { AgentId = agentId, Server = server.AbsoluteUri, MachineSecret = WebEncoders.Base64UrlEncode(secret) }, token);
+                using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = server });
+                var cycle = new InventoryCycle(new InventoryStatusClient(http, TimeProvider.System), TimeProvider.System);
+                InventoryReadResult<InventoryEntry>? observed = null;
+                Task<InventoryReadResult<InventoryEntry>> Collect(InventorySource _, CancellationToken cancellation) =>
+                    Task.FromResult(observed = HostHardwareReader.ReadNetwork(cancellation));
+                var queued = await cycle.RunAsync(vault, server, InventorySource.HostNetwork, Collect, token);
+                Assert.AreEqual(InventoryCycleKind.Queued, queued.Kind);
+                var sender = new AgentBatchClient(http, TimeProvider.System);
+                var queue = new DurableBatchQueue(vault, agentId);
+                var sent = 0;
+                while (await queue.PeekAsync(token) is not null)
+                {
+                    Assert.IsLessThan(InventoryChunkCodec.MaximumChunks + 1, ++sent);
+                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                }
+                var completed = await cycle.RunAsync(vault, server, InventorySource.HostNetwork, Collect, token);
+                Assert.AreEqual(InventoryCycleKind.Complete, completed.Kind);
+                Assert.AreEqual(0L, (await queue.GetStatusAsync(token)).TotalBatches);
+                await using var verify = await security.CreateDbContextAsync(token);
+                var state = await verify.InventorySources.AsNoTracking().SingleAsync(x => x.AgentId == agentId && x.Source == InventorySource.HostNetwork, token);
+                Assert.IsNotNull(observed);
+                Assert.AreEqual((InventoryOutcome)observed.Status, state.LastOutcome);
+                Assert.AreEqual(observed.Status == InventoryReadStatus.Complete ? 1L : null, state.CurrentGeneration);
+            }
+            finally
+            {
+                var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(directory).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+                if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            }
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    [Timeout(180000, CooperativeCancellation = true)]
+    public Task Inventory_HttpCommitsAndReturnsOnlyAuthenticatedStatus() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString
+                }));
+            });
+            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+            await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var now = DateTimeOffset.UtcNow;
+            var device = new Device("inventory host", "127.0.0.1", true, now);
+            await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            string credential;
+            Guid registeredAgentId;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                registeredAgentId = registered.AgentId ?? throw new InvalidOperationException("Agent enrollment did not return an identity.");
+                credential = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+            }
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+            using (var anonymous = await client.GetAsync("/api/v1/agent/inventory/status", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var anonymous = await client.GetAsync("/api/v1/agent/inventory-settings", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            using (var policy = await client.GetAsync("/api/v1/agent/inventory-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, policy.StatusCode);
+                Assert.IsTrue(policy.Headers.CacheControl!.NoStore);
+                var settings = await policy.Content.ReadFromJsonAsync<InventorySettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(settings);
+                Assert.AreEqual(21600, settings.Settings.ScanIntervalSeconds);
+                using var conditional = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory-settings");
+                conditional.Headers.IfNoneMatch.ParseAdd($"\"{settings.Revision}\"");
+                using var unchanged = await client.SendAsync(conditional, token);
+                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            }
+            var epoch = Guid.CreateVersion7();
+            using (var started = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, started.StatusCode);
+            var appliedInventory = InventorySettingsSnapshot.Create(InventorySettings.Default);
+            var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, InventoryConfiguration: new(appliedInventory, now, null));
+            using (var reported = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, reported.StatusCode);
+            var measured = InventoryDigest.MeasureChunk([]);
+            var chunk = new InventoryChunk(4, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 1,
+                InventorySource.LinuxDpkg, now, InventoryOutcome.Complete, 0, 1, 0, measured.Bytes,
+                InventoryDigest.Combine([measured.Digest]), []);
+            var payload = InventoryChunkCodec.Serialize(chunk);
+            using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(payload), token))
+            {
+                Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+                Assert.IsTrue(accepted.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var supported));
+                Assert.Contains("4", string.Join(",", supported));
+            }
+            using (var duplicate = await client.PostAsync("/api/v1/agent/batches", JsonBytes(payload), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
+            using var statusResponse = await client.GetAsync("/api/v1/agent/inventory/status", token);
+            Assert.AreEqual(HttpStatusCode.OK, statusResponse.StatusCode);
+            Assert.IsNotNull(statusResponse.Headers.CacheControl);
+            Assert.IsTrue(statusResponse.Headers.CacheControl.NoStore);
+            var status = await statusResponse.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+            Assert.IsNotNull(status);
+            Assert.HasCount(1, status);
+            Assert.AreEqual(1L, status[0].HighWaterGeneration);
+            Assert.AreEqual(chunk.SnapshotId, status[0].LastSnapshotId);
+            Assert.AreEqual(InventoryCompletion.Complete, status[0].LastStatus);
+            var items = new[] { new InventoryEntry("package", "Example package", "1.0", "x64") };
+            var nextMeasure = InventoryDigest.MeasureChunk(items);
+            var next = chunk with { BatchId = Guid.CreateVersion7(), SnapshotId = Guid.CreateVersion7(), Generation = 2,
+                TotalItems = 1, TotalBytes = nextMeasure.Bytes, Digest = InventoryDigest.Combine([nextMeasure.Digest]), Items = items };
+            using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(next)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+            var inventoryUrl = $"/api/v1/devices/{device.Id:D}/inventory";
+            using (var denied = await client.GetAsync(inventoryUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            await PingTestSite.InitializeAsync(factory, token);
+            using var reader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            using (var policyStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/inventory-settings-status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, policyStatus.StatusCode);
+                var reported = await policyStatus.Content.ReadFromJsonAsync<InventorySettingsStatus>(cancellationToken: token);
+                Assert.IsNotNull(reported);
+                Assert.AreEqual(AgentSettingsApplyState.Applied, reported.State);
+                Assert.AreEqual(appliedInventory.Revision, reported.Applied!.Revision);
+            }
+            using var viewResponse = await reader.GetAsync(inventoryUrl, token);
+            Assert.AreEqual(HttpStatusCode.OK, viewResponse.StatusCode);
+            var view = await viewResponse.Content.ReadFromJsonAsync<DeviceInventoryView>(cancellationToken: token);
+            Assert.IsNotNull(view);
+            Assert.HasCount(1, view.Sources);
+            Assert.AreEqual(next.SnapshotId, view.Sources[0].CurrentSnapshotId);
+            Assert.AreEqual(1, view.Sources[0].CurrentItemCount);
+            using var chunkResponse = await reader.GetAsync($"{inventoryUrl}/{(int)next.Source}/snapshots/{next.SnapshotId:D}/chunks/0", token);
+            Assert.AreEqual(HttpStatusCode.OK, chunkResponse.StatusCode);
+            var readChunk = await chunkResponse.Content.ReadFromJsonAsync<InventorySnapshotChunkView>(cancellationToken: token);
+            Assert.IsNotNull(readChunk);
+            Assert.AreEqual("Example package", readChunk.Items[0].Name);
+            using var stale = await reader.GetAsync($"{inventoryUrl}/{(int)chunk.Source}/snapshots/{chunk.SnapshotId:D}/chunks/0", token);
+            Assert.AreEqual(HttpStatusCode.NotFound, stale.StatusCode);
+            var changesUrl = $"{inventoryUrl}/changes?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using (var denied = await client.GetAsync(changesUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var changesResponse = await reader.GetAsync(changesUrl, token);
+            Assert.AreEqual(HttpStatusCode.OK, changesResponse.StatusCode);
+            var changes = await changesResponse.Content.ReadFromJsonAsync<InventoryChangePage>(cancellationToken: token);
+            Assert.IsNotNull(changes);
+            Assert.HasCount(1, changes.Items);
+            Assert.AreEqual(InventoryChangeType.Added, changes.Items[0].Kind);
+            Assert.AreEqual("Example package", changes.Items[0].After!.Name);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(registeredAgentId, Guid.CreateVersion7(), token));
+            }
+            using var revoked = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory-settings");
+            revoked.Headers.IfNoneMatch.ParseAdd($"\"{appliedInventory.Revision}\"");
+            using var revokedResponse = await client.SendAsync(revoked, token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, revokedResponse.StatusCode);
+        }, TestContext.CancellationToken);
+
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task HostLogBatch_HttpPreservesReceiptAndReportsQuota() =>

@@ -6,4 +6,8 @@
     <ProjectReference Include="../Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
     <InternalsVisibleTo Include="Vigiloom.Agent.Platforms.Windows.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" />
+  </ItemGroup>
 </Project>

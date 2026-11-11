@@ -15,10 +15,12 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests;
@@ -29,7 +31,7 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentProcessReplayTests(TestContext context)
 {
     [TestMethod]
-    [Timeout(120000, CooperativeCancellation = true)]
+    [Timeout(240000, CooperativeCancellation = true)]
     public Task ReopenedAgentHost_ReplaysACommittedBatchWithoutDuplicates() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -63,6 +65,8 @@ public sealed class AgentProcessReplayTests(TestContext context)
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
             await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+            await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var device = new Device("replay test", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             await using var scope = factory.Services.CreateAsyncScope();
@@ -74,6 +78,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
             var testRoot = Path.Combine(Path.GetTempPath(), "VigiloomAgentReplayTests", Path.GetRandomFileName());
             var stateRoot = Path.Combine(testRoot, "state");
             Exception? primaryFailure = null;
+            var preserveDirectory = false;
             try
             {
                 Directory.CreateDirectory(testRoot);
@@ -166,7 +171,22 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 Assert.AreEqual(local.Records, status.MetricLoss.Snapshot.Records);
                 Assert.IsTrue(status.MetricLoss.Snapshot.CompletenessUnknown);
                 await ledger.CompleteAsync(token);
+
+                // Exercise the production hosted Agent's real OS inventory through strict-CA TLS and SQL.
+                await using (var before = await security.CreateDbContextAsync(token))
+                    Assert.IsFalse(await before.InventorySources.AnyAsync(x => x.AgentId == agentId && x.Source == InventorySource.HostSystem && x.CurrentGeneration != null, token));
+                await RunAgentUntilAsync(server, stateRoot, caPath, async cancellationToken =>
+                {
+                    await using var db = await security.CreateDbContextAsync(cancellationToken);
+                    return await db.InventorySources.AsNoTracking().AnyAsync(x => x.AgentId == agentId &&
+                        x.Source == InventorySource.HostSystem && x.CurrentGeneration != null, cancellationToken);
+                }, token);
+                var inventory = await scope.ServiceProvider.GetRequiredService<Vigiloom.Modules.SecurityAnalysis.Application.Inventory.InventoryQuery>()
+                    .GetAsync(device.Id, agentId, token);
+                Assert.IsNotNull(inventory);
+                Assert.IsTrue(inventory.Sources.Any(x => x.Source == InventorySource.HostSystem && x.CurrentItemCount > 0));
             }
+            catch (AgentProcessStillRunningException error) { preserveDirectory = true; primaryFailure = error; throw; }
             catch (Exception error) { primaryFailure = error; throw; }
             finally
             {
@@ -176,7 +196,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
                     var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomAgentReplayTests")) + Path.DirectorySeparatorChar;
                     if (!Path.GetFullPath(testRoot).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                         throw new InvalidOperationException("Test cleanup path escaped its designated root.");
-                    if (Directory.Exists(testRoot)) Directory.Delete(testRoot, recursive: true);
+                    if (!preserveDirectory && Directory.Exists(testRoot)) Directory.Delete(testRoot, recursive: true);
                 }
                 catch (Exception cleanupError) when (primaryFailure is not null) { throw new AggregateException(primaryFailure, cleanupError); }
             }
@@ -216,4 +236,56 @@ public sealed class AgentProcessReplayTests(TestContext context)
             catch (Exception cleanupError) when (primaryFailure is not null) { throw new AggregateException(primaryFailure, cleanupError); }
         }
     }
+
+    private static async Task RunAgentUntilAsync(Uri server, string stateRoot, string caPath,
+        Func<CancellationToken, Task<bool>> condition, CancellationToken token)
+    {
+        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add(typeof(AgentHarness::AgentHostHarnessMarker).Assembly.Location);
+        start.Environment["Vigiloom__Agent__StateDirectory"] = stateRoot;
+        start.Environment["Vigiloom__Agent__Server"] = server.AbsoluteUri;
+        start.Environment["VIGILOOM_TEST_CA"] = caPath;
+        start.Environment["VIGILOOM_TEST_MODE"] = "normal";
+        start.Environment["VIGILOOM_TEST_INVENTORY"] = "enabled";
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the test Agent host.");
+        var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        Exception? failure = null;
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(90));
+            while (!await condition(deadline.Token))
+            {
+                if (process.HasExited) Assert.Fail($"Agent exited before inventory was published: {await errors.WaitAsync(TimeSpan.FromSeconds(10), deadline.Token)}");
+                await Task.Delay(500, deadline.Token);
+            }
+        }
+        catch (Exception error) { failure = error; }
+        var cleanupErrors = new List<Exception>();
+        try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+        catch (Exception error) { cleanupErrors.Add(error); }
+        var exited = false;
+        try { exited = process.WaitForExit(TimeSpan.FromSeconds(10)); }
+        catch (Exception error) { cleanupErrors.Add(error); }
+        if (!exited)
+        {
+            if (failure is not null) cleanupErrors.Insert(0, failure);
+            throw new AgentProcessStillRunningException(stateRoot, new AggregateException(cleanupErrors));
+        }
+        string[]? captured = null;
+        try { captured = await Task.WhenAll(output, errors).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        catch (Exception error) { cleanupErrors.Add(error); }
+        if (failure is not null && captured is not null)
+        {
+            var combined = string.Join(Environment.NewLine, captured);
+            var tail = combined.Length > 12000 ? combined[^12000..] : combined;
+            cleanupErrors.Add(new InvalidOperationException($"Agent test process output: {tail}"));
+        }
+        if (failure is not null) cleanupErrors.Insert(0, failure);
+        if (cleanupErrors.Count > 0) throw new AggregateException(cleanupErrors);
+    }
+
+    private sealed class AgentProcessStillRunningException(string stateRoot, Exception inner)
+        : Exception($"Test Agent may still be running; state retained at {stateRoot}.", inner);
 }

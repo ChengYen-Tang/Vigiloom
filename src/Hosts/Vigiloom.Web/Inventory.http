@@ -1,0 +1,16 @@
+@host = https://localhost:7043
+@deviceId = 00000000-0000-0000-0000-000000000000
+@snapshotId = 00000000-0000-0000-0000-000000000000
+@apiCredential = replace-with-monitoring-read-credential
+
+### Private source states and current snapshot identifiers.
+GET {{host}}/api/v1/devices/{{deviceId}}/inventory
+Authorization: Bearer {{apiCredential}}
+
+### First chunk of the current dpkg snapshot (source 3).
+GET {{host}}/api/v1/devices/{{deviceId}}/inventory/3/snapshots/{{snapshotId}}/chunks/0
+Authorization: Bearer {{apiCredential}}
+
+### Private inventory changes in a UTC time range.
+GET {{host}}/api/v1/devices/{{deviceId}}/inventory/changes?from=2026-11-01T00%3A00%3A00Z&until=2026-11-02T00%3A00%3A00Z
+Authorization: Bearer {{apiCredential}}

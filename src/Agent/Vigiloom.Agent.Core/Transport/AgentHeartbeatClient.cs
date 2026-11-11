@@ -34,6 +34,11 @@ public sealed class AgentHeartbeatClient(HttpClient http)
 
     public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
         AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, AgentLogStatusObservation? logObservation, CancellationToken token)
+        => await SendAsync(vault, server, configuration, capacityObservation, metricLossWriter, logObservation, null, token);
+
+    public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
+        AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, AgentLogStatusObservation? logObservation,
+        InventorySettingsObservation? inventoryObservation, CancellationToken token)
     {
         await gate.WaitAsync(token);
         try
@@ -46,6 +51,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             var capacityOwnerMatches = capacityObservation is not null && capacityObservation.Owner.Matches(id, expected, vault);
             var logReport = logObservation is not null && logObservation.Owner.Matches(id, expected, vault) && logObservation.Report.IsValid()
                 ? logObservation.Report : null;
+            var inventoryReport = inventoryObservation is not null && inventoryObservation.Owner.Matches(id, expected, vault) && inventoryObservation.Report.IsValid()
+                ? inventoryObservation.Report : null;
             if (agentId != id || serverUri != expected)
             {
                 agentId = id;
@@ -104,7 +111,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     {
                         // An unavailable ledger is unknown, not an empty loss snapshot.
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss, logReport);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss, logReport, inventoryReport);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -115,6 +122,11 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             while (true)
             {
                 using var response = await PostHeartbeatAsync(expected, credential, candidate, token);
+                if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge && candidate?.InventoryConfiguration is not null)
+                {
+                    candidate = candidate with { InventoryConfiguration = null };
+                    continue;
+                }
                 if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge && candidate?.LogStatus is not null)
                 {
                     candidate = candidate with { LogStatus = null };
@@ -123,7 +135,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
                     return await HandleResponseAsync(response, expected, credential, candidate, token);
                 // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
-                if (candidate.LogStatus is not null) candidate = candidate with { LogStatus = null };
+                if (candidate.InventoryConfiguration is not null) candidate = candidate with { InventoryConfiguration = null };
+                else if (candidate.LogStatus is not null) candidate = candidate with { LogStatus = null };
                 else if (candidate.MetricLoss is not null) candidate = candidate with { MetricLoss = null };
                 else if (candidate.CapacityConfiguration is not null) candidate = candidate with { CapacityConfiguration = null };
                 else if (candidate.Quarantine is not null) candidate = candidate with { Quarantine = null };
