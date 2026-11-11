@@ -15,7 +15,14 @@ public sealed class SqlTestDatabaseTests
     public TestContext TestContext { get; set; } = null!;
 
     [AssemblyCleanup]
-    public static void VerifyRunCleanup() => SqlTestDatabase.CompleteRun();
+    public static async Task VerifyRunCleanup()
+    {
+        List<Exception> failures = [];
+        try { await ReusableLogQuotaDatabase.DisposeAsync(); } catch (Exception error) { failures.Add(error); }
+        try { await ReusableOutboxDatabase.DisposeAsync(); } catch (Exception error) { failures.Add(error); }
+        try { SqlTestDatabase.CompleteRun(); } catch (Exception error) { failures.Add(error); }
+        if (failures.Count != 0) throw new AggregateException("Test database cleanup failed.", failures);
+    }
 
     [TestMethod]
     public async Task CreateAndDispose_UsesOwnedDatabaseAndRemovesIt()

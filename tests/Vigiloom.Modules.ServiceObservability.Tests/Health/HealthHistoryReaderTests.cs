@@ -7,6 +7,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
@@ -19,7 +20,7 @@ public sealed class HealthHistoryReaderTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task History_StableReadError_PreservesOriginalException() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ExecuteHistoryAsync(false, async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -39,7 +40,7 @@ public sealed class HealthHistoryReaderTests(TestContext context)
             var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => reader.ReadAsync(service.Id, start, start.AddMinutes(1), token));
             Assert.AreEqual("Injected interval read failure.", error.Message);
             Assert.AreEqual(1, interceptor.Count);
-        }, context.CancellationToken);
+        });
 
     [TestMethod]
     [DataRow(false, false, false)]
@@ -50,7 +51,7 @@ public sealed class HealthHistoryReaderTests(TestContext context)
     [DataRow(true, true, true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task History_ConcurrentStateChange_RetriesConsistentVersion(bool snapshot, bool refresh, bool failFirstRead) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ExecuteHistoryAsync(snapshot, async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -110,12 +111,12 @@ public sealed class HealthHistoryReaderTests(TestContext context)
                 interceptor.Release.TrySetResult(); cancellation.Cancel();
                 try { await read; } catch (Exception) { }
             }
-        }, context.CancellationToken);
+        });
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task History_MissingParticipantIsUnknown_ExplicitlyDisabledIsExcluded() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ExecuteHistoryAsync(false, async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -149,7 +150,11 @@ public sealed class HealthHistoryReaderTests(TestContext context)
             Assert.AreEqual(start.AddSeconds(20), result.Intervals[1].End);
             Assert.AreEqual(ServiceHealthState.Healthy, result.Intervals[2].State);
             Assert.AreEqual(0.8, result.Coverage, 0.000001);
-        }, context.CancellationToken);
+        });
+
+    private Task ExecuteHistoryAsync(bool isolated, Func<SqlTestDatabase, CancellationToken, Task> action) =>
+        isolated ? SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), action, context.CancellationToken)
+                 : ReusableServiceDatabase.ExecuteAsync(action, context.CancellationToken);
 }
 
 internal sealed class IntervalReadBarrier(bool failFirst = false) : DbCommandInterceptor

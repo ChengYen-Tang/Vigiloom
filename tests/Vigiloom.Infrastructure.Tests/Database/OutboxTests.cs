@@ -46,7 +46,7 @@ public sealed class OutboxTests
     });
 
     [TestMethod]
-    public Task ConcurrentDispatchers_ApplyOneEffect_AndRecoverExpiredLease() => WithDatabase(async (connectionString, token) =>
+    public Task ConcurrentDispatchers_ApplyOneEffect_AndRecoverExpiredLease() => WithIsolatedDatabase(async (connectionString, token) =>
     {
         await using (var configuration = new SqlConnection(connectionString))
         {
@@ -138,9 +138,26 @@ public sealed class OutboxTests
         var message = await EnqueueAsync(connectionString, handler, token);
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
         var dispatch = Dispatcher(connectionString, handler).DispatchAsync(cancel.Token);
-        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
-        await cancel.CancelAsync();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => dispatch);
+        Exception? primaryFailure = null;
+        try
+        {
+            await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+            await cancel.CancelAsync();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => dispatch);
+        }
+        catch (Exception error) { primaryFailure = error; }
+        List<Exception> cleanupFailures = [];
+        try { await cancel.CancelAsync(); } catch (Exception error) { cleanupFailures.Add(error); }
+        try { await dispatch; }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+        catch (Exception error) { cleanupFailures.Add(error); }
+        if (primaryFailure is not null)
+        {
+            if (cleanupFailures.Count != 0)
+                throw new AggregateException("Test and dispatch cleanup failed.", [primaryFailure, .. cleanupFailures]);
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(primaryFailure).Throw();
+        }
+        if (cleanupFailures.Count != 0) throw new AggregateException("Dispatch cleanup failed.", cleanupFailures);
         await using (var connection = new SqlConnection(connectionString))
         {
             await connection.OpenAsync(token);
@@ -171,6 +188,9 @@ public sealed class OutboxTests
     });
 
     private Task WithDatabase(Func<string, CancellationToken, Task> action) =>
+        ReusableOutboxDatabase.ExecuteAsync((database, token) => action(database.ConnectionString, token), TestContext.CancellationToken);
+
+    private Task WithIsolatedDatabase(Func<string, CancellationToken, Task> action) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();

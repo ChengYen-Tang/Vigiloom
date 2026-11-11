@@ -10,6 +10,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Testing.SpeedTests;
@@ -24,7 +25,7 @@ public sealed class SpeedSqlTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public Task UpgradeTimeout_AdjustsSettingsAndQueuedRunsOnly() => WithDatabase(async (factory, token) =>
+    public Task UpgradeTimeout_AdjustsSettingsAndQueuedRunsOnly() => WithIsolatedDatabase(async (factory, token) =>
     {
         await new SpeedSettings(factory, new OperationAuditWriter()).GetAsync(token);
         var now = DateTimeOffset.UtcNow;
@@ -45,7 +46,7 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
-    public Task UpgradeRetention_PreservesExistingSettingsAndResults() => WithDatabase(async (factory, token) =>
+    public Task UpgradeRetention_PreservesExistingSettingsAndResults() => WithIsolatedDatabase(async (factory, token) =>
     {
         var settings = new SpeedSettings(factory, new OperationAuditWriter());
         var initial = await settings.GetAsync(token);
@@ -66,7 +67,7 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
-    public Task UpgradeSchedule_PreservesCustomSettingsAndHistory() => WithDatabase(async (factory, token) =>
+    public Task UpgradeSchedule_PreservesCustomSettingsAndHistory() => WithIsolatedDatabase(async (factory, token) =>
     {
         var settings = new SpeedSettings(factory, new OperationAuditWriter());
         await settings.GetAsync(token);
@@ -269,7 +270,7 @@ public sealed class SpeedSqlTests
     });
 
     [TestMethod]
-    public Task Runner_PersistsFailedAndTimedOutRunsWithoutZeroSpeeds() => WithDatabase(async (factory, token) =>
+    public Task Runner_PersistsFailedAndTimedOutRunsWithoutZeroSpeeds() => WithIsolatedDatabase(async (factory, token) =>
     {
         var queue = new SpeedQueue(factory);
         var settings = new SpeedSettings(factory, new OperationAuditWriter());
@@ -398,16 +399,25 @@ public sealed class SpeedSqlTests
             throw new InvalidOperationException("The probe should only stop through cancellation.");
         }
     }
-    private Task WithDatabase(Func<Factory, CancellationToken, Task> action) => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    private Task WithDatabase(Func<Factory, CancellationToken, Task> action) =>
+        ReusableNetworkDatabase.ExecuteAsync((database, token) => RunTest(database.ConnectionString, token, false, action), TestContext.CancellationToken);
+
+    private Task WithIsolatedDatabase(Func<Factory, CancellationToken, Task> action) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), (database, token) => RunTest(database.ConnectionString, token, true, action), TestContext.CancellationToken);
+
+    private static async Task RunTest(string connectionString, CancellationToken token, bool initializeSchema, Func<Factory, CancellationToken, Task> action)
     {
-        var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
-        await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
-        var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-        await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
-        var factory = new Factory(new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options);
-        await using (var db = factory.CreateDbContext()) await db.Database.MigrateAsync(token);
+        var factory = new Factory(new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options);
+        if (initializeSchema)
+        {
+            var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+            await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(token);
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            await using (var db = factory.CreateDbContext()) await db.Database.MigrateAsync(token);
+        }
         await action(factory, token);
-    }, TestContext.CancellationToken);
+    }
     private sealed class Factory(DbContextOptions<NetworkDbContext> options) : IDbContextFactory<NetworkDbContext>
     {
         public NetworkDbContext CreateDbContext() => new(options);

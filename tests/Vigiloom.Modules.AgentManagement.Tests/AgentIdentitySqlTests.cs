@@ -30,7 +30,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task HostLogConfiguration_ReadWaitsForRetirementAndRevocation(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task HostLogConfiguration_ReadWaitsForRetirementAndRevocation(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("source concurrency", "127.0.0.1", true, clock.Now);
@@ -1161,7 +1161,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task Configuration_ResolvesLayersAndAuditsConcurrentEdits(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task Configuration_ResolvesLayersAndAuditsConcurrentEdits(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("configuration server", "127.0.0.1", true, clock.Now);
@@ -1286,7 +1286,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task Batches_AreAtomicIdempotentAndRejectChangedMessages(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task Batches_AreAtomicIdempotentAndRejectChangedMessages(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("batch server", "127.0.0.1", true, clock.Now);
@@ -2097,7 +2097,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task Batches_TimeObservationUsesOneLatestReceiptWithoutRefreshingOnRetry(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task Batches_TimeObservationUsesOneLatestReceiptWithoutRefreshingOnRetry(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("clock observation", "127.0.0.8", true, clock.Now);
@@ -2143,7 +2143,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task Batches_ConcurrentNewBatchesCannotExceedCapacity(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task Batches_ConcurrentNewBatchesCannotExceedCapacity(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("capacity server", "127.0.0.1", true, clock.Now);
@@ -2205,7 +2205,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task QueueSession_ConcurrentReplacementAllowsOnlyOneWinner(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task QueueSession_ConcurrentReplacementAllowsOnlyOneWinner(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("queue session server", "127.0.0.1", true, clock.Now);
@@ -2455,7 +2455,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task EnrollmentRetriesAndArchiveNeverRevivesCredential(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task EnrollmentRetriesAndArchiveNeverRevivesCredential(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var now = new TestClock();
         var device = new Device("server", "127.0.0.1", true, now.GetUtcNow());
@@ -2611,6 +2611,9 @@ public sealed class AgentIdentitySqlTests
         }
         Assert.AreEqual(AgentIdentityStatus.Conflict, (await service.IssueAsync(device.Id, actor, token)).Status);
     });
+
+    private Task WithOptionalSnapshotDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test, bool snapshotReads) =>
+        snapshotReads ? WithDatabase(test, true) : WithReusableDatabase(test);
 
     private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test) =>
         ReusableIdentityDatabase.ExecuteAsync(async (connection, token) =>

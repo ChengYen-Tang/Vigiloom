@@ -24,5 +24,11 @@ internal sealed class AutoRenderGate(IPage page) : IAsyncDisposable
         await page.UnrouteAsync(Pattern);
     }
 
+    // .NET 10 records this marker only after the Auto render mode's WASM load completes.
+    // Revalidate this framework-internal marker when upgrading .NET.
+    public static async Task WaitForWebAssemblyCachedAsync(IPage page) =>
+        await page.WaitForFunctionAsync("() => !!localStorage.getItem('blazor-resource-hash:Vigiloom.Web.Client')",
+            null, new() { Timeout = 90000 });
+
     public async ValueTask DisposeAsync() => await ReleaseAsync();
 }
