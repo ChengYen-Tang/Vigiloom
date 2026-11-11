@@ -74,16 +74,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Use an alternate Ubuntu mirror when the runner's Ubuntu domains fail DNS.
-          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
-            if [[ -f "$source" ]]; then
-              sudo sed -i -E \
-                -e 's#(^|[[:space:]])mirror\+file:/etc/apt/apt-mirrors\.txt([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\2#g' \
-                -e 's#(^|[[:space:]])https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\3#g' \
-                "$source"
-            fi
-          done
-          sudo apt-get -o APT::Update::Error-Mode=any update
+          if ! sudo apt-get -o APT::Update::Error-Mode=any update; then
+            # Retry with an alternate Ubuntu mirror while preserving signing settings.
+            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+              if [[ -f "$source" ]]; then
+                sudo sed -i -E \
+                  -e 's#(^|[[:space:]])mirror\+file:/etc/apt/apt-mirrors\.txt([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\2#g' \
+                  -e 's#(^|[[:space:]])https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\3#g' \
+                  "$source"
+              fi
+            done
+            sudo apt-get -o APT::Update::Error-Mode=any update
+          fi
           pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Start isolated SQL Server
         id: sql
