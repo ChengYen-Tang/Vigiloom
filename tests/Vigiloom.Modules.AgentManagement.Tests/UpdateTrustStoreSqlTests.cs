@@ -69,6 +69,7 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
         var store = new UpdateTrustStore(factory, new OperationAuditWriter());
         await store.ProvisionAsync(Envelope("root", 1), token);
         var lease = await store.AcquireAsync(token);
+        var lockLossVerified = false;
         try
         {
             await using var context = factory.CreateDbContext();
@@ -80,12 +81,20 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
             command.CommandText = $"KILL {session}"; // Session id comes from SQL Server, not external input.
             await command.ExecuteNonQueryAsync(token);
             await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => lease.VerifyHeldAsync(token));
+            lockLossVerified = true;
         }
         finally
         {
             try { await lease.DisposeAsync(); }
             catch (Microsoft.Data.SqlClient.SqlException) { /* KILL already ended the SQL session. */ }
+            catch (InvalidOperationException error) when (lockLossVerified &&
+                error.Message.Contains("connection's current state: Broken", StringComparison.OrdinalIgnoreCase))
+            {
+                // The killed connection can transition to Broken between the state check and release.
+            }
         }
+        await using var replacement = await store.AcquireAsync(token);
+        await replacement.VerifyHeldAsync(token);
     });
 
     [TestMethod]
