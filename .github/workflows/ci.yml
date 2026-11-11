@@ -52,7 +52,7 @@ jobs:
           "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
         # Bound concurrent project hosts while allowing independent test databases to overlap.
-        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:2
+        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:3
       - name: Test Agent release publisher
         shell: pwsh
         run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
