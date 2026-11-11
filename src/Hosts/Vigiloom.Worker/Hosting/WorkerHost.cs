@@ -4,6 +4,7 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
@@ -34,6 +35,7 @@ public static class WorkerHost
         builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
         builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service", pooled: true);
         builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent", pooled: true);
+        builder.Services.AddVigiloomDataProtection(builder.Configuration);
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
@@ -53,6 +55,9 @@ public static class WorkerHost
         builder.Services.AddScoped<SpeedRetentionCleanup>();
         builder.Services.AddScoped<SpeedRetentionJob>();
         builder.Services.AddScoped<AgentInboxCleanup>();
+        builder.Services.AddScoped<UpdateTrustStore>();
+        builder.Services.AddScoped<AgentPackageSourceSettings>();
+        builder.Services.AddScoped<AgentPackageRefreshJob>();
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
@@ -62,6 +67,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<SpeedSchedule>();
         builder.Services.AddHostedService<SpeedRetentionSchedule>();
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
+        builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddSingleton<HealthRunner>();
         builder.Services.AddHostedService<HealthPolicyWorker>();

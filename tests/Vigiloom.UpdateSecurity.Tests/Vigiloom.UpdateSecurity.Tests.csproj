@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/Shared/Vigiloom.UpdateSecurity/Vigiloom.UpdateSecurity.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures/PythonTuf/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

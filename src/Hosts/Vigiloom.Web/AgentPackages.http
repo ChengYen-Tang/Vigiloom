@@ -1,0 +1,34 @@
+@Vigiloom.Web_HostAddress = http://localhost:5000
+
+### Requires a signed-in monitoring user or an authorized monitoring API credential.
+GET {{Vigiloom.Web_HostAddress}}/api/v1/agent-packages?page=1
+Accept: application/json
+
+### Cache an eligible package on this Web node; requires Administrator session and antiforgery token.
+POST {{Vigiloom.Web_HostAddress}}/api/v1/agent-packages/{{PackageId}}/cache
+RequestVerificationToken: {{AntiforgeryToken}}
+
+### Invalid page
+GET {{Vigiloom.Web_HostAddress}}/api/v1/agent-packages?page=0
+Accept: application/json
+
+### Requires HTTPS and a registered Agent credential.
+GET {{Vigiloom.Web_HostAddress}}/api/v1/agent/update/metadata/timestamp.json
+Authorization: Bearer {{AgentCredential}}
+
+### Administrator session required; no credential is returned.
+GET {{Vigiloom.Web_HostAddress}}/api/v1/agent-management/package-source/
+
+### Read the accepted root fingerprint. Initialization requires the independently authenticated root and fingerprint.
+GET {{Vigiloom.Web_HostAddress}}/api/v1/agent-management/package-source/trust
+
+### The PUT and refresh POST also require the session antiforgery token.
+PUT {{Vigiloom.Web_HostAddress}}/api/v1/agent-management/package-source/
+Content-Type: application/json
+RequestVerificationToken: {{AntiforgeryToken}}
+
+{"baseUri":"https://packages.example.test/","credentialAction":0,"credential":null,"version":""}
+
+### Refresh signed catalogue
+POST {{Vigiloom.Web_HostAddress}}/api/v1/agent-management/package-source/refresh
+RequestVerificationToken: {{AntiforgeryToken}}

@@ -1,0 +1,148 @@
+name: Agent package release
+
+on:
+  schedule:
+    - cron: '47 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Release packages, refresh metadata, or revoke a package
+        type: choice
+        options: [release, refresh, revoke]
+        required: true
+      version:
+        description: New Agent version (release only, for example 1.2.3)
+        type: string
+      minimum_updater:
+        description: Minimum compatible Updater version (release only)
+        type: string
+      revoke:
+        description: Package to revoke (revoke only, VERSION@RID)
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-package-publication
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/master' && inputs.operation == 'release'
+    name: Build Agent (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: win-x86
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_RID: ${{ matrix.rid }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install packaging dependencies
+        run: python -m pip install --require-hashes -r tools/agent-release/requirements.txt
+      - name: Validate version and publish Agent
+        shell: pwsh
+        run: |
+          python -c "import sys; sys.path.insert(0, 'tools/agent-release'); import publisher; publisher.normalized_version(sys.argv[1])" $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid Agent version.' }
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime $env:RELEASE_RID --self-contained true --output "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" "-p:Version=$env:RELEASE_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw 'Agent publishing failed.' }
+          python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" --output-directory "$env:RUNNER_TEMP/agent-package-$env:RELEASE_RID" --rid $env:RELEASE_RID --version $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.rid }}
+          path: ${{ runner.temp }}/agent-package-${{ matrix.rid }}/agent-${{ matrix.rid }}.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Sign and publish Agent catalogue
+    needs: build
+    if: >-
+      always() && github.ref == 'refs/heads/master' &&
+      ((github.event_name == 'schedule' && vars.VIGILOOM_RELEASE_AUTOMATIC == 'true' && needs.build.result == 'skipped') ||
+       (github.event_name == 'workflow_dispatch' &&
+        ((inputs.operation == 'release' && needs.build.result == 'success') ||
+         (inputs.operation != 'release' && needs.build.result == 'skipped'))))
+    # A dedicated private runner owns the single-host publication store.
+    runs-on: [self-hosted, Linux, vigiloom-release]
+    environment: agent-release
+    timeout-minutes: 45
+    env:
+      RELEASE_OPERATION: ${{ inputs.operation || 'refresh' }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_MINIMUM_UPDATER: ${{ inputs.minimum_updater }}
+      RELEASE_REVOKE: ${{ inputs.revoke }}
+      VIGILOOM_RELEASE_STORE: ${{ vars.VIGILOOM_RELEASE_STORE }}
+      VIGILOOM_RELEASE_BOOTSTRAP: ${{ vars.VIGILOOM_RELEASE_BOOTSTRAP }}
+      VIGILOOM_RELEASE_INITIAL: ${{ vars.VIGILOOM_RELEASE_INITIAL }}
+      VIGILOOM_RELEASE_ROOT_UPDATES: ${{ vars.VIGILOOM_RELEASE_ROOT_UPDATES }}
+      VIGILOOM_TARGETS_KEY_PEM: ${{ secrets.VIGILOOM_TARGETS_KEY_PEM }}
+      VIGILOOM_SNAPSHOT_KEY_PEM: ${{ secrets.VIGILOOM_SNAPSHOT_KEY_PEM }}
+      VIGILOOM_TIMESTAMP_KEY_PEM: ${{ secrets.VIGILOOM_TIMESTAMP_KEY_PEM }}
+      VIGILOOM_RELEASE_KEY_PASSWORD: ${{ secrets.VIGILOOM_RELEASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        if: inputs.operation == 'release'
+        with:
+          pattern: agent-*
+          path: ${{ runner.temp }}/vigiloom-release-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          merge-multiple: true
+      - name: Sign and atomically publish
+        shell: bash
+        env:
+          ARTIFACT_DIRECTORY: ${{ runner.temp }}/vigiloom-release-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          : "${VIGILOOM_RELEASE_STORE:?Configure the private release store path}"
+          : "${VIGILOOM_RELEASE_BOOTSTRAP:?Configure the trusted bootstrap root path}"
+          python -c 'import os, pathlib; s=pathlib.Path(os.environ["VIGILOOM_RELEASE_STORE"]); w=pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve(); assert s.is_absolute() and not s.resolve().is_relative_to(w), "Store must be an absolute path outside the checkout"'
+          work=$(mktemp -d "$RUNNER_TEMP/vigiloom-release.XXXXXX")
+          trap 'rm -rf -- "$work"' EXIT
+          python -m venv "$work/venv"
+          "$work/venv/bin/python" -m pip install --require-hashes -r tools/agent-release/requirements.txt
+          args=(--store "$VIGILOOM_RELEASE_STORE" --bootstrap "$VIGILOOM_RELEASE_BOOTSTRAP")
+          if [[ -n "$VIGILOOM_RELEASE_INITIAL" ]]; then args+=(--initial "$VIGILOOM_RELEASE_INITIAL"); fi
+          if [[ -n "$VIGILOOM_RELEASE_ROOT_UPDATES" ]]; then args+=(--root-updates "$VIGILOOM_RELEASE_ROOT_UPDATES"); fi
+          case "$RELEASE_OPERATION" in
+            release)
+              : "${RELEASE_VERSION:?A release version is required}"
+              : "${RELEASE_MINIMUM_UPDATER:?A minimum Updater version is required}"
+              args+=(--artifacts "$ARTIFACT_DIRECTORY" --version "$RELEASE_VERSION" --minimum-updater "$RELEASE_MINIMUM_UPDATER") ;;
+            refresh) ;;
+            revoke)
+              : "${RELEASE_REVOKE:?A VERSION@RID is required}"
+              args+=(--revoke "$RELEASE_REVOKE") ;;
+            *) echo 'Unsupported publication operation.' >&2; exit 1 ;;
+          esac
+          "$work/venv/bin/python" tools/agent-release/run_release.py "${args[@]}"
+      - name: Remove this run's downloaded archives
+        if: always() && inputs.operation == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TEMP:?Runner temporary directory is required}"
+          case "$RUNNER_TEMP" in /*) ;; *) echo 'Runner temporary directory must be absolute.' >&2; exit 1 ;; esac
+          target="$RUNNER_TEMP/vigiloom-release-artifacts-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf -- "$target"

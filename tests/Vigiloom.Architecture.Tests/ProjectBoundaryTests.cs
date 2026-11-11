@@ -134,7 +134,7 @@ public sealed class ProjectBoundaryTests
 
     private static string[]? AllowedReferences(string name, string[] modules) => name switch
     {
-        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" => [],
+        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.UpdateSecurity" => [],
         "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks"],
         "Vigiloom.Web.Client" => ["Vigiloom.Contracts"],
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
@@ -145,6 +145,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Agent.Platforms.Windows" or "Vigiloom.Agent.Platforms.Linux" => ["Vigiloom.Agent.Core"],
         "Vigiloom.Agent" => ["Vigiloom.Agent.Core", "Vigiloom.Agent.Platforms.Windows", "Vigiloom.Agent.Platforms.Linux"],
         "Vigiloom.Updater" => ["Vigiloom.Updater.Core"],
+        "Vigiloom.Modules.AgentManagement" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
         _ when modules.Contains(name) => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure"],
         _ => null
     };

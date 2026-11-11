@@ -5,6 +5,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../Fixtures/SpeedTests/ControlledPhaseTransport.cs" Link="Fixtures/ControlledPhaseTransport.cs" />
+    <None Include="../Vigiloom.UpdateSecurity.Tests/Fixtures/PythonTuf/root.json" Link="Fixtures/AgentPackages/root.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" Aliases="WorkerHostAssembly" />
     <ProjectReference Include="../../src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />

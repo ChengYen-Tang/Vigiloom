@@ -30,6 +30,9 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             AgentInboxSettingsChanged change when IsValid(change) => (AuditKinds.AgentInboxSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentInboxCleanupActivated change when IsValid(change) => (AuditKinds.AgentInboxCleanupActivatedV1, JsonSerializer.Serialize(change)),
+            AgentPackageSourceChanged change when IsValid(change) => (AuditKinds.AgentPackageSourceChangedV1, JsonSerializer.Serialize(change)),
+            AgentPackageCatalogueRefreshed change when IsValid(change) => (AuditKinds.AgentPackageCatalogueRefreshedV1, JsonSerializer.Serialize(change)),
+            AgentPackageTrustInitialized change when IsValid(change) => (AuditKinds.AgentPackageTrustInitializedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
             ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
@@ -59,6 +62,14 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         change.Previous is not null && change.Current is not null &&
         SpeedSettingsLimits.IsValid(change.Current.IntervalHours, change.Current.MaxMiB, change.Current.TimeoutSeconds) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(AgentPackageSourceChanged change) =>
+        (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion) &&
+        (change.AddressChanged || change.CredentialChanged);
+
+    internal static bool IsValid(AgentPackageCatalogueRefreshed change) => change.PackageCount is >= 0 and <= 2000 && IsVersion(change.SourceVersion);
+    internal static bool IsValid(AgentPackageTrustInitialized change) => change.RootVersion > 0 && change.Sha256 is { Length: 64 } &&
+        change.Sha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     internal static bool IsValid(SpeedRetentionChanged change) =>
         SpeedRetentionLimits.IsValid(change.PreviousDays) && SpeedRetentionLimits.IsValid(change.CurrentDays) &&

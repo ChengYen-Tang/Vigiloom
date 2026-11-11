@@ -30,6 +30,16 @@ public sealed record AgentInboxSettingsChanged(int PreviousReplaySeconds, int Pr
 public sealed record AgentInboxCleanupActivated(DateTimeOffset CutoverAt, DateTimeOffset LegacyRetainUntil,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 
+/// <summary>Records source setting changes without storing addresses or credentials.</summary>
+public sealed record AgentPackageSourceChanged(string PreviousVersion, string CurrentVersion,
+    bool AddressChanged, bool CredentialChanged) : OperationAuditDetails;
+
+/// <summary>Records a manually requested catalogue refresh without source or credential contents.</summary>
+public sealed record AgentPackageCatalogueRefreshed(int PackageCount, string SourceVersion) : OperationAuditDetails;
+
+/// <summary>Records the fingerprint of an explicitly initialized publisher trust root.</summary>
+public sealed record AgentPackageTrustInitialized(int RootVersion, string Sha256) : OperationAuditDetails;
+
 /// <summary>Approval references only the trusted source; names and credentials are not recorded.</summary>
 public sealed record ServiceApproved(Guid SourceId) : OperationAuditDetails;
 
@@ -73,7 +83,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);
