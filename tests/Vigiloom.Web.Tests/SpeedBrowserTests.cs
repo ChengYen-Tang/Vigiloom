@@ -8,7 +8,6 @@ using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
-using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -21,10 +20,10 @@ public sealed class SpeedBrowserTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
-    public Task HistoryUsesServerThenWebAssemblyAndKeepsFailedPointsEmpty() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task HistoryUsesServerThenWebAssemblyAndKeepsFailedPointsEmpty() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
         {
             var now = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -98,10 +97,10 @@ public sealed class SpeedBrowserTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task History_PagesFilteredResultsInBrowser() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task History_PagesFilteredResultsInBrowser() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
         {
             var now = DateTimeOffset.UtcNow.AddMinutes(-52);
@@ -138,10 +137,10 @@ public sealed class SpeedBrowserTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task AdministratorCanConfigureScheduleAndCancelWithoutManualStart() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task AdministratorCanConfigureScheduleAndCancelWithoutManualStart() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString); factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 390, Height = 844 } });
