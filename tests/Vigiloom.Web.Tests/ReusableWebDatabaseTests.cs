@@ -2,6 +2,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -30,6 +32,51 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
             await PingTestSite.InitializeAsync(host, token, schemaInitialized: true);
             using var client = PingTestSite.Client(host);
             await PingTestSite.LoginAsync(client, "reader", token);
+        }, context.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task ServiceAndQuotaData_AreResetBetweenCases()
+    {
+        for (var pass = 0; pass < 2; pass++)
+            await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+            {
+                var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+                await using (var db = new ServiceObservabilityDbContext(options))
+                {
+                    Assert.AreEqual(0, await db.Sources.CountAsync(token));
+                    db.Sources.Add(new ServiceSource("source", new byte[32], DateTimeOffset.UtcNow));
+                    await db.SaveChangesAsync(token);
+                }
+                await using var connection = new SqlConnection(database.ConnectionString);
+                await connection.OpenAsync(token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM [logquota].[Policies]";
+                Assert.AreEqual(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+                command.CommandText = "INSERT INTO [logquota].[Policies] ([Id],[Name],[SourceRate],[SourceBurst],[GlobalRate],[GlobalBurst],[CreatedAt],[UpdatedAt]) VALUES (@id,N'central',1,100,1,100,SYSUTCDATETIME(),SYSUTCDATETIME())";
+                command.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+                Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
+            }, context.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task ChangedServiceSeed_IsRejectedAndDatabaseIsNotReused()
+    {
+        string? prior = null;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            prior = database.DatabaseName;
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE [service].[ReceptionRejections] SET [ObservedCount] = [ObservedCount] + 1 WHERE [Kind] = 1";
+            Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
+        }, context.CancellationToken));
+        await ReusableWebDatabase.ExecuteAsync((database, _) =>
+        {
+            Assert.AreNotEqual(prior, database.DatabaseName);
+            return Task.CompletedTask;
         }, context.CancellationToken);
     }
 

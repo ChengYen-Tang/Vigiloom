@@ -8,6 +8,8 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests.Fixtures;
@@ -29,16 +31,19 @@ internal static class ReusableWebDatabase
             await using (var db = await services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         }
         await using var initial = new SqlConnection(database.ConnectionString);
         await initial.OpenAsync(token);
         var seed = await ReadSeedAsync(initial, token);
         var respawner = await Respawner.CreateAsync(initial, new RespawnerOptions
         {
-            SchemasToInclude = ["identity", "resources", "network", "operations", "agent"],
+            SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota"],
             TablesToIgnore = [new Table("identity", "__EFMigrationsHistory"), new Table("resources", "__EFMigrationsHistory"),
                 new Table("network", "__EFMigrationsHistory"), new Table("operations", "__EFMigrationsHistory"),
-                new Table("agent", "__EFMigrationsHistory"), new Table("agent", "ReplayPolicies"),
+                new Table("agent", "__EFMigrationsHistory"), new Table("service", "__EFMigrationsHistory"),
+                new Table("logquota", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),
                 new Table("operations", "WorkerDiagnosticSlots")],
             CommandTimeout = 30
         });
@@ -53,7 +58,7 @@ internal static class ReusableWebDatabase
     {
         await using var command = connection.CreateCommand();
         command.CommandTimeout = 30;
-        command.CommandText = "SELECT CONCAT((SELECT * FROM [agent].[ReplayPolicies] ORDER BY [RowId] FOR JSON PATH, INCLUDE_NULL_VALUES), N'|', (SELECT * FROM [operations].[WorkerDiagnosticSlots] ORDER BY [Slot] FOR JSON PATH, INCLUDE_NULL_VALUES))";
+        command.CommandText = "SELECT CONCAT((SELECT * FROM [agent].[ReplayPolicies] ORDER BY [RowId] FOR JSON PATH, INCLUDE_NULL_VALUES), N'|', (SELECT * FROM [operations].[WorkerDiagnosticSlots] ORDER BY [Slot] FOR JSON PATH, INCLUDE_NULL_VALUES), N'|', (SELECT * FROM [service].[ReceptionRejections] ORDER BY [Kind] FOR JSON PATH, INCLUDE_NULL_VALUES))";
         return (string)(await command.ExecuteScalarAsync(token) ?? throw new InvalidOperationException("Cannot read Web test seeds."));
     }
 }
