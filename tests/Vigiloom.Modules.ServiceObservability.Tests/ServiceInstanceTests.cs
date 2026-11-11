@@ -148,7 +148,18 @@ public sealed class ServiceInstanceTests(TestContext context)
                 return result;
             }
             var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Resolve()));
-            Assert.IsTrue(results.All(x => x.Status == InstanceResolutionStatus.Resolved));
+            var statuses = string.Join(", ", results.Select(x => x.Status));
+            Assert.IsTrue(results.All(x => x.Status is InstanceResolutionStatus.Resolved or InstanceResolutionStatus.Busy), statuses);
+            Assert.IsTrue(results.Any(x => x.Status == InstanceResolutionStatus.Resolved), statuses);
+            for (var i = 0; i < results.Length; i++)
+            {
+                // Busy is the bounded-lock contract; retry in a new transaction after the concurrent calls finish.
+                for (var attempt = 0; results[i].Status == InstanceResolutionStatus.Busy && attempt < 3; attempt++)
+                    results[i] = await Resolve();
+            }
+            Assert.IsTrue(results.All(x => x.Status == InstanceResolutionStatus.Resolved),
+                string.Join(", ", results.Select(x => x.Status)));
+            Assert.IsTrue(results.All(x => x.InstanceId is not null));
             Assert.HasCount(1, results.Select(x => x.InstanceId).Distinct().ToArray());
             await using var check = new ServiceObservabilityDbContext(options);
             Assert.AreEqual(1, await check.Instances.CountAsync(token));
