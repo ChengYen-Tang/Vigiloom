@@ -247,6 +247,31 @@ public sealed class AgentIdentityTlsTests
                             CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }.Concat(streamed).ToArray(), collected);
                         }
                         TestContext.WriteLine($"100 streamed records delivered over TLS in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+                        // A real invalid UTF-8 record must become an observable gap without
+                        // preventing the following valid record from reaching the platform.
+                        await using (var append = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true))
+                            await append.WriteAsync(new byte[] { 0xff, (byte)'\n', (byte)'o', (byte)'k', (byte)'\n' }, deadline.Token);
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
+                            if (await entries.AnyAsync(x => x.GapReason == AgentLogGapReason.InvalidEncoding, deadline.Token) &&
+                                await entries.AnyAsync(x => x.Content == "ok\n", deadline.Token)) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        await using (var scope = factory.Services.CreateAsyncScope())
+                        {
+                            var history = scope.ServiceProvider.GetRequiredService<HostLogHistory>();
+                            var page = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1),
+                                null, null, deadline.Token);
+                            Assert.IsNotNull(page);
+                            var gap = page.Items.Single(x => x.Gap?.Reason == AgentLogGapReason.InvalidEncoding);
+                            Assert.AreEqual(1L, gap.Gap!.AffectedCount);
+                            Assert.AreEqual(id, gap.AgentId);
+                            Assert.AreEqual("TLS log", gap.SourceName);
+                            Assert.IsTrue(page.Items.Any(x => x.Content == "ok\n"));
+                        }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
                             var history = scope.ServiceProvider.GetRequiredService<HostMetricHistory>();
