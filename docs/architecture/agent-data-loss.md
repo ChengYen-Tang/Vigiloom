@@ -1,7 +1,8 @@
 # Agent collection loss and gaps
 
-Status: REQ-19 design in progress. This document does not claim the reporting
-path or its acceptance tests have been implemented.
+Status: metric loss accounting and authenticated reporting are implemented and
+covered by REQ-19 tests. Host-log gaps are reported separately; update and
+restore integration requires the owning requirements.
 
 ## Meaning
 
@@ -82,5 +83,6 @@ quarantine do not increment loss, a partially committed sample counts only
 actually abandoned records, retries and reordered heartbeats do not inflate a
 count, and identity changes cannot misattribute it. Exercise cancellation,
 process restart, ambiguous storage outcomes and offline recovery; demonstrate
-that an unknown count is shown as unknown. The separate host-log source and
-update/restore integrations still require their owning requirements.
+that an unknown count is shown as unknown. Host-log gap reporting uses the
+separate REQ-29 source contract; unknown affected counts remain unknown. Update and restore integrations still require their
+owning requirements.
