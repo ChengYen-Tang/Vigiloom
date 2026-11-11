@@ -56,7 +56,7 @@ public sealed class InstanceManagementTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ServiceCollection_StopAndResumeFenceReceptionAndAudit() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -73,13 +73,11 @@ public sealed class InstanceManagementTests(TestContext context)
             schedule.SetEvaluation(1, evidence, 1, 2, evidence, evidence);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.AddRange(service, other);
                 db.HealthTargets.Add(target); db.HealthSchedules.Add(schedule);
                 db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 1, 1, evidence));
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options); var actor = Guid.CreateVersion7();
             var admin = new ServiceCollectionAdministration(factory, new OperationAuditWriter());
             var list = new ServiceInstanceAdministration(factory, new OperationAuditWriter());
@@ -236,7 +234,7 @@ public sealed class InstanceManagementTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Management_PolicyAndRetirementAreVersionedAndAuditedAtomically() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -247,12 +245,10 @@ public sealed class InstanceManagementTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.Add(service);
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var actor = Guid.CreateVersion7();
             var failingPolicy = new InstancePolicyAdministration(factory, TimeProvider.System, new FailAudit());
