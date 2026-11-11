@@ -132,7 +132,7 @@ public sealed class AgentIdentityHttpTests
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task AgentTransport_PreAuthenticationConcurrencyIsBoundedAndReleased() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             var gate = new TestDeviceGate();
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -148,9 +148,6 @@ public sealed class AgentIdentityHttpTests
                     new BlockingDeviceSource(new DeviceAgentSource(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>()), gate)));
             });
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var device = new Device("Agent", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             string credential;
@@ -189,7 +186,7 @@ public sealed class AgentIdentityHttpTests
 
     [TestMethod]
     public Task AgentTransport_RateLimitsVerifiedAgentsIndependentlyBehindOneAddress() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
@@ -202,9 +199,6 @@ public sealed class AgentIdentityHttpTests
                 }));
             });
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-            await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-            await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var credentials = new List<string>();
             await using (var scope = factory.Services.CreateAsyncScope())
             {
