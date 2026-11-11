@@ -57,7 +57,7 @@ public sealed class SpeedBrowserTests
         var returnHref = await page.Locator(".device-table-wrap a").First.GetAttributeAsync("href");
         Assert.Contains("returnUrl=%2Fspeed-tests%3Ffrom%3D", returnHref!);
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
         await AssertChartAsync(page);
@@ -129,7 +129,7 @@ public sealed class SpeedBrowserTests
         var filteredUrl = await page.GetByRole(AriaRole.Link, new() { Name = "開啟目前篩選的連結" }).GetAttributeAsync("href");
         await wasmGate.ReleaseAsync();
         await page.WaitForFunctionAsync("() => performance.getEntriesByType('resource').some(x => x.name.includes('/_framework/Vigiloom.Web.Client.') && x.name.includes('.wasm') && x.responseEnd > 0)", null, new() { Timeout = 90000 });
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 60000 });
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.GotoAsync(new Uri(factory.ClientOptions.BaseAddress, filteredUrl!).ToString());
         await page.Locator("main[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
         await page.WaitForFunctionAsync("() => document.querySelector('.device-pagination')?.innerText.includes('第 2 頁') && document.querySelectorAll('.device-table-wrap tbody tr').length === 1");
