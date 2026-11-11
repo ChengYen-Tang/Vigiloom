@@ -15,6 +15,7 @@ using Vigiloom.Testing.SqlServer;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 
@@ -24,7 +25,11 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 public sealed class PingSqlTests
 {
     public TestContext TestContext { get; set; } = null!;
-    [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+    [AssemblyCleanup] public static async Task Cleanup()
+    {
+        await ReusableNetworkDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public Task PingSettingsAuditCommitsAndRollsBackWithSettings() => WithDatabase(async (resources, network, token) =>
