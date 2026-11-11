@@ -7,10 +7,10 @@
 | 用途 | Windows 本機建議預設 | 資料生命週期 | 自動清理 |
 |---|---|---|---|
 | 開發／手動操作 UI | (localdb)\\MSSQLLocalDB；資料庫：Vigiloom_Development | 持續保留，跨次啟動使用 | 測試程序不得刪除或重設 |
-| 資料庫整合測試 | 同一個 (localdb)\\MSSQLLocalDB；每個測試獨立資料庫：Vigiloom_Test_<RunId>_<CaseId> | 每次建立，結束刪除 | 僅限本次測試明確建立並登記的資料庫 |
+| 資料庫整合測試 | 同一個 (localdb)\\MSSQLLocalDB；獨立測試資料庫：Vigiloom_Test_<RunId>_<CaseId> | 預設每個測試建立；符合下述條件者可在同一 run 重用，結束刪除 | 僅限本次測試明確建立並登記的資料庫 |
 | 正式環境 | 專用 SQL Server，由部署配置決定 | 依正式保留／備份政策 | 測試程序不得連入或清理 |
 
-本機共用預設 instance (localdb)\\MSSQLLocalDB，不另建 VigiloomDev／VigiloomTests instance。開發與測試有各自的連線設定，Data Source 相同、Initial Catalog 不同；測試 fixture 明確指定臨時資料庫，不能只靠 ASPNETCORE_ENVIRONMENT 字串判斷可否刪除。Web／Worker Development 設定提供開發連線範例；fixture 為每個測試建立並清理臨時資料庫。
+本機共用預設 instance (localdb)\\MSSQLLocalDB，不另建 VigiloomDev／VigiloomTests instance。開發與測試有各自的連線設定，Data Source 相同、Initial Catalog 不同；測試 fixture 明確指定臨時資料庫，不能只靠 ASPNETCORE_ENVIRONMENT 字串判斷可否刪除。Web／Worker Development 設定提供開發連線範例；fixture 建立並清理臨時資料庫。
 
 LocalDB 屬 SQL Server Express 的本機開發引擎，適合 Windows 本機的 SQL Server 行為測試。Linux／未安裝 LocalDB 的 CI 可改用獨立 SQL Server 測試服務或容器，維持同樣的隔離與清理規則，不改用 EF InMemory／SQLite 取代 SQL schema 驗證。可選的 SQL 版本／相容層級必須明列；LocalDB 測試不能代替正式 edition／拓樸的效能與部署驗證。
 
@@ -20,7 +20,7 @@ LocalDB 屬 SQL Server Express 的本機開發引擎，適合 Windows 本機的 
 - 連 LocalDB／SQL Server 的測試標記 MSTest TestCategory("Integration") 及 TestCategory("Database")，與純單元測試區分；不要為了分類把現有無資料庫的 provider 註冊測試假標成 Database。
 - 測試連線由測試 fixture 的明確設定取得，不自動讀取或 fallback 到產品的 Development／Production 連線。開發連線由 Development 專用設定／user-secrets 管理；正式機密不提交。
 - 預設每個測試（包含每個 DataRow）建立唯一資料庫，例如 Vigiloom_Test_<RunId>_<CaseId>；RunId／CaseId 由 fixture 產生，不從使用者輸入拼接。
-- 相同 run、不同測試、不同 testhost 與並行執行不得共用可變資料庫或固定名稱。只有明確唯讀且不修改資料的情境才能另行設計共用 fixture；仍須有單一清理擁有者。
+- 不同 run／testhost 不得共用可變資料庫或固定名稱。同一 run 內經明確挑選、只改資料且不改 schema 的測試，可獨占租用已初始化資料庫；每次使用後必須還原完整初始狀態，重置失敗不得再借出。migration、schema 與有不同資料庫設定的測試仍使用獨立資料庫。共用資料庫仍須有單一清理擁有者與可復原的 manifest。
 - migration／schema 測試執行正式模組的 migrations，不能只以 EnsureCreated() 宣稱 migration 已驗證。此文件未新增任何產品模型或 migration。
 - 本機缺 LocalDB 時要明確指出前置未滿足；CI 中宣告必跑的 Database 測試不可被靜默略過而標記已驗證。
 
