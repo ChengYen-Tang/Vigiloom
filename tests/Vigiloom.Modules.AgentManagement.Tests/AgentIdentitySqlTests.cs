@@ -18,6 +18,7 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
 
 namespace Vigiloom.Modules.AgentManagement.Tests;
 
@@ -1016,7 +1017,11 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(reset, await settings.GetAsync(device.Id, token), "A failed audit must roll back the setting change.");
     }, snapshotReads);
     public TestContext TestContext { get; set; } = null!;
-    [AssemblyCleanup] public static void Cleanup() => SqlTestDatabase.CompleteRun();
+    [AssemblyCleanup] public static async Task Cleanup()
+    {
+        await ReusableIdentityDatabase.DisposeAsync();
+        SqlTestDatabase.CompleteRun();
+    }
 
     [TestMethod]
     public Task QueueCapacityStatus_DoesNotExposeOutdatedReportsDuringRollingUpgrade() => WithDatabase(async (resources, agents, token) =>
@@ -2228,7 +2233,7 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task AgentMonitoring_DistinguishesRegistrationHeartbeatAndOfflineFromPing() => WithDatabase(async (resources, agents, token) =>
+    public Task AgentMonitoring_DistinguishesRegistrationHeartbeatAndOfflineFromPing() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("monitored server", "127.0.0.1", true, clock.Now);
@@ -2484,7 +2489,7 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task CompetingMachinesCannotRedeemSameEnrollment() => WithDatabase(async (resources, agents, token) =>
+    public Task CompetingMachinesCannotRedeemSameEnrollment() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
@@ -2525,7 +2530,7 @@ public sealed class AgentIdentitySqlTests
     }, snapshotReads);
 
     [TestMethod]
-    public Task RecoveryRequiresBothSecretsAndNeverCreatesARegistration() => WithDatabase(async (resources, agents, token) =>
+    public Task RecoveryRequiresBothSecretsAndNeverCreatesARegistration() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
@@ -2551,7 +2556,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task RotationSurvivesRetriesAndDoesNotActivatePendingCredentialEarly() => WithDatabase(async (resources, agents, token) =>
+    public Task RotationSurvivesRetriesAndDoesNotActivatePendingCredentialEarly() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
@@ -2580,7 +2585,7 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
-    public Task ExpiredRevokedAndIneligibleRegistrationsAreRejected() => WithDatabase(async (resources, agents, token) =>
+    public Task ExpiredRevokedAndIneligibleRegistrationsAreRejected() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("server", "127.0.0.1", true, clock.GetUtcNow());
@@ -2606,6 +2611,16 @@ public sealed class AgentIdentitySqlTests
         }
         Assert.AreEqual(AgentIdentityStatus.Conflict, (await service.IssueAsync(device.Id, actor, token)).Status);
     });
+
+    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test) =>
+        ReusableIdentityDatabase.ExecuteAsync(async (connection, token) =>
+        {
+            var resources = new Factory<ResourcesDbContext>(() => new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
+                .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
+            var agents = new Factory<AgentManagementDbContext>(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
+                .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
+            await test(resources, agents, token);
+        }, TestContext.CancellationToken);
 
     private Task WithDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test, bool snapshotReads = false) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
