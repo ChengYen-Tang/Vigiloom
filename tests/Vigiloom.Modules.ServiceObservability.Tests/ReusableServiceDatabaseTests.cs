@@ -54,6 +54,47 @@ public sealed class ReusableServiceDatabaseTests(TestContext context)
     }
 
     [TestMethod]
+    public async Task OperationsAudit_IsResetAndSeedsArePreserved()
+    {
+        for (var pass = 0; pass < 2; pass++)
+            await ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+            {
+                await using var connection = new SqlConnection(database.ConnectionString);
+                await connection.OpenAsync(token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM [operations].[AuditEvents]";
+                Assert.AreEqual(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+                command.CommandText = "SELECT COUNT(*) FROM [operations].[WorkerDiagnosticSlots]";
+                Assert.AreEqual(64, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+                command.CommandText = "SELECT COUNT(*) FROM [operations].[__EFMigrationsHistory]";
+                Assert.IsGreaterThan(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+                command.CommandText = "INSERT INTO [operations].[AuditEvents] ([ActorId],[ResourceId],[OccurredAt],[Kind],[Details]) VALUES (@id,@id,SYSUTCDATETIME(),1,N'{}')";
+                command.Parameters.AddWithValue("@id", Guid.CreateVersion7());
+                Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
+            }, context.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task ChangedOperationsSeed_DiscardsDatabase()
+    {
+        string? prior = null;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+        {
+            prior = database.DatabaseName;
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE [operations].[WorkerDiagnosticSlots] SET [PingFailures] = [PingFailures] + 1 WHERE [Slot] = 64";
+            Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
+        }, context.CancellationToken));
+        await ReusableServiceDatabase.ExecuteAsync((database, _) =>
+        {
+            Assert.AreNotEqual(prior, database.DatabaseName);
+            return Task.CompletedTask;
+        }, context.CancellationToken);
+    }
+
+    [TestMethod]
     public async Task SeedChangesAndResetFailure_DiscardDatabase()
     {
         string? prior = null;
