@@ -86,6 +86,10 @@ public sealed class Agent
     public long? LogStatusReportSequence { get; private set; }
     public DateTimeOffset? LogStatusReportedAt { get; private set; }
     public string? LogStatusJson { get; private set; }
+    public Guid? InventoryConfigurationEpoch { get; private set; }
+    public long? InventoryConfigurationSequence { get; private set; }
+    public DateTimeOffset? InventoryConfigurationReportedAt { get; private set; }
+    public string? InventoryConfigurationJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -213,6 +217,13 @@ public sealed class Agent
         QueueCapacityAppliedAt = report.AppliedAt?.ToUniversalTime();
         QueueCapacityFailure = report.Failure;
     }
+    public void RecordInventoryConfiguration(InventorySettingsReport? report, long sequence, DateTimeOffset now)
+    {
+        InventoryConfigurationEpoch = report is null ? null : QueueReportEpoch;
+        InventoryConfigurationSequence = report is null ? null : sequence;
+        InventoryConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
+        InventoryConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
+    }
     public void BeginQueueSession(Guid epoch)
     {
         QueueReportEpoch = epoch;
@@ -251,6 +262,10 @@ public sealed class Agent
         LogStatusReportSequence = null;
         LogStatusReportedAt = null;
         LogStatusJson = null;
+        InventoryConfigurationEpoch = null;
+        InventoryConfigurationSequence = null;
+        InventoryConfigurationReportedAt = null;
+        InventoryConfigurationJson = null;
     }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }

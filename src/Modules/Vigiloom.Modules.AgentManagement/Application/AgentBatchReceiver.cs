@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -9,7 +10,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded, ClockUncertain, Expired, TimestampAhead, RateLimited, LogBatchTooLarge }
+public enum BatchReceiptStatus { Accepted, AlreadyAccepted, Invalid, Unauthorized, Conflict, CapacityExceeded, ClockUncertain, Expired, TimestampAhead, RateLimited, LogBatchTooLarge, InventorySnapshotTooLarge }
 public readonly record struct BatchReceiptResult(BatchReceiptStatus Status, TimeSpan? RetryAfter = null)
 {
     public static implicit operator BatchReceiptResult(BatchReceiptStatus status) => new(status);
@@ -17,7 +18,8 @@ public readonly record struct BatchReceiptResult(BatchReceiptStatus Status, Time
 
 /// <summary>Commits a validated batch receipt and all supported observations atomically.</summary>
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
-    long capacityBytes = AgentBatchReceiver.MaximumRetainedBytesPerAgent, int maximumBatches = AgentBatchReceiver.MaximumRetainedBatchesPerAgent)
+    long capacityBytes = AgentBatchReceiver.MaximumRetainedBytesPerAgent, int maximumBatches = AgentBatchReceiver.MaximumRetainedBatchesPerAgent,
+    IInventoryStageWriter? inventoryWriter = null)
 {
     public const long MaximumRetainedBytesPerAgent = 4L * 1024 * 1024 * 1024;
     public const int MaximumRetainedBatchesPerAgent = 1_000_000;
@@ -29,12 +31,14 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
     {
         AgentMetricBatch? metrics = null;
         AgentLogBatch? logs = null;
+        InventoryChunk? inventory = null;
         if (!AgentBatchCodec.TryRead(payload.Span, out var batch) &&
             !AgentMetricBatchCodec.TryRead(payload.Span, out metrics) &&
-            !AgentLogBatchCodec.TryRead(payload.Span, out logs)) return BatchReceiptStatus.Invalid;
-        var batchId = batch?.BatchId ?? metrics?.BatchId ?? logs!.BatchId;
-        var enqueuedAt = batch?.EnqueuedAt ?? metrics?.EnqueuedAt ?? logs!.EnqueuedAt;
-        var itemCount = batch?.Items.Count ?? metrics?.Items.Count ?? logs!.Items.Count;
+            !AgentLogBatchCodec.TryRead(payload.Span, out logs) &&
+            (!InventoryChunkCodec.TryRead(payload.Span, out inventory) || inventoryWriter is null)) return BatchReceiptStatus.Invalid;
+        var batchId = batch?.BatchId ?? metrics?.BatchId ?? logs?.BatchId ?? inventory!.BatchId;
+        var enqueuedAt = batch?.EnqueuedAt ?? metrics?.EnqueuedAt ?? logs?.EnqueuedAt ?? inventory!.EnqueuedAt;
+        var itemCount = batch?.Items.Count ?? metrics?.Items.Count ?? logs?.Items.Count ?? Math.Max(1, inventory!.Items.Count);
         if (capacityBytes < 1 || maximumBatches < 1) throw new InvalidOperationException("Agent receipt capacity must be positive.");
         var digest = SHA256.HashData(payload.Span);
         await using var db = await contexts.CreateDbContextAsync(token);
@@ -90,12 +94,13 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
         }
 
         var itemIds = batch is not null ? batch.Items.Select(item => item.MessageId).ToArray() :
-            metrics is not null ? metrics.Items.Select(item => item.MessageId).ToArray() : logs!.Items.Select(item => item.MessageId).ToArray();
-        var existingRuntime = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
+            metrics is not null ? metrics.Items.Select(item => item.MessageId).ToArray() :
+            logs is not null ? logs.Items.Select(item => item.MessageId).ToArray() : [];
+        var existingRuntime = inventory is not null ? [] : await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
-        var existingMetrics = await db.HostMetrics.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
+        var existingMetrics = inventory is not null ? [] : await db.HostMetrics.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
-        var existingLogs = await db.HostLogs.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
+        var existingLogs = inventory is not null ? [] : await db.HostLogs.AsNoTracking().Where(x => x.AgentId == agent.Id && itemIds.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
         if (batch is not null)
         {
@@ -109,7 +114,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
                 if (existingRuntime.ContainsKey(item.MessageId) || existingLogs.ContainsKey(item.MessageId) ||
                     existingMetrics.TryGetValue(item.MessageId, out var found) && !found.Matches(item)) return BatchReceiptStatus.Conflict;
         }
-        else
+        else if (logs is not null)
         {
             foreach (var item in logs!.Items)
                 if (existingRuntime.ContainsKey(item.MessageId) || existingMetrics.ContainsKey(item.MessageId) ||
@@ -142,13 +147,34 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             }
         }
 
+        if (inventory is not null)
+        {
+            var staged = await inventoryWriter!.StageAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                new(agent.Id, agent.DeviceId, agent.DeviceGeneration), inventory, policyTime, token);
+            if (staged == InventoryStageResult.SnapshotTooLarge)
+            {
+                // Persist the terminal fence even if the Agent loses the 413 response.
+                // This is not a successful receipt and subsequent chunks cannot revive it.
+                await transaction.CommitAsync(token);
+                return BatchReceiptStatus.InventorySnapshotTooLarge;
+            }
+            if (staged != InventoryStageResult.Accepted)
+                return staged switch
+                {
+                    InventoryStageResult.Conflict => BatchReceiptStatus.Conflict,
+                    InventoryStageResult.Expired => BatchReceiptStatus.Expired,
+                    InventoryStageResult.CapacityExceeded => BatchReceiptStatus.CapacityExceeded,
+                    _ => throw new InvalidOperationException("Unknown inventory admission result.")
+                };
+        }
+
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);
         agent.ClearReplayIssue();
         if (policy.CleanupCutoverAt is not null) agent.ChangeInboxUsage(1, payload.Length);
         db.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batchId, digest, enqueuedAt, receivedAt, itemCount, payload.Length,
             policyTime, policyTime.AddDays(policy.ReceiptRetentionDays)));
-        for (var ordinal = 0; ordinal < itemCount; ordinal++)
+        for (var ordinal = 0; inventory is null && ordinal < itemCount; ordinal++)
         {
             if (batch is not null)
             {

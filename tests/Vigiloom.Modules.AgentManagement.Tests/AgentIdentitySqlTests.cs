@@ -9,6 +9,7 @@ using System.Data.Common;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -19,6 +20,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
+using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Tests;
 
@@ -27,6 +30,111 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentitySqlTests
 {
+    [TestMethod]
+    public Task InventoryOwner_PrefersCurrentAgentWhenClockMovedBackwards() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("inventory owner", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, source, clock);
+        var firstIssued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var first = await identity.RedeemAsync(firstIssued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(first.AgentId!.Value, Guid.CreateVersion7(), token));
+        clock.Now = clock.Now.AddHours(-1);
+        var secondIssued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var second = await identity.RedeemAsync(secondIssued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        var resolved = await new DeviceInventoryAgent(agents, source).ResolveAsync(device.Id, token);
+        Assert.IsTrue(resolved.Exists);
+        Assert.AreEqual(second.AgentId, resolved.AgentId);
+    });
+
+    [TestMethod]
+    public Task Inventory_ReceiptAndSnapshotCommitOrRollBackTogether() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("inventory receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        await using var agentDb = agents.CreateDbContext();
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+            .UseSqlServer(agentDb.Database.GetConnectionString(), sql => sql.UseCompatibilityLevel(150)
+                .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+        await using var security = new SecurityAnalysisDbContext(options);
+        await security.Database.MigrateAsync(token);
+        var receiver = new AgentBatchReceiver(agents, identity, clock, inventoryWriter: new InventoryStageWriter());
+        InventoryChunk Make(long generation)
+        {
+            var measured = InventoryDigest.MeasureChunk([]);
+            return new(4, Guid.CreateVersion7(), clock.Now, Guid.CreateVersion7(), generation,
+                InventorySource.LinuxDpkg, clock.Now, InventoryOutcome.Complete, 0, 1, 0, measured.Bytes,
+                InventoryDigest.Combine([measured.Digest]), []);
+        }
+        var first = Make(1);
+        var payload = InventoryChunkCodec.Serialize(first);
+        Assert.AreEqual(BatchReceiptStatus.Unauthorized, await receiver.ReceiveAsync("invalid", payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        var statusReader = new AgentInventoryStatus(agents, identity, new InventoryStatusReader());
+        Assert.IsNull(await statusReader.GetAsync("invalid", token));
+        var statuses = await statusReader.GetAsync(credential, token);
+        Assert.IsNotNull(statuses);
+        Assert.HasCount(1, statuses);
+        Assert.AreEqual(1L, statuses[0].HighWaterGeneration);
+        Assert.AreEqual(InventoryCompletion.Complete, statuses[0].LastStatus);
+        var otherDevice = new Device("other inventory receiver", "127.0.0.2", true, clock.Now);
+        await using (var resourceDb = resources.CreateDbContext()) { resourceDb.Devices.Add(otherDevice); await resourceDb.SaveChangesAsync(token); }
+        var otherIssued = await identity.IssueAsync(otherDevice.Id, Guid.CreateVersion7(), token);
+        var otherSecret = RandomNumberGenerator.GetBytes(32);
+        var otherAgent = await identity.RedeemAsync(otherIssued.Secret, SHA256.HashData(otherSecret), token);
+        var otherStatus = await statusReader.GetAsync(Credential(otherAgent.AgentId!.Value, otherSecret), token);
+        Assert.IsNotNull(otherStatus);
+        Assert.IsEmpty(otherStatus);
+        Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
+            InventoryChunkCodec.Serialize(first with { SnapshotId = Guid.CreateVersion7() }), token));
+        var retry = Make(2);
+        var retryPayload = InventoryChunkCodec.Serialize(retry);
+        var busyReceiver = new AgentBatchReceiver(agents, identity, clock, inventoryWriter: new BusyAfterStagingWriter());
+        Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await busyReceiver.ReceiveAsync(credential, retryPayload, token));
+        Assert.AreEqual(1, await agentDb.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1L, (await security.InventorySources.AsNoTracking().SingleAsync(token)).CurrentGeneration);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, retryPayload, token));
+        Assert.AreEqual(2L, (await security.InventorySources.AsNoTracking().SingleAsync(token)).CurrentGeneration);
+        Assert.AreEqual(2, await agentDb.ReceivedBatches.CountAsync(token));
+        await agentDb.Database.ExecuteSqlRawAsync("ALTER TABLE [agent].[ReceivedBatches] WITH NOCHECK ADD CONSTRAINT [CK_TestReceiptFailure] CHECK ([ItemCount] = 0)", token);
+        var failed = Make(3);
+        var failure = await Assert.ThrowsAsync<DbUpdateException>(() => receiver.ReceiveAsync(credential, InventoryChunkCodec.Serialize(failed), token));
+        var sqlError = Assert.IsInstanceOfType<SqlException>(failure.InnerException);
+        Assert.AreEqual(547, sqlError.Number);
+        Assert.Contains("CK_TestReceiptFailure", sqlError.Message);
+        Assert.AreEqual(2, await agentDb.ReceivedBatches.CountAsync(token));
+        Assert.IsTrue(await agentDb.ReceivedBatches.AsNoTracking().AnyAsync(x => x.BatchId == first.BatchId, token));
+        var source = await security.InventorySources.AsNoTracking().SingleAsync(token);
+        Assert.AreEqual(2L, source.CurrentGeneration);
+        Assert.AreEqual(2L, source.ClosedGeneration);
+        Assert.IsNull(source.ActiveGeneration);
+        var chunk = await security.InventoryChunks.AsNoTracking().SingleAsync(token);
+        Assert.AreEqual(2L, chunk.Generation);
+        CollectionAssert.AreEqual(retryPayload, chunk.Payload);
+        var snapshot = await security.InventorySnapshots.AsNoTracking().SingleAsync(token);
+        Assert.AreEqual(retry.SnapshotId, snapshot.SnapshotId);
+        Assert.AreEqual(2L, snapshot.Generation);
+    });
+
+    private sealed class BusyAfterStagingWriter : IInventoryStageWriter
+    {
+        public async Task<InventoryStageResult> StageAsync(DbConnection connection, DbTransaction transaction,
+            InventoryOwner owner, InventoryChunk chunk, DateTimeOffset databaseNow, CancellationToken cancellationToken)
+        {
+            var result = await new InventoryStageWriter().StageAsync(connection, transaction, owner, chunk, databaseNow, cancellationToken);
+            return result == InventoryStageResult.Accepted ? InventoryStageResult.CapacityExceeded : result;
+        }
+    }
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
