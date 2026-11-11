@@ -30,7 +30,7 @@ public sealed class AgentIdentitySqlTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public Task HostLogConfiguration_ReadWaitsForRetirementAndRevocation(bool snapshotReads) => WithDatabase(async (resources, agents, token) =>
+    public Task HostLogConfiguration_ReadWaitsForRetirementAndRevocation(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var device = new Device("source concurrency", "127.0.0.1", true, clock.Now);
