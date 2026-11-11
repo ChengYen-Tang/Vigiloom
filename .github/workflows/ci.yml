@@ -71,7 +71,20 @@ jobs:
       - name: Build solution
         run: dotnet build Vigiloom.slnx --configuration Release --no-restore
       - name: Install Chromium and dependencies
-        run: pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Use an alternate Ubuntu mirror when the runner's Ubuntu domains fail DNS.
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [[ -f "$source" ]]; then
+              sudo sed -i -E \
+                -e 's#(^|[[:space:]])mirror\+file:/etc/apt/apt-mirrors\.txt([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\2#g' \
+                -e 's#(^|[[:space:]])https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\3#g' \
+                "$source"
+            fi
+          done
+          sudo apt-get -o APT::Update::Error-Mode=any update
+          pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Start isolated SQL Server
         id: sql
         shell: bash
