@@ -9,6 +9,7 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -31,6 +32,7 @@ internal static class ReusableWebDatabase
             await using (var db = await services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         }
@@ -39,11 +41,11 @@ internal static class ReusableWebDatabase
         var seed = await ReadSeedAsync(initial, token);
         var respawner = await Respawner.CreateAsync(initial, new RespawnerOptions
         {
-            SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota"],
+            SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota", "security"],
             TablesToIgnore = [new Table("identity", "__EFMigrationsHistory"), new Table("resources", "__EFMigrationsHistory"),
                 new Table("network", "__EFMigrationsHistory"), new Table("operations", "__EFMigrationsHistory"),
                 new Table("agent", "__EFMigrationsHistory"), new Table("service", "__EFMigrationsHistory"),
-                new Table("logquota", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),
+                new Table("logquota", "__EFMigrationsHistory"), new Table("security", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),
                 new Table("operations", "WorkerDiagnosticSlots")],
             CommandTimeout = 30
         });

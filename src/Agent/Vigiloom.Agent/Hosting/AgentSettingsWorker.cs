@@ -3,11 +3,12 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Agent.Hosting.Logs;
+using Vigiloom.Agent.Hosting.Inventory;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Restores local settings and periodically synchronizes them without blocking other workers.</summary>
-internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration,
+internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentInventorySettingsClient inventoryClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, InventorySettingsRuntime inventory, IConfiguration configuration,
     TimeProvider clock, ILogger<AgentSettingsWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,6 +23,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 capacity.Bind(null);
                 metrics.Bind(null);
                 logs.Bind(null);
+                inventory.Bind(null);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
                 continue;
             }
@@ -35,6 +37,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 capacity.Bind(null);
                 metrics.Bind(null);
                 logs.Bind(null);
+                inventory.Bind(null);
                 try
                 {
                     owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
@@ -43,6 +46,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     capacity.Bind(owner);
                     metrics.Bind(owner);
                     logs.Bind(owner);
+                    inventory.Bind(owner);
                     var saved = await client.LoadSavedAsync(vault, uri, stoppingToken);
                     if (IsCurrent(directory, server) && saved.Settings is not null) runtime.Publish(owner, saved.Settings);
                 }
@@ -59,6 +63,16 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 {
                     metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                     logger.LogWarning("Agent saved metric settings could not be loaded: {ErrorType}.", ex.GetType().Name);
+                }
+                try
+                {
+                    var savedInventory = await inventoryClient.LoadSavedAsync(vault, uri, stoppingToken);
+                    if (IsCurrent(directory, server) && savedInventory.Settings is not null) inventory.Publish(owner, savedInventory.Settings);
+                }
+                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                {
+                    inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                    logger.LogWarning("Agent saved inventory settings could not be loaded: {ErrorType}.", ex.GetType().Name);
                 }
                 try
                 {
@@ -81,6 +95,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         capacity.Bind(owner);
                         metrics.Bind(owner);
                         logs.Bind(owner);
+                        inventory.Bind(owner);
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Settings is not null) runtime.Publish(owner, result.Settings);
@@ -146,6 +161,31 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     {
                         metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent metric settings synchronization failed: {ErrorType}.", ex.GetType().Name);
+                    }
+                    try
+                    {
+                        if (!IsCurrent(directory, server)) break;
+                        var result = await inventoryClient.SyncAsync(vault, uri, stoppingToken);
+                        if (!IsCurrent(directory, server)) break;
+                        if (result.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) inventory.Bind(null);
+                        else if (result.Settings is not null) inventory.Publish(owner, result.Settings);
+                        else
+                        {
+                            var failure = result.Status switch
+                            {
+                                AgentSettingsSyncStatus.Unavailable => AgentConfigurationFailure.Unavailable,
+                                AgentSettingsSyncStatus.Invalid => AgentConfigurationFailure.Invalid,
+                                AgentSettingsSyncStatus.Unauthorized => AgentConfigurationFailure.Unauthorized,
+                                AgentSettingsSyncStatus.Conflict => AgentConfigurationFailure.Conflict,
+                                _ => (AgentConfigurationFailure?)null
+                            };
+                            if (failure is { } failureCode) inventory.MarkFailure(owner, failureCode);
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                    {
+                        inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                        logger.LogWarning("Agent inventory settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
                     try
                     {

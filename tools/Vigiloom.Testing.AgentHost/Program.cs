@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
 
@@ -16,9 +17,18 @@ var mode = Environment.GetEnvironmentVariable("VIGILOOM_TEST_MODE") ?? throw new
 if (mode is not ("unavailable" or "drop-ack" or "normal")) throw new InvalidOperationException("Invalid test mode.");
 using var root = X509CertificateLoader.LoadCertificateFromFile(rootPath);
 var builder = AgentHost.CreateBuilder([]);
+if (Environment.GetEnvironmentVariable("VIGILOOM_TEST_INVENTORY") != "enabled")
+{
+    // Replay tests deliberately isolate their queue; the inventory integration case opts in.
+    foreach (var descriptor in builder.Services.Where(x => x.ImplementationType?.FullName == "Vigiloom.Agent.Hosting.Inventory.InventoryWorker").ToArray())
+        builder.Services.Remove(descriptor);
+}
 builder.Services.AddHttpClient<IdentityClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentHeartbeatClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentSettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<AgentMetricSettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<AgentInventorySettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<InventoryStatusClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentQueueCapacityClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentLogSettingsClient>(client => client.MaxResponseContentBufferSize = 512 * 1024).ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentBatchClient>().ConfigurePrimaryHttpMessageHandler(() => new InjectBatchResponse(mode) { InnerHandler = CreateHandler() });

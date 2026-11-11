@@ -4,11 +4,15 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using System.ComponentModel.DataAnnotations
 @using Vigiloom.Contracts.Agent
+@using Vigiloom.Contracts.Agent.Inventory
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.SecurityAnalysis.Application.Inventory
 @inject AgentConfiguration Settings
 @inject AgentQueueCapacityConfiguration CapacitySettings
 @inject AgentMetricConfiguration MetricSettings
+@inject InventoryConfiguration InventorySettings
+@inject AgentInventorySettingsMonitoring InventoryMonitoring
 @inject AgentReplayPolicyService ReplayPolicy
 @inject DeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
@@ -80,6 +84,34 @@
         }
     </section>
     <section class="device-panel">
+        <h2>主機盤點</h2>
+        @if (inventoryLoadError) { <p class="device-alert" role="alert">無法讀取盤點設定，請稍後重新整理。</p> }
+        else if (inventoryCurrent is null) { <p role="alert">找不到此設備。</p> }
+        else
+        {
+            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點。</p>
+            @if (inventoryMessage is not null) { <p class="agent-settings-status" role="status">@inventoryMessage</p> }
+            <EditForm Model="InventoryInput" FormName="agent-inventory" method="post" OnSubmit="SaveInventoryAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <InputHidden @bind-Value="InventoryInput.Version" />
+                <label for="agent-inventory-interval">盤點間隔（900～604800 秒，即 15 分鐘～7 天）</label>
+                <InputNumber id="agent-inventory-interval" @bind-Value="InventoryInput.ScanIntervalSeconds" min="900" max="604800" placeholder="@($"沿用 {inventoryCurrent.Inherited.Settings.ScanIntervalSeconds} 秒")" />
+                <small class="agent-settings-hint">目前目標值：@inventoryCurrent.Effective.Settings.ScanIntervalSeconds 秒（預設 6 小時）。較短的間隔會增加設備負擔。</small>
+                @if (Id is not null)
+                {
+                    <p>設定狀態：@InventoryStateText(inventoryStatus?.State)</p>
+                    @if (inventoryStatus?.Applied is { } applied)
+                    {
+                        <p>Agent 已採用：@applied.Settings.ScanIntervalSeconds 秒；進行中的盤點會繼續完成。</p>
+                    }
+                    @if (inventoryStatusLoadError) { <p role="status">無法讀取 Agent 設定狀態，請稍後重新整理。</p> }
+                }
+                else { <p>設定會由 Agent 定期同步；目標值不代表設備已套用。</p> }
+                <div class="device-actions"><button type="submit">儲存盤點設定</button></div>
+            </EditForm>
+        }
+    </section>
+    <section class="device-panel">
         <h2>本機佇列容量</h2>
         @if (capacityLoadError) { <p class="device-alert" role="alert">無法讀取佇列容量設定，請稍後重新整理。</p> }
         else if (capacityCurrent is null) { <p role="alert">找不到此設備。</p> }
@@ -136,17 +168,23 @@
     [SupplyParameterFromForm(FormName = "agent-settings")] private SettingsForm Input { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-capacity")] private CapacityForm CapacityInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-metrics")] private MetricForm MetricInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "agent-inventory")] private InventoryForm InventoryInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "agent-replay")] private ReplayForm ReplayInput { get; set; } = default!;
     private AgentSettingsView? current;
     private AgentQueueCapacityView? capacityCurrent;
     private AgentMetricSettingsView? metricCurrent;
+    private InventorySettingsView? inventoryCurrent;
+    private InventorySettingsStatus? inventoryStatus;
     private string? deviceName;
     private bool loadError;
     private bool capacityLoadError;
     private bool metricLoadError;
+    private bool inventoryLoadError;
+    private bool inventoryStatusLoadError;
     private string? message;
     private string? capacityMessage;
     private string? metricMessage;
+    private string? inventoryMessage;
     private AgentReplayPolicyView? replay;
     private bool replayLoadError;
     private string? replayMessage;
@@ -156,10 +194,12 @@
         var submittedSettings = Input is not null;
         var submittedCapacity = CapacityInput is not null;
         var submittedMetrics = MetricInput is not null;
+        var submittedInventory = InventoryInput is not null;
         var submittedReplay = ReplayInput is not null;
         Input ??= new();
         CapacityInput ??= new();
         MetricInput ??= new();
+        InventoryInput ??= new();
         ReplayInput ??= new();
         try
         {
@@ -188,6 +228,18 @@
                     IoLimitMiBPerMinute = metricCurrent.Overrides.IoLimitMiBPerMinute, Version = metricCurrent.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read Agent metric settings: {ExceptionType}", exception.GetType().Name); metricLoadError = true; }
+        try
+        {
+            inventoryCurrent = await InventorySettings.GetAsync(Id, HttpContext.RequestAborted);
+            if (inventoryCurrent is not null && !submittedInventory)
+                InventoryInput = new() { ScanIntervalSeconds = inventoryCurrent.Overrides.ScanIntervalSeconds, Version = inventoryCurrent.Version };
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not read inventory settings: {ExceptionType}", exception.GetType().Name); inventoryLoadError = true; }
+        if (Id is { } inventoryDeviceId)
+        {
+            try { inventoryStatus = await InventoryMonitoring.GetAsync(inventoryDeviceId, HttpContext.RequestAborted); }
+            catch (Exception exception) { Logger.LogWarning("Could not read inventory settings status: {ExceptionType}", exception.GetType().Name); inventoryStatusLoadError = true; }
+        }
         if (Id is null)
         {
             try
@@ -263,6 +315,45 @@
         catch (Exception exception) { Logger.LogWarning("Could not save Agent metric settings: {ExceptionType}", exception.GetType().Name); metricMessage = "無法確認儲存結果，請重新整理並檢查。"; }
     }
 
+    private async Task SaveInventoryAsync(EditContext context)
+    {
+        if (!context.Validate() || inventoryCurrent is null) return;
+        if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
+        var input = new InventorySettingsUpdate(new(InventoryInput.ScanIntervalSeconds), InventoryInput.Version ?? "");
+        if (!InventoryConfiguration.Valid(input.Overrides)) { inventoryMessage = "請檢查盤點間隔的允許範圍。"; return; }
+        try
+        {
+            if (await InventorySettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
+            {
+                inventoryCurrent = saved;
+                InventoryInput.Version = saved.Version;
+                inventoryMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+                if (Id is { } deviceId)
+                {
+                    try { inventoryStatus = await InventoryMonitoring.GetAsync(deviceId, HttpContext.RequestAborted); inventoryStatusLoadError = false; }
+                    catch (Exception exception) { Logger.LogWarning("Could not refresh inventory settings status: {ExceptionType}", exception.GetType().Name); inventoryStatus = null; inventoryStatusLoadError = true; }
+                }
+            }
+            else inventoryMessage = "設定已被其他操作變更，請重新整理後再試。";
+        }
+        catch (Exception exception) { Logger.LogWarning("Could not save inventory settings: {ExceptionType}", exception.GetType().Name); inventoryMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+    }
+
+    private static string InventoryStateText(AgentSettingsApplyState? state) => state switch
+    {
+        AgentSettingsApplyState.Disabled => "設備已停用",
+        AgentSettingsApplyState.NotRegistered => "Agent 尚未註冊",
+        AgentSettingsApplyState.WaitingForHeartbeat => "等待 Agent 心跳",
+        AgentSettingsApplyState.WaitingForReport => "等待 Agent 回報設定",
+        AgentSettingsApplyState.Pending => "等待 Agent 套用新設定",
+        AgentSettingsApplyState.Applied => "Agent 已採用目標設定",
+        AgentSettingsApplyState.Failed => "設定同步失敗，Agent 繼續使用最後有效設定",
+        AgentSettingsApplyState.Offline => "Agent 離線",
+        AgentSettingsApplyState.ClockUncertain => "回報時間異常",
+        AgentSettingsApplyState.ReportStale => "設定回報已過期",
+        _ => "未知"
+    };
+
     private async Task SaveAsync(EditContext context)
     {
         if (!context.Validate() || current is null) return;
@@ -303,6 +394,11 @@
         [Range(64, 4096)] public int? WorkingSetLimitMiB { get; set; }
         [Range(100, 30000)] public int? ProcessCollectionBudgetMs { get; set; }
         [Range(1, 4096)] public int? IoLimitMiBPerMinute { get; set; }
+        public string? Version { get; set; }
+    }
+    private sealed class InventoryForm
+    {
+        [Range(900, 604800)] public int? ScanIntervalSeconds { get; set; }
         public string? Version { get; set; }
     }
 }

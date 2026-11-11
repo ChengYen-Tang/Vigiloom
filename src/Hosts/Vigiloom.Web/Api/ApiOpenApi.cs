@@ -53,8 +53,10 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/agent/update/metadata/{name}", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/heartbeat", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/queue-session", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/inventory/status", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/settings", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/metric-settings", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/inventory-settings", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/log-settings", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/queue-capacity", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/batches", StringComparison.OrdinalIgnoreCase) ||

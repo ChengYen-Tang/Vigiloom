@@ -21,7 +21,7 @@ internal static class AgentBatchEndpoints
 
     private static async Task<IResult> ReceiveAsync(HttpContext context, AgentBatchReceiver receiver, CancellationToken token)
     {
-        context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] = "1, 2, 3";
+        context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] = "1, 2, 3, 4";
         var encodings = context.Request.Headers.ContentEncoding;
         var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
         if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)
@@ -68,7 +68,7 @@ internal static class AgentBatchEndpoints
                 BatchReceiptStatus.Conflict => Results.Conflict(),
                 BatchReceiptStatus.Expired => Results.StatusCode(StatusCodes.Status410Gone),
                 BatchReceiptStatus.RateLimited => Results.StatusCode(StatusCodes.Status429TooManyRequests),
-                BatchReceiptStatus.LogBatchTooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
+                BatchReceiptStatus.LogBatchTooLarge or BatchReceiptStatus.InventorySnapshotTooLarge => Results.StatusCode(StatusCodes.Status413PayloadTooLarge),
                 BatchReceiptStatus.CapacityExceeded or BatchReceiptStatus.ClockUncertain or BatchReceiptStatus.TimestampAhead => Results.StatusCode(StatusCodes.Status503ServiceUnavailable),
                 _ => Results.StatusCode(StatusCodes.Status500InternalServerError)
             };

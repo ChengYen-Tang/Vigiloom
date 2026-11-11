@@ -44,6 +44,9 @@ public sealed class IdentityVault(string directory)
     /// <summary>Allow one host log producer for an Agent state directory.</summary>
     public IAsyncDisposable AcquireLogOwnership() => AcquireWorkerOwnership("logs.lock");
 
+    /// <summary>Allow one inventory producer to sequence complete source generations.</summary>
+    public IAsyncDisposable AcquireInventoryOwnership() => AcquireWorkerOwnership("inventory.lock");
+
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
 
@@ -172,6 +175,8 @@ public sealed class IdentityVault(string directory)
 
         internal Task<AgentSavedMetricSettings?> ReadMetricSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedMetricSettings>("metric-settings.dat", token);
+        internal Task<AgentSavedInventorySettings?> ReadInventorySettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentSavedInventorySettings>("inventory-settings.dat", token);
         internal Task<AgentSavedLogSettings?> ReadLogSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedLogSettings>("log-settings.dat", token, MaximumLogSettingsBytes);
 
@@ -204,6 +209,8 @@ public sealed class IdentityVault(string directory)
 
         internal Task WriteMetricSettingsAsync(AgentSavedMetricSettings settings, CancellationToken token) =>
             WriteFileAsync("metric-settings.dat", settings, token);
+        internal Task WriteInventorySettingsAsync(AgentSavedInventorySettings settings, CancellationToken token) =>
+            WriteFileAsync("inventory-settings.dat", settings, token);
         internal Task WriteLogSettingsAsync(AgentSavedLogSettings settings, CancellationToken token) =>
             WriteFileAsync("log-settings.dat", settings, token, MaximumLogSettingsBytes);
 

@@ -199,16 +199,26 @@ public sealed partial class DurableBatchQueue
     {
         using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA user_version";
-        if ((long)command.ExecuteScalar()! == 3) return;
+        var version = (long)command.ExecuteScalar()!;
+        if (version == 3) return;
+        if (version == 4)
+        {
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log_sources')";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+        }
         using var transaction = connection.BeginTransaction();
         command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE log_sources (source_id TEXT PRIMARY KEY NOT NULL, generation TEXT NOT NULL, cursor TEXT NULL,
                 last_batch_id TEXT NULL, last_digest BLOB NULL,
                 CHECK ((last_batch_id IS NULL AND last_digest IS NULL) OR (last_batch_id IS NOT NULL AND last_digest IS NOT NULL AND length(last_digest) = 32)));
-            PRAGMA user_version = 3;
             """;
         command.ExecuteNonQuery();
+        if (version != 4)
+        {
+            command.CommandText = "PRAGMA user_version = 3";
+            command.ExecuteNonQuery();
+        }
         transaction.Commit();
     }
 
