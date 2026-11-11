@@ -34,7 +34,7 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task ChangedSeed_IsRejectedAndDatabaseIsNotReused()
+    public async Task RemovedTailSeed_IsRejectedAndDatabaseIsNotReused()
     {
         string? prior = null;
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -43,7 +43,30 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE [operations].[WorkerDiagnosticSlots] SET [PingFailures] = [PingFailures] + 1 WHERE [Slot] = 1";
+            command.CommandText = "DELETE FROM [operations].[WorkerDiagnosticSlots] WHERE [Slot] = 64";
+            await command.ExecuteNonQueryAsync(token);
+        }, context.CancellationToken));
+        await ReusableWebDatabase.ExecuteAsync((database, _) =>
+        {
+            Assert.AreNotEqual(prior, database.DatabaseName);
+            return Task.CompletedTask;
+        }, context.CancellationToken);
+    }
+
+    [TestMethod]
+    [DataRow(1)]
+    [DataRow(64)]
+    public async Task ChangedSeed_IsRejectedAndDatabaseIsNotReused(int slot)
+    {
+        string? prior = null;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            prior = database.DatabaseName;
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE [operations].[WorkerDiagnosticSlots] SET [PingFailures] = [PingFailures] + 1 WHERE [Slot] = @slot";
+            command.Parameters.AddWithValue("@slot", slot);
             await command.ExecuteNonQueryAsync(token);
         }, context.CancellationToken));
         await ReusableWebDatabase.ExecuteAsync((database, _) =>

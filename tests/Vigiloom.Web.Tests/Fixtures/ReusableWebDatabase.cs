@@ -53,7 +53,7 @@ internal static class ReusableWebDatabase
     {
         await using var command = connection.CreateCommand();
         command.CommandTimeout = 30;
-        command.CommandText = "SELECT (SELECT * FROM [agent].[ReplayPolicies] ORDER BY [RowId] FOR JSON PATH, INCLUDE_NULL_VALUES) AS policy, (SELECT * FROM [operations].[WorkerDiagnosticSlots] ORDER BY [Slot] FOR JSON PATH, INCLUDE_NULL_VALUES) AS slots FOR JSON PATH, WITHOUT_ARRAY_WRAPPER";
+        command.CommandText = "SELECT CONCAT((SELECT * FROM [agent].[ReplayPolicies] ORDER BY [RowId] FOR JSON PATH, INCLUDE_NULL_VALUES), N'|', (SELECT * FROM [operations].[WorkerDiagnosticSlots] ORDER BY [Slot] FOR JSON PATH, INCLUDE_NULL_VALUES))";
         return (string)(await command.ExecuteScalarAsync(token) ?? throw new InvalidOperationException("Cannot read Web test seeds."));
     }
 }
