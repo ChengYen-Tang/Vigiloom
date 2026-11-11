@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -79,6 +80,17 @@ internal static class AgentEndpoints
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
             .Produces<AgentQueueSession>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Inspect the current Agent queue-report session");
+        machine.MapGet("/inventory/status", async (HttpContext context, AgentInventoryStatus inventory, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            try
+            {
+                return await inventory.GetAsync(Bearer(context), token) is { } status ? Results.Ok(status) : Results.Unauthorized();
+            }
+            catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+        }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
+            .Produces<IReadOnlyList<InventorySourceStatus>>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
+            .WithSummary("Inspect this Agent's inventory source progress");
         machine.MapPost("/queue-session", async (AgentQueueSessionRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
             (await agents.BeginQueueSessionAsync(Bearer(context), input, token)) switch
             {

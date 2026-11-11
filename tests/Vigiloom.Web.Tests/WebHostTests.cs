@@ -159,6 +159,12 @@ public sealed class WebHostTests(TestContext testContext)
         var metricAgentSecurity = paths.GetProperty("/api/v1/agent/metric-settings").GetProperty("get").GetProperty("security");
         Assert.AreEqual(1, metricAgentSecurity.GetArrayLength());
         Assert.IsTrue(metricAgentSecurity[0].TryGetProperty("AgentBearer", out _));
+        var inventorySecurity = paths.GetProperty("/api/v1/agent/inventory/status").GetProperty("get").GetProperty("security");
+        Assert.IsTrue(inventorySecurity[0].TryGetProperty("AgentBearer", out _));
+        var inventoryReadSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/inventory").GetProperty("get").GetProperty("security");
+        Assert.IsTrue(inventoryReadSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
+        Assert.IsTrue(inventoryReadSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
+        Assert.IsFalse(inventoryReadSecurity.EnumerateArray().Any(x => x.TryGetProperty("AgentBearer", out _)));
         var logAgentSecurity = paths.GetProperty("/api/v1/agent/log-settings").GetProperty("get").GetProperty("security");
         Assert.AreEqual(1, logAgentSecurity.GetArrayLength());
         Assert.IsTrue(logAgentSecurity[0].TryGetProperty("AgentBearer", out _));
