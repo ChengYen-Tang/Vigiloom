@@ -23,6 +23,7 @@ public sealed class InventoryManifestTests
         Assert.IsFalse(InventoryManifest.Matches(snapshot, owner with { DeviceId = Guid.CreateVersion7() }, chunk));
         Assert.IsFalse(InventoryManifest.Matches(snapshot, owner, chunk with { SnapshotId = Guid.CreateVersion7() }));
         Assert.IsFalse(InventoryManifest.Matches(snapshot, owner, chunk with { Outcome = InventoryOutcome.Partial }));
+        Assert.IsFalse(InventoryManifest.Matches(snapshot, owner, chunk with { PartialReason = InventoryPartialReason.AccessDenied }));
         Assert.IsFalse(InventoryManifest.Matches(snapshot, owner, chunk with { Digest = new byte[32] }));
     }
 }

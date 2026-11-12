@@ -9,6 +9,7 @@ public sealed class InventorySetting
     public long RowId { get; private set; }
     public Guid? DeviceId { get; set; }
     public int? ScanIntervalSeconds { get; set; }
+    public bool? CollectCommandLine { get; set; }
     public Guid UpdatedBy { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public byte[] Version { get; private set; } = [];

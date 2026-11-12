@@ -11,9 +11,93 @@ namespace Vigiloom.Agent.Hosting.Inventory;
 /// <summary>Maps source-native observations to the common bounded inventory contract.</summary>
 internal sealed class InventoryCollector(TimeProvider clock)
 {
-    internal async Task<InventoryReadResult<InventoryEntry>> ReadAsync(InventorySource source, CancellationToken token)
+    internal async Task<InventoryReadResult<InventoryEntry>> ReadAsync(InventorySource source, CancellationToken token, bool collectCommandLine = false)
     {
         token.ThrowIfCancellationRequested();
+        if (source == InventorySource.HostProcesses)
+        {
+            var processes = Vigiloom.Agent.Core.Processes.ProcessReader.Read(token, collectCommandLine);
+            if (processes.Status is not (InventoryReadStatus.Complete or InventoryReadStatus.Partial))
+                return new(processes.Status, []);
+            var partial = processes.Status == InventoryReadStatus.Partial;
+            var reasons = processes.PartialReason ?? 0;
+            var parents = new Dictionary<int, Vigiloom.Agent.Platforms.Windows.Processes.ProcessParent>();
+            if (OperatingSystem.IsWindows())
+            {
+                var sourceParents = Vigiloom.Agent.Platforms.Windows.Processes.ParentProcessReader.Read(token);
+                if (sourceParents.Status != InventoryReadStatus.Complete)
+                {
+                    partial = true;
+                    reasons |= sourceParents.Status == InventoryReadStatus.PermissionDenied ? InventoryPartialReason.AccessDenied : InventoryPartialReason.Other;
+                }
+                foreach (var parent in sourceParents.Items)
+                    if (!parents.TryAdd(parent.ProcessId, parent)) partial = true;
+            }
+            var entries = new List<InventoryEntry>(processes.Items.Count);
+            foreach (var process in processes.Items)
+            {
+                token.ThrowIfCancellationRequested();
+                var account = process.RunAs;
+                var parentId = process.ParentProcessId;
+                var path = process.ExecutablePath;
+                if (OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        var details = Vigiloom.Agent.Platforms.Windows.Processes.ProcessIdentityReader.Read(process, collectCommandLine);
+                        account = details.Account;
+                        path = details.ExecutablePath;
+                        reasons |= details.PartialReason ?? 0;
+                    }
+                    catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or Win32Exception or ArgumentException)
+                    {
+                        if (ex is UnauthorizedAccessException or System.Security.SecurityException || ex is Win32Exception { NativeErrorCode: 5 }) reasons |= InventoryPartialReason.AccessDenied;
+                        account = null;
+                    }
+                    if (account is null) partial = true;
+                    if (collectCommandLine && path is null) partial = true;
+                    if (parents.TryGetValue(process.ProcessId, out var parent) && parent.CreationMicroseconds == process.StartedAt.UtcTicks / 10)
+                        parentId = parent.ParentProcessId;
+                    else partial = true;
+                }
+                entries.Add(new InventoryEntry(process.StableKey, process.Name,
+                    NumericId: checked((uint)process.ProcessId), ProcessStartedAt: process.StartedAt,
+                    ParentProcessId: parentId, RunAs: account, ExecutablePath: path,
+                    CommandLine: path is null ? null : path + InventoryChunkCodec.MaskedArgumentsSuffix));
+            }
+            return new(partial ? InventoryReadStatus.Partial : processes.Status, entries,
+                partial ? reasons == 0 ? InventoryPartialReason.Other : reasons : null);
+        }
+        if (source == InventorySource.HostServices)
+        {
+            InventoryReadResult<Vigiloom.Agent.Core.Processes.ServiceObservation> services;
+            if (OperatingSystem.IsWindows()) services = Vigiloom.Agent.Platforms.Windows.Processes.ServiceReader.Read(token);
+            else if (OperatingSystem.IsLinux()) services = await Vigiloom.Agent.Platforms.Linux.Processes.ServiceReader.ReadAsync(token);
+            else return new(InventoryReadStatus.Unsupported, []);
+            return new(services.Status, services.Items.Select(x => new InventoryEntry(x.Key, x.Name,
+                ServiceStatus: x.Status, StartupMode: x.StartupMode)).ToArray(),
+                services.Status == InventoryReadStatus.Partial ? services.PartialReason ?? InventoryPartialReason.Other : null);
+        }
+        if (source == InventorySource.HostListeners)
+        {
+            InventoryReadResult<Vigiloom.Agent.Core.Processes.ListenerObservation> listeners;
+            if (OperatingSystem.IsWindows()) listeners = Vigiloom.Agent.Platforms.Windows.Processes.ListenerReader.Read(token);
+            else if (OperatingSystem.IsLinux()) listeners = await Vigiloom.Agent.Platforms.Linux.Processes.ListenerReader.ReadAsync(token);
+            else return new(InventoryReadStatus.Unsupported, []);
+            if (listeners.Status is InventoryReadStatus.Unsupported or InventoryReadStatus.Error)
+            {
+                var originalStatus = listeners.Status;
+                listeners = Vigiloom.Agent.Core.Processes.BasicListenerReader.Read(token);
+                if (listeners.Status == InventoryReadStatus.Partial)
+                    listeners = listeners with { PartialReason = InventoryPartialReason.OwnerUnavailable |
+                        (originalStatus == InventoryReadStatus.Unsupported ? InventoryPartialReason.ToolUnavailable : InventoryPartialReason.Other) };
+            }
+            return new(listeners.Status, listeners.Items.Distinct().Select(x => new InventoryEntry(
+                $"listener:{x.Protocol}:{x.Address.Length}:{x.Address}:{x.Port}:{x.OwningProcessId?.ToString() ?? "unknown"}",
+                $"{x.Protocol.ToUpperInvariant()} {x.Port}", Address: x.Address,
+                Protocol: x.Protocol, Port: x.Port, OwningProcessId: x.OwningProcessId)).ToArray(),
+                listeners.Status == InventoryReadStatus.Partial ? listeners.PartialReason ?? InventoryPartialReason.Other : null);
+        }
         if (source == InventorySource.HostNetwork) return HostHardwareReader.ReadNetwork(token);
         if (source == InventorySource.HostVolumes)
         {

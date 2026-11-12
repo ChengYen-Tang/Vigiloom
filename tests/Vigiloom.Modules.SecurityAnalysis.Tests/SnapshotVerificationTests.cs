@@ -15,6 +15,7 @@ public sealed class SnapshotVerificationTests
         Assert.IsFalse(SnapshotVerification.IsComplete([chunks[0], chunks[0]]));
         Assert.IsFalse(SnapshotVerification.IsComplete([chunks[0], chunks[1] with { Items = [chunks[1].Items[0] with { Version = "changed" }] }]));
         Assert.IsFalse(SnapshotVerification.IsComplete([chunks[0], chunks[1] with { ObservedAt = chunks[1].ObservedAt.AddSeconds(1) }]));
+        Assert.IsFalse(SnapshotVerification.IsComplete([chunks[0], chunks[1] with { PartialReason = InventoryPartialReason.AccessDenied }]));
     }
 
     [TestMethod]

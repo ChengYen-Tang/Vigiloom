@@ -1,3 +1,5 @@
+extern alias AgentHarness;
+using System.Diagnostics;
 using System.Net;
 using System.IO.Compression;
 using System.Net.Http.Headers;
@@ -31,6 +33,7 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using System.Data.Common;
@@ -109,6 +112,56 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsNotNull(observed);
                 Assert.AreEqual((InventoryOutcome)observed.Status, state.LastOutcome);
                 Assert.AreEqual(observed.Status == InventoryReadStatus.Complete ? 1L : null, state.CurrentGeneration);
+
+                InventoryReadResult<InventoryEntry>? processObservation = null;
+                Task<InventoryReadResult<InventoryEntry>> CollectProcesses(InventorySource _, CancellationToken cancellation)
+                {
+                    var actual = Vigiloom.Agent.Core.Processes.ProcessReader.Read(cancellation);
+                    // Force the partial path to model a host with inaccessible processes while
+                    // retaining actual OS observations from two independent sampling passes.
+                    processObservation = new(InventoryReadStatus.Partial, actual.Items.Select(x => new InventoryEntry(x.StableKey, x.Name,
+                        NumericId: (uint)x.ProcessId, ProcessStartedAt: x.StartedAt, ParentProcessId: x.ParentProcessId, RunAs: x.RunAs)).ToArray());
+                    return Task.FromResult(processObservation);
+                }
+                Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
+                var processSent = 0;
+                while (await queue.PeekAsync(token) is not null)
+                {
+                    Assert.IsLessThan(InventoryChunkCodec.MaximumChunks + 1, ++processSent);
+                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                }
+                Assert.AreEqual(InventoryCycleKind.Complete, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
+                Assert.IsNotNull(processObservation);
+                Assert.IsTrue(processObservation.Items.Any(x => x.NumericId == (uint)Environment.ProcessId));
+                var processState = await verify.InventorySources.AsNoTracking().SingleAsync(x => x.AgentId == agentId && x.Source == InventorySource.HostProcesses, token);
+                Assert.AreEqual((InventoryOutcome)processObservation.Status, processState.LastOutcome);
+
+                var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                start.ArgumentList.Add(typeof(AgentHarness::AgentHostHarnessMarker).Assembly.Location);
+                start.ArgumentList.Add("--hold-for-inventory");
+                using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start the test process.");
+                try
+                {
+                    Assert.AreEqual("READY", await child.StandardOutput.ReadLineAsync(token));
+                    Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
+                    while (await queue.PeekAsync(token) is not null)
+                        Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    Assert.AreEqual(InventoryCycleKind.Complete, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
+                    var queryNow = DateTimeOffset.UtcNow;
+                    var changes = await new InventoryChangeQuery(security).GetAsync(device.Id, queryNow.AddMinutes(-1), queryNow.AddMinutes(1), InventorySource.HostProcesses, null, token);
+                    Assert.IsTrue(changes.Items.Any(x => x.Kind == InventoryChangeType.NewlyObserved && x.After?.NumericId == (uint)child.Id));
+                    Assert.IsFalse(changes.Items.Any(x => x.Kind == InventoryChangeType.Removed));
+                }
+                finally
+                {
+                    if (!child.HasExited)
+                    {
+                        child.Kill(entireProcessTree: true);
+                        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await child.WaitForExitAsync(cleanup.Token);
+                    }
+                }
             }
             finally
             {
@@ -242,6 +295,67 @@ public sealed class AgentIdentityHttpTests
             Assert.HasCount(1, changes.Items);
             Assert.AreEqual(InventoryChangeType.Added, changes.Items[0].Kind);
             Assert.AreEqual("Example package", changes.Items[0].After!.Name);
+            var processOne = new[] { new InventoryEntry("linux:boot:42:1", "worker", NumericId: 42, ProcessStartedAt: now) };
+            var processTwo = new[] { new InventoryEntry("linux:boot:43:2", "server", NumericId: 43, ProcessStartedAt: now) };
+            var firstMeasure = InventoryDigest.MeasureChunk(processOne);
+            var secondMeasure = InventoryDigest.MeasureChunk(processTwo);
+            var processChunk = new InventoryChunk(5, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 1,
+                InventorySource.HostProcesses, now, InventoryOutcome.Complete, 0, 2, 2,
+                firstMeasure.Bytes + secondMeasure.Bytes, InventoryDigest.Combine([firstMeasure.Digest, secondMeasure.Digest]), processOne);
+            using (var staged = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(processChunk)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, staged.StatusCode);
+            using (var legacyBusy = await client.GetAsync("/api/v1/agent/inventory/status", token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, legacyBusy.StatusCode);
+            using (var extended = await client.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, extended.StatusCode);
+                Assert.AreEqual("5", extended.Headers.GetValues("Vigiloom-Inventory-Contract").Single());
+                var extendedSources = await extended.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.IsNotNull(extendedSources);
+                Assert.IsTrue(extendedSources.Any(x => x.Source == InventorySource.HostProcesses && x.ActiveGeneration == 1));
+            }
+            var lastProcessChunk = processChunk with { BatchId = Guid.CreateVersion7(), ChunkIndex = 1, Items = processTwo };
+            using (var acceptedProcess = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(lastProcessChunk)), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, acceptedProcess.StatusCode);
+            var processUrl = $"{inventoryUrl}/{(int)InventorySource.HostProcesses}/snapshots/{processChunk.SnapshotId:D}/chunks/0";
+            using (var deniedProcess = await client.GetAsync(processUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedProcess.StatusCode);
+            using (var allowedProcess = await reader.GetAsync(processUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, allowedProcess.StatusCode);
+                var processData = await allowedProcess.Content.ReadFromJsonAsync<InventorySnapshotChunkView>(cancellationToken: token);
+                Assert.IsNotNull(processData);
+                Assert.AreEqual(42U, processData.Items.Single().NumericId);
+            }
+            using (var legacy = await client.GetAsync("/api/v1/agent/inventory/status", token))
+            {
+                var legacySources = await legacy.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.IsNotNull(legacySources);
+                Assert.HasCount(1, legacySources);
+                Assert.AreEqual(InventorySource.LinuxDpkg, legacySources[0].Source);
+            }
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var policy = scope.ServiceProvider.GetRequiredService<InventoryConfiguration>();
+                var platform = await policy.GetAsync(null, token);
+                Assert.IsNotNull(platform);
+                Assert.IsNotNull(await policy.UpdateAsync(null, new(new(null, true), platform.Version), Guid.CreateVersion7(), token));
+            }
+            using (var legacyPolicy = await client.GetAsync("/api/v1/agent/inventory-settings", token))
+            {
+                var oldSnapshot = await legacyPolicy.Content.ReadFromJsonAsync<InventorySettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(oldSnapshot);
+                Assert.AreEqual(InventorySettingsSnapshot.CurrentSchema, oldSnapshot.SchemaVersion);
+                Assert.IsFalse(oldSnapshot.Settings.CollectCommandLine);
+                Assert.IsTrue(oldSnapshot.IsValid());
+            }
+            using (var newPolicy = await client.GetAsync("/api/v1/agent/inventory-settings?contract=2", token))
+            {
+                var newSnapshot = await newPolicy.Content.ReadFromJsonAsync<InventorySettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(newSnapshot);
+                Assert.AreEqual(InventorySettingsSnapshot.ProcessSchema, newSnapshot.SchemaVersion);
+                Assert.IsTrue(newSnapshot.Settings.CollectCommandLine);
+                Assert.IsTrue(newSnapshot.IsValid());
+            }
             await using (var scope = factory.Services.CreateAsyncScope())
             {
                 var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();

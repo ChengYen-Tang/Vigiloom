@@ -15,17 +15,19 @@ public sealed class InventoryAuditFeed(IDbContextFactory<SecurityAnalysisDbConte
         var rows = await db.InventorySettingAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * AuditFeedLimits.PageSize).Take(AuditFeedLimits.PageSize + 1)
-            .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.ScanIntervalSeconds, x.EffectiveScanIntervalSeconds, x.EffectiveRevision, x.ChangeVersion })
+            .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.ScanIntervalSeconds, x.EffectiveScanIntervalSeconds, x.CollectCommandLine, x.EffectiveCollectCommandLine, x.EffectiveRevision, x.ChangeVersion })
             .ToArrayAsync(token);
         var entries = rows.Take(AuditFeedLimits.PageSize).Select(row =>
         {
-            var effective = new InventorySettings(row.EffectiveScanIntervalSeconds);
-            var valid = InventoryConfiguration.Valid(new(row.ScanIntervalSeconds)) && effective.IsValid() && row.ChangeVersion.Length == 8 &&
+            var effective = new InventorySettings(row.EffectiveScanIntervalSeconds, row.EffectiveCollectCommandLine);
+            var valid = InventoryConfiguration.Valid(new(row.ScanIntervalSeconds, row.CollectCommandLine)) && effective.IsValid() && row.ChangeVersion.Length == 8 &&
                 (row.ScanIntervalSeconds is null || row.ScanIntervalSeconds == effective.ScanIntervalSeconds) &&
+                (row.CollectCommandLine is null || row.CollectCommandLine == effective.CollectCommandLine) &&
                 (row.DeviceId is not null || (row.ScanIntervalSeconds ?? InventorySettings.Default.ScanIntervalSeconds) == effective.ScanIntervalSeconds) &&
-                new InventorySettingsSnapshot(InventorySettingsSnapshot.CurrentSchema, row.EffectiveRevision, effective).IsValid();
+                (row.DeviceId is not null || (row.CollectCommandLine ?? InventorySettings.Default.CollectCommandLine) == effective.CollectCommandLine) &&
+                string.Equals(InventorySettingsSnapshot.Create(effective).Revision, row.EffectiveRevision, StringComparison.Ordinal);
             var details = valid ? new InventorySettingsAuditDetails(row.ScanIntervalSeconds, row.EffectiveScanIntervalSeconds,
-                row.EffectiveRevision, Convert.ToBase64String(row.ChangeVersion)) : null;
+                row.EffectiveRevision, Convert.ToBase64String(row.ChangeVersion), row.CollectCommandLine, row.EffectiveCollectCommandLine) : null;
             return new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId,
                 valid ? AuditFeedAction.InventorySettingsChanged : AuditFeedAction.Unknown, AuditFeedOutcome.Recorded, InventorySettings: details);
         }).ToArray();

@@ -34,7 +34,7 @@ public sealed class AgentInventorySettingsClient(HttpClient http, TimeProvider c
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(expected, "api/v1/agent/inventory-settings"));
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(expected, "api/v1/agent/inventory-settings?contract=2"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{id:D}.{identity.MachineSecret}");
             if (previous is not null) request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue($"\"{previous.Snapshot.Revision}\""));
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);

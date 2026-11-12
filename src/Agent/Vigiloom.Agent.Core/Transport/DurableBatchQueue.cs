@@ -157,12 +157,22 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             {
                 using var insertOutstanding = connection.CreateCommand();
                 insertOutstanding.Transaction = transaction;
-                insertOutstanding.CommandText = "INSERT INTO inventory_outstanding(singleton, source, generation, snapshot_id, fingerprint) VALUES (1, $source, $generation, $snapshot, $fingerprint); PRAGMA user_version = 4";
+                insertOutstanding.CommandText = "INSERT INTO inventory_outstanding(singleton, source, generation, snapshot_id, fingerprint) VALUES (1, $source, $generation, $snapshot, $fingerprint)";
                 insertOutstanding.Parameters.AddWithValue("$source", (int)inventory.Source);
                 insertOutstanding.Parameters.AddWithValue("$generation", inventory.Generation);
                 insertOutstanding.Parameters.AddWithValue("$snapshot", inventory.SnapshotId.ToString("D"));
                 insertOutstanding.Parameters.Add("$fingerprint", SqliteType.Blob).Value = inventory.Fingerprint;
                 insertOutstanding.ExecuteNonQuery();
+                using var versionCommand = connection.CreateCommand();
+                versionCommand.Transaction = transaction;
+                versionCommand.CommandText = "PRAGMA user_version";
+                var currentVersion = Convert.ToInt32(versionCommand.ExecuteScalar());
+                var requiredVersion = inventory.Source > InventorySource.HostVolumes ? 5 : 4;
+                if (currentVersion < requiredVersion)
+                {
+                    versionCommand.CommandText = $"PRAGMA user_version = {requiredVersion}";
+                    versionCommand.ExecuteNonQuery();
+                }
                 using var insertMember = connection.CreateCommand();
                 insertMember.Transaction = transaction;
                 insertMember.CommandText = "INSERT INTO inventory_outstanding_batches(batch_id) VALUES ($id)";
@@ -360,13 +370,18 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
             var version = (long)command.ExecuteScalar()!;
-            if (version is not (0 or 1 or 2 or 3 or 4)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
-            if (version == 4)
+            if (version is not (0 or 1 or 2 or 3 or 4 or 5)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
+            if (version is 4 or 5)
             {
                 command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('inventory_outstanding', 'inventory_outstanding_batches', 'inventory_retained_batches')";
                 if (Convert.ToInt64(command.ExecuteScalar()) != 3) throw new InvalidDataException("The Agent inventory queue format is incomplete.");
             }
-            if (version is 1 or 2 or 3 or 4)
+            if (version == 5)
+            {
+                command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v5')";
+                if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent inventory version fence is incomplete.");
+            }
+            if (version is 1 or 2 or 3 or 4 or 5)
             {
                 command.CommandText = "SELECT agent_id FROM queue_state WHERE singleton = 1";
                 if (!string.Equals(command.ExecuteScalar() as string, agentId.ToString("D"), StringComparison.Ordinal))
@@ -411,9 +426,9 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 if (!reader.Read()) return false;
                 if (isVersion)
                 {
-                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version == InventoryChunkCodec.SchemaVersion;
+                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion;
                     return reader.TokenType == JsonTokenType.String &&
-                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed == InventoryChunkCodec.SchemaVersion;
+                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion;
                 }
                 reader.Skip();
             }

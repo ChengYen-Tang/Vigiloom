@@ -21,6 +21,32 @@ public sealed class InventoryWorkerTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task Collection_ReadsPolicyAfterWaitingForSharedBudget()
+    {
+        var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", "state");
+        var runtime = new InventorySettingsRuntime();
+        runtime.Bind(owner);
+        runtime.Publish(owner, new(InventorySettingsSnapshot.Create(new(3600, true)), DateTimeOffset.UtcNow, Guid.CreateVersion7(), owner.AgentId, owner.Server));
+        var budget = new SamplingBudgetCoordinator(TimeProvider.System);
+        await using var lease = await budget.AcquireAsync(TestContext.CancellationToken);
+        var attempting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool? observed = null;
+        var work = Task.Run(async () =>
+        {
+            attempting.SetResult();
+            await using var next = await budget.AcquireAsync(TestContext.CancellationToken);
+            await InventoryWorker.CollectWithCurrentPolicy(runtime, owner, TimeProvider.System, InventorySource.HostProcesses,
+                (_, enabled, _) => { observed = enabled; return Task.FromResult(new InventoryReadResult<InventoryEntry>(InventoryReadStatus.Complete, [])); }, TestContext.CancellationToken);
+        }, TestContext.CancellationToken);
+        await attempting.Task.WaitAsync(TestContext.CancellationToken);
+        runtime.Publish(owner, new(InventorySettingsSnapshot.Create(new(3600, false)), DateTimeOffset.UtcNow, Guid.CreateVersion7(), owner.AgentId, owner.Server));
+        await lease.DisposeAsync();
+        await work.WaitAsync(TestContext.CancellationToken);
+        Assert.IsFalse(observed ?? true);
+        Assert.IsFalse(runtime.Report(owner)!.Report.Applied!.Settings.CollectCommandLine);
+    }
+
+    [TestMethod]
     public void Schedule_UsesNewIntervalWithoutInterruptingAnActivePass()
     {
         var clock = new FakeTimeProvider();
