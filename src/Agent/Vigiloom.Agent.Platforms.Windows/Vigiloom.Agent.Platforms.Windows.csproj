@@ -8,6 +8,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.DirectoryServices.AccountManagement" />
   </ItemGroup>
 </Project>

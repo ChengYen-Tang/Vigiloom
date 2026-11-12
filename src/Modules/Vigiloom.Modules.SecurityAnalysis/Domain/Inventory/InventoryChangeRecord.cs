@@ -2,7 +2,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 
-/// <summary>A change between two complete snapshots, attributed to an authenticated Agent.</summary>
+/// <summary>A change between observations, attributed to an authenticated Agent; kind records observation quality.</summary>
 public sealed class InventoryChangeRecord
 {
     private InventoryChangeRecord() { }

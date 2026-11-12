@@ -49,6 +49,7 @@ public sealed class InventoryConfiguration(IDbContextFactory<SecurityAnalysisDbC
             db.Entry(setting).Property(x => x.Version).OriginalValue = version;
         }
         setting.ScanIntervalSeconds = update.Overrides.ScanIntervalSeconds;
+        setting.CollectCommandLine = update.Overrides.CollectCommandLine;
         setting.UpdatedAt = clock.GetUtcNow();
         setting.UpdatedBy = actorId;
         db.Entry(setting).Property(x => x.UpdatedAt).IsModified = true;
@@ -61,6 +62,8 @@ public sealed class InventoryConfiguration(IDbContextFactory<SecurityAnalysisDbC
                 SettingId = setting.Id, DeviceId = deviceId, ActorId = actorId, OccurredAt = setting.UpdatedAt,
                 ScanIntervalSeconds = setting.ScanIntervalSeconds,
                 EffectiveScanIntervalSeconds = effective.Settings.ScanIntervalSeconds,
+                CollectCommandLine = setting.CollectCommandLine,
+                EffectiveCollectCommandLine = effective.Settings.CollectCommandLine,
                 EffectiveRevision = effective.Revision, ChangeVersion = setting.Version.ToArray()
             });
             await db.SaveChangesAsync(token);
@@ -79,10 +82,12 @@ public sealed class InventoryConfiguration(IDbContextFactory<SecurityAnalysisDbC
         var platform = rows.SingleOrDefault(x => x.DeviceId is null);
         var device = deviceId is null ? null : rows.SingleOrDefault(x => x.DeviceId == deviceId);
         var inherited = deviceId is null ? InventorySettings.Default :
-            new InventorySettings(platform?.ScanIntervalSeconds ?? InventorySettings.Default.ScanIntervalSeconds);
+            new InventorySettings(platform?.ScanIntervalSeconds ?? InventorySettings.Default.ScanIntervalSeconds,
+                platform?.CollectCommandLine ?? InventorySettings.Default.CollectCommandLine);
         var scope = deviceId is null ? platform : device;
-        var effective = new InventorySettings(scope?.ScanIntervalSeconds ?? inherited.ScanIntervalSeconds);
-        return new(deviceId, new(scope?.ScanIntervalSeconds), scope is null ? "" : Convert.ToBase64String(scope.Version),
+        var effective = new InventorySettings(scope?.ScanIntervalSeconds ?? inherited.ScanIntervalSeconds,
+            scope?.CollectCommandLine ?? inherited.CollectCommandLine);
+        return new(deviceId, new(scope?.ScanIntervalSeconds, scope?.CollectCommandLine), scope is null ? "" : Convert.ToBase64String(scope.Version),
             InventorySettingsSnapshot.Create(effective), InventorySettingsSnapshot.Create(inherited));
     }
 }

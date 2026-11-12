@@ -80,16 +80,28 @@ internal static class AgentEndpoints
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
             .Produces<AgentQueueSession>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Inspect the current Agent queue-report session");
-        machine.MapGet("/inventory/status", async (HttpContext context, AgentInventoryStatus inventory, CancellationToken token) =>
+        machine.MapGet("/inventory/status", async (int? contract, HttpContext context, AgentInventoryStatus inventory, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             try
             {
-                return await inventory.GetAsync(Bearer(context), token) is { } status ? Results.Ok(status) : Results.Unauthorized();
+                if (contract is not (null or 5)) return Results.BadRequest();
+                var status = await inventory.GetAsync(Bearer(context), token);
+                if (status is null) return Results.Unauthorized();
+                if (contract == 5) context.Response.Headers["Vigiloom-Inventory-Contract"] = "5";
+                if (contract is null)
+                {
+                    // Legacy clients cannot decode later sources; an active newer generation
+                    // must remain visible as a retry, not as a free producer slot.
+                    if (status.Any(x => x.Source > InventorySource.HostVolumes && x.ActiveGeneration is not null))
+                        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                    status = status.Where(x => x.Source <= InventorySource.HostVolumes).ToArray();
+                }
+                return Results.Ok(status);
             }
             catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
         }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
-            .Produces<IReadOnlyList<InventorySourceStatus>>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
+            .Produces<IReadOnlyList<InventorySourceStatus>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Inspect this Agent's inventory source progress");
         machine.MapPost("/queue-session", async (AgentQueueSessionRequest input, HttpContext context, AgentIdentity agents, CancellationToken token) =>
             (await agents.BeginQueueSessionAsync(Bearer(context), input, token)) switch

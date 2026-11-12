@@ -63,8 +63,9 @@
                 <label for="agent-metric-host">主機效能採樣間隔（10～3600 秒）</label>
                 <InputNumber id="agent-metric-host" @bind-Value="MetricInput.HostIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.HostIntervalSeconds} 秒")" />
                 <small class="agent-settings-hint">CPU、記憶體、磁碟與網路；目前目標值：@metricCurrent.Effective.Settings.HostIntervalSeconds 秒。</small>
-                <label for="agent-metric-process">程序採樣間隔（10～3600 秒）</label>
+                <label for="agent-metric-process">程序採樣與主機程序／服務快照間隔（10～3600 秒）</label>
                 <InputNumber id="agent-metric-process" @bind-Value="MetricInput.ProcessIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessIntervalSeconds} 秒")" />
+                <small class="agent-settings-hint">程序、OS 服務與監聽端點快照在每輪完成後等待此間隔；設備負載或離線可能延後。</small>
                 <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessIntervalSeconds 秒。</small>
                 <label for="agent-metric-cpu">採樣 CPU 預算（每分鐘 100～60000 毫秒）</label>
                 <InputNumber id="agent-metric-cpu" @bind-Value="MetricInput.CpuMillisecondsPerMinute" min="100" max="60000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.CpuMillisecondsPerMinute} 毫秒")" />
@@ -97,12 +98,20 @@
                 <label for="agent-inventory-interval">盤點間隔（900～604800 秒，即 15 分鐘～7 天）</label>
                 <InputNumber id="agent-inventory-interval" @bind-Value="InventoryInput.ScanIntervalSeconds" min="900" max="604800" placeholder="@($"沿用 {inventoryCurrent.Inherited.Settings.ScanIntervalSeconds} 秒")" />
                 <small class="agent-settings-hint">目前目標值：@inventoryCurrent.Effective.Settings.ScanIntervalSeconds 秒（預設 6 小時）。較短的間隔會增加設備負擔。</small>
+                <label for="agent-process-command">程序執行資訊</label>
+                <select id="agent-process-command" name="InventoryInput.CollectCommandLine">
+                    <option value="" selected="@(InventoryInput.CollectCommandLine is null)">@(Id is null ? "使用預設值" : "繼承平台設定")</option>
+                    <option value="false" selected="@(InventoryInput.CollectCommandLine == false)">不收集執行路徑</option>
+                    <option value="true" selected="@(InventoryInput.CollectCommandLine == true)">收集執行路徑，遮罩所有參數</option>
+                </select>
+                <small class="agent-settings-hint">目前目標值：@(inventoryCurrent.Effective.Settings.CollectCommandLine ? "收集路徑，所有參數遮罩" : "不收集")。參數不會傳送到平台。</small>
+                <small class="agent-settings-hint">停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。</small>
                 @if (Id is not null)
                 {
                     <p>設定狀態：@InventoryStateText(inventoryStatus?.State)</p>
                     @if (inventoryStatus?.Applied is { } applied)
                     {
-                        <p>Agent 已採用：@applied.Settings.ScanIntervalSeconds 秒；進行中的盤點會繼續完成。</p>
+                        <p>Agent 已採用：@applied.Settings.ScanIntervalSeconds 秒；程序執行資訊：@(applied.Settings.CollectCommandLine ? "收集路徑，參數遮罩" : "不收集")。進行中的盤點會繼續完成。</p>
                     }
                     @if (inventoryStatusLoadError) { <p role="status">無法讀取 Agent 設定狀態，請稍後重新整理。</p> }
                 }
@@ -232,7 +241,7 @@
         {
             inventoryCurrent = await InventorySettings.GetAsync(Id, HttpContext.RequestAborted);
             if (inventoryCurrent is not null && !submittedInventory)
-                InventoryInput = new() { ScanIntervalSeconds = inventoryCurrent.Overrides.ScanIntervalSeconds, Version = inventoryCurrent.Version };
+                InventoryInput = new() { ScanIntervalSeconds = inventoryCurrent.Overrides.ScanIntervalSeconds, CollectCommandLine = inventoryCurrent.Overrides.CollectCommandLine, Version = inventoryCurrent.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not read inventory settings: {ExceptionType}", exception.GetType().Name); inventoryLoadError = true; }
         if (Id is { } inventoryDeviceId)
@@ -319,7 +328,7 @@
     {
         if (!context.Validate() || inventoryCurrent is null) return;
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        var input = new InventorySettingsUpdate(new(InventoryInput.ScanIntervalSeconds), InventoryInput.Version ?? "");
+        var input = new InventorySettingsUpdate(new(InventoryInput.ScanIntervalSeconds, InventoryInput.CollectCommandLine), InventoryInput.Version ?? "");
         if (!InventoryConfiguration.Valid(input.Overrides)) { inventoryMessage = "請檢查盤點間隔的允許範圍。"; return; }
         try
         {
@@ -399,6 +408,7 @@
     private sealed class InventoryForm
     {
         [Range(900, 604800)] public int? ScanIntervalSeconds { get; set; }
+        public bool? CollectCommandLine { get; set; }
         public string? Version { get; set; }
     }
 }

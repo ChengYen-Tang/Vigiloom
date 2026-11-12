@@ -77,9 +77,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                     b.ToTable("InventoryChanges", "security", t =>
                         {
-                            t.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] = 1 AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 2 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
+                            t.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] IN (1, 4) AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] IN (2, 5) AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
 
-                            t.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 12 AND [Kind] BETWEEN 1 AND 3");
+                            t.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 15 AND [Kind] BETWEEN 1 AND 5");
                         });
                 });
 
@@ -126,6 +126,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("CollectCommandLine")
+                        .HasColumnType("bit");
 
                     b.Property<Guid?>("DeviceId")
                         .HasColumnType("uniqueidentifier");
@@ -186,8 +189,14 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("binary(8)");
 
+                    b.Property<bool?>("CollectCommandLine")
+                        .HasColumnType("bit");
+
                     b.Property<Guid?>("DeviceId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("EffectiveCollectCommandLine")
+                        .HasColumnType("bit");
 
                     b.Property<string>("EffectiveRevision")
                         .IsRequired()
@@ -253,6 +262,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PartialReason")
                         .HasColumnType("int");
 
                     b.Property<long>("ReceivedBytes")
@@ -383,7 +395,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_InventorySources_RejectionReason", "([LastStatus] IS NOT NULL AND [LastStatus] = 5 AND [LastRejectionReason] IS NOT NULL AND [LastRejectionReason] BETWEEN 1 AND 3) OR (([LastStatus] IS NULL OR [LastStatus] <> 5) AND [LastRejectionReason] IS NULL)");
 
-                            t.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 12");
+                            t.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 15");
                         });
                 });
 

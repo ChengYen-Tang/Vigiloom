@@ -22,6 +22,7 @@ public sealed partial class DurableBatchQueue
                 fingerprint BLOB NOT NULL CHECK (length(fingerprint) = 32));
             CREATE TABLE IF NOT EXISTS inventory_outstanding_batches (batch_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS inventory_retained_batches (batch_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS inventory_retained_v5 (batch_id TEXT PRIMARY KEY);
             """;
         command.ExecuteNonQuery();
     }
@@ -108,6 +109,11 @@ public sealed partial class DurableBatchQueue
                 command.Parameters.Clear();
                 command.CommandText = "INSERT OR IGNORE INTO inventory_retained_batches(batch_id) SELECT batch_id FROM batches WHERE batch_id IN (SELECT batch_id FROM inventory_outstanding_batches)";
                 command.ExecuteNonQuery();
+                if (expected.Source > InventorySource.HostVolumes)
+                {
+                    command.CommandText = "INSERT OR IGNORE INTO inventory_retained_v5(batch_id) SELECT batch_id FROM batches WHERE batch_id IN (SELECT batch_id FROM inventory_outstanding_batches)";
+                    command.ExecuteNonQuery();
+                }
                 command.CommandText = "DELETE FROM inventory_outstanding_batches; DELETE FROM inventory_outstanding WHERE singleton = 1";
                 command.ExecuteNonQuery();
                 CleanupRetainedInventoryAndRestoreVersion(connection, transaction);
@@ -124,11 +130,20 @@ public sealed partial class DurableBatchQueue
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "PRAGMA user_version";
-        if (Convert.ToInt64(command.ExecuteScalar()) != 4) return;
-        command.CommandText = "DELETE FROM inventory_retained_batches WHERE batch_id NOT IN (SELECT batch_id FROM batches)";
+        var version = Convert.ToInt64(command.ExecuteScalar());
+        if (version is not (4 or 5)) return;
+        command.CommandText = "CREATE TABLE IF NOT EXISTS inventory_retained_v5 (batch_id TEXT PRIMARY KEY); DELETE FROM inventory_retained_batches WHERE batch_id NOT IN (SELECT batch_id FROM batches); DELETE FROM inventory_retained_v5 WHERE batch_id NOT IN (SELECT batch_id FROM batches)";
         command.ExecuteNonQuery();
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM inventory_outstanding WHERE source > 12) OR EXISTS(SELECT 1 FROM inventory_retained_v5)";
+        var requiredVersion = Convert.ToInt32(command.ExecuteScalar()) != 0 ? 5 : 0;
+        if (requiredVersion == 5) return;
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM inventory_outstanding) OR EXISTS(SELECT 1 FROM inventory_retained_batches)";
-        if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+        if (Convert.ToInt32(command.ExecuteScalar()) != 0) requiredVersion = 4;
+        if (requiredVersion == 4)
+        {
+            if (version == 5) { command.CommandText = "PRAGMA user_version = 4"; command.ExecuteNonQuery(); }
+            return;
+        }
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log_sources')";
         var hasLogSchema = Convert.ToInt32(command.ExecuteScalar()) != 0;
         command.CommandText = hasLogSchema ? "PRAGMA user_version = 3" : "PRAGMA user_version = 2";

@@ -10,6 +10,8 @@ public sealed class InventorySettingAudit
     public DateTimeOffset OccurredAt { get; set; }
     public int? ScanIntervalSeconds { get; set; }
     public int EffectiveScanIntervalSeconds { get; set; }
+    public bool? CollectCommandLine { get; set; }
+    public bool EffectiveCollectCommandLine { get; set; }
     public string EffectiveRevision { get; set; } = "";
     public byte[] ChangeVersion { get; set; } = [];
 }

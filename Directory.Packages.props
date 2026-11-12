@@ -41,6 +41,7 @@
     <!-- SqlClient 6.1.7 requests 9.0.11; pin the patched 9.x release. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.22" />
     <PackageVersion Include="System.Management" Version="10.0.14" />
+    <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
     <PackageVersion Include="System.DirectoryServices.AccountManagement" Version="10.0.14" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
     <PackageVersion Include="Vizor.ECharts" Version="0.9.7" />

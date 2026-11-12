@@ -49,16 +49,26 @@ internal static class InventoryStaging
                 join current in db.InventorySnapshots on
                     new { source.AgentId, source.Source, Generation = source.CurrentGeneration } equals
                     new { current.AgentId, current.Source, Generation = (long?)current.Generation }
-                where source.AgentId == owner.AgentId && source.Source != chunk.Source
+                where source.AgentId == owner.AgentId && (source.Source != chunk.Source || chunk.Outcome == InventoryOutcome.Partial)
                 select (long?)current.TotalBytes).SumAsync(cancellationToken) ?? 0;
-            if (chunk.Outcome == InventoryOutcome.Complete &&
-                currentBytes + chunk.TotalBytes > InventoryChunkCodec.MaximumSnapshotBytes)
+            var partialBytes = await (from source in db.InventorySources
+                join partial in db.InventorySnapshots on
+                    new { source.AgentId, source.Source, Generation = source.LastAttemptGeneration } equals
+                    new { partial.AgentId, partial.Source, Generation = (long?)partial.Generation }
+                where source.AgentId == owner.AgentId && source.Source != chunk.Source &&
+                    partial.Source > InventorySource.HostVolumes && partial.Status == InventorySnapshotStatus.Partial &&
+                    partial.Outcome == InventoryOutcome.Partial
+                select (long?)partial.TotalBytes).SumAsync(cancellationToken) ?? 0;
+            if ((chunk.Outcome == InventoryOutcome.Complete ||
+                 chunk.Outcome == InventoryOutcome.Partial && chunk.Source > InventorySource.HostVolumes) &&
+                currentBytes + partialBytes + chunk.TotalBytes > InventoryChunkCodec.MaximumSnapshotBytes)
             {
                 if (state is null)
                 {
                     state = new InventorySourceState(owner, chunk.Source);
                     db.InventorySources.Add(state);
                 }
+                await ClearLastPartialAsync(db, state, cancellationToken);
                 var rejected = new InventorySnapshot(owner, chunk, now)
                 {
                     Status = InventorySnapshotStatus.Rejected,
@@ -116,6 +126,7 @@ internal static class InventoryStaging
             state.ActiveGeneration != snapshot.Generation || snapshot.Status != InventorySnapshotStatus.Staging)
             throw new InvalidOperationException("Only the active source snapshot can expire.");
         await DeleteChunksAsync(db, snapshot, cancellationToken);
+        await ClearLastPartialAsync(db, state, cancellationToken);
         snapshot.Status = InventorySnapshotStatus.Expired;
         snapshot.FinishedAt = now;
         state.ClosedGeneration = snapshot.Generation;
@@ -125,6 +136,17 @@ internal static class InventoryStaging
         state.LastOutcome = snapshot.Outcome;
         state.LastStatus = InventorySnapshotStatus.Expired;
         state.LastRejectionReason = null;
+    }
+
+    internal static async Task ClearLastPartialAsync(SecurityAnalysisDbContext db, InventorySourceState state, CancellationToken cancellationToken)
+    {
+        if (state.Source <= InventorySource.HostVolumes || state.LastAttemptGeneration is not long previousAttempt) return;
+        var partial = await db.InventorySnapshots.SingleOrDefaultAsync(x => x.AgentId == state.AgentId &&
+            x.Source == state.Source && x.Generation == previousAttempt && x.Status == InventorySnapshotStatus.Partial &&
+            x.Outcome == InventoryOutcome.Partial, cancellationToken);
+        if (partial is null) return;
+        await DeleteChunksAsync(db, partial, cancellationToken);
+        db.InventorySnapshots.Remove(partial);
     }
 
     internal static async Task DeleteChunksAsync(SecurityAnalysisDbContext db, InventorySnapshot snapshot, CancellationToken cancellationToken)

@@ -28,10 +28,13 @@ internal static class InventorySettingsEndpoints
         }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<InventorySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
 
-        app.MapGet("/api/v1/agent/inventory-settings", async (AgentInventorySettings settings, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/agent/inventory-settings", async (int? contract, AgentInventorySettings settings, HttpContext context, CancellationToken token) =>
         {
+            if (contract is not (null or 2)) return Results.BadRequest();
             var snapshot = await settings.GetAsync(AgentEndpoints.Bearer(context), token);
             if (snapshot is null) return Results.Unauthorized();
+            if (contract is null && snapshot.Settings.CollectCommandLine)
+                snapshot = InventorySettingsSnapshot.Create(new(snapshot.Settings.ScanIntervalSeconds));
             var tag = new EntityTagHeaderValue($"\"{snapshot.Revision}\"");
             context.Response.GetTypedHeaders().ETag = tag;
             context.Response.Headers.CacheControl = "private, no-store";

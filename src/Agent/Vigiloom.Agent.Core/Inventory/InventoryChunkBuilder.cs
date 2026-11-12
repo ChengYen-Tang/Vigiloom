@@ -11,7 +11,7 @@ public static class InventoryChunkBuilder
     private const int MaximumSingleEntryBytes = 900 * 1024;
 
     public static IReadOnlyList<QueuedBatch> Build(Guid snapshotId, long generation, InventorySource source,
-        DateTimeOffset observedAt, DateTimeOffset enqueuedAt, InventoryOutcome outcome, IReadOnlyList<InventoryEntry> entries)
+        DateTimeOffset observedAt, DateTimeOffset enqueuedAt, InventoryOutcome outcome, IReadOnlyList<InventoryEntry> entries, InventoryPartialReason? partialReason = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         if (entries.Count > InventoryChunkCodec.MaximumSnapshotItems) throw new ArgumentOutOfRangeException(nameof(entries));
@@ -55,8 +55,9 @@ public static class InventoryChunkBuilder
         for (var index = 0; index < chunks.Count; index++)
         {
             var batchId = Guid.CreateVersion7();
-            var chunk = new InventoryChunk(InventoryChunkCodec.SchemaVersion, batchId, enqueuedAt, snapshotId, generation, source,
-                observedAt, outcome, index, chunks.Count, entries.Count, totalBytes, digest, chunks[index]);
+            var schema = source > InventorySource.HostVolumes ? InventoryChunkCodec.ProcessSchemaVersion : InventoryChunkCodec.SchemaVersion;
+            var chunk = new InventoryChunk(schema, batchId, enqueuedAt, snapshotId, generation, source,
+                observedAt, outcome, index, chunks.Count, entries.Count, totalBytes, digest, chunks[index], partialReason);
             var bytes = InventoryChunkCodec.Serialize(chunk);
             result.Add(new(batchId, enqueuedAt, Math.Max(1, chunks[index].Count), bytes));
         }

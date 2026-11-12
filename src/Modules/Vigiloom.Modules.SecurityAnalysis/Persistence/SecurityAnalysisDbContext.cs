@@ -18,7 +18,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
         var source = modelBuilder.Entity<InventorySourceState>();
         source.ToTable("InventorySources", table =>
         {
-            table.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 12");
+            table.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 15");
             table.HasCheckConstraint("CK_InventorySources_Generations", "[ClosedGeneration] >= 0 AND ([ActiveGeneration] IS NULL OR [ActiveGeneration] > [ClosedGeneration]) AND ([CurrentGeneration] IS NULL OR ([CurrentGeneration] > 0 AND [CurrentGeneration] <= [ClosedGeneration]))");
             table.HasCheckConstraint("CK_InventorySources_DeviceGeneration", "[DeviceGeneration] >= 0");
             table.HasCheckConstraint("CK_InventorySources_Ids", "[AgentId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000'");
@@ -65,8 +65,8 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
         var change = modelBuilder.Entity<InventoryChangeRecord>();
         change.ToTable("InventoryChanges", table =>
         {
-            table.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 12 AND [Kind] BETWEEN 1 AND 3");
-            table.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] = 1 AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 2 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
+            table.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 15 AND [Kind] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] IN (1, 4) AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] IN (2, 5) AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
         });
         change.HasKey(x => x.RowId).IsClustered();
         change.Property(x => x.RowId).UseIdentityColumn();

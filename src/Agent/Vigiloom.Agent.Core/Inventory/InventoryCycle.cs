@@ -5,7 +5,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 
 namespace Vigiloom.Agent.Core.Inventory;
 
-public enum InventoryCycleKind { Queued, QueuedFailure, Waiting, Complete, Rejected, Unavailable, OwnerChanged, QueueFull, TooLarge }
+public enum InventoryCycleKind { Queued, QueuedFailure, Waiting, Complete, Rejected, Unavailable, OwnerChanged, QueueFull, TooLarge, ServerUnsupported }
 public sealed record InventoryCycleResult(InventoryCycleKind Kind, InventorySource Source);
 
 /// <summary>Coordinates one source generation; the caller must hold the inventory producer lease.</summary>
@@ -39,6 +39,8 @@ public sealed class InventoryCycle(InventoryStatusClient statusClient, TimeProvi
         }
         // A lost local queue must wait for central staging to finish or expire before beginning another source.
         if (status.Sources.Any(x => x.ActiveGeneration is not null)) return new(InventoryCycleKind.Waiting, source);
+        if (source > InventorySource.HostVolumes && !status.SupportsProcessSources)
+            return new(InventoryCycleKind.ServerUnsupported, source);
         var read = await collect(source, token);
         if (!Enum.IsDefined(read.Status)) throw new InvalidDataException("Invalid inventory collection status.");
         var afterRead = await statusClient.ReadAsync(vault, server, token);
@@ -46,6 +48,8 @@ public sealed class InventoryCycle(InventoryStatusClient statusClient, TimeProvi
             return new(afterRead.Kind == InventoryStatusResultKind.OwnerChanged || afterRead.Owner is not null && afterRead.Owner != owner
                 ? InventoryCycleKind.OwnerChanged : InventoryCycleKind.Unavailable, source);
         if (afterRead.Sources.Any(x => x.ActiveGeneration is not null)) return new(InventoryCycleKind.Waiting, source);
+        if (source > InventorySource.HostVolumes && !afterRead.SupportsProcessSources)
+            return new(InventoryCycleKind.ServerUnsupported, source);
         var highWater = afterRead.Sources.SingleOrDefault(x => x.Source == source)?.HighWaterGeneration ?? 0;
         var generation = await queue.ReserveInventoryGenerationAsync(owner, source, highWater, token);
         var now = clock.GetUtcNow();
@@ -54,7 +58,7 @@ public sealed class InventoryCycle(InventoryStatusClient statusClient, TimeProvi
         async Task<EnqueueResult> BuildAndEnqueueAsync(CancellationToken cancellationToken)
         {
             IReadOnlyList<QueuedBatch> batches;
-            try { batches = InventoryChunkBuilder.Build(snapshotId, generation, source, now, now, (InventoryOutcome)read.Status, read.Items); }
+            try { batches = InventoryChunkBuilder.Build(snapshotId, generation, source, now, now, (InventoryOutcome)read.Status, read.Items, read.PartialReason); }
             catch (ArgumentException)
             {
                 // An oversized or invalid source is a failed read, never a complete empty snapshot.
