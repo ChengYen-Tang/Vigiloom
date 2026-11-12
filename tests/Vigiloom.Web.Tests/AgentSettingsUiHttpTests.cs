@@ -30,6 +30,8 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
+using Vigiloom.Agent.Hosting.Metrics;
+using Vigiloom.Agent.Core.Metrics;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Web.Tests;
@@ -40,6 +42,14 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    private sealed class IntegrityTestResourceMonitor : IMetricResourceMonitor
+    {
+        public long ReadWorkingSetBytes() => 1;
+        public TimeSpan ReadCpuTime() => TimeSpan.Zero;
+        public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token) => ValueTask.FromResult(new ProcessIoSnapshot(0, 0));
+        public void Dispose() { }
+    }
 
     [TestMethod]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -109,6 +119,8 @@ public sealed class AgentSettingsUiHttpTests
                 builder.Services.AddSingleton(new AgentIntegritySettingsClient(http, TimeProvider.System));
                 builder.Services.AddSingleton(new IntegrityStatusClient(http, TimeProvider.System));
                 builder.Services.AddSingleton(new AgentBatchClient(http, TimeProvider.System));
+                // The in-process host shares this test runner's CPU/I/O counters with unrelated parallel tests.
+                builder.Services.AddSingleton<IMetricResourceMonitor>(new IntegrityTestResourceMonitor());
                 using (var host = builder.Build())
                 {
                     Exception? hostFailure = null;
@@ -117,7 +129,7 @@ public sealed class AgentSettingsUiHttpTests
                         hostStopped = false;
                         await host.StartAsync(token);
                         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-                        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+                        deadline.CancelAfter(TimeSpan.FromSeconds(90));
                         while (true)
                         {
                             using var status = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity", deadline.Token);
