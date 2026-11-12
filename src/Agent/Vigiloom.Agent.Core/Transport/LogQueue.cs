@@ -201,7 +201,7 @@ public sealed partial class DurableBatchQueue
         command.CommandText = "PRAGMA user_version";
         var version = (long)command.ExecuteScalar()!;
         if (version == 3) return;
-        if (version is 4 or 5)
+        if (version is 4 or 5 or 6)
         {
             command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log_sources')";
             if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
@@ -214,7 +214,7 @@ public sealed partial class DurableBatchQueue
                 CHECK ((last_batch_id IS NULL AND last_digest IS NULL) OR (last_batch_id IS NOT NULL AND last_digest IS NOT NULL AND length(last_digest) = 32)));
             """;
         command.ExecuteNonQuery();
-        if (version is not (4 or 5))
+        if (version is not (4 or 5 or 6))
         {
             command.CommandText = "PRAGMA user_version = 3";
             command.ExecuteNonQuery();

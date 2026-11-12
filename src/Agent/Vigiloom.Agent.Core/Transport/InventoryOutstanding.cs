@@ -131,17 +131,26 @@ public sealed partial class DurableBatchQueue
         command.Transaction = transaction;
         command.CommandText = "PRAGMA user_version";
         var version = Convert.ToInt64(command.ExecuteScalar());
-        if (version is not (4 or 5)) return;
+        if (version is not (4 or 5 or 6)) return;
+        if (version == 6)
+        {
+            command.CommandText = "DELETE FROM integrity_retained_v6 WHERE batch_id NOT IN (SELECT batch_id FROM batches); SELECT EXISTS(SELECT 1 FROM integrity_outstanding) OR EXISTS(SELECT 1 FROM integrity_retained_v6)";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+        }
         command.CommandText = "CREATE TABLE IF NOT EXISTS inventory_retained_v5 (batch_id TEXT PRIMARY KEY); DELETE FROM inventory_retained_batches WHERE batch_id NOT IN (SELECT batch_id FROM batches); DELETE FROM inventory_retained_v5 WHERE batch_id NOT IN (SELECT batch_id FROM batches)";
         command.ExecuteNonQuery();
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM inventory_outstanding WHERE source > 12) OR EXISTS(SELECT 1 FROM inventory_retained_v5)";
         var requiredVersion = Convert.ToInt32(command.ExecuteScalar()) != 0 ? 5 : 0;
-        if (requiredVersion == 5) return;
+        if (requiredVersion == 5)
+        {
+            if (version == 6) { command.CommandText = "PRAGMA user_version = 5"; command.ExecuteNonQuery(); }
+            return;
+        }
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM inventory_outstanding) OR EXISTS(SELECT 1 FROM inventory_retained_batches)";
         if (Convert.ToInt32(command.ExecuteScalar()) != 0) requiredVersion = 4;
         if (requiredVersion == 4)
         {
-            if (version == 5) { command.CommandText = "PRAGMA user_version = 4"; command.ExecuteNonQuery(); }
+            if (version is 5 or 6) { command.CommandText = "PRAGMA user_version = 4"; command.ExecuteNonQuery(); }
             return;
         }
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log_sources')";

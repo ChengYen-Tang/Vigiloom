@@ -4,6 +4,7 @@ using System.IO.Compression;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 
 namespace Vigiloom.Agent.Core.Transport;
 
@@ -96,6 +97,12 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             // A completed empty source still occupies one bounded queue record.
             return inventory!.BatchId == pending.BatchId && inventory.EnqueuedAt == pending.EnqueuedAt &&
                 Math.Max(1, inventory.Items.Count) == pending.RecordCount;
+        }
+        if (IntegrityChunkCodec.TryRead(pending.Payload, out var integrity))
+        {
+            schemaVersion = integrity!.SchemaVersion;
+            return integrity.BatchId == pending.BatchId && integrity.EnqueuedAt == pending.EnqueuedAt &&
+                Math.Max(1, integrity.Items.Count) == pending.RecordCount;
         }
         return false;
     }

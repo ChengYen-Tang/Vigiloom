@@ -4,11 +4,12 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Agent.Hosting.Logs;
 using Vigiloom.Agent.Hosting.Inventory;
+using Vigiloom.Agent.Hosting.Integrity;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Restores local settings and periodically synchronizes them without blocking other workers.</summary>
-internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentInventorySettingsClient inventoryClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, InventorySettingsRuntime inventory, IConfiguration configuration,
+internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentInventorySettingsClient inventoryClient, AgentIntegritySettingsClient integrityClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, InventorySettingsRuntime inventory, AgentIntegritySettingsRuntime integrity, IConfiguration configuration,
     TimeProvider clock, ILogger<AgentSettingsWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -24,6 +25,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 metrics.Bind(null);
                 logs.Bind(null);
                 inventory.Bind(null);
+                integrity.Bind(null);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
                 continue;
             }
@@ -38,6 +40,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 metrics.Bind(null);
                 logs.Bind(null);
                 inventory.Bind(null);
+                integrity.Bind(null);
                 try
                 {
                     owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
@@ -47,6 +50,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     metrics.Bind(owner);
                     logs.Bind(owner);
                     inventory.Bind(owner);
+                    integrity.Bind(owner);
                     var saved = await client.LoadSavedAsync(vault, uri, stoppingToken);
                     if (IsCurrent(directory, server) && saved.Settings is not null) runtime.Publish(owner, saved.Settings);
                 }
@@ -76,6 +80,16 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 }
                 try
                 {
+                    var savedIntegrity = await integrityClient.LoadSavedAsync(vault, uri, stoppingToken);
+                    if (IsCurrent(directory, server) && savedIntegrity.Settings is not null) integrity.Publish(owner, savedIntegrity.Settings);
+                }
+                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                {
+                    integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                    logger.LogWarning("Agent saved integrity settings could not be loaded: {ErrorType}.", ex.GetType().Name);
+                }
+                try
+                {
                     var savedLogs = await logClient.LoadSavedAsync(vault, uri, stoppingToken);
                     if (IsCurrent(directory, server) && savedLogs.Settings is not null) logs.Publish(owner, savedLogs.Settings);
                 }
@@ -96,6 +110,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         metrics.Bind(owner);
                         logs.Bind(owner);
                         inventory.Bind(owner);
+                        integrity.Bind(owner);
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Settings is not null) runtime.Publish(owner, result.Settings);
@@ -211,6 +226,31 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     {
                         logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent log settings synchronization failed: {ErrorType}.", ex.GetType().Name);
+                    }
+                    try
+                    {
+                        if (!IsCurrent(directory, server)) break;
+                        var result = await integrityClient.SyncAsync(vault, uri, stoppingToken);
+                        if (!IsCurrent(directory, server)) break;
+                        if (result.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) integrity.Bind(null);
+                        else if (result.Settings is not null) integrity.Publish(owner, result.Settings);
+                        else
+                        {
+                            var failure = result.Status switch
+                            {
+                                AgentSettingsSyncStatus.Unavailable => AgentConfigurationFailure.Unavailable,
+                                AgentSettingsSyncStatus.Invalid => AgentConfigurationFailure.Invalid,
+                                AgentSettingsSyncStatus.Unauthorized => AgentConfigurationFailure.Unauthorized,
+                                AgentSettingsSyncStatus.Conflict => AgentConfigurationFailure.Conflict,
+                                _ => (AgentConfigurationFailure?)null
+                            };
+                            if (failure is { } failureCode) integrity.MarkFailure(owner, failureCode);
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                    {
+                        integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                        logger.LogWarning("Agent integrity settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
                     var seconds = runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
                     if (!await DelayAsync(TimeSpan.FromSeconds(seconds), stoppingToken)) return;

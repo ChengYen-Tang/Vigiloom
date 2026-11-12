@@ -8,6 +8,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" />
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" />
+    <PackageReference Include="Microsoft.Win32.Registry.AccessControl" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.DirectoryServices.AccountManagement" />
   </ItemGroup>
