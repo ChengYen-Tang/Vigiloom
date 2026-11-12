@@ -33,8 +33,19 @@ public sealed class InventoryStatusClientTests
             var empty = await client.ReadAsync(vault, server, token);
             Assert.AreEqual(InventoryStatusResultKind.Success, empty.Kind);
             Assert.IsEmpty(empty.Sources!);
+            Assert.IsFalse(empty.SupportsProcessSources);
             Assert.AreEqual("/api/v1/agent/inventory/status", handler.Path);
+            Assert.AreEqual("?contract=5", handler.Query);
             Assert.StartsWith($"vla_{id:D}.", handler.Bearer);
+
+            handler.Body = "[{\"source\":13,\"highWaterGeneration\":1}]";
+            Assert.AreEqual(InventoryStatusResultKind.Invalid, (await client.ReadAsync(vault, server, token)).Kind);
+            handler.AdvertiseProcessSources = true;
+            var extended = await client.ReadAsync(vault, server, token);
+            Assert.AreEqual(InventoryStatusResultKind.Success, extended.Kind);
+            Assert.IsTrue(extended.SupportsProcessSources);
+            Assert.AreEqual(InventorySource.HostProcesses, extended.Sources![0].Source);
+            handler.AdvertiseProcessSources = false;
 
             handler.Body = "[{\"source\":3,\"highWaterGeneration\":7,\"activeGeneration\":7,\"lastAttemptGeneration\":6,\"lastOutcome\":1,\"lastStatus\":2}]";
             var result = await client.ReadAsync(vault, server, token);
@@ -80,14 +91,19 @@ public sealed class InventoryStatusClientTests
         public string Body { get; set; } = "[]";
         public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
         public string? Path { get; private set; }
+        public string? Query { get; private set; }
         public string? Bearer { get; private set; }
+        public bool AdvertiseProcessSources { get; set; }
         public Func<Task>? BeforeResponse { get; set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Path = request.RequestUri?.AbsolutePath;
+            Query = request.RequestUri?.Query;
             Bearer = request.Headers.Authorization?.Parameter;
             if (BeforeResponse is not null) await BeforeResponse();
-            return new HttpResponseMessage(Status) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
+            var response = new HttpResponseMessage(Status) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
+            if (AdvertiseProcessSources) response.Headers.Add("Vigiloom-Inventory-Contract", "5");
+            return response;
         }
     }
 }

@@ -92,7 +92,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         }
         if (InventoryChunkCodec.TryRead(pending.Payload, out var inventory))
         {
-            schemaVersion = InventoryChunkCodec.SchemaVersion;
+            schemaVersion = inventory!.SchemaVersion;
             // A completed empty source still occupies one bounded queue record.
             return inventory!.BatchId == pending.BatchId && inventory.EnqueuedAt == pending.EnqueuedAt &&
                 Math.Max(1, inventory.Items.Count) == pending.RecordCount;

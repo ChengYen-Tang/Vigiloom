@@ -21,6 +21,27 @@ internal static class InventoryPublication
         var status = incoming is null ? InventorySnapshotStatus.Rejected :
             snapshot.Outcome == InventoryOutcome.Complete ? InventorySnapshotStatus.Complete : InventorySnapshotStatus.Partial;
 
+        // New observation sources retain one partial result separately from their complete
+        // baseline. Never derive removals from it, and replace it on the next finished pass.
+        if (status == InventorySnapshotStatus.Partial && snapshot.Outcome == InventoryOutcome.Partial &&
+            state.Source > InventorySource.HostVolumes)
+        {
+            var previousGeneration = state.LastStatus == InventorySnapshotStatus.Partial && state.LastOutcome == InventoryOutcome.Partial
+                ? state.LastAttemptGeneration : state.CurrentGeneration;
+            if (previousGeneration is long previous)
+            {
+                var previousSnapshot = await db.InventorySnapshots.SingleAsync(x => x.AgentId == state.AgentId &&
+                    x.Source == state.Source && x.Generation == previous, cancellationToken);
+                var previousChunks = await ReadVerifiedAsync(db, previousSnapshot, cancellationToken)
+                    ?? throw new InvalidOperationException("The previous inventory observation failed verification.");
+                var observed = InventoryChanges.Compare(previousChunks.SelectMany(x => x.Items), incoming!.SelectMany(x => x.Items))
+                    .Where(x => x.Kind != InventoryChangeKind.Removed)
+                    .Select(x => x with { Kind = x.Kind == InventoryChangeKind.Added ? InventoryChangeKind.NewlyObserved : InventoryChangeKind.ObservedModified });
+                await WriteChangesAsync(observed);
+            }
+        }
+        await InventoryStaging.ClearLastPartialAsync(db, state, cancellationToken);
+
         if (status == InventorySnapshotStatus.Complete)
         {
             if (state.CurrentGeneration is long oldGeneration)
@@ -33,25 +54,8 @@ internal static class InventoryPublication
                     ?? throw new InvalidOperationException("The current inventory snapshot failed verification.");
                 var changes = InventoryChanges.Compare(prior.SelectMany(x => x.Items), incoming!.SelectMany(x => x.Items));
                 await InventoryStaging.DeleteChunksAsync(db, old, cancellationToken);
-                var batch = new List<InventoryChangeRecord>(128);
-                foreach (var change in changes)
-                {
-                    var key = change.After?.Key ?? change.Before!.Key;
-                    batch.Add(new InventoryChangeRecord(snapshot, now, (int)change.Kind, key,
-                        change.Before is null ? null : JsonSerializer.Serialize(change.Before),
-                        change.After is null ? null : JsonSerializer.Serialize(change.After)));
-                    if (batch.Count == 128) await SaveChangesAsync();
-                }
-                if (batch.Count > 0) await SaveChangesAsync();
+                await WriteChangesAsync(changes);
                 db.InventorySnapshots.Remove(old);
-
-                async Task SaveChangesAsync()
-                {
-                    db.InventoryChanges.AddRange(batch);
-                    await db.SaveChangesAsync(cancellationToken);
-                    foreach (var record in batch) db.Entry(record).State = EntityState.Detached;
-                    batch.Clear();
-                }
             }
             state.CurrentGeneration = snapshot.Generation;
             state.LastCompleteAt = snapshot.ObservedAt;
@@ -59,7 +63,9 @@ internal static class InventoryPublication
         else
         {
             // Failure or a partial read may never imply removal from the previous snapshot.
-            await InventoryStaging.DeleteChunksAsync(db, snapshot, cancellationToken);
+            if (status != InventorySnapshotStatus.Partial || snapshot.Outcome != InventoryOutcome.Partial ||
+                state.Source <= InventorySource.HostVolumes)
+                await InventoryStaging.DeleteChunksAsync(db, snapshot, cancellationToken);
         }
 
         snapshot.Status = status;
@@ -72,6 +78,28 @@ internal static class InventoryPublication
         state.LastStatus = status;
         state.LastRejectionReason = status == InventorySnapshotStatus.Rejected ? InventoryRejectionReason.Integrity : null;
         await db.SaveChangesAsync(cancellationToken);
+
+        async Task WriteChangesAsync(IEnumerable<InventoryChange> changes)
+        {
+            var batch = new List<InventoryChangeRecord>(128);
+            foreach (var change in changes)
+            {
+                var key = change.After?.Key ?? change.Before!.Key;
+                batch.Add(new InventoryChangeRecord(snapshot, now, (int)change.Kind, key,
+                    change.Before is null ? null : JsonSerializer.Serialize(change.Before),
+                    change.After is null ? null : JsonSerializer.Serialize(change.After)));
+                if (batch.Count == 128) await SaveBatchAsync();
+            }
+            if (batch.Count > 0) await SaveBatchAsync();
+
+            async Task SaveBatchAsync()
+            {
+                db.InventoryChanges.AddRange(batch);
+                await db.SaveChangesAsync(cancellationToken);
+                foreach (var record in batch) db.Entry(record).State = EntityState.Detached;
+                batch.Clear();
+            }
+        }
     }
 
     private static async Task<InventoryChunk[]?> ReadVerifiedAsync(SecurityAnalysisDbContext db,

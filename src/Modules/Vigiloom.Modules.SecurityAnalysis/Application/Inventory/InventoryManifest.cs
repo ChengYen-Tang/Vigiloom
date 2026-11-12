@@ -11,7 +11,7 @@ internal static class InventoryManifest
         snapshot.AgentId == owner.AgentId && snapshot.DeviceId == owner.DeviceId &&
         snapshot.DeviceGeneration == owner.DeviceGeneration && snapshot.Source == chunk.Source &&
         snapshot.Generation == chunk.Generation && snapshot.SnapshotId == chunk.SnapshotId &&
-        snapshot.SchemaVersion == chunk.SchemaVersion && snapshot.Outcome == chunk.Outcome &&
+        snapshot.SchemaVersion == chunk.SchemaVersion && snapshot.Outcome == chunk.Outcome && snapshot.PartialReason == chunk.PartialReason &&
         snapshot.ChunkCount == chunk.ChunkCount && snapshot.TotalItems == chunk.TotalItems &&
         snapshot.TotalBytes == chunk.TotalBytes && snapshot.ObservedAt == chunk.ObservedAt &&
         CryptographicOperations.FixedTimeEquals(snapshot.Digest, chunk.Digest);

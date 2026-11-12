@@ -10,7 +10,7 @@ namespace Vigiloom.Agent.Core.Inventory;
 
 public enum InventoryStatusResultKind { Success, NotRegistered, ServerMismatch, Unauthorized, Unavailable, Invalid, OwnerChanged }
 public sealed record InventoryStatusResult(InventoryStatusResultKind Kind, IReadOnlyList<InventorySourceStatus>? Sources = null,
-    AgentSettingsOwner? Owner = null);
+    AgentSettingsOwner? Owner = null, bool SupportsProcessSources = false);
 
 /// <summary>Reads an authenticated central generation fence before allocating new inventory work.</summary>
 public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
@@ -26,7 +26,7 @@ public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(expected, "api/v1/agent/inventory/status"));
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(expected, "api/v1/agent/inventory/status?contract=5"));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{identity.AgentId!.Value:D}.{identity.MachineSecret}");
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) return new(InventoryStatusResultKind.Unauthorized);
@@ -53,8 +53,12 @@ public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
             }
             var (current, _) = await IdentityClient.ReadRegisteredAsync(vault, expected, linked.Token);
             if (current?.AgentId != identity.AgentId) return new(InventoryStatusResultKind.OwnerChanged);
+            var supportsProcessSources = response.Headers.TryGetValues("Vigiloom-Inventory-Contract", out var advertised) &&
+                advertised.SequenceEqual(["5"], StringComparer.Ordinal);
+            if (!supportsProcessSources && sources.Any(x => x.Source > InventorySource.HostVolumes))
+                return new(InventoryStatusResultKind.Invalid);
             return new(InventoryStatusResultKind.Success, sources,
-                new AgentSettingsOwner(identity.AgentId!.Value, expected.AbsoluteUri, vault.StateDirectory));
+                new AgentSettingsOwner(identity.AgentId!.Value, expected.AbsoluteUri, vault.StateDirectory), supportsProcessSources);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(InventoryStatusResultKind.Unavailable); }
         catch (HttpRequestException) { return new(InventoryStatusResultKind.Unavailable); }

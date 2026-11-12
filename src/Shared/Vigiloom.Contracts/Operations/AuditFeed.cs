@@ -28,7 +28,8 @@ public sealed record AgentMetricSettingsAuditDetails(int? HostIntervalSeconds, i
     int? ProcessCollectionBudgetMs = null, int EffectiveProcessCollectionBudgetMs = 2000,
     int? IoLimitMiBPerMinute = null, int EffectiveIoLimitMiBPerMinute = 64);
 public sealed record HostLogSourceAuditDetails(Guid SourceId, Guid Generation, bool Enabled, string Version);
-public sealed record InventorySettingsAuditDetails(int? ScanIntervalSeconds, int EffectiveScanIntervalSeconds, string Revision, string Version);
+public sealed record InventorySettingsAuditDetails(int? ScanIntervalSeconds, int EffectiveScanIntervalSeconds, string Revision, string Version,
+    bool? CollectCommandLine = null, bool EffectiveCollectCommandLine = false);
 public sealed record AuditFeedEntry(DateTimeOffset OccurredAt, Guid? ActorId, Guid? SubjectId, AuditFeedAction Action, AuditFeedOutcome Outcome,
     AgentSettingsAuditDetails? AgentSettings = null, string? Reference = null, Guid? AgentId = null, AgentQueueCapacityAuditDetails? QueueCapacity = null,
     AgentMetricSettingsAuditDetails? MetricSettings = null, HostLogSourceAuditDetails? HostLogSource = null,

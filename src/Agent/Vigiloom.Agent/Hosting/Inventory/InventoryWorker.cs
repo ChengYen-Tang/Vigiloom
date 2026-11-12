@@ -18,9 +18,8 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var sources = Sources();
-        var index = 0;
-        var schedule = new InventoryPassSchedule(clock);
+        var schedule = new InventoryScanScheduler(clock, Sources(), OperatingSystem.IsWindows() || OperatingSystem.IsLinux()
+            ? [InventorySource.HostProcesses, InventorySource.HostServices, InventorySource.HostListeners] : []);
         AgentSettingsOwner? active = null;
         IAsyncDisposable? ownership = null;
         using var resources = resourceMonitor ?? new MetricResourceMonitor();
@@ -45,28 +44,28 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
                             active = null;
                             ownership = owner is null ? null : vault.AcquireInventoryOwnership();
                             active = owner;
-                            index = 0;
                             schedule.Reset();
                         }
                         var inventoryPolicy = owner is null ? null : inventorySettings.ApplyForOwner(owner, clock.GetUtcNow());
-                        if (owner is not null && inventoryPolicy is not null &&
-                            schedule.IsDue(inventoryPolicy.ScanIntervalSeconds))
+                        var metricPolicy = owner is null ? null : settings.ForOwner(owner);
+                        var source = inventoryPolicy is not null && metricPolicy is not null
+                            ? schedule.Next(inventoryPolicy.ScanIntervalSeconds, metricPolicy.ProcessIntervalSeconds) : null;
+                        if (owner is not null && inventoryPolicy is not null && source is { } selectedSource)
                         {
-                            schedule.Begin();
-                            var result = await cycle.RunAsync(vault, uri, sources[index], CollectAsync, stoppingToken, owner, ContinueUnderBudget);
+                            var result = await cycle.RunAsync(vault, uri, selectedSource, CollectAsync, stoppingToken, owner, ContinueUnderBudget);
                             if (result.Kind == InventoryCycleKind.QueuedFailure)
                                 logger.LogWarning("Agent inventory source {Source} exceeded a collection or queue limit; a failed read was queued.", result.Source);
-                            if (result.Kind is InventoryCycleKind.Complete or InventoryCycleKind.Rejected or InventoryCycleKind.TooLarge)
+                            if (result.Kind is InventoryCycleKind.Complete or InventoryCycleKind.Rejected or InventoryCycleKind.TooLarge or InventoryCycleKind.ServerUnsupported)
                             {
                                 if (result.Kind is InventoryCycleKind.Rejected or InventoryCycleKind.TooLarge)
                                     logger.LogWarning("Agent inventory source {Source} was rejected; it will be retried on the next pass.", result.Source);
-                                var completedIndex = Array.IndexOf(sources, result.Source);
-                                index = completedIndex < 0 ? 0 : completedIndex + 1;
-                                if (index >= sources.Length) { index = 0; schedule.Complete(); }
+                                schedule.FinishSource(result.Source);
                             }
 
                             async Task<InventoryReadResult<InventoryEntry>> CollectAsync(InventorySource source, CancellationToken token)
-                                => await WithBudget(inner => collectOverride is null ? collector.ReadAsync(source, inner) : collectOverride(source, inner), token, true);
+                                => await WithBudget(inner =>
+                                    CollectWithCurrentPolicy(inventorySettings, owner, clock, source,
+                                        (selected, enabled, ct) => collectOverride is null ? collector.ReadAsync(selected, ct, enabled) : collectOverride(selected, ct), inner), token, true);
 
                             async Task<Vigiloom.Agent.Core.Transport.EnqueueResult> ContinueUnderBudget(
                                 Func<CancellationToken, Task<Vigiloom.Agent.Core.Transport.EnqueueResult>> action, CancellationToken token)
@@ -103,7 +102,6 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
                         if (ownership is not null) await ownership.DisposeAsync();
                         ownership = null;
                         active = null;
-                        index = 0;
                         schedule.Reset();
                     }
                 }
@@ -129,6 +127,14 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
             ? [InventorySource.HostSystem, InventorySource.HostNetwork, InventorySource.HostVolumes, InventorySource.LinuxDpkg, InventorySource.LinuxRpm,
                 InventorySource.LinuxAccounts, InventorySource.LinuxGroups]
             : [InventorySource.HostSystem];
+
+    internal static Task<InventoryReadResult<InventoryEntry>> CollectWithCurrentPolicy(InventorySettingsRuntime settings,
+        AgentSettingsOwner owner, TimeProvider clock, InventorySource source,
+        Func<InventorySource, bool, CancellationToken, Task<InventoryReadResult<InventoryEntry>>> collect, CancellationToken token)
+    {
+        var latest = settings.ApplyForOwner(owner, clock.GetUtcNow()) ?? throw new InventoryDeferredException();
+        return collect(source, latest.CollectCommandLine, token);
+    }
 
     private sealed class InventoryDeferredException : Exception;
 }

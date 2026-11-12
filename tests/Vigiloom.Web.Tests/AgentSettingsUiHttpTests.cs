@@ -805,8 +805,11 @@ public sealed class AgentSettingsUiHttpTests
             {
                 var inventoryPlatformFields = await FieldsAsync(page, token, "agent-inventory");
                 inventoryPlatformFields["InventoryInput.ScanIntervalSeconds"] = "3600";
+                inventoryPlatformFields["InventoryInput.CollectCommandLine"] = "true";
                 using var saved = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(inventoryPlatformFields), token);
-                Assert.Contains("目前目標值：3600 秒", await BodyTextAsync(saved, token));
+                var savedText = await BodyTextAsync(saved, token);
+                Assert.Contains("目前目標值：3600 秒", savedText);
+                Assert.Contains("收集路徑，所有參數遮罩", savedText);
                 using var stale = await admin.PostAsync(platformUrl, new FormUrlEncodedContent(inventoryPlatformFields), token);
                 Assert.Contains("設定已被其他操作變更", await BodyTextAsync(stale, token));
             }
@@ -815,6 +818,7 @@ public sealed class AgentSettingsUiHttpTests
                 var text = await BodyTextAsync(audit, token);
                 Assert.Contains("變更主機盤點設定", text);
                 Assert.Contains("有效盤點間隔：3600 秒", text);
+                Assert.Contains("程序執行資訊：收集路徑，參數遮罩", text);
             }
             using (var denied = await reader.GetAsync("/settings/audit?source=inventory-settings", token))
                 Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
@@ -908,13 +912,18 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual("沿用 3600 秒", doc.QuerySelector("#agent-inventory-interval")!.GetAttribute("placeholder"));
                 Assert.Contains("Agent 尚未註冊", doc.Body!.TextContent);
                 var inventoryDeviceFields = await FieldsAsync(page, token, "agent-inventory");
+                inventoryDeviceFields["InventoryInput.CollectCommandLine"] = "false";
                 inventoryDeviceFields["InventoryInput.ScanIntervalSeconds"] = "7200";
                 using var saved = await admin.PostAsync(deviceUrl, new FormUrlEncodedContent(inventoryDeviceFields), token);
-                Assert.Contains("目前目標值：7200 秒", await BodyTextAsync(saved, token));
+                var savedText = await BodyTextAsync(saved, token);
+                Assert.Contains("目前目標值：7200 秒", savedText);
+                Assert.Contains("目前目標值：不收集", savedText);
                 var inventoryResetFields = await FieldsAsync(saved, token, "agent-inventory");
                 inventoryResetFields["InventoryInput.ScanIntervalSeconds"] = "";
                 using var resetResponse = await admin.PostAsync(deviceUrl, new FormUrlEncodedContent(inventoryResetFields), token);
-                Assert.Contains("目前目標值：3600 秒", await BodyTextAsync(resetResponse, token));
+                var resetText = await BodyTextAsync(resetResponse, token);
+                Assert.Contains("目前目標值：3600 秒", resetText);
+                Assert.Contains("目前目標值：收集路徑，所有參數遮罩", resetText);
             }
             using (var deviceMetricPage = await admin.GetAsync(deviceUrl, token))
             {
