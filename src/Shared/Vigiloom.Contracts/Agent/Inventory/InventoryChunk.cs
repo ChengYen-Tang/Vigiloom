@@ -18,16 +18,21 @@ public sealed record InventoryChunk(
     [property: JsonRequired] int TotalItems,
     [property: JsonRequired] long TotalBytes,
     [property: JsonRequired] byte[] Digest,
-    [property: JsonRequired] IReadOnlyList<InventoryEntry> Items);
+    [property: JsonRequired] IReadOnlyList<InventoryEntry> Items,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventoryPartialReason? PartialReason = null);
 
 public enum InventorySource
 {
     WindowsSoftware32 = 1, WindowsSoftware64 = 2, LinuxDpkg = 3, LinuxRpm = 4,
     LinuxAccounts = 5, LinuxGroups = 6, WindowsQuickFix = 7, HostSystem = 8,
-    WindowsAccounts = 9, WindowsGroups = 10, HostNetwork = 11, HostVolumes = 12
+    WindowsAccounts = 9, WindowsGroups = 10, HostNetwork = 11, HostVolumes = 12,
+    HostProcesses = 13, HostServices = 14, HostListeners = 15
 }
 
 public enum InventoryOutcome { Complete = 1, Partial = 2, PermissionDenied = 3, Unsupported = 4, Error = 5 }
+
+[Flags]
+public enum InventoryPartialReason { Other = 1, AccessDenied = 2, ToolUnavailable = 4, OwnerUnavailable = 8, Truncated = 16 }
 
 /// <summary>Fields are interpreted by source; this contract has no credentials or arbitrary properties.</summary>
 public sealed record InventoryEntry(
@@ -54,12 +59,25 @@ public sealed record InventoryEntry(
     string? ParentKey = null,
     string? Address = null,
     long? CapacityBytes = null,
-    string? HardwareType = null);
+    string? HardwareType = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? ProcessStartedAt = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ParentProcessId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RunAs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ExecutablePath = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CommandLine = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ServiceStatus = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? StartupMode = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Protocol = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Port = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? OwningProcessId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? OwningProcessStartedAt = null);
 
 /// <summary>Bounds the uncompressed snapshot envelope before staging or durable queueing.</summary>
 public static class InventoryChunkCodec
 {
     public const int SchemaVersion = 4;
+    public const int ProcessSchemaVersion = 5;
+    public const string MaskedArgumentsSuffix = " [arguments hidden]";
     public const int MaximumItemsPerChunk = 100;
     public const int MaximumChunks = 1024;
     public const int MaximumSnapshotItems = 20_000;
@@ -100,7 +118,7 @@ public static class InventoryChunkCodec
 
     private static bool IsValid(InventoryChunk? chunk)
     {
-        if (chunk is null || chunk.SchemaVersion != SchemaVersion || chunk.BatchId.Version != 7 || chunk.SnapshotId.Version != 7 ||
+        if (chunk is null || !VersionMatchesSource(chunk.SchemaVersion, chunk.Source) || chunk.BatchId.Version != 7 || chunk.SnapshotId.Version != 7 ||
             chunk.Generation < 1 || !Enum.IsDefined(chunk.Source) || !Enum.IsDefined(chunk.Outcome) ||
             chunk.EnqueuedAt == default || chunk.EnqueuedAt.Offset != TimeSpan.Zero ||
             chunk.ObservedAt == default || chunk.ObservedAt.Offset != TimeSpan.Zero ||
@@ -109,6 +127,8 @@ public static class InventoryChunkCodec
             chunk.TotalBytes < 2L * chunk.ChunkCount || (chunk.TotalItems > 0 && chunk.TotalItems < chunk.ChunkCount) ||
             chunk.Digest is not { Length: 32 } || chunk.Items is not { Count: <= MaximumItemsPerChunk } ||
             chunk.Items.Count > chunk.TotalItems) return false;
+        if (chunk.PartialReason is { } reason && (chunk.SchemaVersion != ProcessSchemaVersion || chunk.Outcome != InventoryOutcome.Partial ||
+            reason == 0 || (reason & ~(InventoryPartialReason.Other | InventoryPartialReason.AccessDenied | InventoryPartialReason.ToolUnavailable | InventoryPartialReason.OwnerUnavailable | InventoryPartialReason.Truncated)) != 0)) return false;
         if (chunk.TotalItems == 0 && (chunk.ChunkCount != 1 || chunk.ChunkIndex != 0 || chunk.Items.Count != 0)) return false;
         if (chunk.TotalItems > 0 && chunk.Items.Count == 0) return false;
         if (chunk.Outcome is InventoryOutcome.PermissionDenied or InventoryOutcome.Unsupported or InventoryOutcome.Error && chunk.TotalItems != 0) return false;
@@ -127,6 +147,14 @@ public static class InventoryChunkCodec
                 !ValidText(item.ResourceType, 128, true) || !ValidText(item.ParentKey, 2048, true) ||
                 !ValidText(item.Address, 256, true) || item.CapacityBytes is < 0 ||
                 !ValidText(item.HardwareType, 128, true) ||
+                !ValidText(item.RunAs, 256, true) || !ValidText(item.ExecutablePath, 2048, true) ||
+                !ValidText(item.CommandLine, 2048, true) || !ValidText(item.ServiceStatus, 128, true) ||
+                !ValidText(item.StartupMode, 128, true) || !ValidText(item.Protocol, 16, true) ||
+                item.ParentProcessId is < 0 || item.OwningProcessId is < 0 || item.Port is < 0 or > 65535 ||
+                item.ProcessStartedAt is { } processStart && (processStart == default || processStart.Offset != TimeSpan.Zero) ||
+                item.OwningProcessStartedAt is { } ownerStart && (ownerStart == default || ownerStart.Offset != TimeSpan.Zero) ||
+                chunk.SchemaVersion == SchemaVersion && HasProcessFields(item) ||
+                chunk.Source != InventorySource.HostProcesses && (item.CommandLine is not null || item.ExecutablePath is not null) ||
                 item.BootedAt is { } boot && (boot == default || boot.Offset != TimeSpan.Zero) ||
                 item.Members is { Count: > MaximumMembers } || item.Members?.Any(member => !ValidText(member, MaximumMemberLength, false)) == true ||
                 !ValidForSource(chunk.Source, item)) return false;
@@ -138,6 +166,17 @@ public static class InventoryChunkCodec
 
     private static bool ValidText(string? value, int limit, bool optional) =>
         value is null ? optional : value.Length <= limit && !string.IsNullOrWhiteSpace(value) && !value.Any(char.IsControl);
+
+    private static bool VersionMatchesSource(int version, InventorySource source) => source switch
+    {
+        >= InventorySource.HostProcesses and <= InventorySource.HostListeners => version == ProcessSchemaVersion,
+        _ => version == SchemaVersion
+    };
+
+    private static bool HasProcessFields(InventoryEntry item) => item.ProcessStartedAt is not null || item.ParentProcessId is not null ||
+        item.RunAs is not null || item.ExecutablePath is not null || item.CommandLine is not null || item.ServiceStatus is not null ||
+        item.StartupMode is not null || item.Protocol is not null || item.Port is not null || item.OwningProcessId is not null ||
+        item.OwningProcessStartedAt is not null;
 
     private static bool ValidForSource(InventorySource source, InventoryEntry item) => source switch
     {
@@ -153,6 +192,10 @@ public static class InventoryChunkCodec
             _ => false
         },
         InventorySource.HostVolumes => item.ResourceType == "volume",
+        InventorySource.HostProcesses => item.NumericId is not null && item.ProcessStartedAt is not null &&
+            (item.CommandLine is null || item.ExecutablePath is not null && item.CommandLine == item.ExecutablePath + MaskedArgumentsSuffix),
+        InventorySource.HostServices => item.ServiceStatus is not null,
+        InventorySource.HostListeners => item.Address is not null && item.Port is > 0 && item.Protocol is "tcp" or "udp",
         _ => true
     };
 

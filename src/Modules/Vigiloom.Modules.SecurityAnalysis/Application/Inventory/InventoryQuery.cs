@@ -16,12 +16,21 @@ public sealed class InventoryQuery(IDbContextFactory<SecurityAnalysisDbContext> 
                 new { state.AgentId, state.Source, Generation = state.CurrentGeneration } equals
                 new { snapshot.AgentId, snapshot.Source, Generation = (long?)snapshot.Generation } into current
             from snapshot in current.DefaultIfEmpty()
+            join attempt in db.InventorySnapshots.AsNoTracking() on
+                new { state.AgentId, state.Source, Generation = state.LastAttemptGeneration } equals
+                new { attempt.AgentId, attempt.Source, Generation = (long?)attempt.Generation } into attempts
+            from attempt in attempts.DefaultIfEmpty()
             where state.AgentId == agentId && state.DeviceId == deviceId
             orderby state.Source
             select new InventorySourceView(state.Source, state.LastAttemptAt, state.LastOutcome,
                 (InventoryCompletion?)state.LastStatus, state.LastRejectionReason, state.LastCompleteAt,
                 snapshot == null ? null : snapshot.SnapshotId, snapshot == null ? null : snapshot.ObservedAt,
-                snapshot == null ? null : snapshot.ChunkCount, snapshot == null ? null : snapshot.TotalItems)).ToArrayAsync(token);
+                snapshot == null ? null : snapshot.ChunkCount, snapshot == null ? null : snapshot.TotalItems,
+                attempt != null && attempt.Source > InventorySource.HostVolumes && attempt.Status == Domain.Inventory.InventorySnapshotStatus.Partial && attempt.Outcome == InventoryOutcome.Partial ? attempt.SnapshotId : null,
+                attempt != null && attempt.Source > InventorySource.HostVolumes && attempt.Status == Domain.Inventory.InventorySnapshotStatus.Partial && attempt.Outcome == InventoryOutcome.Partial ? attempt.ObservedAt : null,
+                attempt != null && attempt.Source > InventorySource.HostVolumes && attempt.Status == Domain.Inventory.InventorySnapshotStatus.Partial && attempt.Outcome == InventoryOutcome.Partial ? attempt.ChunkCount : null,
+                attempt != null && attempt.Source > InventorySource.HostVolumes && attempt.Status == Domain.Inventory.InventorySnapshotStatus.Partial && attempt.Outcome == InventoryOutcome.Partial ? attempt.TotalItems : null,
+                attempt == null ? null : attempt.PartialReason)).ToArrayAsync(token);
         return new(deviceId, agentId, sources);
     }
 
@@ -33,12 +42,14 @@ public sealed class InventoryQuery(IDbContextFactory<SecurityAnalysisDbContext> 
         await using var db = await contexts.CreateDbContextAsync(token);
         var payload = await (from state in db.InventorySources.AsNoTracking()
             join snapshot in db.InventorySnapshots.AsNoTracking() on
-                new { state.AgentId, state.Source, Generation = state.CurrentGeneration } equals
-                new { snapshot.AgentId, snapshot.Source, Generation = (long?)snapshot.Generation }
+                new { state.AgentId, state.Source } equals new { snapshot.AgentId, snapshot.Source }
             join chunk in db.InventoryChunks.AsNoTracking() on
                 new { snapshot.AgentId, snapshot.Source, snapshot.Generation } equals new { chunk.AgentId, chunk.Source, chunk.Generation }
             where state.AgentId == agentId && state.DeviceId == deviceId && state.Source == source &&
-                snapshot.SnapshotId == snapshotId && chunk.ChunkIndex == chunkIndex
+                snapshot.SnapshotId == snapshotId && chunk.ChunkIndex == chunkIndex &&
+                (snapshot.Generation == state.CurrentGeneration ||
+                 state.Source > InventorySource.HostVolumes && snapshot.Generation == state.LastAttemptGeneration &&
+                 snapshot.Status == Domain.Inventory.InventorySnapshotStatus.Partial && snapshot.Outcome == InventoryOutcome.Partial)
             select chunk.Payload).SingleOrDefaultAsync(token);
         if (payload is null) return null;
         if (!InventoryChunkCodec.TryRead(payload, out var parsed) || parsed!.SnapshotId != snapshotId ||

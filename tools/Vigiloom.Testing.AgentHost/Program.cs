@@ -10,6 +10,19 @@ using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
 
+if (args.Length == 2 && args[0] == "--observe-process-pid" && int.TryParse(args[1], out var observedPid))
+{
+    var sample = Vigiloom.Agent.Core.Processes.ProcessReader.Read(CancellationToken.None);
+    var process = sample.Items.Single(x => x.ProcessId == observedPid);
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(process));
+    return;
+}
+if (args.Length == 1 && args[0] == "--hold-for-inventory")
+{
+    Console.WriteLine("READY");
+    await Console.In.ReadLineAsync();
+    return;
+}
 // Test-only process: runs the production host with a strictly scoped temporary CA.
 // No product TLS behavior or system trust store is modified.
 var rootPath = Environment.GetEnvironmentVariable("VIGILOOM_TEST_CA") ?? throw new InvalidOperationException("Test CA is required.");

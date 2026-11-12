@@ -177,6 +177,8 @@ public sealed class IdentityVault(string directory)
             ReadFileAsync<AgentSavedMetricSettings>("metric-settings.dat", token);
         internal Task<AgentSavedInventorySettings?> ReadInventorySettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedInventorySettings>("inventory-settings.dat", token);
+        internal Task<AgentSavedInventorySettings?> ReadExtendedInventorySettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentSavedInventorySettings>("inventory-settings-v2.dat", token);
         internal Task<AgentSavedLogSettings?> ReadLogSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedLogSettings>("log-settings.dat", token, MaximumLogSettingsBytes);
 
@@ -211,6 +213,8 @@ public sealed class IdentityVault(string directory)
             WriteFileAsync("metric-settings.dat", settings, token);
         internal Task WriteInventorySettingsAsync(AgentSavedInventorySettings settings, CancellationToken token) =>
             WriteFileAsync("inventory-settings.dat", settings, token);
+        internal Task WriteExtendedInventorySettingsAsync(AgentSavedInventorySettings settings, CancellationToken token) =>
+            WriteFileAsync("inventory-settings-v2.dat", settings, token);
         internal Task WriteLogSettingsAsync(AgentSavedLogSettings settings, CancellationToken token) =>
             WriteFileAsync("log-settings.dat", settings, token, MaximumLogSettingsBytes);
 

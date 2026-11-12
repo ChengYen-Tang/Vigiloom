@@ -22,7 +22,7 @@ internal static class SnapshotVerification
             var chunk = ordered[index];
             if (chunk.ChunkIndex != index || chunk.SchemaVersion != manifest.SchemaVersion || chunk.SnapshotId != manifest.SnapshotId ||
                 chunk.Generation != manifest.Generation || chunk.Source != manifest.Source || chunk.ObservedAt != manifest.ObservedAt ||
-                chunk.Outcome != manifest.Outcome || chunk.ChunkCount != manifest.ChunkCount || chunk.TotalItems != manifest.TotalItems ||
+                chunk.Outcome != manifest.Outcome || chunk.PartialReason != manifest.PartialReason || chunk.ChunkCount != manifest.ChunkCount || chunk.TotalItems != manifest.TotalItems ||
                 chunk.TotalBytes != manifest.TotalBytes || !CryptographicOperations.FixedTimeEquals(chunk.Digest, manifest.Digest)) return false;
             foreach (var item in chunk.Items)
             {

@@ -7,6 +7,18 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 public sealed class InventoryChangesTests
 {
     [TestMethod]
+    public void Compare_ProcessKeepsStableIdentityDespiteEstimatedUtcDrift()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var process = new InventoryEntry("linux:boot:42:100", "worker", NumericId: 42, ProcessStartedAt: now);
+        Assert.IsEmpty(InventoryChanges.Compare([process], [process with { ProcessStartedAt = now.AddMilliseconds(5) }]));
+        var reused = process with { Key = "linux:boot:42:200", ProcessStartedAt = now.AddSeconds(1) };
+        var changes = InventoryChanges.Compare([process], [reused]);
+        Assert.HasCount(2, changes);
+        Assert.IsTrue(changes.Any(x => x.Kind == InventoryChangeKind.Added));
+        Assert.IsTrue(changes.Any(x => x.Kind == InventoryChangeKind.Removed));
+    }
+    [TestMethod]
     public void Compare_ReportsAdditionsRemovalsAndChangesWithCaseSensitiveKeys()
     {
         InventoryEntry[] previous = [new("A", "old"), new("unchanged", "same"), new("removed", "gone")];

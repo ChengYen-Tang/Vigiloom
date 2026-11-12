@@ -12,7 +12,7 @@ public sealed class InventorySnapshot
     {
         AgentId = owner.AgentId; DeviceId = owner.DeviceId; DeviceGeneration = owner.DeviceGeneration;
         Source = chunk.Source; Generation = chunk.Generation; SnapshotId = chunk.SnapshotId; SchemaVersion = chunk.SchemaVersion;
-        Outcome = chunk.Outcome; ChunkCount = chunk.ChunkCount; TotalItems = chunk.TotalItems; TotalBytes = chunk.TotalBytes;
+        Outcome = chunk.Outcome; PartialReason = chunk.PartialReason; ChunkCount = chunk.ChunkCount; TotalItems = chunk.TotalItems; TotalBytes = chunk.TotalBytes;
         Digest = chunk.Digest.ToArray(); ObservedAt = chunk.ObservedAt; StartedAt = now; Status = InventorySnapshotStatus.Staging;
     }
 
@@ -25,6 +25,7 @@ public sealed class InventorySnapshot
     public Guid SnapshotId { get; private set; }
     public int SchemaVersion { get; private set; }
     public InventoryOutcome Outcome { get; private set; }
+    public InventoryPartialReason? PartialReason { get; private set; }
     public int ChunkCount { get; private set; }
     public int TotalItems { get; private set; }
     public long TotalBytes { get; private set; }

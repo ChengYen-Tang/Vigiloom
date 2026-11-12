@@ -11,6 +11,56 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentInventorySettingsClientTests(TestContext context)
 {
     [TestMethod]
+    public async Task Store_ExtendedPolicyKeepsLegacyMirrorAndRejectsStaleExtendedCopy()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventorySettingsTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = context.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { AgentId = id, Server = server.AbsoluteUri,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var store = new AgentInventorySettingsStore(vault, server, id);
+            var saved = await store.SaveAsync(InventorySettingsSnapshot.Create(new(3600, true)), null, DateTimeOffset.UtcNow, token);
+            Assert.IsTrue((await store.ReadAsync(token))!.Snapshot.Settings.CollectCommandLine);
+            await using (var session = vault.Acquire())
+            {
+                // Simulate interruption after the extended file is written but before
+                // its matching schema-1 mirror is committed.
+                await session.WriteExtendedInventorySettingsAsync(saved with { SaveToken = Guid.CreateVersion7() }, token);
+            }
+            var interrupted = await store.ReadAsync(token);
+            Assert.IsNotNull(interrupted);
+            Assert.IsFalse(interrupted.Snapshot.Settings.CollectCommandLine);
+            saved = await store.SaveAsync(InventorySettingsSnapshot.Create(new(3600, true)), interrupted.SaveToken, DateTimeOffset.UtcNow, token);
+            await using (var session = vault.Acquire())
+            {
+                var legacy = await session.ReadInventorySettingsAsync(token);
+                Assert.IsNotNull(legacy);
+                Assert.AreEqual(InventorySettingsSnapshot.CurrentSchema, legacy.Snapshot.SchemaVersion);
+                Assert.IsFalse(legacy.Snapshot.Settings.CollectCommandLine);
+                Assert.IsTrue(legacy.Snapshot.IsValid());
+                // An old binary writes a new legacy token, invalidating the extended policy.
+                await session.WriteInventorySettingsAsync(legacy with { SaveToken = Guid.CreateVersion7() }, token);
+            }
+            var afterRollback = await store.ReadAsync(token);
+            Assert.IsNotNull(afterRollback);
+            Assert.IsFalse(afterRollback.Snapshot.Settings.CollectCommandLine);
+            Assert.AreNotEqual(saved.SaveToken, afterRollback.SaveToken);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+    [TestMethod]
     public async Task Sync_RetainsLastGoodPolicyAndFencesDifferentOwners()
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventorySettingsTests");
