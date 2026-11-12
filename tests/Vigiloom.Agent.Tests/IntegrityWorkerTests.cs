@@ -62,7 +62,8 @@ public sealed class IntegrityWorkerTests
                 while (runtime.Report(owner)?.Report.AppliedRevision is null) await Task.Delay(50, deadline.Token);
                 Assert.AreEqual(snapshot.Revision, runtime.Report(owner)!.Value.Report.AppliedRevision);
                 Assert.AreEqual(0, Volatile.Read(ref collected));
-                Assert.IsNull(await new DurableBatchQueue(vault, owner.AgentId).ReadOutstandingIntegrityAsync(owner, deadline.Token));
+                var queue = new DurableBatchQueue(vault, owner.AgentId);
+                Assert.IsNull(await IntegrityTestLease.ReadAsync(() => queue.ReadOutstandingIntegrityAsync(owner, deadline.Token), deadline.Token));
             }
             finally
             {
@@ -145,13 +146,16 @@ public sealed class IntegrityWorkerTests
                 var queue = new DurableBatchQueue(vault, owner.AgentId);
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(15));
-                while (await queue.ReadOutstandingIntegrityAsync(owner, deadline.Token) is null)
+                while (true)
+                {
+                    if (await IntegrityTestLease.ReadAsync(() => queue.ReadOutstandingIntegrityAsync(owner, deadline.Token), deadline.Token) is not null) break;
                     await Task.Delay(50, deadline.Token);
+                }
                 Assert.AreEqual(1, Volatile.Read(ref collected));
                 Assert.AreEqual(firstScopeFails ? 1 : 0, Volatile.Read(ref failures));
-                Assert.IsNotNull(await queue.ReadIntegrityGapAsync(owner, expected.Id, expected.Revision, deadline.Token));
-                Assert.IsGreaterThan(0, (await queue.GetStatusAsync(deadline.Token)).TotalBatches);
-                var queued = await queue.PeekAsync(deadline.Token);
+                Assert.IsNotNull(await IntegrityTestLease.ReadAsync(() => queue.ReadIntegrityGapAsync(owner, expected.Id, expected.Revision, deadline.Token), deadline.Token));
+                Assert.IsGreaterThan(0, (await IntegrityTestLease.ReadAsync(() => queue.GetStatusAsync(deadline.Token), deadline.Token)).TotalBatches);
+                var queued = await IntegrityTestLease.ReadAsync(() => queue.PeekAsync(deadline.Token), deadline.Token);
                 Assert.IsNotNull(queued);
                 Assert.IsTrue(IntegrityChunkCodec.TryRead(queued.Payload, out var chunk));
                 Assert.IsTrue(chunk!.CoverageGap);

@@ -79,7 +79,11 @@ public sealed class IntegrityHostTests
                 else
                 {
                     QueuedBatch? batch;
-                    while ((batch = await queue.PeekAsync(deadline.Token)) is null) await Task.Delay(50, deadline.Token);
+                    while (true)
+                    {
+                        if ((batch = await IntegrityTestLease.ReadAsync(() => queue.PeekAsync(deadline.Token), deadline.Token)) is not null) break;
+                        await Task.Delay(50, deadline.Token);
+                    }
                     Assert.IsTrue(IntegrityChunkCodec.TryRead(batch.Payload, out parsed));
                 }
                 Assert.IsTrue(parsed!.CoverageGap);
