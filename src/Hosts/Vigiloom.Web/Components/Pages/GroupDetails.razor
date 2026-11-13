@@ -79,7 +79,7 @@
                     <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>環境</th><th>群組歸屬</th></tr></thead><tbody>
                     @foreach (var service in serviceList.Items)
                     {
-                        <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td>@service.Name</td><td>@service.Environment</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
+                        <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td><a href="@($"/services/{service.Id:D}")">@service.Name</a></td><td>@service.Environment</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
                     }
                     </tbody></table></div>
                     <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">

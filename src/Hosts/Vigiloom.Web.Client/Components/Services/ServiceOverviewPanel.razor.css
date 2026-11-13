@@ -1,0 +1,38 @@
+.service-heading h1 { color: var(--text-primary, #0c214a); margin-bottom: .25rem; }
+.service-heading { overflow-wrap: anywhere; }
+.service-card { background: white; border: 1px solid #dce6f2; border-radius: .6rem; margin: 1rem 0; padding: 1.25rem; color: #10264c; }
+.service-card h2 { margin-top: 0; font-size: 1.15rem; }
+.service-card p { line-height: 1.5; margin: .45rem 0; }
+.service-state { font-size: 1.05rem; }
+.service-state .health-healthy { color: #087b48; }
+.service-state .health-degraded { color: #956000; }
+.service-state .health-unhealthy { color: #b3261e; }
+.service-state .health-unknown { color: #52647d; }
+.health-timeline { display: flex; height: 1rem; overflow: hidden; border-radius: .5rem; margin-top: 1rem; }
+.health-timeline span { flex-basis: 0; min-width: 1px; }
+.health-timeline .health-healthy { background: #1da369; }
+.health-timeline .health-degraded { background: #e8a426; }
+.health-timeline .health-unhealthy { background: #cc4848; }
+.health-timeline .health-unknown { background: repeating-linear-gradient(135deg,#b9c5d5 0 4px,#e7edf4 4px 8px); }
+.health-legend { color: #52647d; font-size: .9rem; }
+.health-legend span { display: inline-flex; align-items: center; margin-right: .8rem; gap: .3rem; }
+.health-legend span::before { content: ""; width: .6rem; height: .6rem; border-radius: 50%; background: #8998aa; }
+.health-legend .health-healthy::before { background: #1da369; }
+.health-legend .health-degraded::before { background: #e8a426; }
+.health-legend .health-unhealthy::before { background: #cc4848; }
+.metric-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(10rem,1fr)); gap: .75rem; }
+.metric-cards div { display: flex; flex-direction: column; gap: .4rem; border: 1px solid #dce6f2; border-radius: .5rem; padding: 1rem; }
+.metric-cards strong { font-size: 1.3rem; }
+.service-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+.service-actions button { min-height: 44px; padding: .5rem .8rem; }
+.health-evidence-button { color: #17427e !important; background: #fff !important; border: 1px solid #cbd9ea !important; }
+.service-card summary { cursor: pointer; color: #17427e; margin-top: .75rem; }
+.service-actions label { display: inline-flex; flex-direction: column; gap: .25rem; }
+.range-actions button[aria-pressed="false"] { color: #17427e !important; background: #fff; border: 1px solid #cbd9ea; }
+.range-actions button[aria-pressed="true"] { color: #fff; background: #075be7; border: 1px solid #075be7; }
+.service-table { overflow-x: auto; }
+.service-table table { width: 100%; border-collapse: collapse; }
+.service-table th, .service-table td { text-align: left; padding: .65rem; border-bottom: 1px solid #e5ebf2; white-space: nowrap; }
+.service-table th { background: #f1f6fb; }
+.service-table .evidence-body { white-space: pre-wrap; min-width: 15rem; max-width: 35rem; overflow-wrap: anywhere; }
+.service-error { color: #9a1c1c; }

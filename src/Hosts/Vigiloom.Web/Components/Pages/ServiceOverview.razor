@@ -1,0 +1,13 @@
+@page "/services/{Id:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+
+<PageTitle>應用服務 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="/groups">← 返回群組</a>
+    <Vigiloom.Web.Client.Components.Services.ServiceOverviewPanel ServiceId="Id" @rendermode="InteractiveAuto" />
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+}

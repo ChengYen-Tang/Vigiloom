@@ -154,6 +154,7 @@ public sealed class GroupManagementTests
         using (var membersPage = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
         {
             var memberForm = await FormAsync(membersPage, "group-services", token);
+            Assert.IsNotNull(memberForm.QuerySelector($"a[href='/services/{serviceId:D}']"));
             Assert.IsNull(memberForm.QuerySelector("button[value='add']"));
             Assert.IsNotNull(memberForm.QuerySelector("button[value='remove']"));
             var memberFields = Hidden(memberForm);

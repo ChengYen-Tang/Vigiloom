@@ -23,12 +23,17 @@ public sealed record HealthNetworkRevisionSnapshot(long Generation, DateTimeOffs
 public enum HealthCheckObservationKind { Healthy = 1, Degraded = 2, Unhealthy = 3, Timeout = 4, TransportError = 5, InvalidResponse = 6, NetworkDenied = 7 }
 /// <summary>The latest recorded probe, which is not by itself a current service-health verdict.</summary>
 public sealed record HealthCheckObservation(Guid TargetId, HealthCheckObservationKind Kind, DateTimeOffset ObservedAt, DateTimeOffset ReceivedAt);
+public sealed record HealthObservationPage(IReadOnlyList<HealthCheckObservation> Items, bool HasMore);
 
 /// <summary>Evaluated application health; unknown includes missing, expired or invalidated evidence.</summary>
 public enum ServiceHealthState { Unknown, Healthy, Degraded, Unhealthy }
 
 /// <summary>Current aggregate health and the number of configured participants with unknown evidence.</summary>
-public sealed record ServiceHealthStatus(ServiceHealthState State, int Participants, int UnknownParticipants);
+[Flags]
+public enum ServiceHealthUnknownReason { None = 0, NotConfigured = 1, Disabled = 2, Waiting = 4, Expired = 8, Invalidated = 16 }
+
+public sealed record ServiceHealthStatus(ServiceHealthState State, int Participants, int UnknownParticipants,
+    ServiceHealthUnknownReason UnknownReasons = ServiceHealthUnknownReason.None);
 
 /// <summary>One UTC half-open interval of evaluated service health.</summary>
 public sealed record ServiceHealthInterval(DateTimeOffset Start, DateTimeOffset End, ServiceHealthState State, int UnknownParticipants);

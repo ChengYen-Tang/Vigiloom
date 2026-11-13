@@ -16,5 +16,6 @@ builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.H
 builder.Services.AddScoped<IWorkspaceIdentityClient, BrowserWorkspaceIdentityClient>();
 builder.Services.AddScoped<ISpeedHistoryClient, BrowserSpeedHistoryClient>();
 builder.Services.AddScoped<IHostMonitoringClient, BrowserHostMonitoringClient>();
+builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, BrowserServiceDetailsClient>();
 
 await builder.Build().RunAsync();

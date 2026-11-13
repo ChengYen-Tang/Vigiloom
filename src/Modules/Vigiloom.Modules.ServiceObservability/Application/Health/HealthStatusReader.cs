@@ -32,6 +32,10 @@ public sealed class HealthStatusReader(IDbContextFactory<ServiceObservabilityDbC
                               PolicyVersion = policy == null ? null : policy.Version, Schedule = schedule }).ToArrayAsync(token);
         var now = await DiscoveryTransaction.NowAsync(db, token);
         var states = new EvaluatedHealth[rows.Length];
+        var reasons = ServiceHealthUnknownReason.None;
+        if (rows.Length == 0)
+            reasons = await db.HealthTargets.AsNoTracking().AnyAsync(x => x.ServiceId == serviceId, token)
+                ? ServiceHealthUnknownReason.Disabled : ServiceHealthUnknownReason.NotConfigured;
         for (var i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
@@ -41,13 +45,24 @@ public sealed class HealthStatusReader(IDbContextFactory<ServiceObservabilityDbC
                 (row.InstanceId is not null && (row.InstanceVersion is null || row.InstanceRetired is not null)) ||
                 !Same(schedule.SourceVersion, row.SourceVersion) || !Same(schedule.ServiceVersion, row.ServiceVersion) ||
                 !Same(schedule.TargetVersion, row.TargetVersion) || !Same(schedule.InstanceVersion, row.InstanceVersion) ||
-                row.PolicyVersion is null || !Same(schedule.NetworkVersion, row.PolicyVersion)) continue;
+                row.PolicyVersion is null || !Same(schedule.NetworkVersion, row.PolicyVersion))
+            {
+                reasons |= schedule is null ? ServiceHealthUnknownReason.Waiting : ServiceHealthUnknownReason.Invalidated;
+                continue;
+            }
             var state = new HealthEvaluationState((EvaluatedHealth)schedule.State, schedule.EvidenceAt,
                 (HealthStreak)schedule.Streak, schedule.StreakCount, schedule.StreakAt, schedule.LastEvaluatedAt);
-            states[i] = HealthEvaluation.Expire(state, now, row.IntervalSeconds, row.TimeoutSeconds).State.State;
+            var expired = HealthEvaluation.Expire(state, now, row.IntervalSeconds, row.TimeoutSeconds);
+            states[i] = expired.State.State;
+            if (expired.State.State == EvaluatedHealth.Unknown)
+            {
+                var freshness = TimeSpan.FromSeconds(2 * row.IntervalSeconds + row.TimeoutSeconds);
+                reasons |= expired.ExpiredAt is not null || schedule.LastEvaluatedAt is { } last && last + freshness <= now
+                    ? ServiceHealthUnknownReason.Expired : ServiceHealthUnknownReason.Waiting;
+            }
         }
         var aggregate = HealthAggregation.Combine(states);
-        return new((ServiceHealthState)aggregate.State, aggregate.Participants, aggregate.Unknown);
+        return new((ServiceHealthState)aggregate.State, aggregate.Participants, aggregate.Unknown, reasons);
     }
 
     private static bool Same(byte[]? left, byte[]? right) =>
