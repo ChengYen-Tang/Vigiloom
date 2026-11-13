@@ -44,6 +44,32 @@ public sealed class HostDetailsSnapshotBrowserTests
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByRole(AriaRole.Button, new() { Name = "查看盤點變更", Exact = true }).ClickAsync();
+        var inventoryChanges = page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" });
+        await inventoryChanges.GetByText("部分觀察：首次看到", new() { Exact = true }).WaitForAsync();
+        if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
+        {
+            Directory.CreateDirectory(evidence);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "inventory-changes.png"), FullPage = true });
+        }
+        await page.SetViewportSizeAsync(390, 844);
+        Assert.IsTrue(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= window.innerWidth"));
+        await page.SetViewportSizeAsync(1280, 720);
+        var group = inventoryChanges.GetByRole(AriaRole.Row).Filter(new() { HasText = "test group" });
+        await group.GetByText("變更後", new() { Exact = true }).ClickAsync();
+        await inventoryChanges.GetByText("版本：2.0", new() { Exact = false }).WaitForAsync();
+        await inventoryChanges.GetByRole(AriaRole.Button, new() { Name = "查看成員（101）" }).ClickAsync();
+        await inventoryChanges.GetByRole(AriaRole.Button, new() { Name = "下一頁", Exact = true }).ClickAsync();
+        await inventoryChanges.GetByText("member-100", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "較早盤點變更", Exact = true }).ClickAsync();
+        await inventoryChanges.GetByText("other group", new() { Exact = true }).WaitForAsync();
+        await inventoryChanges.GetByText("變更後", new() { Exact = true }).ClickAsync();
+        await inventoryChanges.GetByRole(AriaRole.Button, new() { Name = "查看成員（1）" }).ClickAsync();
+        await inventoryChanges.GetByText("single-member", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "較新盤點變更", Exact = true }).ClickAsync();
+        await inventoryChanges.GetByText("部分觀察：首次看到", new() { Exact = true }).WaitForAsync();
+        await page.Locator("#inventory-change-source").SelectOptionAsync(((int)InventorySource.WindowsSoftware64).ToString());
+        await page.GetByText("這段時間沒有盤點變更。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
         await page.GetByText("程序、作業系統服務與監聽連線是週期性快照", new() { Exact = false }).WaitForAsync();
         await page.GetByText("partial package", new() { Exact = true }).WaitForAsync();
@@ -74,6 +100,10 @@ public sealed class HostDetailsSnapshotBrowserTests
         private readonly DateTimeOffset now = DateTimeOffset.UtcNow;
         private int inventoryReads;
         public int InventoryReads => Volatile.Read(ref inventoryReads);
+        public Task<InventoryChangePage?> GetInventoryChangesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, InventorySource? source, string? cursor, CancellationToken token) => Task.FromResult<InventoryChangePage?>(source is not null ? new([], null) : cursor is null
+            ? new([new(agent, InventorySource.LinuxGroups, now, InventoryChangeType.Modified, new InventoryEntry("one", "test group"), new InventoryEntry("one", "test group", Version: "2.0", Members: Enumerable.Range(0, 101).Select(i => $"member-{i}").ToArray())),
+                new(agent, InventorySource.HostProcesses, now, InventoryChangeType.NewlyObserved, null, new InventoryEntry("process", "test process", NumericId: 5, ProcessStartedAt: now))], "next")
+            : new([new(agent, InventorySource.LinuxGroups, now, InventoryChangeType.Modified, new InventoryEntry("two", "other group"), new InventoryEntry("two", "other group", Members: ["single-member"]))], null));
         public Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
         {
             Interlocked.Increment(ref inventoryReads);

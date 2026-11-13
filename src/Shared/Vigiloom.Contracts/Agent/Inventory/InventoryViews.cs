@@ -16,7 +16,7 @@ public sealed record InventorySnapshotChunkView(Guid SnapshotId, InventorySource
 
 public enum InventoryChangeType { Added = 1, Modified = 2, Removed = 3, NewlyObserved = 4, ObservedModified = 5 }
 
-/// <summary>One change between complete source snapshots.</summary>
+/// <summary>A change between complete snapshots or an observation from a partial snapshot.</summary>
 public sealed record InventoryChangeView(Guid AgentId, InventorySource Source, DateTimeOffset ObservedAt,
     InventoryChangeType Kind, InventoryEntry? Before, InventoryEntry? After);
 

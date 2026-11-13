@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Web.Client.Components;
 
 namespace Vigiloom.Web.Tests;
@@ -19,6 +20,21 @@ public sealed class BrowserHostMonitoringClientTests
         Assert.IsNotNull(handler.LastUri);
         Assert.DoesNotContain("cursor=", handler.LastUri.Query);
         Assert.Contains("kind=1", handler.LastUri.Query);
+    }
+
+    [TestMethod]
+    public async Task InventoryChanges_EncodesCursorAndSource()
+    {
+        var handler = new CapturingHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new InventoryChangePage([], null)) });
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://localhost/") };
+        var client = Create(http);
+        var id = Guid.CreateVersion7();
+        await client.GetInventoryChangesAsync(id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow, InventorySource.WindowsSoftware32, "a+b/=", TestContext.CancellationToken);
+        Assert.IsNotNull(handler.LastUri);
+        Assert.Contains($"source={(int)InventorySource.WindowsSoftware32}", handler.LastUri.Query);
+        Assert.Contains("cursor=a%2Bb%2F%3D", handler.LastUri.Query);
+        handler.Response = new(HttpStatusCode.Forbidden);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.GetInventoryChangesAsync(id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow, null, null, TestContext.CancellationToken));
     }
 
     [TestMethod]

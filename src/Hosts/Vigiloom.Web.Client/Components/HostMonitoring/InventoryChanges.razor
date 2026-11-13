@@ -1,0 +1,79 @@
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Contracts.Agent.Inventory
+@implements IAsyncDisposable
+@inject IHostMonitoringClient Monitoring
+@inject ILogger<InventoryChanges> Logger
+
+<section aria-label="盤點變更">
+    <h3>盤點變更</h3>
+    <p>依觀察時間顯示這台設備各次 Agent 註冊的歷史；部分觀察不代表完整新增或移除。</p>
+    @if (!opened) { <button type="button" @onclick="OpenAsync">查看盤點變更</button> }
+    else
+    {
+        <label for="inventory-change-range">查詢時間</label>
+        <select id="inventory-change-range" value="@hours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select>
+        <label for="inventory-change-source">資料來源</label>
+        <select id="inventory-change-source" value="@(source is null ? "" : ((int)source.Value).ToString())" @onchange="ChangeSourceAsync">
+            <option value="">全部來源（包含程序與服務）</option>
+            @foreach (var item in Enum.GetValues<InventorySource>()) { <option value="@((int)item)">@HostDetails.SourceName(item)</option> }
+        </select>
+        @if (loading) { <p role="status">正在載入盤點變更…</p> }
+        else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
+        else if (error) { <p role="alert">無法讀取盤點變更，請稍後重試。</p><button type="button" @onclick="RefreshAsync">重新載入</button> }
+        else
+        {
+            @if (page?.Items.Count > 0)
+            {
+                <p class="host-scroll-hint">左右滑動查看完整表格。</p>
+                <div @key="page" class="host-table" tabindex="0" role="region" aria-label="盤點變更表格，可左右捲動"><table><thead><tr><th>觀察時間（UTC）</th><th>來源／Agent</th><th>變更</th><th>項目</th><th>詳細資料</th></tr></thead><tbody>
+                @foreach (var item in page.Items)
+                {
+                    <tr><td>@item.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>@HostDetails.SourceName(item.Source)<br />@item.AgentId</td><td>@KindName(item.Kind)</td><td>@(item.After?.Name ?? item.Before?.Name ?? "—")</td><td><InventoryChangeEntry Label="變更前" Entry="item.Before" /><InventoryChangeEntry Label="變更後" Entry="item.After" /></td></tr>
+                }
+                </tbody></table></div>
+            }
+            else { <p>這段時間沒有盤點變更。</p> }
+            @if (page is not null && (cursors.Count > 0 || page.NextCursor is not null)) { <button type="button" disabled="@(cursors.Count == 0)" @onclick="PreviousAsync">較新盤點變更</button><button type="button" disabled="@(page.NextCursor is null)" @onclick="NextAsync">較早盤點變更</button> }
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public Guid DeviceId { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private CancellationTokenSource? active;
+    private readonly Stack<string?> cursors = new();
+    private bool opened, loading, unauthorized, error;
+    private int hours = 24;
+    private InventorySource? source;
+    private DateTimeOffset from, until;
+    private string? cursor;
+    private InventoryChangePage? page;
+    private Task OpenAsync() { opened = true; return RefreshAsync(); }
+    private Task RefreshAsync() { until = DateTimeOffset.UtcNow; from = until.AddHours(-hours); cursors.Clear(); cursor = null; return LoadAsync(null, null); }
+    private Task ChangeRangeAsync(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var value) && value is 24 or 168 or 720) hours = value; return RefreshAsync(); }
+    private Task ChangeSourceAsync(ChangeEventArgs args) { source = int.TryParse(args.Value?.ToString(), out var value) && Enum.IsDefined((InventorySource)value) ? (InventorySource)value : null; return RefreshAsync(); }
+    private Task NextAsync() => page?.NextCursor is { } next ? LoadAsync(next, true) : Task.CompletedTask;
+    private Task PreviousAsync() => cursors.TryPeek(out var previous) ? LoadAsync(previous, false) : Task.CompletedTask;
+    private async Task LoadAsync(string? target, bool? forward)
+    {
+        active?.Cancel();
+        using var load = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        active = load; loading = true; error = unauthorized = false;
+        try
+        {
+            var result = await Monitoring.GetInventoryChangesAsync(DeviceId, from, until, source, target, load.Token);
+            load.Token.ThrowIfCancellationRequested();
+            page = result ?? throw new InvalidOperationException("Device missing");
+            if (forward == true) cursors.Push(cursor); else if (forward == false) cursors.Pop();
+            cursor = target;
+        }
+        catch (OperationCanceledException) when (load.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) when (!load.IsCancellationRequested) { unauthorized = true; }
+        catch (Exception ex) when (!load.IsCancellationRequested) { Logger.LogWarning("Could not load inventory changes: {ExceptionType}", ex.GetType().Name); error = true; }
+        catch (Exception) when (load.IsCancellationRequested) { }
+        finally { if (ReferenceEquals(active, load)) { active = null; loading = false; } }
+    }
+    private static string KindName(InventoryChangeType value) => value switch { InventoryChangeType.Added => "新增", InventoryChangeType.Modified => "修改", InventoryChangeType.Removed => "移除", InventoryChangeType.NewlyObserved => "部分觀察：首次看到", InventoryChangeType.ObservedModified => "部分觀察：資料變化", _ => "未知" };
+    public async ValueTask DisposeAsync() { await lifetime.CancelAsync(); lifetime.Dispose(); }
+}
