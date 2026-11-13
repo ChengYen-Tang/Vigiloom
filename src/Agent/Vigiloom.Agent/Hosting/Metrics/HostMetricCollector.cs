@@ -21,8 +21,14 @@ namespace Vigiloom.Agent.Hosting.Metrics;
 /// <summary>One collection result. Failed or unsupported sources never manufacture zero readings.</summary>
 internal sealed record HostMetricCollection(IReadOnlyList<AgentMetricPoint> Points, IReadOnlyList<string> UnavailableSources);
 
+internal interface IHostMetricCollector : IDisposable
+{
+    Task<HostMetricCollection> CollectAsync(TimeSpan maximumInterval, CancellationToken token, bool includeProcesses = true);
+    HostMetricCollection CollectProcesses(TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null);
+}
+
 /// <summary>Collects host metrics without sharing counter state across Agent instances.</summary>
-internal sealed class HostMetricCollector(TimeProvider clock) : IDisposable
+internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricCollector
 {
     private readonly NetworkSampler network = new(clock);
     private readonly ProcessSampler processes = new(clock);

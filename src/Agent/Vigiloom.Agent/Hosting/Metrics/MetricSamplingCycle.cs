@@ -5,9 +5,9 @@ using Vigiloom.Contracts.Agent;
 namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>Serializes one owner's sampling and queueing. A caller must not overlap cycles.</summary>
-internal sealed class MetricSamplingCycle(AgentSettingsOwner owner, DurableBatchQueue queue, TimeProvider clock) : IDisposable
+internal sealed class MetricSamplingCycle(AgentSettingsOwner owner, DurableBatchQueue queue, TimeProvider clock, IHostMetricCollector? collectorOverride = null) : IDisposable
 {
-    private readonly HostMetricCollector collector = new(clock);
+    private readonly IHostMetricCollector collector = collectorOverride ?? new HostMetricCollector(clock);
     private readonly MetricSamplingSchedule schedule = new(clock);
     private readonly MetricSamplePublisher publisher = new(queue, owner);
     private bool processDeferred;
