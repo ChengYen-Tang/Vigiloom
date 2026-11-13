@@ -1,13 +1,51 @@
 @page "/services/{Id:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
 @attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Modules.ServiceObservability.Application
+@using Vigiloom.Web.Groups
+@inject ServiceMembership Memberships
+@inject ServiceDetailsReader Services
+@inject ILogger<ServiceOverview> Logger
 
 <PageTitle>應用服務 - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="/groups">← 返回群組</a>
+    <a href="/groups">查看所有群組</a>
     <Vigiloom.Web.Client.Components.Services.ServiceOverviewPanel ServiceId="Id" @rendermode="InteractiveAuto" />
+    @if (groupError) { <section class="device-panel"><h2>所屬群組</h2><p role="alert">無法載入所屬群組，請稍後再試。</p></section> }
+    else if (groups is not null)
+    {
+        <section class="device-panel service-groups" aria-labelledby="service-groups-heading">
+            <h2 id="service-groups-heading">所屬群組</h2>
+            @if (groups.Items.Count == 0) { <p>@(CurrentPage == 1 ? "此服務尚未加入群組。" : "此頁沒有群組。")</p> }
+            else { <ul>@foreach (var group in groups.Items) { <li @key="group.Id"><a href="@($"/groups/{group.Id:D}")">@group.Name</a></li> }</ul> }
+            @if (CurrentPage > 1 || groups.HasMore) { <nav class="device-pagination" aria-label="所屬群組分頁">
+                @if (CurrentPage > 1) { <a href="@PageUrl(CurrentPage - 1)">上一頁</a> }
+                <span>第 @CurrentPage 頁</span>
+                @if (groups.HasMore) { <a href="@PageUrl(CurrentPage + 1)">下一頁</a> }
+            </nav> }
+        </section>
+    }
 </main>
 
 @code {
     [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "groupPage")] public int? GroupPage { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private ServiceMembership.GroupLinkPage? groups;
+    private bool groupError;
+    private int CurrentPage => Math.Clamp(GroupPage ?? 1, 1, 1000);
+    private string PageUrl(int page) => $"/services/{Id:D}?groupPage={page}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        groups = null; groupError = false;
+        if (Id.Version != 7) return;
+        try
+        {
+            if (await Services.ReadAsync(Id, HttpContext.RequestAborted) is not null)
+                groups = await Memberships.ListGroupsAsync(Id, CurrentPage, HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load service groups"); groupError = true; }
+    }
 }
