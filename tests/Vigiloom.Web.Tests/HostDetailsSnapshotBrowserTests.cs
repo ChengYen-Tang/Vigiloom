@@ -23,6 +23,46 @@ public sealed class HostDetailsSnapshotBrowserTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task InventoryStates_AreDistinguishableInHostDetails() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var client = new SnapshotClient(statusMatrix: true);
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => { services.RemoveAll<IHostMonitoringClient>(); services.AddSingleton<IHostMonitoringClient>(client); }));
+        factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var device = new Device("status server", "127.0.0.6", true, DateTimeOffset.UtcNow);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+        await using var gate = await AutoRenderGate.HoldAsync(page);
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        await page.GotoAsync($"{url}/devices/{device.Id:D}");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        var host = page.Locator(".host-details[data-runtime='Server']");
+        await host.WaitForAsync(new() { Timeout = 60000 });
+        await host.GetByText("Agent 結果：權限不足", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("retained 32-bit view", new() { Exact = true }).WaitForAsync();
+        Assert.Contains($"最後成功盤點：{client.LastSuccessfulAt:yyyy-MM-dd HH:mm:ss}", await host.InnerTextAsync());
+        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.WindowsSoftware64).ToString());
+        await host.GetByText("Agent 結果：不支援", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("retained 64-bit view", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual(0, await host.GetByText("retained 32-bit view", new() { Exact = true }).CountAsync());
+        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.LinuxDpkg).ToString());
+        await host.GetByText("Agent 結果：採集失敗", new() { Exact = false }).WaitForAsync();
+        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.LinuxRpm).ToString());
+        await host.GetByText("Agent 結果：尚無回報", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("尚無可查看的快照。", new() { Exact = true }).WaitForAsync();
+        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.WindowsQuickFix).ToString());
+        await host.GetByText("Agent 結果：完整", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("快照沒有項目。", new() { Exact = true }).WaitForAsync();
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task SnapshotReplacement_DoesNotMixPages() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         var client = new SnapshotClient();
@@ -91,13 +131,14 @@ public sealed class HostDetailsSnapshotBrowserTests
         Assert.AreEqual(0, await page.GetByText("original/file", new() { Exact = true }).CountAsync());
     }, TestContext.CancellationToken);
 
-    private sealed class SnapshotClient : IHostMonitoringClient
+    private sealed class SnapshotClient(bool statusMatrix = false) : IHostMonitoringClient
     {
         private readonly Guid snapshot = Guid.CreateVersion7();
         private readonly Guid partial = Guid.CreateVersion7();
         private readonly Guid agent = Guid.CreateVersion7();
         private readonly Guid scope = Guid.CreateVersion7();
         private readonly DateTimeOffset now = DateTimeOffset.UtcNow;
+        public DateTimeOffset LastSuccessfulAt => now.AddHours(-1);
         private int inventoryReads;
         public int InventoryReads => Volatile.Read(ref inventoryReads);
         public Task<InventoryChangePage?> GetInventoryChangesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, InventorySource? source, string? cursor, CancellationToken token) => Task.FromResult<InventoryChangePage?>(source is not null ? new([], null) : cursor is null
@@ -107,10 +148,20 @@ public sealed class HostDetailsSnapshotBrowserTests
         public Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
         {
             Interlocked.Increment(ref inventoryReads);
+            if (statusMatrix) return Task.FromResult<DeviceInventoryView?>(new(deviceId, agent,
+            [
+                new(InventorySource.WindowsSoftware32, now, InventoryOutcome.PermissionDenied, InventoryCompletion.Rejected, null, now.AddHours(-1), snapshot, now.AddHours(-1), 1, 1),
+                new(InventorySource.WindowsSoftware64, now, InventoryOutcome.Unsupported, null, null, now.AddHours(-1), snapshot, now.AddHours(-1), 1, 1),
+                new(InventorySource.LinuxDpkg, now, InventoryOutcome.Error, null, null, null, null, null, null, null),
+                new(InventorySource.LinuxRpm, null, null, null, null, null, null, null, null, null),
+                new(InventorySource.WindowsQuickFix, now, InventoryOutcome.Complete, InventoryCompletion.Complete, null, now, partial, now, 1, 0)
+            ]));
             return Task.FromResult<DeviceInventoryView?>(new(deviceId, agent, [new(InventorySource.HostProcesses, now, InventoryOutcome.Partial, InventoryCompletion.Partial, null, now, snapshot, now, 2, 2,
                 PartialSnapshotId: partial, PartialObservedAt: now, PartialChunkCount: 1, PartialItemCount: 1, PartialReason: InventoryPartialReason.Truncated)]));
         }
-        public Task<InventorySnapshotChunkView?> GetInventoryChunkAsync(Guid deviceId, InventorySource source, Guid snapshotId, int chunkIndex, CancellationToken token) => Task.FromResult<InventorySnapshotChunkView?>(
+        public Task<InventorySnapshotChunkView?> GetInventoryChunkAsync(Guid deviceId, InventorySource source, Guid snapshotId, int chunkIndex, CancellationToken token) => statusMatrix
+            ? Task.FromResult<InventorySnapshotChunkView?>(new(snapshotId, source, source == InventorySource.WindowsQuickFix ? now : LastSuccessfulAt, 0, 1, source == InventorySource.WindowsQuickFix ? [] : [new InventoryEntry("view", source == InventorySource.WindowsSoftware64 ? "retained 64-bit view" : "retained 32-bit view")]))
+            : Task.FromResult<InventorySnapshotChunkView?>(
             chunkIndex != 0 ? null : snapshotId == partial ? new(partial, source, now, 0, 1, [new InventoryEntry("partial", "partial package", NumericId: 1, ProcessStartedAt: now)])
                 : new(snapshot, source, now, 0, 2, [new InventoryEntry("one", "original package", NumericId: 2, ProcessStartedAt: now)]));
         public Task<HostMetricPage?> GetMetricsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, AgentMetricKind? kind, CancellationToken token) => throw new NotSupportedException();
