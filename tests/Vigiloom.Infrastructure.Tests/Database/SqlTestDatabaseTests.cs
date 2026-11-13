@@ -14,6 +14,69 @@ public sealed class SqlTestDatabaseTests
 {
     public TestContext TestContext { get; set; } = null!;
 
+    [TestMethod]
+    [DoNotParallelize]
+    public async Task LocalDbDdl_UsesSessionLockAndDoesNotBlockInitialization()
+    {
+        if (!OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("VIGILOOM_TEST_SQL_CONNECTION") is not null)
+        { Assert.Inconclusive("Requires the shared Windows LocalDB fixture."); return; }
+        var server = TestDatabaseServer.LocalDb();
+        var master = new SqlConnectionStringBuilder { DataSource = TestDatabaseServer.LocalDbSource, InitialCatalog = "master", IntegratedSecurity = true, Pooling = false, Encrypt = SqlConnectionEncryptOption.Optional };
+        await using var holder = new SqlConnection(master.ConnectionString);
+        await holder.OpenAsync(TestContext.CancellationToken);
+        await using var command = holder.CreateCommand();
+        command.CommandText = "DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource = N'Vigiloom.Testing.LocalDb.Ddl', @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 10000; SELECT @result;";
+        Assert.IsGreaterThanOrEqualTo(0, (int)(await command.ExecuteScalarAsync(TestContext.CancellationToken))!);
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken))
+        {
+            var waiting = SqlTestDatabase.CreateAsync(server, timeout.Token);
+            Exception? observationFailure = null;
+            try
+            {
+                var runId = Path.GetFileName(Path.GetDirectoryName(SqlTestDatabase.RunManifestPath)!);
+                // Another testhost may be ahead of this request in SQL Server's lock queue,
+                // so its immediate blocker need not be our original lock-holding session.
+                command.CommandText = "SELECT COUNT(*) FROM sys.dm_exec_sessions s JOIN sys.dm_tran_locks w ON w.request_session_id = s.session_id JOIN sys.dm_tran_locks h ON h.request_session_id = @@SPID AND h.resource_type = w.resource_type AND h.resource_database_id = w.resource_database_id AND h.resource_description = w.resource_description WHERE s.program_name = @program AND w.resource_type = 'APPLICATION' AND w.request_status = 'WAIT' AND h.request_status = 'GRANT'";
+                command.Parameters.AddWithValue("@program", $"Vigiloom.Testing.{runId}");
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+                deadline.CancelAfter(TimeSpan.FromSeconds(20));
+                while ((int)(await command.ExecuteScalarAsync(deadline.Token))! == 0) await Task.Delay(50, deadline.Token);
+            }
+            catch (Exception ex) { observationFailure = ex; }
+            finally { timeout.Cancel(); }
+            try
+            {
+                await using var unexpected = await waiting;
+                Assert.Fail("Database creation unexpectedly completed while the DDL lock was held.");
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested) { }
+            catch (Exception ex) when (observationFailure is not null) { throw new AggregateException(observationFailure, ex); }
+            if (observationFailure is not null) ExceptionDispatchInfo.Capture(observationFailure).Throw();
+        }
+        await holder.CloseAsync();
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = SqlTestDatabase.CreateAsync(server, async (_, token) => { started.TrySetResult(); await release.Task.WaitAsync(token); }, TestContext.CancellationToken);
+        SqlTestDatabase? second = null;
+        Exception? failure = null;
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+            second = await SqlTestDatabase.CreateAsync(server, TestContext.CancellationToken);
+        }
+        catch (Exception ex) { failure = ex; }
+        finally
+        {
+            release.TrySetResult();
+            List<Exception> errors = [];
+            if (failure is not null) errors.Add(failure);
+            if (second is not null) { try { await second.DisposeAsync(); } catch (Exception ex) { errors.Add(ex); } }
+            try { if (await first is { } database) await database.DisposeAsync(); } catch (Exception ex) { errors.Add(ex); }
+            if (errors.Count > 0) throw new AggregateException("LocalDB DDL test or cleanup failed.", errors);
+        }
+    }
+
     [AssemblyCleanup]
     public static async Task VerifyRunCleanup()
     {

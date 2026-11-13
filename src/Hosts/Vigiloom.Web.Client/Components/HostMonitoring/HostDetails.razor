@@ -24,6 +24,7 @@
     else if (tab is "inventory" or "process")
     {
         <p>顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。</p>
+        @if (tab == "inventory") { <p>Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。</p> }
         @if (tab == "process") { <p>程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。</p> }
         @if (sources.Count == 0) { <p>目前沒有這類盤點資料。</p> }
         else

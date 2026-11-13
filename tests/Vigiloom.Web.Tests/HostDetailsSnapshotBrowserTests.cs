@@ -45,6 +45,9 @@ public sealed class HostDetailsSnapshotBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         var host = page.Locator(".host-details[data-runtime='Server']");
         await host.WaitForAsync(new() { Timeout = 60000 });
+        await host.GetByText("Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。", new() { Exact = true }).WaitForAsync();
+        await Assertions.Expect(page.Locator("#host-source option").GetByText("Windows 軟體（32 位元登錄檢視）", new() { Exact = true })).ToHaveCountAsync(1);
+        await Assertions.Expect(page.Locator("#host-source option").GetByText("Windows 軟體（64 位元登錄檢視）", new() { Exact = true })).ToHaveCountAsync(1);
         await host.GetByText("Agent 結果：權限不足", new() { Exact = false }).WaitForAsync();
         await host.GetByText("retained 32-bit view", new() { Exact = true }).WaitForAsync();
         Assert.Contains($"最後成功盤點：{client.LastSuccessfulAt:yyyy-MM-dd HH:mm:ss}", await host.InnerTextAsync());
