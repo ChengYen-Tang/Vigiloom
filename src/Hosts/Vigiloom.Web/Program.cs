@@ -165,6 +165,8 @@ builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingStore>();
+builder.Services.AddScoped<Vigiloom.Modules.NetworkMonitoring.Application.PingHistory.PingHistoryReader>();
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, Vigiloom.Web.Network.ServerPingHistoryClient>();
 builder.Services.AddScoped<SpeedSettings>();
 builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();

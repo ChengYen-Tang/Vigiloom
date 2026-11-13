@@ -1,0 +1,9 @@
+# REQ-10 design QA
+
+Final result: in progress — Ping history was compared; the workspace overview still needs its design and validation.
+
+The reference is `../req-10-ping-history-concept.png`. `history-comparison.png` pairs it with a SQL-backed Read only desktop capture at 1486×1058 CSS pixels, device scale 1; `history-focus.png` compares the chart region at native scale. The concept contains illustrative six-hour samples; the real capture uses three test observations in a UTC calendar day. The difference in line density is data, not a missing chart. The implementation retains the existing application navigation and combines target and location in one selector so incompatible pairs cannot be chosen.
+
+The first comparison found weak table heading and outcome hierarchy; the page now uses the established pale blue heading and text outcome labels. A mobile capture exposed a subtle horizontal-table affordance and wrapping pagination buttons. The revised 390×844 capture `history-mobile.png` shows the explicit swipe hint and non-wrapping buttons. The earlier oversized full-page capture occurred during an asynchronous chart resize; the browser test now waits for the chart and page to fit the viewport before capture.
+
+Typography, spacing and color follow the existing Vigiloom components and blue/white tokens. The SVG chart is rendered by the existing chart library, not a substituted asset; its null gaps are not zero values. Copy identifies UTC, target/location, the applied range, incomplete backfill and the distinction between raw and aggregated history. The design's device-group panel and exact sample values are illustrative and are not fabricated. Empty, invalid-date, mobile, Server and WebAssembly states are covered by the browser test. Full screen-reader verification remains outside this check.
