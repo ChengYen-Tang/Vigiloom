@@ -336,6 +336,12 @@ public sealed class GroupManagementTests
             Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
             Assert.IsNotNull(document.QuerySelector("nav[aria-label='所屬群組分頁'] a[href*='groupsPage=1']"));
         }
+        using (var outOfRange = await adminClient.GetAsync($"/devices/{device.Id:D}/edit?groupsPage=999999", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await outOfRange.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
+            Assert.Contains("第 2 頁", document.QuerySelector("nav[aria-label='所屬群組分頁']")!.TextContent);
+        }
     }, TestContext.CancellationToken);
 
     private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
