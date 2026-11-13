@@ -28,6 +28,7 @@
                 <option value="service-collections" selected="@(sourceText == "service-collections")">服務收集</option>
                 <option value="health-targets" selected="@(sourceText == "health-targets")">服務健康檢查</option>
                 <option value="health-networks" selected="@(sourceText == "health-networks")">健康檢查網段</option>
+                <option value="publications" selected="@(sourceText == "publications")">公開設定</option>
                 <option value="collectors" selected="@(sourceText == "collectors")">Collector 管理</option>
                 <option value="agent-inbox" selected="@(sourceText == "agent-inbox")">Agent 收據保存</option>
                 <option value="agent-packages" selected="@(sourceText == "agent-packages")">Agent 套件管理</option>
@@ -48,7 +49,7 @@
     {
         <section class="audit-panel" aria-labelledby="audit-results-title">
             <h2 id="audit-results-title">查詢結果</h2>
-            <p>此來源收錄成功儲存的@(sourceText switch { "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
+            <p>此來源收錄成功儲存的@(sourceText switch { "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "publications" => "公開設定", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
             @if (actorLookupFailed) { <p role="status">目前無法取得帳號名稱，改以帳號 ID 顯示。</p> }
             @if (result.Items.Count == 0) { <p>@(result.Page > 1 ? "此頁沒有紀錄，請返回上一頁。" : "此日期範圍沒有稽核紀錄。")</p> }
             else
@@ -61,7 +62,7 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@Operation(entry)</span></td>
-                            <td>@(entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
+                            <td>@(entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
                             <td>
                                 @if (entry.SpeedSettings is { } change)
                                 {
@@ -163,6 +164,7 @@
                                     @if (health.EndpointChanged) { <div>檢查網址已變更。</div> }
                                     <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(health.PreviousVersion) ? "初始設定" : health.PreviousVersion) → @health.CurrentVersion</span></details>
                                 }
+                                else if (entry.Publication is { } publication) { <div>類型：@publication.ResourceKind</div><div>公開：@Enabled(publication.PreviousPublic) → @Enabled(publication.CurrentPublic)</div>@if (publication.NameChanged) { <div>公開名稱已變更。</div> } }
                                 else if (entry.HealthNetworkPolicy is { } networks) { <div>網段政策版本：@networks.PreviousGeneration → @networks.CurrentGeneration</div> }
                                 else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>來源識別碼：@sourceId</div> } }
                                 else { <span>無法顯示此紀錄的內容。</span> }
@@ -259,7 +261,7 @@
         var today = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime);
         sourceText = Source ?? "speed";
         var selected = AuditFeedReader.Parse(sourceText);
-        if (sourceText is not ("speed" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
+        if (sourceText is not ("speed" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
         fromText = From ?? today.AddDays(-6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         toText = To ?? today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (!DateOnly.TryParseExact(fromText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
@@ -277,7 +279,7 @@
         try
         {
             Guid[] ids;
-            if (sourceText is "speed" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors")
+            if (sourceText is "speed" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors")
             {
                 result = sourceText switch
                 {
@@ -288,6 +290,7 @@
                     "service-approvals" => await Audit.QueryServiceApprovalsAsync(query, HttpContext.RequestAborted),
                     "service-sources" => await Audit.QueryServiceSourcesAsync(query, HttpContext.RequestAborted),
                     "groups" => await Audit.QueryGroupsAsync(query, HttpContext.RequestAborted),
+                    "publications" => await Audit.QueryPublicationsAsync(query, HttpContext.RequestAborted),
                     "instance-policy" => await Audit.QueryInstancePoliciesAsync(query, HttpContext.RequestAborted),
                     "log-quota" => await Audit.QueryLogQuotaAsync(query, HttpContext.RequestAborted),
                     "trace-quota" => await Audit.QueryTraceQuotaAsync(query, HttpContext.RequestAborted),
@@ -335,6 +338,7 @@
         _ when entry.ServiceInstance?.Action == ServiceInstanceAction.Restored => "恢復",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Stopped => "停止收集",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Resumed => "恢復收集",
+        _ when entry.Publication is not null => "變更公開設定",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Created => "新增檢查",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Updated => "更新檢查",
         _ when entry.HealthNetworkPolicy is not null => "更新網段",

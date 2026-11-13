@@ -3,6 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Modules.ServiceObservability.Application
 @using Vigiloom.Web.Groups
+@using Microsoft.AspNetCore.Components.Authorization
 @inject ServiceMembership Memberships
 @inject ServiceDetailsReader Services
 @inject ILogger<ServiceOverview> Logger
@@ -10,6 +11,7 @@
 <PageTitle>應用服務 - Vigiloom</PageTitle>
 <main class="device-page">
     <a href="/groups">查看所有群組</a>
+    <AuthorizeView Policy="Administrator"><Authorized><p><a href="@($"/settings/publication/services/{Id:D}")">公開設定</a></p></Authorized></AuthorizeView>
     <Vigiloom.Web.Client.Components.Services.ServiceOverviewPanel ServiceId="Id" @rendermode="InteractiveAuto" />
     @if (groupError) { <section class="device-panel"><h2>所屬群組</h2><p role="alert">無法載入所屬群組，請稍後再試。</p></section> }
     else if (groups is not null)

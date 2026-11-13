@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 
@@ -9,7 +13,7 @@ public enum DeviceResultStatus { Success, NotFound, Conflict, Invalid }
 public sealed record DeviceResult(DeviceResultStatus Status, DeviceDetails? Device = null, IReadOnlyDictionary<string, string[]>? Errors = null);
 
 /// <summary>Owns device state and SQL transactions. Callers must authorize the current principal.</summary>
-public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock)
+public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit>? audit = null)
 {
     public const int PageSize = 50;
     public const int MaxAdditionalTargets = 16;
@@ -65,17 +69,26 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
 
     public async Task<DeviceResult> CreateAsync(DeviceInput input, Guid actor, CancellationToken token)
     {
-        var validation = Validate(input);
+        var validation = Validate(input, allowPublic: true);
+        if (input.Public && audit is null) validation.Errors["public"] = ["公開設定目前無法使用。"];
         if (actor == Guid.Empty) throw new ArgumentException("An authenticated actor is required.", nameof(actor));
         if (validation.Errors.Count != 0) return new(DeviceResultStatus.Invalid, Errors: validation.Errors);
         var now = clock.GetUtcNow();
         var device = new Device(validation.Name, validation.Address, input.DeepMonitoring, now);
         if (!input.Enabled) device.Update(validation.Name, validation.Address, input.DeepMonitoring, false, now);
+        if (input.Public) { PublicationPolicy.TryValidateName(input.PublicDisplayName, out var publicName); device.SetPublication(true, publicName, input.PublicPolicyVersion, now); }
         await using var db = await contexts.CreateDbContextAsync(token);
+        await using var tx = input.Public ? await db.Database.BeginTransactionAsync(token) : null;
         db.Devices.Add(device);
         db.DeviceTargets.AddRange(validation.Targets.Select(address => new DeviceTarget(device.Id, address)));
         db.DeviceAudits.Add(new DeviceAudit(device.Id, actor, "created", now));
         await db.SaveChangesAsync(token);
+        if (input.Public)
+        {
+            await audit!.AppendAsync(db.Database.GetDbConnection(), tx!.GetDbTransaction(),
+                new OperationAudit(actor, device.Id, now.ToUniversalTime(), new PublicationChanged(PublicationResourceKind.Device, false, true, true)), token);
+            await tx!.CommitAsync(token);
+        }
         return new(DeviceResultStatus.Success, Map(device, validation.Targets));
     }
 
@@ -132,10 +145,11 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         catch (FormatException) { return false; }
     }
 
-    private static Validation Validate(DeviceInput input)
+    private static Validation Validate(DeviceInput input, bool allowPublic = false)
     {
         var result = new Validation();
-        if (input.Public) result.Errors["public"] = ["公開設定需要使用公開管理功能。"];
+        if (input.Public && (!allowPublic || input.PublicPolicyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(input.PublicDisplayName, out _)))
+            result.Errors["public"] = ["請確認公開名稱與範本，名稱不可包含 IP 位址或過於複雜的符號組合。"];
         result.Name = input.Name?.Trim() ?? "";
         if (result.Name.Length is 0 or > 256) result.Errors["name"] = ["請輸入 1 至 256 個字元的設備名稱。"];
         if (!TargetAddress.TryNormalize(input.Address, out var address)) result.Errors["address"] = ["請輸入有效的 IPv4、IPv6 或 DNS 名稱。"];

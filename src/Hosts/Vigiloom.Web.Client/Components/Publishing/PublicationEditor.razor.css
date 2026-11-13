@@ -1,0 +1,21 @@
+.publication-card { background: white; border: 1px solid var(--vigiloom-border); border-radius: 8px; padding: 24px; }
+.publication-info { display: flex; gap: 20px; flex-wrap: wrap; padding: 16px 20px; margin: 20px 0; border: 1px solid #b6d3fc; border-radius: 8px; background: #e9f2ff; color: #17427c; }
+.publication-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+.publication-layout aside { border-left: 1px solid var(--vigiloom-border); padding-left: 32px; min-width: 0; }
+.publication-layout fieldset { border: 0; padding: 0; margin: 0 0 20px; }
+.publication-layout legend, .publication-layout label, .publication-layout h2 { font-weight: 650; }
+.publication-layout h2 { margin: 0 0 16px; font-size: 1.2rem; }
+.publication-choices { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.publication-choices label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--vigiloom-border); padding: 12px; border-radius: 6px; font-weight: 400; }
+.publication-choices label:has(input:checked) { border-color: #7aaeff; background: #eef5ff; }
+.publication-layout > div > label { display: block; margin-top: 16px; }
+.publication-layout ::deep #public-name, .publication-layout ::deep select { display: block; width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid #afbfda; border-radius: 6px; margin: 8px 0 12px; font: inherit; }
+.publication-layout p { color: #52657d; line-height: 1.5; }
+.publication-preview { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; border: 1px solid var(--vigiloom-border); border-radius: 6px; padding: 18px; overflow-wrap: anywhere; }
+.publication-preview strong { flex: 1 1 150px; }
+.publication-good { color: #137333; font-weight: 650; } .publication-danger { color: #b42318; font-weight: 650; } .publication-unknown { color: #705018; }
+.publication-actions { display: flex; gap: 14px; align-items: center; margin-top: 20px; }
+.publication-actions button { background: var(--vigiloom-primary); color: white; border: 0; border-radius: 6px; padding: 11px 20px; min-height: 44px; font: inherit; }
+.publication-actions a { color: var(--vigiloom-primary); border: 1px solid #afbfda; border-radius: 6px; padding: 10px 18px; }
+.publication-message { padding: 12px; border: 1px solid #b6d3fc; background: #f1f7ff; border-radius: 6px; }
+@media (max-width: 700px) { .publication-layout { grid-template-columns: minmax(0, 1fr); } .publication-layout aside { border-left: 0; border-top: 1px solid var(--vigiloom-border); padding: 20px 0 0; } }

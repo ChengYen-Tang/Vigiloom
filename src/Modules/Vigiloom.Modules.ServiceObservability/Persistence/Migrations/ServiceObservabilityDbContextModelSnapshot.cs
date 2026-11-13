@@ -526,6 +526,14 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<bool>("IsPublic")
                         .HasColumnType("bit");
 
+                    b.Property<string>("PublicDisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicPolicyVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -579,6 +587,8 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .IsUnique();
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("IsPublic", "PublicDisplayName", "RowId");
 
                     b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
                         .IsUnique();

@@ -1,3 +1,5 @@
+using Vigiloom.Contracts.Publishing;
+
 namespace Vigiloom.Modules.ServiceObservability.Domain;
 
 /// <summary>A centrally approved application service, independent of host devices.</summary>
@@ -32,6 +34,8 @@ public sealed class MonitoredService
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public bool IsPublic { get; private set; }
+    public string? PublicDisplayName { get; private set; }
+    public string? PublicPolicyVersion { get; private set; }
     public byte[] Version { get; private set; } = [];
     public void Revoke(DateTimeOffset now)
     {
@@ -44,5 +48,14 @@ public sealed class MonitoredService
         if (RevokedAt is null) return;
         RevokedAt = null;
         ApprovedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
+    {
+        if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
+            throw new ArgumentException("An approved publication policy and public name are required.");
+        IsPublic = isPublic;
+        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
+        UpdatedAt = now.ToUniversalTime();
     }
 }

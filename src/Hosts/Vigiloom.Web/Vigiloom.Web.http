@@ -6,6 +6,18 @@ GET {{baseUrl}}/health/live
 ### OpenAPI is available only in Development.
 GET {{baseUrl}}/openapi/v1.json
 
+### Anonymous published device status (private devices and IP addresses are excluded).
+GET {{baseUrl}}/api/v1/public/devices?page=1
+Accept: application/json
+
+### Anonymous published services and groups.
+GET {{baseUrl}}/api/v1/public/services?page=1
+Accept: application/json
+
+###
+GET {{baseUrl}}/api/v1/public/groups?page=1
+Accept: application/json
+
 ### Unimplemented API routes return 404 Problem Details.
 GET {{baseUrl}}/api/v1/not-implemented
 Accept: application/problem+json
