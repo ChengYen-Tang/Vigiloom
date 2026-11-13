@@ -78,6 +78,7 @@ public sealed class ServiceDetailsBrowserTests
             var longName = new Group(new string('Z', 256), DateTimeOffset.UtcNow);
             resources.Groups.Add(longName);
             resources.ServiceGroups.Add(new ServiceGroup(longName.Id, serviceId));
+            resources.DeviceGroups.Add(new DeviceGroup(longName.Id, device.Id));
             await resources.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
@@ -143,6 +144,11 @@ public sealed class ServiceDetailsBrowserTests
         await adminPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await adminPage.GetByRole(AriaRole.Link, new() { Name = "建立來源與管理待加入服務" }).WaitForAsync();
         Assert.AreEqual(1, await adminPage.GetByRole(AriaRole.Link, new() { Name = "設定服務健康檢查" }).CountAsync());
+        await adminPage.SetViewportSizeAsync(390, 844);
+        await adminPage.GotoAsync($"{url}/devices/{device.Id:D}/edit");
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = new string('Z', 256), Exact = true }).WaitForAsync();
+        Assert.IsTrue(await adminPage.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
+        await adminPage.SetViewportSizeAsync(1280, 800);
         await adminPage.GotoAsync($"{url}/groups");
         await adminPage.GetByRole(AriaRole.Link, new() { Name = "新增群組" }).ClickAsync();
         await adminPage.GetByLabel("群組名稱").FillAsync("Acceptance group");
