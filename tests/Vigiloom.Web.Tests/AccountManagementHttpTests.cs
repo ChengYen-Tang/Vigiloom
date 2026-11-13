@@ -24,7 +24,7 @@ public sealed class AccountManagementHttpTests
 
     [TestMethod]
     public Task AdministratorCanCreateAccount_ReaderCanResetAndChangePassword_ButCannotManage() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -38,7 +38,6 @@ public sealed class AccountManagementHttpTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             using var admin = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
             using var reader = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
