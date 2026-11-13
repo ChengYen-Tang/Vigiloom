@@ -1,0 +1,164 @@
+using Microsoft.EntityFrameworkCore;
+using AngleSharp.Html.Parser;
+using System.Net;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Playwright;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
+using Vigiloom.Web.Tests.Fixtures;
+
+namespace Vigiloom.Web.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+[TestCategory("Browser")]
+[DoNotParallelize]
+public sealed class HostDetailsBrowserTests
+{
+    public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    [DataRow("Input.MaximumEntries", "not-a-number")]
+    [DataRow("Input.MaximumEntries", "2147483648")]
+    [DataRow("Input.Kind", "invalid-kind")]
+    [DataRow("Input.RegistryView", "invalid-view")]
+    public Task IntegrityScopes_RejectsMalformedFormInput(string field, string badValue) => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var device = new Device("Test server", "127.0.0.4", true, DateTimeOffset.UtcNow);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        using var client = PingTestSite.Client(factory);
+        await PingTestSite.LoginAsync(client, "admin", token);
+        var path = $"/devices/{device.Id:D}/integrity-scopes";
+        using var response = await client.GetAsync(path, token);
+        var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+        var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "integrity-save");
+        var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+        fields["Input.Kind"] = "Directory";
+        fields["Input.Root"] = "/etc/vigiloom-test";
+        fields["Input.RegistryView"] = "Registry64";
+        fields["Input.ScanIntervalSeconds"] = "3600";
+        fields["Input.MaximumEntries"] = "10000";
+        fields["Input.MaximumFileBytes"] = "104857600";
+        fields["Input.MaximumScanBytes"] = "1073741824";
+        fields["Input.MaximumDepth"] = "16";
+        fields["Input.Enabled"] = "true";
+        fields[field] = badValue;
+        using var posted = await client.PostAsync(path, new FormUrlEncodedContent(fields), token);
+        Assert.AreEqual(HttpStatusCode.OK, posted.StatusCode);
+        var resultDocument = await new HtmlParser().ParseDocumentAsync(await posted.Content.ReadAsStringAsync(token), token);
+        Assert.Contains("請確認數字及選擇欄位", resultDocument.QuerySelector("[role=alert]")?.TextContent ?? "");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var saved = await scope.ServiceProvider.GetRequiredService<IntegrityConfiguration>().ListAsync(device.Id, token);
+        Assert.IsNotNull(saved);
+        Assert.IsEmpty(saved);
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task HostDetails_ReaderCanInspectButCannotManageIntegrity() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var device = new Device("Test server", "127.0.0.2", true, DateTimeOffset.UtcNow);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Agents.Add(agent);
+            db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "test.cpu", null, 42), now));
+            var records = Enumerable.Range(0, 26).Select(i => new AgentLogRecord(Guid.CreateVersion7(), now, $"event-{i}", null, null, null, null, null)).ToArray();
+            var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, records);
+            for (var i = 0; i < records.Length; i++) db.HostLogs.Add(new HostLog(agent.Id, batch, i, now));
+            await db.SaveChangesAsync(token);
+        }
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1024 } });
+        var page = await context.NewPageAsync();
+        await using var wasmGate = await AutoRenderGate.HoldAsync(page);
+        await page.GotoAsync($"{url}/devices/{device.Id:D}");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await wasmGate.ReleaseAsync();
+        await page.GetByText("目前沒有這類盤點資料。", new() { Exact = true }).WaitForAsync(new() { Timeout = 60000 });
+        if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
+        {
+            Directory.CreateDirectory(evidence);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "device-details.png") });
+        }
+        await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
+        await page.GetByText("以表格查看資料", new() { Exact = true }).ClickAsync();
+        await page.Locator(".time-series-chart table").GetByText("42", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
+        await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            await db.HostLogs.Where(x => x.AgentId == agent.Id && x.Ordinal == 0).ExecuteDeleteAsync(token);
+        await page.GetByRole(AriaRole.Button, new() { Name = "較早紀錄", Exact = true }).ClickAsync();
+        await page.GetByText("這段時間沒有主機日誌。", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "較新紀錄", Exact = true }).ClickAsync();
+        await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
+        await page.GetByText("尚未設定完整性監控範圍。", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "管理完整性監控" }).CountAsync());
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+        await page.ReloadAsync();
+        await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
+        await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        var response = await page.GotoAsync($"{url}/devices/{device.Id:D}/integrity-scopes");
+        Assert.IsNotNull(response);
+        Assert.AreNotEqual($"{url}/devices/{device.Id:D}/integrity-scopes", page.Url);
+        Assert.AreEqual(0, await page.GetByLabel("完整路徑").CountAsync());
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task IntegrityScopes_AdministratorCanCreateAndEdit() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var device = new Device("Test server", "127.0.0.3", true, DateTimeOffset.UtcNow);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+        await page.GotoAsync($"{url}/devices/{device.Id:D}/integrity-scopes");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.GetByLabel("完整路徑").FillAsync("/etc/vigiloom-test");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "/etc/vigiloom-test", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "確認移除" }).ClickAsync();
+        Assert.AreEqual("/etc/vigiloom-test", await page.GetByLabel("完整路徑").InputValueAsync());
+        await page.GetByLabel("掃描間隔（秒，60–604800）").FillAsync("7200");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        Assert.AreEqual($"{url}/devices/{device.Id:D}/integrity-scopes", page.Url, await page.Locator("main").InnerTextAsync());
+        await page.GetByRole(AriaRole.Link, new() { Name = "/etc/vigiloom-test", Exact = true }).ClickAsync();
+        await Assertions.Expect(page.GetByLabel("掃描間隔（秒，60–604800）")).ToHaveValueAsync("7200");
+        await page.GetByLabel("啟用", new() { Exact = true }).UncheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "/etc/vigiloom-test", Exact = true }).ClickAsync();
+        await Assertions.Expect(page.GetByLabel("啟用", new() { Exact = true })).Not.ToBeCheckedAsync();
+        await page.GetByLabel("我了解以上影響").CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "確認移除" }).ClickAsync();
+        await page.GetByText("尚未設定監控範圍。", new() { Exact = true }).WaitForAsync();
+    }, TestContext.CancellationToken);
+}

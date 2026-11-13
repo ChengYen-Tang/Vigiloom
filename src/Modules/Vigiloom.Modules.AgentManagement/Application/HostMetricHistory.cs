@@ -63,14 +63,14 @@ public sealed class HostMetricHistory(IDbContextFactory<AgentManagementDbContext
         if (position is { } last)
             query = query.Where(x => x.OccurredAt < last.Time || x.OccurredAt == last.Time && x.RowId < last.RowId);
         var rows = await query.OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
-            .Select(x => new { x.RowId, x.OccurredAt, x.ReceivedAt, x.Kind, x.Source, x.Dimension, x.Value })
+            .Select(x => new { x.RowId, x.AgentId, x.OccurredAt, x.ReceivedAt, x.Kind, x.Source, x.Dimension, x.Value })
             .Take(PageSize + 1).ToArrayAsync(token);
         var count = Math.Min(rows.Length, PageSize);
         var values = new HostMetricValue[count];
         for (var i = 0; i < count; i++)
         {
             var row = rows[i];
-            values[i] = new(row.OccurredAt, row.ReceivedAt, row.Kind, row.Source, row.Dimension, row.Value);
+            values[i] = new(row.OccurredAt, row.ReceivedAt, row.Kind, row.Source, row.Dimension, row.Value) { AgentId = row.AgentId };
         }
         var next = rows.Length > PageSize ? WriteCursor(rows[count - 1].OccurredAt, rows[count - 1].RowId) : null;
         return new(values, next);

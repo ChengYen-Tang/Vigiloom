@@ -1,0 +1,119 @@
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Contracts.Agent.Inventory
+@using Vigiloom.Web.Client.Components
+@implements IAsyncDisposable
+@inject IHostMonitoringClient Monitoring
+@inject ILogger<HostDetails> Logger
+
+<section class="host-details" aria-label="深入監控資料" data-runtime="@RendererInfo.Name">
+    <h2>深入監控資料</h2>
+    <p>各資料來源各自回報；Ping、Agent 與應用服務狀態互不推定。</p>
+    <nav class="host-tabs" aria-label="主機資料分類">
+        @foreach (var item in Tabs)
+        {
+            <button type="button" disabled="@(!RendererInfo.IsInteractive)" class="@(tab == item.Key ? "active" : "")" aria-current="@(tab == item.Key ? "page" : null)" @onclick="() => ChangeTabAsync(item.Key)">@item.Label</button>
+        }
+    </nav>
+    @if (tab is "metrics" or "logs" or "integrity")
+    {
+        <label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select>
+    }
+    @if (loading) { <p role="status">正在載入…</p> }
+    else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
+    else if (error is not null) { <p role="alert">@error</p><button type="button" @onclick="ReloadAsync">重新載入</button> }
+    else if (tab is "inventory" or "process")
+    {
+        <p>顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。</p>
+        @if (sources.Count == 0) { <p>目前沒有這類盤點資料。</p> }
+        else
+        {
+            <label for="host-source">資料來源</label>
+            <select id="host-source" value="@((int)selectedSource)" @onchange="ChangeSourceAsync">
+                @foreach (var availableSource in sources) { <option value="@((int)availableSource.Source)">@SourceName(availableSource.Source)</option> }
+            </select>
+            @if (selected is { } source)
+            {
+                <p>最近嘗試：@DisplayTime(source.LastAttemptAt) · Agent 結果：@OutcomeName(source.LastOutcome) · 平台接收：@InventoryStatusName(source.LastStatus)</p>
+                <p>最後成功盤點：@DisplayTime(source.LastCompleteAt) · 保留完整快照觀察時間：@DisplayTime(source.CurrentObservedAt) · 目前顯示快照觀察時間：@DisplayTime(snapshotAt)（UTC）</p>
+                @if (source.LastRejectionReason is { } rejection) { <p role="status">平台拒收原因：@rejection</p> }
+                @if (source.PartialSnapshotId is not null && source.CurrentSnapshotId is not null)
+                {
+                    <label for="snapshot-kind">快照</label><select id="snapshot-kind" value="@(usePartial ? "partial" : "complete")" @onchange="ChangeSnapshotAsync"><option value="partial">最近部分快照</option><option value="complete">保留的完整快照</option></select>
+                }
+                @if (snapshotAt is { } observed && observed > DateTimeOffset.UtcNow) { <p role="status">快照時間晚於目前檢視端的時間，請確認時鐘。</p> }
+                else if (snapshotAt is { } old && DateTimeOffset.UtcNow - old > TimeSpan.FromHours(24)) { <p role="status">這份快照已超過 24 小時，可能不是目前狀態。</p> }
+                @if (source.PartialSnapshotId == snapshotId && snapshotId is not null) { <p role="status">這是部分快照，清單可能不完整。原因：@source.PartialReason</p> }
+                @if (snapshotId is null) { <p>尚無可查看的快照。</p> }
+                else if (chunk is not null)
+                {
+                    <p>第 @(chunkIndex + 1) / @chunk.ChunkCount 頁，每頁最多 100 筆。</p>
+                    @if (chunk.Items.Count == 0) { <p>快照沒有項目。</p> }
+                    else
+                    {
+                        <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="盤點表格，可左右捲動"><table><thead><tr><th>名稱</th><th>識別／詳細資料</th></tr></thead><tbody>
+                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
+                        </tbody></table></div>
+                    }
+                    <div class="host-pagination"><button type="button" disabled="@(chunkIndex == 0)" @onclick="() => LoadChunkAsync(chunkIndex - 1)">上一頁</button><button type="button" disabled="@(chunkIndex + 1 >= chunk.ChunkCount)" @onclick="() => LoadChunkAsync(chunkIndex + 1)">下一頁</button></div>
+                }
+            }
+        }
+    }
+    else if (tab == "metrics")
+    {
+        <label for="metric-kind">指標</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
+            @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
+        </select>
+        <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。</p>
+        @if (metricPage?.Items.Count > 0)
+        {
+            <label for="metric-series">來源與 Agent</label><select id="metric-series" value="@seriesIndex" @onchange="ChangeSeriesAsync">
+                @for (var i = 0; i < series.Count; i++) { <option value="@i">@SeriesName(series[i])</option> }
+            </select>
+            @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@MetricUnit(metricKind)" Points="points" /> }
+            else { <p>此時間範圍沒有可繪製的資料。</p> }
+            @if (metricPage.NextCursor is not null) { <p>來源選項來自本頁資料；可查看較早資料中的其他來源。</p> }
+        }
+        else { <p>這段時間沒有此指標。</p> }
+        @if (metricPage is not null && (metricCursors.Count > 0 || metricPage.NextCursor is not null)) { <button type="button" disabled="@(metricCursors.Count == 0)" @onclick="PreviousMetricsAsync">查看較新來源</button><button type="button" disabled="@(metricPage.NextCursor is null)" @onclick="NextMetricsAsync">查看較早來源</button> }
+    }
+    else if (tab == "logs")
+    {
+        <p>依中央接收時間排序；記錄來源時間可能未知。</p>
+        @if (logs?.Items.Count > 0)
+        {
+            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="日誌表格，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>來源</th><th>內容</th></tr></thead><tbody>
+                @foreach (var item in logs.Items) { <tr @key="(item.AgentId, item.MessageId)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.SourceName</td><td>@if (item.Gap is not null) { <strong>採集缺口：</strong> } @item.Content</td></tr> }
+            </tbody></table></div>
+        }
+        else { <p>這段時間沒有主機日誌。</p> }
+        @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">較新紀錄</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">較早紀錄</button> }
+    }
+    else if (tab == "integrity")
+    {
+        <p>顯示最後一次掃描與保留基線；覆蓋缺口不代表檔案完整無異常。</p>
+        @if (integrity?.Scopes.Count > 0)
+        {
+            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="完整性範圍表格，可左右捲動"><table><thead><tr><th>範圍</th><th>最後掃描</th><th>結果</th><th>基線</th></tr></thead><tbody>
+                @foreach (var scope in integrity.Scopes) { <tr @key="scope.ScopeId"><td>@scope.Root</td><td>@DisplayTime(scope.LastAttemptAt) @AgeNotice(scope.LastAttemptAt)</td><td>@(scope.Enabled ? IntegrityOutcomeName(scope.LastOutcome) : "已停用") · 平台：@IntegrityStatusName(scope.LastStatus) @(scope.CoverageGap == true ? "（有覆蓋缺口）" : "") @(scope.LastPartialReason is not null ? $"（原因：{scope.LastPartialReason}）" : "")</td><td>@DisplayTime(scope.SnapshotAt) @AgeNotice(scope.SnapshotAt) @(scope.BaselineRevision != scope.ConfiguredRevision && scope.BaselineRevision is not null ? "（設定已變更）" : "") @if (scope.SnapshotId is not null) { <button type="button" @onclick="() => OpenBaselineAsync(scope)">查看基線</button> }</td></tr> }
+            </tbody></table></div>
+            @if (baseline is { } baselinePage)
+            {
+                <h3>基線項目</h3><p>範圍 ID：@baselinePage.ScopeId · 基線設定版本：@baselinePage.ScopeRevision · 觀察時間（UTC）：@DisplayTime(baselinePage.ObservedAt) · 第 @(baselinePage.ChunkIndex + 1) / @baselinePage.ChunkCount 頁</p>
+                <p>目前設定的路徑：@(integrity.Scopes.FirstOrDefault(x => x.ScopeId == baselinePage.ScopeId)?.Root ?? "—")。基線版本若與目前設定不同，原始掃描路徑可能不同，歷史路徑未提供。</p>
+                <div class="host-table" tabindex="0" role="region" aria-label="基線表格，可左右捲動"><table><thead><tr><th>項目</th><th>類型</th><th>證據</th></tr></thead><tbody>@foreach (var item in baselinePage.Items) { <tr @key="item.Key"><td>@item.Key</td><td>@item.Kind</td><td><IntegrityEvidence Item="item" /></td></tr> }</tbody></table></div>
+                <button type="button" disabled="@(baselinePage.ChunkIndex == 0)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex - 1)">上一頁</button><button type="button" disabled="@(baselinePage.ChunkIndex + 1 >= baselinePage.ChunkCount)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex + 1)">下一頁</button>
+            }
+        }
+        else { <p>尚未設定完整性監控範圍。</p> }
+        <h3>最近變更</h3>
+        @if (changes?.Items.Count > 0)
+        {
+            <div class="host-table" tabindex="0" role="region" aria-label="完整性變更表格，可左右捲動"><table><thead><tr><th>觀察時間（UTC）</th><th>類型</th><th>項目</th><th>覆蓋</th><th>變更證據</th></tr></thead><tbody>
+                @foreach (var change in changes.Items) { <tr><td>@DisplayTime(change.ObservedAt)</td><td>@change.Kind</td><td>@(change.After?.Key ?? change.Before?.Key ?? "—")</td><td>@(change.CoverageGap ? "有缺口" : "—")</td><td><IntegrityEvidence Item="change.Before" Label="變更前" /><IntegrityEvidence Item="change.After" Label="變更後" /></td></tr> }
+            </tbody></table></div>
+        }
+        else { <p>這段時間沒有可用的變更紀錄。</p> }
+        @if (changes is not null && (changeCursors.Count > 0 || changes.NextCursor is not null)) { <button type="button" disabled="@(changeCursors.Count == 0)" @onclick="PreviousChangesAsync">較新變更</button><button type="button" disabled="@(changes.NextCursor is null)" @onclick="NextChangesAsync">較早變更</button> }
+    }
+</section>

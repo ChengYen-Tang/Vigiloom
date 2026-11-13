@@ -1,0 +1,14 @@
+@using Vigiloom.Contracts.Agent.Integrity
+
+<details><summary>@Label</summary>
+    @if (Item is null) { <p>無此項目。</p> }
+    else
+    {
+        <dl><dt>擁有者</dt><dd>@(Item.Owner ?? "未提供")</dd><dt>內容雜湊</dt><dd>@(Item.ContentDigest ?? "未提供")</dd><dt>安全性雜湊</dt><dd>@(Item.SecurityDigest ?? "未提供")</dd></dl>
+    }
+</details>
+
+@code {
+    [Parameter] public IntegrityItem? Item { get; set; }
+    [Parameter] public string Label { get; set; } = "查看證據";
+}

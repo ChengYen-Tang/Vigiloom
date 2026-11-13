@@ -1,0 +1,17 @@
+<div>
+    <button type="button" aria-expanded="@expanded" @onclick="() => expanded = !expanded">@(expanded ? "收合" : "查看")成員（@Members.Count）</button>
+    @if (expanded)
+    {
+        <ul>@foreach (var member in Members.Skip(page * PageSize).Take(PageSize)) { <li>@member</li> }</ul>
+        <button type="button" disabled="@(page == 0)" @onclick="() => page--">上一頁</button>
+        <span>第 @(page + 1) 頁</span>
+        <button type="button" disabled="@((page + 1) * PageSize >= Members.Count)" @onclick="() => page++">下一頁</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Members { get; set; } = [];
+    private const int PageSize = 100;
+    private bool expanded;
+    private int page;
+}
