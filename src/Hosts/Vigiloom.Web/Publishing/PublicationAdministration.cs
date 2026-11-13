@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -67,6 +68,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         await using var transaction = await resourcesDb.Database.BeginTransactionAsync(token);
         if (kind == PublicationResourceKind.Device)
         {
+            if (!await PublicationMutationLock.TryAcquireAsync(resourcesDb, token)) return new(PublicationChangeStatus.Conflict);
             var row = await resourcesDb.Devices.FromSqlInterpolated($"SELECT * FROM [resources].[Devices] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
             if (row is null) return new(PublicationChangeStatus.NotFound);
             if (row.IsArchived || !row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
