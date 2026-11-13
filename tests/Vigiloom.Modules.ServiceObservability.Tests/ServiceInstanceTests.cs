@@ -15,7 +15,7 @@ public sealed class ServiceInstanceTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Resolver_NamespacesSeparateApprovalAndInstances() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -26,7 +26,6 @@ public sealed class ServiceInstanceTests(TestContext context)
             var aSpace = new MonitoredService(new ServiceCandidate(source.Id, "api", "prod", "API A space", now, "A "), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.AddRange(empty, a, aSpace);
                 await db.SaveChangesAsync(token);
@@ -56,7 +55,7 @@ public sealed class ServiceInstanceTests(TestContext context)
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Resolver_PreservesExactIdentityAndHonorsAuthorizationAndRetirement(bool snapshotReads) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -67,8 +66,6 @@ public sealed class ServiceInstanceTests(TestContext context)
             var service = new MonitoredService(candidate, now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
-                await db.Database.MigrateAsync(token);
                 db.Sources.AddRange(source, other);
                 db.Services.Add(service);
                 await db.SaveChangesAsync(token);
@@ -120,12 +117,12 @@ public sealed class ServiceInstanceTests(TestContext context)
             Assert.AreEqual(InstanceResolutionStatus.Retired, (await Resolve(source.Id, "node")).Status);
             await using (var db = new ServiceObservabilityDbContext(options))
                 Assert.AreEqual(7, await db.Instances.CountAsync(token));
-        }, context.CancellationToken);
+        }, snapshotReads, context.CancellationToken);
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Resolver_ConcurrentFirstReportsCreateOneInstance() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -134,7 +131,6 @@ public sealed class ServiceInstanceTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.Add(service);
                 await db.SaveChangesAsync(token);
@@ -168,7 +164,7 @@ public sealed class ServiceInstanceTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Resolver_ConcurrentAdmissionRespectsCapacityAndStillResolvesExisting() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -177,7 +173,6 @@ public sealed class ServiceInstanceTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.Add(service);
                 await db.SaveChangesAsync(token);
@@ -207,7 +202,7 @@ public sealed class ServiceInstanceTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Resolver_ConcurrentDifferentServicesShareTheGlobalLimit() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -217,7 +212,6 @@ public sealed class ServiceInstanceTests(TestContext context)
             var second = new MonitoredService(new ServiceCandidate(source.Id, "second", "prod", "Second", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source);
                 db.Services.AddRange(first, second);
                 db.InstancePolicies.Add(new InstancePolicy { PerService = 10, Total = 1, CreatedAt = now, UpdatedAt = now });

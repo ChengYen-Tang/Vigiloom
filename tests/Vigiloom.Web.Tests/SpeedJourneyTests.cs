@@ -43,6 +43,9 @@ public sealed class SpeedJourneyTests
         var builder = WorkerHost.CreateBuilder([]);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
         builder.Services.AddSingleton<IHttpMessageHandlerFactory>(new ControlledPhaseFactory(new ControlledPhaseHandler()));
+        // Exercise the real probe and multi-server path without waiting for production-length samples.
+        builder.Services.AddScoped<ISpeedProbe>(services => new SpeedtestNetProbe(
+            services.GetRequiredService<IHttpMessageHandlerFactory>(), 2_000, 4, defaultMultiServer: true));
         using var worker = builder.Build();
         try
         {
@@ -72,6 +75,9 @@ public sealed class SpeedJourneyTests
                 if (run.State is not (SpeedTestState.Queued or SpeedTestState.Running))
                 {
                     Assert.AreEqual(SpeedTestState.Success, run.State, $"Diagnostic: {run.DiagnosticCode}");
+                    Assert.IsTrue(run.DownloadMbps is double download && double.IsFinite(download) && download > 0);
+                    Assert.IsTrue(run.UploadMbps is double upload && double.IsFinite(upload) && upload > 0);
+                    Assert.IsTrue(run.Bytes is > 0);
                     id = run.Id;
                     break;
                 }

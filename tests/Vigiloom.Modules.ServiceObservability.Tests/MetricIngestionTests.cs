@@ -21,7 +21,7 @@ public sealed class MetricIngestionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task CollectorObservations_SeparatesInstancesAndExcludesOtherNamesAndServices() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -33,7 +33,6 @@ public sealed class MetricIngestionTests(TestContext context)
             var otherScope = new MonitoredService(new ServiceCandidate(secondSource.Id, "collector", "prod", "Collector", now), now.AddMinutes(-1));
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.AddRange(source, secondSource); db.Services.AddRange(service, other, otherScope); await db.SaveChangesAsync(token);
             }
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);

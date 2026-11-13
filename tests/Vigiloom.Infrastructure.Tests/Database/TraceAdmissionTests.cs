@@ -97,11 +97,8 @@ public sealed class TraceAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task TraceQuota_RejectsWholeBatchWithoutDebitingOtherServices() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
-            var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
-            await using (var db = new LogAdmissionDbContext(options)) await db.Database.MigrateAsync(token);
             var source = Guid.CreateVersion7(); var a = Guid.CreateVersion7(); var b = Guid.CreateVersion7();
             await using var sql = new SqlConnection(database.ConnectionString); await sql.OpenAsync(token);
             await using (var tx = await sql.BeginTransactionAsync(token))

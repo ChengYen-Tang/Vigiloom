@@ -28,7 +28,7 @@ public sealed class TwoFactorHttpTests
     [DataRow(false)]
     [DataRow(true)]
     public Task InvalidSecondFactorCodes_TriggerAccountLockout(bool recovery) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string secret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -40,7 +40,6 @@ public sealed class TwoFactorHttpTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             string validCode;
             await using (var scope = factory.Services.CreateAsyncScope())
@@ -88,7 +87,7 @@ public sealed class TwoFactorHttpTests
 
     [TestMethod]
     public Task AuthenticatorAndRecoveryCode_WorkThroughProtectedForms() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -102,7 +101,6 @@ public sealed class TwoFactorHttpTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
             async Task<Dictionary<string, string>> Form(string url, string formName)

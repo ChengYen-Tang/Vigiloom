@@ -21,7 +21,7 @@ public sealed class TwoFactorStoreTests
 
     [TestMethod]
     public Task UserCanEnableAndDisableAuthenticatorWithRecoveryCode() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string secret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -34,7 +34,6 @@ public sealed class TwoFactorStoreTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             await using (var scope = factory.Services.CreateAsyncScope())
                 Assert.AreEqual(InitialAdministratorStatus.Created, (await scope.ServiceProvider.GetRequiredService<InitialAdministrator>()
@@ -87,7 +86,7 @@ public sealed class TwoFactorStoreTests
 
     [TestMethod]
     public Task AuthenticatorSecrets_AreEncryptedAndRecoveryCodesAreSingleUseUnderConcurrency() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string secret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -100,7 +99,6 @@ public sealed class TwoFactorStoreTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             Guid userId;
             string authenticatorKey;

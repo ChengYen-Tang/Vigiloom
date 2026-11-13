@@ -17,13 +17,13 @@ public sealed class InventoryStageWriterTests
 
     [TestMethod]
     public Task Stage_BusyPublicationRollsBackLastChunkAndRetryPublishes() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             var now = DateTimeOffset.UtcNow;
@@ -64,13 +64,13 @@ public sealed class InventoryStageWriterTests
 
     [TestMethod]
     public Task Stage_HostHardwareSourcesAreAcceptedByMigratedSchema() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 0);
@@ -89,13 +89,13 @@ public sealed class InventoryStageWriterTests
 
     [TestMethod]
     public Task Stage_UsesCallerTransactionAndDoesNotCloseItsConnection() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var transaction = await connection.BeginTransactionAsync(token);
@@ -116,13 +116,13 @@ public sealed class InventoryStageWriterTests
 
     [TestMethod]
     public Task Stage_FailedSupersessionCanRollBackToCommittedStaging() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             var now = DateTimeOffset.UtcNow;
@@ -250,13 +250,13 @@ public sealed class InventoryStageWriterTests
 
     [TestMethod]
     public Task Stage_OverQuotaRecordsTerminalFenceWithoutReceipt() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var now = DateTimeOffset.UtcNow;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 0);
             var source = new InventorySourceState(owner, InventorySource.HostSystem) { ClosedGeneration = 1, CurrentGeneration = 1 };

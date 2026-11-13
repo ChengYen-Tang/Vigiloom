@@ -3,4 +3,7 @@
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.SecurityAnalysis/Vigiloom.Modules.SecurityAnalysis.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Respawn" />
+  </ItemGroup>
 </Project>

@@ -31,7 +31,7 @@ public sealed class DeviceManagementTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public Task AdminCanCreateAndReaderCannotModify() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task AdminCanCreateAndReaderCannotModify() => Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         const string secret = "test-only-bootstrap-secret-with-adequate-length";
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -43,8 +43,6 @@ public sealed class DeviceManagementTests
             }));
         });
         var identity = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-        await using (var db = await identity.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await RoleInitializer.InitializeAsync(identity, token);
         string readCredential;
         string writeCredential;

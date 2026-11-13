@@ -14,7 +14,6 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Integration")]
 [TestCategory("Database")]
 [TestCategory("Browser")]
-[DoNotParallelize]
 public sealed class PingBrowserTests
 {
     public TestContext TestContext { get; set; } = null!;

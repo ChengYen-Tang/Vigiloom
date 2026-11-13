@@ -17,13 +17,13 @@ public sealed class InventoryChangeQueryTests
 
     [TestMethod]
     public Task Query_PagesSameTimestampWithoutDuplicatesAndScopesDevice() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var now = DateTimeOffset.UtcNow;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 0);
             var chunk = new InventoryChunk(4, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 1,

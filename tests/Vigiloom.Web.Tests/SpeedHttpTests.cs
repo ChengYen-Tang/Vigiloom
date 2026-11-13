@@ -26,7 +26,6 @@ namespace Vigiloom.Web.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
-[DoNotParallelize]
 public sealed class SpeedHttpTests
 {
     public TestContext TestContext { get; set; } = null!;

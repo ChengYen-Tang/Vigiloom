@@ -11,6 +11,7 @@ using Vigiloom.Agent.Core.Integrity;
 using Vigiloom.Agent.Core.Metrics;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
+using Vigiloom.Agent.Hosting.Integrity;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent.Integrity;
 
@@ -78,6 +79,11 @@ public sealed class IntegrityHostTests
                 if (send) parsed = await handler.Delivered.Task.WaitAsync(deadline.Token);
                 else
                 {
+                    // Avoid contending for the identity lease while settings are still being synchronized.
+                    var owner = new AgentSettingsOwner(agentId, server.AbsoluteUri, vault.StateDirectory);
+                    var settings = host.Services.GetRequiredService<AgentIntegritySettingsRuntime>();
+                    while (settings.ForOwner(owner)?.Revision != snapshot.Revision)
+                        await Task.Delay(50, deadline.Token);
                     QueuedBatch? batch;
                     while (true)
                     {
