@@ -72,6 +72,7 @@ public sealed class HostMetricHttpTests
                 var result = await reader.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}", token);
                 Assert.IsNotNull(result);
                 Assert.HasCount(2, result.Items);
+                Assert.IsTrue(result.Items.All(x => x.AgentId == agentId));
                 Assert.AreEqual((double)total, result.Items.Single(x => x.Kind == AgentMetricKind.MemoryTotalBytes).Value);
                 var marker = result.Items.Single(x => x.Kind == AgentMetricKind.CollectionUnavailable);
                 Assert.AreEqual("cpu", marker.Dimension);
@@ -96,9 +97,11 @@ public sealed class HostMetricHttpTests
         var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
         await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
         var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+        Guid metricAgentId;
         await using (var db = await agents.CreateDbContextAsync(token))
         {
             var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
+            metricAgentId = agent.Id;
             db.Agents.Add(agent);
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, 1024), now));
@@ -113,12 +116,20 @@ public sealed class HostMetricHttpTests
         using (var response = await reader.GetAsync(url, token))
         {
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsNotNull(response.Headers.CacheControl);
+            Assert.IsTrue(response.Headers.CacheControl.NoStore);
             var page = await response.Content.ReadFromJsonAsync<HostMetricPage>(cancellationToken: token);
             Assert.IsNotNull(page);
             Assert.HasCount(1, page.Items);
             Assert.AreEqual(1024d, page.Items[0].Value);
         }
         using (var invalid = await reader.GetAsync(url + "&cursor=bad", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using (var aggregate = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={metricAgentId:D}&from={from}&until={until}&kind=MemoryTotalBytes&source=test&bucketSeconds=60", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, aggregate.StatusCode);
+            Assert.IsNotNull(aggregate.Headers.CacheControl);
+            Assert.IsTrue(aggregate.Headers.CacheControl.NoStore);
+        }
         using (var unknown = await reader.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-metrics?from={from}&until={until}", token)) Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
         using var admin = PingTestSite.Client(factory); await PingTestSite.LoginAsync(admin, "admin", token);
         using (var response = await admin.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);

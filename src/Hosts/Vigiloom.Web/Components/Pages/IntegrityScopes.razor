@@ -1,0 +1,161 @@
+@page "/devices/{Id:guid}/integrity-scopes"
+@page "/devices/{Id:guid}/integrity-scopes/{ScopeId:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Collections.Immutable
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent.Integrity
+@using Vigiloom.Modules.SecurityAnalysis.Application.Integrity
+@using Vigiloom.Modules.IdentityAccess.Domain
+@inject IntegrityConfiguration Configuration
+@inject NavigationManager Navigation
+@inject ILogger<IntegrityScopes> Logger
+
+<PageTitle>完整性監控設定 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
+    <header class="device-heading"><div><h1>完整性監控設定</h1><p>管理 Agent 要掃描的目錄與 Windows 登錄範圍；設定由 Agent 定期同步。</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">無法載入設定，請稍後重試。</p></section> }
+    else if (scopes is null || (ScopeId is not null && current is null)) { <section class="device-panel"><p>找不到設備或監控範圍。</p></section> }
+    else
+    {
+        <section class="device-panel">
+            <h2>已設定的範圍</h2>
+            @if (scopes.Count == 0) { <p>尚未設定監控範圍。</p> }
+            else
+            {
+                <ul>@foreach (var scope in scopes) { <li @key="scope.Scope.Id"><a href="@($"/devices/{Id:D}/integrity-scopes/{scope.Scope.Id:D}")">@scope.Scope.Root</a> · @(scope.Scope.Enabled ? "已啟用" : "已停用")</li> }</ul>
+            }
+            @if (ScopeId is not null) { <a href="@($"/devices/{Id:D}/integrity-scopes")">新增範圍</a> }
+        </section>
+        <section class="device-panel">
+            <h2>@(ScopeId is null ? "新增監控範圍" : "編輯監控範圍")</h2>
+            <p>僅保存路徑與雜湊，不收集檔案內容。請確認 Agent 對目標有讀取權限。</p>
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="integrity-save" method="post" OnValidSubmit="SaveAsync">
+                <ValidationSummary />
+                <InputHidden @bind-Value="Input.Version" />
+                <label for="integrity-kind">類型</label><InputSelect id="integrity-kind" @bind-Value="Input.Kind"><option value="Directory">目錄</option><option value="Registry">Windows 登錄</option></InputSelect>
+                <label for="integrity-root">完整路徑</label><InputText id="integrity-root" @bind-Value="Input.Root" maxlength="1024" />
+                <label for="integrity-registry">登錄檢視（僅 Windows 登錄）</label><InputSelect id="integrity-registry" @bind-Value="Input.RegistryView"><option value="Registry64">64 位元</option><option value="Registry32">32 位元</option></InputSelect>
+                <label for="integrity-exclusions">排除項目（每行一個相對路徑樣式）</label><InputTextArea id="integrity-exclusions" @bind-Value="Input.Exclusions" />
+                <label for="integrity-interval">掃描間隔（秒，60–604800）</label><InputNumber id="integrity-interval" @bind-Value="Input.ScanIntervalSeconds" />
+                <label for="integrity-entries">最多項目（1–20000）</label><InputNumber id="integrity-entries" @bind-Value="Input.MaximumEntries" />
+                <label for="integrity-file">單一檔案最大位元組（1–1073741824）</label><InputNumber id="integrity-file" @bind-Value="Input.MaximumFileBytes" />
+                <label for="integrity-scan">單次掃描最大位元組（1–17179869184）</label><InputNumber id="integrity-scan" @bind-Value="Input.MaximumScanBytes" />
+                <label for="integrity-depth">最大深度（1–64）</label><InputNumber id="integrity-depth" @bind-Value="Input.MaximumDepth" />
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用</label>
+                <div class="device-actions"><button type="submit">儲存設定</button></div>
+            </EditForm>
+        </section>
+        @if (current is not null)
+        {
+            <section class="device-panel"><h2>移除監控範圍</h2><p>停止後續掃描；過往紀錄依保存政策保留。</p>
+                <EditForm Model="Retire" FormName="integrity-retire" method="post" OnValidSubmit="RetireAsync">
+                    <ValidationSummary />
+                    <InputHidden @bind-Value="Retire.Version" /><label><InputCheckbox @bind-Value="Retire.Confirm" /> 我了解以上影響</label><button type="submit">確認移除</button>
+                </EditForm>
+            </section>
+        }
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Parameter] public Guid? ScopeId { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "integrity-save")] private ScopeForm Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "integrity-retire")] private RetireForm Retire { get; set; } = default!;
+    private IReadOnlyList<IntegrityScopeView>? scopes;
+    private IntegrityScopeView? current;
+    private bool loadError;
+    private string? message;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        Input ??= new(); Retire ??= new();
+        try
+        {
+            scopes = await Configuration.ListAsync(Id, HttpContext.RequestAborted);
+            current = scopes?.FirstOrDefault(x => x.Scope.Id == ScopeId);
+            var handler = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType
+                ? (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"].ToString() : null;
+            if (current is not null)
+            {
+                var scope = current.Scope;
+                if (handler != "integrity-save")
+                    Input = new() { Version = current.Version, Kind = scope.Kind, Root = scope.Root, RegistryView = scope.RegistryView ?? IntegrityRegistryView.Registry64,
+                        Exclusions = string.Join("\n", scope.Exclusions), ScanIntervalSeconds = scope.ScanIntervalSeconds, MaximumEntries = scope.MaximumEntries,
+                        MaximumFileBytes = scope.MaximumFileBytes, MaximumScanBytes = scope.MaximumScanBytes, MaximumDepth = scope.MaximumDepth, Enabled = scope.Enabled };
+                if (handler != "integrity-retire") Retire.Version = current.Version;
+            }
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not load integrity scopes: {ExceptionType}", ex.GetType().Name); loadError = true; }
+    }
+    private async Task SaveAsync()
+    {
+        if (!TryActor(out var actor)) return;
+        var fields = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (!ValidInt32(fields, "Input.ScanIntervalSeconds") || !ValidInt32(fields, "Input.MaximumEntries") ||
+            !ValidInteger(fields, "Input.MaximumFileBytes") || !ValidInteger(fields, "Input.MaximumScanBytes") || !ValidInt32(fields, "Input.MaximumDepth") ||
+            !ValidEnum<IntegrityScopeKind>(fields, "Input.Kind") || !ValidEnum<IntegrityRegistryView>(fields, "Input.RegistryView") ||
+            fields["Input.Enabled"].Count > 1 || fields["Input.Enabled"].Count == 1 && !bool.TryParse(fields["Input.Enabled"][0], out _))
+        { message = "設定無效，請確認數字及選擇欄位。"; return; }
+        Input.Enabled = fields["Input.Enabled"].Count == 1 && bool.Parse(fields["Input.Enabled"][0]!);
+        var exclusions = (Input.Exclusions ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToImmutableArray();
+        var policy = new IntegrityScopeInput(Input.Kind, Input.Root ?? "", Input.Enabled, exclusions, Input.ScanIntervalSeconds,
+            Input.MaximumEntries, Input.MaximumFileBytes, Input.MaximumScanBytes, Input.MaximumDepth, Input.Kind == IntegrityScopeKind.Registry ? Input.RegistryView : null);
+        var saved = false;
+        try
+        {
+            var result = ScopeId is { } scopeId ? await Configuration.UpdateAsync(Id, scopeId, policy, Input.Version, actor, HttpContext.RequestAborted)
+                : await Configuration.CreateAsync(Id, policy, actor, HttpContext.RequestAborted);
+            saved = result.Status == IntegrityConfigurationStatus.Success;
+            if (!saved) message = result.Status switch { IntegrityConfigurationStatus.Conflict => "設定已變更，請重新整理後再試。", IntegrityConfigurationStatus.LimitReached => "已達監控範圍數量上限。", _ => "找不到設備或監控範圍。" };
+        }
+        catch (ArgumentException) { message = "設定無效，請檢查路徑、排除項目與各項範圍限制。"; }
+        catch (Exception ex) { Logger.LogWarning("Could not save integrity scope: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理並檢查設定。"; }
+        if (saved) Navigation.NavigateTo($"/devices/{Id:D}/integrity-scopes", forceLoad: true);
+    }
+    private async Task RetireAsync()
+    {
+        if (!TryActor(out var actor) || ScopeId is not { } scopeId) return;
+        if (!Retire.Confirm) { message = "請先確認操作影響。"; return; }
+        var retired = false;
+        try
+        {
+            var result = await Configuration.RetireAsync(Id, scopeId, Retire.Version, actor, HttpContext.RequestAborted);
+            retired = result.Status == IntegrityConfigurationStatus.Success;
+            if (!retired) message = "設定已變更或找不到範圍，請重新整理後再試。";
+        }
+        catch (Exception ex) { Logger.LogWarning("Could not retire integrity scope: {ExceptionType}", ex.GetType().Name); message = "無法確認移除結果，請重新整理並檢查設定。"; }
+        if (retired) Navigation.NavigateTo($"/devices/{Id:D}/integrity-scopes", forceLoad: true);
+    }
+    private bool TryActor(out Guid actor)
+    {
+        actor = default;
+        return HttpContext.User.IsInRole(BuiltInRoles.Administrator) && Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out actor);
+    }
+    private static bool ValidInteger(IFormCollection fields, string name) => fields[name].Count == 1 &&
+        long.TryParse(fields[name][0], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out _);
+    private static bool ValidInt32(IFormCollection fields, string name) => fields[name].Count == 1 &&
+        int.TryParse(fields[name][0], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out _);
+    private static bool ValidEnum<T>(IFormCollection fields, string name) where T : struct, Enum => fields[name].Count == 1 &&
+        Enum.TryParse<T>(fields[name][0], out var value) && Enum.IsDefined(value);
+    private sealed class ScopeForm
+    {
+        public string? Version { get; set; }
+        public IntegrityScopeKind Kind { get; set; } = IntegrityScopeKind.Directory;
+        public string? Root { get; set; }
+        public IntegrityRegistryView RegistryView { get; set; } = IntegrityRegistryView.Registry64;
+        public string? Exclusions { get; set; }
+        public int ScanIntervalSeconds { get; set; } = 3600;
+        public int MaximumEntries { get; set; } = 10000;
+        public long MaximumFileBytes { get; set; } = 104857600;
+        public long MaximumScanBytes { get; set; } = 1073741824;
+        public int MaximumDepth { get; set; } = 16;
+        public bool Enabled { get; set; } = true;
+    }
+    private sealed class RetireForm { public string? Version { get; set; } public bool Confirm { get; set; } }
+}

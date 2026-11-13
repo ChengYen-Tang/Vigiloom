@@ -37,10 +37,11 @@
                 <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
             }
         </dl>
-            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a></Authorized></AuthorizeView> }
+            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }
         </section>
         @if (device.DeepMonitoring)
         {
+            <Vigiloom.Web.Client.Components.HostMonitoring.HostDetails DeviceId="Id" @rendermode="InteractiveAuto" />
             <section class="device-panel">
                 <h2>Agent 本機傳送佇列</h2>
                 @if (capacityError) { <p class="device-alert" role="alert">無法讀取佇列容量設定狀態。</p> }
