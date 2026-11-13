@@ -11,7 +11,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
-        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources))
+        if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources or AuditFeedSource.HostMetricThresholds))
             throw new ArgumentException("Invalid audit source or range.");
         await using var db = await contexts.CreateDbContextAsync(token);
         var skip = (query.Page - 1) * AuditFeedLimits.PageSize;
@@ -34,6 +34,28 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
                     "RotationFinished" => AuditFeedAction.RotationFinished,
                     _ => AuditFeedAction.Unknown
                 }, AuditFeedOutcome.Recorded, AgentId: row.AgentId)).ToArray();
+        }
+        else if (source == AuditFeedSource.HostMetricThresholds)
+        {
+            var rows = await (from audit in db.HostMetricThresholdAudits.AsNoTracking()
+                join threshold in db.HostMetricThresholds.AsNoTracking() on audit.ThresholdId equals threshold.Id
+                where audit.OccurredAt >= query.From && audit.OccurredAt < query.To
+                orderby audit.OccurredAt descending, audit.RowId descending
+                select new { audit.OccurredAt, audit.ActorId, audit.DeviceId, audit.ThresholdId, audit.Enabled, audit.Comparison,
+                    audit.Value, audit.FreshnessSeconds, audit.Version, threshold.AgentId, threshold.Kind, threshold.Source, threshold.Dimension })
+                .Skip(skip).Take(AuditFeedLimits.PageSize + 1).ToArrayAsync(token);
+            more = rows.Length > AuditFeedLimits.PageSize;
+            entries = rows.Take(AuditFeedLimits.PageSize).Select(row =>
+            {
+                var valid = row.ThresholdId != Guid.Empty && row.AgentId != Guid.Empty && Enum.IsDefined(row.Kind) &&
+                    row.Kind != AgentMetricKind.CollectionUnavailable && !string.IsNullOrWhiteSpace(row.Source) &&
+                    Enum.IsDefined(row.Comparison) && double.IsFinite(row.Value) &&
+                    row.Value is >= 0 and <= AgentMetricBatchCodec.MaximumValue && row.FreshnessSeconds is >= 30 and <= 86400 && row.Version.Length == 8;
+                var details = valid ? new HostMetricThresholdAuditDetails(row.ThresholdId, row.AgentId, (int)row.Kind, row.Source, row.Dimension,
+                    row.Enabled, (int)row.Comparison, row.Value, row.FreshnessSeconds, Convert.ToBase64String(row.Version)) : null;
+                return new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId,
+                    valid ? AuditFeedAction.HostMetricThresholdChanged : AuditFeedAction.Unknown, AuditFeedOutcome.Recorded, MetricThreshold: details);
+            }).ToArray();
         }
         else if (source == AuditFeedSource.HostLogSources)
         {

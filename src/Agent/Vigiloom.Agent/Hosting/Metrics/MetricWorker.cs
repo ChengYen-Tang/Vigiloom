@@ -9,7 +9,8 @@ namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>Runs one owner's metric collection serially and retries pending batches.</summary>
 internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfiguration configuration, TimeProvider clock,
-    ILogger<MetricWorker> logger, IMetricResourceMonitor? resourceMonitor = null, SamplingBudgetCoordinator? sharedBudget = null) : BackgroundService
+    ILogger<MetricWorker> logger, IMetricResourceMonitor? resourceMonitor = null, SamplingBudgetCoordinator? sharedBudget = null,
+    Func<TimeProvider, IHostMetricCollector>? collectorFactory = null) : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(5);
 
@@ -63,7 +64,7 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                             if (owner is not null)
                             {
                                 producerOwnership = vault.AcquireMetricOwnership();
-                                try { cycle = new MetricSamplingCycle(owner, new DurableBatchQueue(vault, owner.AgentId), clock); }
+                                try { cycle = new MetricSamplingCycle(owner, new DurableBatchQueue(vault, owner.AgentId), clock, collectorFactory?.Invoke(clock)); }
                                 catch { await producerOwnership.DisposeAsync(); producerOwnership = null; throw; }
                             }
                             activeOwner = owner;

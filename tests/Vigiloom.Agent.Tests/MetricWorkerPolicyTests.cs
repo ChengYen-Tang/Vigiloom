@@ -125,7 +125,9 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
             }).Build();
             var logger = new CapturingLogger();
             var monitor = new ControlledMonitor(cpu);
-            using var worker = new MetricWorker(runtime, config, TimeProvider.System, logger, monitor);
+            var collector = new ControlledCollector(TimeProvider.System);
+            using var worker = new MetricWorker(runtime, config, TimeProvider.System, logger, monitor,
+                collectorFactory: _ => collector);
             Exception? workerFailure = null;
             try
             {
@@ -142,6 +144,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
                 Assert.AreEqual(before, monitor.IoReads, "No new cycle should start while the budget is exhausted.");
                 Publish(false);
                 await WaitForAsync(() => logger.Contains($"resumed after the {kind} budget delay"), token);
+                await WaitForAsync(() => monitor.IoReads >= before + 1, token);
                 await WaitForAsync(() => monitor.IoReads >= before + 2, token);
                 using var queueDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 queueDeadline.CancelAfter(TimeSpan.FromSeconds(20));
@@ -167,6 +170,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
             var status = await new DurableBatchQueue(vault, owner.AgentId).GetStatusAsync(token);
             Assert.IsGreaterThan(0L, status.TotalBatches);
             Assert.IsTrue(monitor.Disposed);
+            Assert.IsTrue(collector.Disposed);
         }
         catch (Exception error) { failure = error; throw; }
         finally
@@ -271,6 +275,23 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => messages.Enqueue(formatter(state, exception));
+    }
+
+    private sealed class ControlledCollector(TimeProvider clock) : IHostMetricCollector
+    {
+        public Task<HostMetricCollection> CollectAsync(TimeSpan maximumInterval, CancellationToken token, bool includeProcesses = true)
+        {
+            token.ThrowIfCancellationRequested();
+            var point = new AgentMetricPoint(Guid.CreateVersion7(), clock.GetUtcNow(), AgentMetricKind.MemoryTotalBytes, "test.memory", null, 1024);
+            return Task.FromResult(new HostMetricCollection([point], []));
+        }
+        public HostMetricCollection CollectProcesses(TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null)
+        {
+            token.ThrowIfCancellationRequested();
+            return new([], []);
+        }
+        public bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class ControlledMonitor(bool cpu) : IMetricResourceMonitor

@@ -19,6 +19,7 @@ internal sealed class AuditFeedReader(IdentityAuditFeed identity, DeviceAuditFee
         "agent-settings" => AuditFeedSource.AgentSettings,
         "agent-queue-capacity" => AuditFeedSource.AgentQueueCapacity,
         "agent-metric-settings" => AuditFeedSource.AgentMetricSettings,
+        "host-metric-thresholds" => AuditFeedSource.HostMetricThresholds,
         "inventory-settings" => AuditFeedSource.InventorySettings,
         "host-log-sources" => AuditFeedSource.HostLogSources,
         "scheduling" => AuditFeedSource.Scheduling,
@@ -32,7 +33,7 @@ internal sealed class AuditFeedReader(IdentityAuditFeed identity, DeviceAuditFee
         {
             AuditFeedSource.Accounts or AuditFeedSource.ApiCredentials => await identity.QueryAsync(source, query, token),
             AuditFeedSource.Devices => await devices.QueryAsync(query, token),
-            AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources or AuditFeedSource.HostMetricThresholds => await agent.QueryAsync(source, query, token),
             AuditFeedSource.Scheduling => Map(await scheduling.QueryAsync(query.From, query.To, query.Page, token)),
             AuditFeedSource.InventorySettings => await inventory.QueryAsync(query, token),
             _ => throw new ArgumentException("Unsupported audit source.", nameof(source))

@@ -71,6 +71,15 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [];
             else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
+            else if (path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) &&
+                     path.EndsWith("/host-metric-threshold", StringComparison.OrdinalIgnoreCase) &&
+                     !method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [new OpenApiSecurityRequirement {
+                    [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [],
+                    [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
+                operation.Description = "Requires a signed-in Administrator session and an antiforgery token.";
+            }
             else if (path.Equals("/api/v1/agent-packages", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) ||
