@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Playwright;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
@@ -65,6 +66,7 @@ public sealed class AgentSettingsUiHttpTests
             var files = Path.Combine(root, "files");
             Directory.CreateDirectory(files);
             await File.WriteAllTextAsync(Path.Combine(files, "observed.txt"), "before", TestContext.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(files, "ignored.txt"), "excluded", TestContext.CancellationToken);
             await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
             {
                 using var factory = PingTestSite.CreateFactory(database.ConnectionString);
@@ -88,10 +90,26 @@ public sealed class AgentSettingsUiHttpTests
                     var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
                     admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
                 }
-                var input = new IntegrityScopeInput(IntegrityScopeKind.Directory, files, true,
-                    ImmutableArray<string>.Empty, 60, 250, 1048576, 10485760, 16);
-                using var created = await admin.PostAsJsonAsync($"/api/v1/agent-management/devices/{device.Id:D}/integrity-scopes/", input, token);
-                Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+                using var browserFactory = PingTestSite.CreateFactory(database.ConnectionString);
+                browserFactory.UseKestrel(0);
+                browserFactory.StartServer();
+                var url = browserFactory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+                using var playwright = await Playwright.CreateAsync();
+                await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+                await using var context = await browser.NewContextAsync();
+                var page = await context.NewPageAsync();
+                await using var wasmGate = await AutoRenderGate.HoldAsync(page);
+                await page.GotoAsync($"{url}/devices/{device.Id:D}/integrity-scopes");
+                await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+                await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+                await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+                await page.GetByLabel("完整路徑").FillAsync(files);
+                await page.GetByLabel("排除項目（每行一個相對路徑樣式）").FillAsync("ignored.txt");
+                await page.GetByLabel("掃描間隔（秒，60–604800）").FillAsync("60");
+                await page.GetByLabel("最多項目（1–20000）").FillAsync("250");
+                await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+                await page.GetByRole(AriaRole.Link, new() { Name = files, Exact = true }).ClickAsync();
+                await Assertions.Expect(page.GetByLabel("排除項目（每行一個相對路徑樣式）")).ToHaveValueAsync("ignored.txt");
                 using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
                 var vault = new IdentityVault(Path.Combine(root, "state"));
                 var server = new Uri("https://localhost/");
@@ -101,6 +119,7 @@ public sealed class AgentSettingsUiHttpTests
                 var synced = await new AgentIntegritySettingsClient(http, TimeProvider.System).SyncAsync(vault, server, token);
                 Assert.IsNotNull(synced.Settings);
                 var scope = synced.Settings.Snapshot.Scopes.Single();
+                CollectionAssert.AreEqual(new[] { "ignored.txt" }, scope.Exclusions.ToArray());
                 var cycle = new IntegrityCycle(new IntegrityStatusClient(http, TimeProvider.System), TimeProvider.System);
                 var sender = new AgentBatchClient(http, TimeProvider.System);
                 var builder = AgentHost.CreateBuilder([]);
@@ -154,9 +173,18 @@ public sealed class AgentSettingsUiHttpTests
                 }
                 // The central baseline may be visible just before the worker's local terminal reconciliation.
                 await cycle.ResumeOutstandingAsync(vault, server, owner, token);
+                await page.GotoAsync($"{url}/devices/{device.Id:D}");
+                await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+                await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
+                await page.GetByRole(AriaRole.Button, new() { Name = "查看基線", Exact = true }).ClickAsync();
+                var baseline = page.GetByRole(AriaRole.Region, new() { Name = "基線表格，可左右捲動" });
+                await baseline.GetByText("observed.txt", new() { Exact = false }).WaitForAsync();
+                Assert.AreEqual(0, await baseline.GetByText("ignored.txt", new() { Exact = false }).CountAsync());
+                await page.GetByText("這段時間沒有可用的變更紀錄。", new() { Exact = true }).WaitForAsync();
                 for (var index = 0; index < 105; index++)
                     await File.WriteAllTextAsync(Path.Combine(files, $"new-{index:D3}.txt"), "new", token);
                 await File.WriteAllTextAsync(Path.Combine(files, "observed.txt"), "after", token);
+                await File.WriteAllTextAsync(Path.Combine(files, "ignored.txt"), "still excluded", token);
                 var queue = new DurableBatchQueue(vault, agentId);
                 var gap = await queue.MarkIntegrityGapAsync(owner, scope.Id, scope.Revision, token);
                 Assert.AreEqual(IntegrityCycleKind.Queued, (await cycle.RunAsync(vault, server, owner, synced.Settings, scope,
@@ -187,7 +215,7 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.IsNotNull(changes);
                 var all = new List<IntegrityChangeView>(changes.Items);
                 var cursor = changes.NextCursor;
-                for (var page = 0; cursor is not null && page < 3; page++)
+                for (var pageIndex = 0; cursor is not null && pageIndex < 3; pageIndex++)
                 {
                     using var next = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity/changes?from={from}&until={until}&cursor={Uri.EscapeDataString(cursor)}", token);
                     Assert.AreEqual(HttpStatusCode.OK, next.StatusCode);
@@ -199,6 +227,27 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.IsNull(cursor);
                 Assert.AreEqual(105, all.Count(x => x.Kind == IntegrityChangeType.Added));
                 Assert.IsTrue(all.Any(x => x.Kind == IntegrityChangeType.Modified && x.After?.Key.Contains("observed.txt", StringComparison.Ordinal) == true));
+                Assert.IsFalse(all.Any(x => (x.After?.Key ?? x.Before?.Key)?.Contains("ignored.txt", StringComparison.Ordinal) == true));
+                await page.ReloadAsync();
+                await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+                await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
+                await page.GetByText("（有覆蓋缺口）", new() { Exact = false }).WaitForAsync();
+                var changesTable = page.GetByRole(AriaRole.Region, new() { Name = "完整性變更表格，可左右捲動" });
+                for (var index = 0; index < 4 && await changesTable.GetByText("observed.txt", new() { Exact = false }).CountAsync() == 0; index++)
+                {
+                    var firstRow = changesTable.Locator("tbody tr").First;
+                    var previous = await firstRow.InnerTextAsync();
+                    await page.GetByRole(AriaRole.Button, new() { Name = "較早變更", Exact = true }).ClickAsync();
+                    await Assertions.Expect(firstRow).Not.ToHaveTextAsync(previous);
+                }
+                var modified = changesTable.GetByRole(AriaRole.Row).Filter(new() { HasText = "observed.txt" });
+                await modified.GetByText("Modified", new() { Exact = true }).WaitForAsync();
+                await modified.GetByText("變更前", new() { Exact = true }).ClickAsync();
+                await modified.GetByText("變更後", new() { Exact = true }).ClickAsync();
+                var beforeDigest = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("before")));
+                var afterDigest = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("after")));
+                await modified.GetByText(beforeDigest, new() { Exact = true }).WaitForAsync();
+                await modified.GetByText(afterDigest, new() { Exact = true }).WaitForAsync();
             }, TestContext.CancellationToken);
         }
         catch (Exception ex) { failure = ex; throw; }
