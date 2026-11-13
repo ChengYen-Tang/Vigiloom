@@ -36,8 +36,10 @@ public sealed class MetricRollupInstanceMigrationTests(TestContext context)
             await using var db = new ServiceObservabilityDbContext(options);
             var migrator = db.GetService<IMigrator>();
             await migrator.MigrateAsync("20261110195800_MetricRollups", token);
-            db.Sources.Add(source); db.Services.AddRange(service, other);
-            await db.SaveChangesAsync(token);
+            // The current EF model contains columns that do not exist at this migration boundary.
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Sources] ([Id],[Name],[Verifier],[CreatedAt],[UpdatedAt]) VALUES ({source.Id},{source.Name},{source.Verifier},{now},{now})", token);
+            foreach (var item in new[] { service, other })
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Services] ([Id],[SourceId],[CandidateId],[ServiceKey],[ServiceNamespace],[Environment],[DisplayName],[ApprovedAt],[CreatedAt],[UpdatedAt],[IsPublic]) VALUES ({item.Id},{item.SourceId},{item.CandidateId},{item.ServiceKey},{item.ServiceNamespace},{item.Environment},{item.DisplayName},{item.ApprovedAt},{item.CreatedAt},{item.UpdatedAt},{false})", token);
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[MetricRollupWindows] ([ServiceId],[WindowStart],[InputRevision],[IsComplete],[RawPruned]) VALUES ({service.Id},{start},{1L},{false},{false})", token);
             window.RowId = await db.Database.SqlQuery<long>($"SELECT [RowId] AS [Value] FROM [service].[MetricRollupWindows] WHERE [ServiceId] = {service.Id} AND [WindowStart] = {start}").SingleAsync(token);
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({instance},{service.Id},{source.Id},{"node-a"},{now},{now})", token);

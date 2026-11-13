@@ -27,7 +27,9 @@ public sealed class MetricSchemaTests(TestContext context)
             await using (var db = new ServiceObservabilityDbContext(options))
             {
                 await db.GetService<IMigrator>().MigrateAsync("20261104045143_SourceCredentialVersion", token);
-                db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+                // Seed only columns available before the metric-name migration.
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Sources] ([Id],[Name],[Verifier],[CreatedAt],[UpdatedAt]) VALUES ({source.Id},{source.Name},{source.Verifier},{now},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Services] ([Id],[SourceId],[CandidateId],[ServiceKey],[ServiceNamespace],[Environment],[DisplayName],[ApprovedAt],[CreatedAt],[UpdatedAt],[IsPublic]) VALUES ({service.Id},{service.SourceId},{service.CandidateId},{service.ServiceKey},{service.ServiceNamespace},{service.Environment},{service.DisplayName},{service.ApprovedAt},{service.CreatedAt},{service.UpdatedAt},{false})", token);
                 var payload = new byte[] { 1, 2, 3 };
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[MetricContexts] ([ServiceId],[ResourcePayload],[ScopePayload],[MetricPayload],[ResourceSchemaUrl],[ScopeSchemaUrl]) VALUES ({service.Id},{payload},{payload},{payload},{""},{""})", token);
                 await db.Database.MigrateAsync(token);
