@@ -7,6 +7,7 @@
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.Resources.Domain
 @inject DeviceManagement DevicesService
+@inject GroupManagement GroupsService
 @inject NavigationManager Navigation
 @inject ILogger<DeviceEdit> Logger
 
@@ -41,16 +42,43 @@
                 <div class="device-actions"><button type="submit">儲存設備</button><a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">取消</a></div>
             </EditForm>
         </section>
+        @if (!isNew)
+        {
+            <section class="device-panel" aria-labelledby="device-groups-heading">
+                <h2 id="device-groups-heading">所屬群組</h2>
+                <p>加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。</p>
+                @if (groupsError) { <p class="device-alert" role="alert">無法載入所屬群組，請重新整理後再試。</p> }
+                else if (groups is not null && groups.Total == 0) { <p class="device-empty">此設備尚未加入群組。</p> }
+                else if (groups is not null)
+                {
+                    <p>共 @groups.Total 個群組。</p>
+                    @if (groups.Items.Count == 0) { <p class="device-empty">此頁沒有群組，請回到上一頁。</p> }
+                    else { <ul class="device-group-list">@foreach (var group in groups.Items) { <li @key="group.Id"><a href="@($"/groups/{group.Id:D}")">@group.Name</a></li> }</ul> }
+                    @if (groups.Total > groups.PageSize || groups.Page > 1)
+                    {
+                        <nav class="device-pagination" aria-label="所屬群組分頁">
+                            @if (groups.Page > 1) { <a href="@GroupsPageUrl(groups.Page - 1)">上一頁</a> }
+                            <span>第 @groups.Page 頁</span>
+                            @if ((long)groups.Page * groups.PageSize < groups.Total) { <a href="@GroupsPageUrl(groups.Page + 1)">下一頁</a> }
+                        </nav>
+                    }
+                }
+                <a href="/groups">管理群組</a>
+            </section>
+        }
     }
 </main>
 
 @code {
     [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "groupsPage")] public int GroupsPage { get; set; } = 1;
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "device-edit")] private DeviceForm Input { get; set; } = default!;
     private bool isNew;
     private bool loadError;
     private bool confirmAddress;
+    private bool groupsError;
+    private DeviceGroupPage? groups;
     private DeviceDto? current;
     private string? message;
     private Dictionary<string, string[]> errors = [];
@@ -68,7 +96,13 @@
                 Input = new DeviceForm { Name = current.Name, Address = current.Address, AdditionalTargets = string.Join("\n", current.AdditionalTargets), DeepMonitoring = current.DeepMonitoring, Enabled = current.Enabled, Version = current.Version };
         }
         catch (Exception exception) { Logger.LogWarning("Could not load a device for editing: {ExceptionType}", exception.GetType().Name); loadError = true; }
+        if (!loadError)
+        {
+            try { groups = await GroupsService.ListForDeviceAsync(Id, GroupsPage, HttpContext.RequestAborted); }
+            catch (Exception exception) { Logger.LogWarning("Could not load device groups: {ExceptionType}", exception.GetType().Name); groupsError = true; }
+        }
     }
+    private string GroupsPageUrl(int page) => Navigation.GetUriWithQueryParameters($"/devices/{Id:D}/edit", new Dictionary<string, object?> { ["groupsPage"] = page });
     private async Task SaveAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty) return;
