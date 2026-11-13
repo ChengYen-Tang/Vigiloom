@@ -20,7 +20,6 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Integration")]
 [TestCategory("Database")]
 [TestCategory("Browser")]
-[DoNotParallelize]
 public sealed class HostDetailsBrowserTests
 {
     public TestContext TestContext { get; set; } = null!;

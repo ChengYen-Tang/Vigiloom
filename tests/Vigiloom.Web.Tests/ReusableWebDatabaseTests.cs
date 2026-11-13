@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +20,29 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class ReusableWebDatabaseTests(TestContext context)
 {
+    [TestMethod]
+    public Task IndependentHosts_RunTogetherOnDifferentEphemeralPorts() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var first = PingTestSite.CreateFactory(database.ConnectionString);
+            using var second = PingTestSite.CreateFactory(database.ConnectionString);
+            await Task.WhenAll(Task.Run(() => { first.UseKestrel(0); first.StartServer(); }, token),
+                Task.Run(() => { second.UseKestrel(0); second.StartServer(); }, token));
+            var firstAddress = first.ClientOptions.BaseAddress;
+            var secondAddress = second.ClientOptions.BaseAddress;
+            Assert.AreNotEqual(0, firstAddress.Port);
+            Assert.AreNotEqual(0, secondAddress.Port);
+            Assert.AreNotEqual(5000, firstAddress.Port);
+            Assert.AreNotEqual(5000, secondAddress.Port);
+            Assert.AreNotEqual(firstAddress.Port, secondAddress.Port);
+            using var firstClient = first.CreateClient();
+            using var secondClient = second.CreateClient();
+            using var firstResponse = await firstClient.GetAsync("/health/live", token);
+            using var secondResponse = await secondClient.GetAsync("/health/live", token);
+            Assert.AreEqual(HttpStatusCode.OK, firstResponse.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, secondResponse.StatusCode);
+        }, context.CancellationToken);
+
     [TestMethod]
     public async Task FailedCase_ClearsInitialAdministratorBeforeNextHost()
     {
