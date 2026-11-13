@@ -60,6 +60,13 @@ public sealed class TemplatePublicProjectionTests(TestContext context)
             var publishedGroup = await client.GetFromJsonAsync<PublicGroup>($"/api/v1/public/groups/{group.Id:D}", token);
             Assert.IsNotNull(publishedGroup);
             Assert.AreEqual(1, publishedGroup.DeviceCount);
+            var groups = await client.GetFromJsonAsync<PublicPage<PublicGroup>>("/api/v1/public/groups?search=Public", token);
+            Assert.IsNotNull(groups);
+            Assert.HasCount(1, groups.Items);
+            Assert.AreEqual(1, groups.Items[0].DeviceCount);
+            var publicJson = await client.GetStringAsync($"/api/v1/public/groups/{group.Id:D}/devices", token);
+            Assert.DoesNotContain("127.0.0.1", publicJson);
+            Assert.DoesNotContain("Internal host", publicJson);
             await using (var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
             {
                 var row = await db.Templates.SingleAsync(x => x.Id == template.Id, token);
@@ -91,5 +98,8 @@ public sealed class TemplatePublicProjectionTests(TestContext context)
             Assert.IsEmpty(members.Items);
             using var hiddenGroup = await client.GetAsync($"/api/v1/public/groups/{group.Id:D}", token);
             Assert.AreEqual(HttpStatusCode.NotFound, hiddenGroup.StatusCode);
+            groups = await client.GetFromJsonAsync<PublicPage<PublicGroup>>("/api/v1/public/groups?search=Public", token);
+            Assert.IsNotNull(groups);
+            Assert.IsEmpty(groups.Items);
         }, context.CancellationToken);
 }
