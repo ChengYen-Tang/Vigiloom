@@ -176,6 +176,8 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigil
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, Vigiloom.Web.ServiceDetails.ServerServiceDetailsClient>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
+builder.Services.AddScoped<Vigiloom.Web.Workspace.WorkspaceOverviewReader>();
+builder.Services.AddScoped<IWorkspaceOverviewClient, Vigiloom.Web.Workspace.ServerWorkspaceOverviewClient>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -359,6 +361,12 @@ app.MapGet("/api/v1/workspace/identity", async (HttpContext context, WorkspaceId
     (await service.GetAsync(context.User, token)) is { } identity ? Results.Ok(identity) : Results.Unauthorized())
     .RequireAuthorization(AccessPolicies.MonitoringRead).Produces<WorkspaceIdentity>().ProducesProblem(401).ProducesProblem(403)
     .WithSummary("Get the current monitoring user's identity");
+app.MapGet("/api/v1/workspace/overview", async (HttpContext context, Vigiloom.Web.Workspace.WorkspaceOverviewReader overview, CancellationToken token) =>
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(await overview.ReadAsync(token));
+    }).RequireAuthorization(AccessPolicies.MonitoringRead).RequireRateLimiting("api-client").Produces<WorkspaceOverview>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+    .WithSummary("Get the monitoring workspace overview");
 app.MapGet("/api/v1/access", (HttpContext context) => TypedResults.Ok(new ApiClientAccessResponse(
     context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value,
     context.User.FindAll("scope").Select(claim => claim.Value).ToArray())))
