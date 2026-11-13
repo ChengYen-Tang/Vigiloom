@@ -44,6 +44,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryGroupsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.GroupChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryPublicationsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.PublicationChangedV1, cancellationToken);
+
     public async Task<OperationAuditPage> QueryInstancePoliciesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.InstancePolicyChangedV1, cancellationToken);
 
@@ -75,7 +78,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
                 (kind != 0 ? x.Kind == kind || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
                     (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1))
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -99,7 +102,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.AgentInboxCleanupActivatedV1 ? ReadAgentInboxActivation(x.Details) : null,
             x.Kind == AuditKinds.AgentPackageSourceChangedV1 ? ReadAgentPackageSource(x.Details) : null,
             x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 ? ReadAgentPackageCatalogue(x.Details) : null,
-            x.Kind == AuditKinds.AgentPackageTrustInitializedV1 ? ReadAgentPackageTrust(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.AgentPackageTrustInitializedV1 ? ReadAgentPackageTrust(x.Details) : null,
+            x.Kind == AuditKinds.PublicationChangedV1 ? ReadPublication(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -240,6 +244,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         {
             var value = JsonSerializer.Deserialize<ServiceSourceChanged>(details, Options);
             return value?.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static PublicationChanged? ReadPublication(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<PublicationChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }

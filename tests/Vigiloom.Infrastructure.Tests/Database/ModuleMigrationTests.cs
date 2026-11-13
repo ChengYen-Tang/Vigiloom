@@ -71,7 +71,7 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
-        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.indexes i
             JOIN sys.tables t ON t.object_id = i.object_id

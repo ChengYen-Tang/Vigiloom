@@ -1,4 +1,5 @@
 using Vigiloom.BuildingBlocks.Identifiers;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Modules.Resources.Domain;
 
@@ -25,6 +26,9 @@ public sealed class Device
     public bool DeepMonitoring { get; private set; }
     public bool IsEnabled { get; private set; }
     public bool IsArchived { get; private set; }
+    public bool IsPublic { get; private set; }
+    public string? PublicDisplayName { get; private set; }
+    public string? PublicPolicyVersion { get; private set; }
     /// <summary>Changes on archive so restored devices cannot reactivate previous Agent credentials.</summary>
     public long AgentAuthorizationGeneration { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
@@ -56,6 +60,17 @@ public sealed class Device
         AgentAuthorizationGeneration = checked(AgentAuthorizationGeneration + 1);
         IsArchived = true;
         IsEnabled = false;
+        IsPublic = false;
+        UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
+    {
+        if (IsArchived) throw new InvalidOperationException("Archived devices cannot be published.");
+        if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
+            throw new ArgumentException("An approved publication policy and public name are required.");
+        IsPublic = isPublic;
+        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
         UpdatedAt = now.ToUniversalTime();
     }
 

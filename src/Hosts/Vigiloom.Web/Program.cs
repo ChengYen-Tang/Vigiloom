@@ -178,6 +178,10 @@ builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddScoped<Vigiloom.Web.Workspace.WorkspaceOverviewReader>();
 builder.Services.AddScoped<IWorkspaceOverviewClient, Vigiloom.Web.Workspace.ServerWorkspaceOverviewClient>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
+builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -298,7 +302,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/groups") || context.Request.Path.StartsWithSegments("/speed-tests"))
+    if (context.Request.Path.StartsWithSegments("/workspace") || context.Request.Path.StartsWithSegments("/settings") || context.Request.Path.StartsWithSegments("/devices") || context.Request.Path.StartsWithSegments("/groups") || context.Request.Path.StartsWithSegments("/speed-tests") || context.Request.Path.StartsWithSegments("/api/v1/public") || context.Request.Path.StartsWithSegments("/api/v1/admin/publications"))
         context.Response.Headers.CacheControl = "no-store";
     await next();
 });
@@ -326,6 +330,7 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 }).AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
+app.MapPublicationEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
 app.MapInventoryEndpoints();

@@ -1,0 +1,114 @@
+@using Vigiloom.Contracts.Publishing
+@implements IAsyncDisposable
+@inject IPublicationClient Client
+@inject ILogger<PublicationEditor> Logger
+
+<div class="publication-editor" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
+    @if (loading) { <p role="status">正在載入公開設定…</p> }
+    else if (settings is null) { <section class="publication-card" role="alert">@(error ?? "找不到資源或已無法存取。")</section> }
+    else
+    {
+        <section class="publication-info"><strong>目前狀態：@(settings.Public ? "公開中" : "不公開")</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
+        @if (message is not null) { <p class="publication-message" role="@(success ? "status" : "alert")">@message</p> }
+        <EditForm Model="model" OnSubmit="SaveAsync" FormName="publication-editor">
+            <section class="publication-card publication-layout">
+                <div>
+                    <fieldset><legend>公開狀態</legend>
+                        <div class="publication-choices"><InputRadioGroup @bind-Value="model.Public">
+                            <label><InputRadio Value="false" disabled="@Disabled" /> 不公開（僅登入後可查看）</label>
+                            <label><InputRadio Value="true" disabled="@Disabled" /> 公開（允許訪客查看）</label>
+                        </InputRadioGroup></div>
+                    </fieldset>
+                    @if (model.Public)
+                    {
+                        <label for="public-name">公開顯示名稱</label>
+                        <InputText id="public-name" @bind-Value="model.Name" maxlength="256" disabled="@Disabled" />
+                        <p>名稱不可包含 IP 位址。請確認名稱適合公開。</p>
+                        <label for="public-policy">公開範本</label>
+                        <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled"><option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option></InputSelect>
+                    }
+                </div>
+                <aside aria-labelledby="publication-preview-heading">
+                    <h2 id="publication-preview-heading">公開預覽</h2>
+                    @if (!model.Public) { <p>目前選擇不公開，訪客不會看到此資源。</p> }
+                    else
+                    {
+                        <div class="publication-preview"><strong>@(string.IsNullOrWhiteSpace(model.Name) ? "請輸入公開名稱" : model.Name)</strong>
+                            @if (Kind != "groups") { <span class="@StateClass(preview?.State)">@StateText(preview?.State)</span> }
+                            @if (Kind == "devices" && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
+                        </div>
+                        @if (Kind == "devices") { <p>名稱、狀態及延遲會公開；目前不公開歷史。IP 和主機進階資料不會公開。</p> }
+                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；目前不公開歷史及進階遙測。</p> }
+                        else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
+                    }
+                </aside>
+            </section>
+            <div class="publication-actions"><button type="submit" disabled="@Disabled">@(saving ? "儲存中…" : "儲存設定")</button><a href="@BackHref">返回</a></div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter, EditorRequired] public Guid Id { get; set; }
+    [Parameter, EditorRequired] public string InitialName { get; set; } = "";
+    [Parameter, EditorRequired] public string BackHref { get; set; } = "";
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly Form model = new();
+    private PublicationSettings? settings;
+    private PublicationPreview? preview;
+    private bool loading = true, saving, success;
+    private string? error, message;
+    private bool Disabled => !RendererInfo.IsInteractive || saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            settings = await Client.GetAsync(Kind, Id, lifetime.Token);
+            if (settings is null) return;
+            model.Public = settings.Public;
+            model.Name = settings.DisplayName ?? InitialName;
+            model.Policy = settings.PolicyVersion ?? PublicationPolicy.BaselineVersion;
+            try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
+            catch (UnauthorizedAccessException) { throw; }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            { Logger.LogWarning(ex, "Unable to load publication preview"); message = "預覽暫時無法讀取，仍可變更公開設定。"; }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { settings = null; error = "登入已過期或權限已變更，請重新登入。"; }
+        catch (Exception ex) { settings = null; error = "無法載入公開設定，請稍後重新整理。"; Logger.LogWarning(ex, "Unable to load publication settings"); }
+        finally { loading = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (settings is null || saving) return;
+        success = false; message = null;
+        if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || model.Policy != PublicationPolicy.BaselineVersion))
+        { message = "請輸入不含 IP 位址的公開名稱，並選擇公開範本。"; return; }
+        saving = true;
+        try
+        {
+            var result = await Client.SaveAsync(Kind, Id, new(model.Public, model.Name, model.Policy, settings.Version), lifetime.Token);
+            if (result.Status == PublicationSaveStatus.Updated && result.Settings is not null)
+            {
+                settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; success = true; message = "公開設定已儲存。";
+                try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
+            }
+            else message = result.Status switch { PublicationSaveStatus.Conflict => "設定已變更或資源已封存，請重新整理後再試。", PublicationSaveStatus.Invalid => "公開名稱或範本無效，請檢查後再試。", _ => "資源不存在或無法儲存，請重新整理。" };
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { message = "登入已過期或權限已變更，請重新登入。"; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to save publication settings"); message = "無法確認儲存結果，請重新整理後再試。"; }
+        finally { saving = false; }
+    }
+
+    private static string StateText(string? state) => state switch
+    { "Operational" => "可達", "Unavailable" => "不可達", "Healthy" => "正常", "Degraded" => "降級", "Unhealthy" => "異常", _ => "未知或尚無資料" };
+    private static string StateClass(string? state) => state switch
+    { "Operational" or "Healthy" => "publication-good", "Unavailable" or "Unhealthy" => "publication-danger", _ => "publication-unknown" };
+    public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
+    private sealed class Form { public bool Public { get; set; } public string? Name { get; set; } public string Policy { get; set; } = PublicationPolicy.BaselineVersion; }
+}
