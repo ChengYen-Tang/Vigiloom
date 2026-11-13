@@ -444,13 +444,15 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:StateDirectory"] = root,
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
-            foreach (var name in new[] { "BatchWorker", "MetricWorker", "LogWorker" })
-                builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
+            DisableCollectors(builder);
+            builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentLogSettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try

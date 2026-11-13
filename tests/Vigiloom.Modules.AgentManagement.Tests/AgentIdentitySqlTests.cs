@@ -659,6 +659,33 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    public Task HostMetricHistory_IdentifiesEachRegistrationAfterReregistration() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("metric registrations", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var previous = new Agent(device.Id, 1, new byte[32], now);
+        previous.Revoke(now);
+        var current = new Agent(device.Id, 2, new byte[32], now);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.AddRange(previous, current);
+            var batch = Guid.CreateVersion7();
+            db.HostMetrics.Add(new HostMetric(previous.Id, batch, 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "cpu", null, 10), now));
+            db.HostMetrics.Add(new HostMetric(current.Id, batch, 1,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "cpu", null, 20), now));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var page = await history.GetAsync(device.Id, now.AddMinutes(-1), now.AddMinutes(1), null, AgentMetricKind.CpuTotalPercent, token);
+        Assert.IsNotNull(page);
+        Assert.HasCount(2, page.Items);
+        Assert.AreEqual(previous.Id, page.Items.Single(x => x.Value == 10).AgentId);
+        Assert.AreEqual(current.Id, page.Items.Single(x => x.Value == 20).AgentId);
+    });
+
+    [TestMethod]
     public Task HostMetricHistory_BoundsPagesAndKeepsDevicesSeparate() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;

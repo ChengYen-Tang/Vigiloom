@@ -2,7 +2,11 @@ namespace Vigiloom.Contracts.Agent;
 
 /// <summary>A single available host measurement; absent measurements are not represented as zero.</summary>
 public sealed record HostMetricValue(DateTimeOffset OccurredAt, DateTimeOffset ReceivedAt, AgentMetricKind Kind,
-    string Source, string? Dimension, double Value);
+    string Source, string? Dimension, double Value)
+{
+    /// <summary>The registration that produced this measurement. Registrations must not be combined into one series.</summary>
+    public Guid AgentId { get; init; }
+}
 
 /// <summary>One bounded page of host measurements; the continuation token is opaque.</summary>
 public sealed record HostMetricPage(IReadOnlyList<HostMetricValue> Items, string? NextCursor);

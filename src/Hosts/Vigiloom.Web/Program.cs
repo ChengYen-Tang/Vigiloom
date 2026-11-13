@@ -166,6 +166,7 @@ builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
+builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigiloom.Web.HostMonitoring.ServerHostMonitoringClient>();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddRateLimiter(options =>
