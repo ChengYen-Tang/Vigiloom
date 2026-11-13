@@ -82,5 +82,17 @@ public sealed class TemplateReaderHttpTests(TestContext context)
             var createdTemplate = await created.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token);
             Assert.IsNotNull(createdTemplate);
             Assert.AreEqual("New template", createdTemplate.Name);
+            var defaultUrl = $"{listUrl}/{createdTemplate.Id:D}/default";
+            var choice = new SetDefaultPublicationTemplate(createdTemplate.Version);
+            using (var response = await reader.PutAsJsonAsync(defaultUrl, choice, token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+            using var selectDefault = await admin.PutAsJsonAsync(defaultUrl, choice, token);
+            Assert.AreEqual(HttpStatusCode.OK, selectDefault.StatusCode);
+            var selected = await selectDefault.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token);
+            Assert.IsNotNull(selected);
+            Assert.IsTrue(selected.IsDefault);
+            var currentDefault = await admin.GetFromJsonAsync<PublicationTemplateItem>(listUrl + "/default", token);
+            Assert.IsNotNull(currentDefault);
+            Assert.AreEqual(createdTemplate.Id, currentDefault.Id);
+            Assert.AreEqual(selected.Version, currentDefault.Version);
         }, context.CancellationToken);
 }

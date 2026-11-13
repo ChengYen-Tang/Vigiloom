@@ -10,6 +10,14 @@ internal sealed class TemplateReader(IDbContextFactory<PublishingDbContext> publ
     internal const int PageSize = 50;
     internal const int MaximumPage = int.MaxValue / PageSize;
 
+    internal async Task<PublicationTemplateItem?> DefaultAsync(CancellationToken token)
+    {
+        await using var db = await publishing.CreateDbContextAsync(token);
+        var row = await db.Templates.AsNoTracking().Where(x => x.IsDefault && !x.IsRetired)
+            .Select(x => new { x.Id, x.Name, x.ShowLatency, x.ShowObservedAt, x.IsDefault, x.Version }).SingleOrDefaultAsync(token);
+        return row is null ? null : new(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version));
+    }
+
     internal async Task<PublicationTemplatePage> ListAsync(int page, CancellationToken token)
     {
         await using var db = await publishing.CreateDbContextAsync(token);

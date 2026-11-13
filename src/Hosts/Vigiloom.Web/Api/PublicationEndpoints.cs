@@ -25,12 +25,34 @@ internal static class PublicationEndpoints
             }, allowApiCredential: false);
         }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
             .WithSummary("Create a publication template");
+        admin.MapPut("/templates/{id:guid}/default", async (Guid id, SetDefaultPublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await templates.SetDefaultAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Template),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["version"] = ["請重新整理後再試。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template or default selection changed; refresh and try again.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Select the default publication template");
         admin.MapGet("/templates", async (int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return page is < 1 or > TemplateReader.MaximumPage ? Results.BadRequest() : Results.Ok(await templates.ListAsync(page ?? 1, token));
         }).Produces<PublicationTemplatePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List publication templates");
+        admin.MapGet("/templates/default", async (TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await templates.DefaultAsync(token) is { } template ? Results.Ok(template) : Results.NotFound();
+        }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get the current default publication template");
         admin.MapGet("/templates/{id:guid}/impact", async (Guid id, int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
