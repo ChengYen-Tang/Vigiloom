@@ -1,3 +1,4 @@
+@using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Contracts.Agent.Inventory
 @using Vigiloom.Web.Client.Components
@@ -16,7 +17,7 @@
     </nav>
     @if (tab is "metrics" or "logs" or "integrity")
     {
-        <label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select>
+        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></div>
     }
     @if (loading) { <p role="status">正在載入…</p> }
     else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
@@ -64,16 +65,34 @@
     }
     else if (tab == "metrics")
     {
-        <label for="metric-kind">指標</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
+        <div class="host-field"><label for="metric-kind">指標</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
             @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
-        </select>
+        </select></div>
         <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。</p>
         @if (metricPage?.Items.Count > 0)
         {
             <label for="metric-series">來源與 Agent</label><select id="metric-series" value="@seriesIndex" @onchange="ChangeSeriesAsync">
                 @for (var i = 0; i < series.Count; i++) { <option value="@i">@SeriesName(series[i])</option> }
             </select>
-            @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@MetricUnit(metricKind)" Points="points" /> }
+            @if (metricThreshold is { } threshold)
+            {
+                <section class="metric-status" aria-label="閾值評估結果">
+                    <h3>閾值評估結果</h3>
+                    <p role="status"><strong>@ThresholdStateName(threshold)</strong></p>
+                    @if (threshold.Threshold is { Enabled: true } rule)
+                    {
+                        <p>閾值：@(rule.Comparison == HostMetricComparison.AtLeast ? "大於等於" : "小於等於") @rule.Value @HostMetricUnits.For(metricKind) · 樣本有效時間：@rule.FreshnessSeconds 秒</p>
+                    }
+                    @if (threshold.Sample is { } sample)
+                    {
+                        <p>最新樣本：@sample.Value @HostMetricUnits.For(metricKind) · 量測時間：@DisplayTime(sample.OccurredAt)（UTC）</p>
+                    }
+                    <p>評估時間：@DisplayTime(threshold.EvaluatedAt)（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。</p>
+                    <button type="button" @onclick="RefreshMetricAsync">更新評估</button>
+                    <AuthorizeView Roles="Administrator"><Authorized><a href="@ThresholdEditUrl(series[seriesIndex])">設定此來源的閾值</a></Authorized></AuthorizeView>
+                </section>
+            }
+            @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@HostMetricUnits.For(metricKind)" Points="points" /> }
             else { <p>此時間範圍沒有可繪製的資料。</p> }
             @if (metricPage.NextCursor is not null) { <p>來源選項來自本頁資料；可查看較早資料中的其他來源。</p> }
         }
