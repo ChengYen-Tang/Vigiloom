@@ -79,6 +79,12 @@ public sealed class PingHistoryBrowserTests(TestContext context)
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "mobile.png"), FullPage = true });
         }
         await page.SetViewportSizeAsync(390, 844);
+        try { await page.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth && document.querySelector('.time-series-chart svg')?.getBoundingClientRect().width <= window.innerWidth"); }
+        catch (TimeoutException)
+        {
+            var dimensions = await page.EvaluateAsync<string>("() => JSON.stringify({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, chart: document.querySelector('.time-series-chart svg')?.getBoundingClientRect().width })");
+            Assert.Fail($"Mobile layout did not fit within the viewport: {dimensions}");
+        }
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
         await page.GetByLabel("時間排序").SelectOptionAsync("asc");
         await page.GetByRole(AriaRole.Button, new() { Name = "查詢", Exact = true }).ClickAsync();
