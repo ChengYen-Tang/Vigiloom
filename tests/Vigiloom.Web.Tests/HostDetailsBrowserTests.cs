@@ -9,6 +9,8 @@ using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -82,6 +84,14 @@ public sealed class HostDetailsBrowserTests
             for (var i = 0; i < records.Length; i++) db.HostLogs.Add(new HostLog(agent.Id, batch, i, now));
             await db.SaveChangesAsync(token);
         }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+        {
+            var before = new InventoryEntry("package", "Example package", "1.0");
+            var after = before with { Version = "2.0" };
+            var beforeJson = System.Text.Json.JsonSerializer.Serialize(before);
+            var afterJson = System.Text.Json.JsonSerializer.Serialize(after);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [security].[InventoryChanges] ([AgentId], [DeviceId], [Source], [Generation], [ObservedAt], [RecordedAt], [Kind], [Key], [BeforeJson], [AfterJson]) VALUES ({agent.Id}, {device.Id}, {(int)InventorySource.LinuxDpkg}, {1L}, {now}, {now}, {(int)InventoryChangeType.Modified}, {before.Key}, {beforeJson}, {afterJson})", token);
+        }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
@@ -95,6 +105,11 @@ public sealed class HostDetailsBrowserTests
         await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
         await wasmGate.ReleaseAsync();
         await page.GetByText("目前沒有這類盤點資料。", new() { Exact = true }).WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByRole(AriaRole.Button, new() { Name = "查看盤點變更", Exact = true }).ClickAsync();
+        var changes = page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" });
+        await changes.GetByText("Example package", new() { Exact = true }).WaitForAsync();
+        await changes.GetByText("變更前", new() { Exact = true }).ClickAsync();
+        await changes.GetByText("版本：1.0", new() { Exact = false }).WaitForAsync();
         if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
         {
             Directory.CreateDirectory(evidence);
@@ -117,6 +132,8 @@ public sealed class HostDetailsBrowserTests
         await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByRole(AriaRole.Button, new() { Name = "查看盤點變更", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
         var response = await page.GotoAsync($"{url}/devices/{device.Id:D}/integrity-scopes");

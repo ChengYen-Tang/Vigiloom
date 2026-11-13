@@ -11,13 +11,19 @@ namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes) : IHostMonitoringClient
+    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
         await AuthorizeAsync(token);
         var resolved = await ownership.ResolveAsync(deviceId, token);
         return resolved.Exists ? await inventory.GetAsync(deviceId, resolved.AgentId, token) : null;
+    }
+    public async Task<InventoryChangePage?> GetInventoryChangesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, InventorySource? source, string? cursor, CancellationToken token)
+    {
+        await AuthorizeAsync(token);
+        var resolved = await ownership.ResolveAsync(deviceId, token);
+        return resolved.Exists ? await inventoryChanges.GetAsync(deviceId, from, until, source, cursor, token) : null;
     }
     public async Task<InventorySnapshotChunkView?> GetInventoryChunkAsync(Guid deviceId, InventorySource source, Guid snapshotId, int chunkIndex, CancellationToken token)
     {
