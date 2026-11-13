@@ -42,8 +42,10 @@ builder.Services.AddHttpClient<AgentSettingsClient>().ConfigurePrimaryHttpMessag
 builder.Services.AddHttpClient<AgentMetricSettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentInventorySettingsClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<InventoryStatusClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<Vigiloom.Agent.Core.Integrity.IntegrityStatusClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentQueueCapacityClient>().ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentLogSettingsClient>(client => client.MaxResponseContentBufferSize = 512 * 1024).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+builder.Services.AddHttpClient<AgentIntegritySettingsClient>(client => client.MaxResponseContentBufferSize = 2 * 1024 * 1024).ConfigurePrimaryHttpMessageHandler(CreateHandler);
 builder.Services.AddHttpClient<AgentBatchClient>().ConfigurePrimaryHttpMessageHandler(() => new InjectBatchResponse(mode) { InnerHandler = CreateHandler() });
 using var host = builder.Build();
 await host.RunAsync();

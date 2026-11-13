@@ -12,6 +12,7 @@ public sealed class IdentityVault(string directory)
 {
     private const int MaximumBytes = 16384;
     private const int MaximumLogSettingsBytes = 512 * 1024;
+    private const int MaximumIntegritySettingsBytes = 2 * 1024 * 1024;
     private static readonly UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private readonly string directory = Path.IsPathFullyQualified(directory) && Path.GetPathRoot(directory) != directory
         ? Path.GetFullPath(directory) : throw new ArgumentException("A non-root absolute state directory is required.", nameof(directory));
@@ -46,6 +47,9 @@ public sealed class IdentityVault(string directory)
 
     /// <summary>Allow one inventory producer to sequence complete source generations.</summary>
     public IAsyncDisposable AcquireInventoryOwnership() => AcquireWorkerOwnership("inventory.lock");
+
+    /// <summary>Allow one producer to sequence integrity generations for this Agent.</summary>
+    public IAsyncDisposable AcquireIntegrityOwnership() => AcquireWorkerOwnership("integrity.lock");
 
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
@@ -181,6 +185,8 @@ public sealed class IdentityVault(string directory)
             ReadFileAsync<AgentSavedInventorySettings>("inventory-settings-v2.dat", token);
         internal Task<AgentSavedLogSettings?> ReadLogSettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedLogSettings>("log-settings.dat", token, MaximumLogSettingsBytes);
+        internal Task<AgentSavedIntegritySettings?> ReadIntegritySettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentSavedIntegritySettings>("integrity-settings.dat", token, MaximumIntegritySettingsBytes);
 
         private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token, int maximumBytes = MaximumBytes) where T : class
         {
@@ -217,6 +223,8 @@ public sealed class IdentityVault(string directory)
             WriteFileAsync("inventory-settings-v2.dat", settings, token);
         internal Task WriteLogSettingsAsync(AgentSavedLogSettings settings, CancellationToken token) =>
             WriteFileAsync("log-settings.dat", settings, token, MaximumLogSettingsBytes);
+        internal Task WriteIntegritySettingsAsync(AgentSavedIntegritySettings settings, CancellationToken token) =>
+            WriteFileAsync("integrity-settings.dat", settings, token, MaximumIntegritySettingsBytes);
 
         private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token, int maximumBytes = MaximumBytes)
         {

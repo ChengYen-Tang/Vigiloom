@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Vigiloom.Contracts.Agent.Inventory;
@@ -22,17 +21,6 @@ public static class InventoryDigest
         return BoundedJson.MeasureHash(items, Options);
     }
 
-    public static byte[] Combine(IReadOnlyList<byte[]> orderedChunkDigests)
-    {
-        ArgumentNullException.ThrowIfNull(orderedChunkDigests);
-        if (orderedChunkDigests.Count is < 1 or > InventoryChunkCodec.MaximumChunks)
-            throw new ArgumentOutOfRangeException(nameof(orderedChunkDigests));
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach (var digest in orderedChunkDigests)
-        {
-            if (digest is not { Length: 32 }) throw new ArgumentException("Each chunk digest must be SHA-256.", nameof(orderedChunkDigests));
-            hash.AppendData(digest);
-        }
-        return hash.GetHashAndReset();
-    }
+    public static byte[] Combine(IReadOnlyList<byte[]> orderedChunkDigests) =>
+        ChunkDigests.Combine(orderedChunkDigests, InventoryChunkCodec.MaximumChunks);
 }

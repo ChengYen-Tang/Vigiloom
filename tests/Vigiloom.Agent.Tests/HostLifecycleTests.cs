@@ -1180,6 +1180,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
         builder.Services.Remove(logWorker);
         var inventoryWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "InventoryWorker");
         builder.Services.Remove(inventoryWorker);
+        var integrityWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "IntegrityWorker");
+        builder.Services.Remove(integrityWorker);
     }
 
     private sealed class AlwaysUnavailableSettingsHandler : HttpMessageHandler

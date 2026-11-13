@@ -63,6 +63,8 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentPackageRefreshJob>();
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
+        builder.Services.AddScoped<IntegrityExpiryJob>();
         builder.Services.AddScoped<InventoryExpiryJob>();
         builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
@@ -73,6 +75,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<SpeedRetentionSchedule>();
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         builder.Services.AddHostedService<InventoryExpirySchedule>();
+        builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddSingleton<HealthRunner>();
