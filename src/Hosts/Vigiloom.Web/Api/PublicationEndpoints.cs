@@ -10,6 +10,22 @@ internal static class PublicationEndpoints
     public static void MapPublicationEndpoints(this WebApplication app)
     {
         var admin = app.MapGroup("/api/v1/admin/publications").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+        admin.MapGet("/templates", async (int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return page is < 1 or > TemplateReader.MaximumPage ? Results.BadRequest() : Results.Ok(await templates.ListAsync(page ?? 1, token));
+        }).Produces<PublicationTemplatePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("List publication templates");
+        admin.MapGet("/templates/{id:guid}/impact", async (Guid id, int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (page is < 1 or > (TemplateImpact.MaximumDevices + TemplateImpact.PageSize - 1) / TemplateImpact.PageSize) return Results.BadRequest();
+            var result = await templates.ImpactAsync(id, page ?? 1, token);
+            if (result.Changed) return Results.Problem(statusCode: 409, title: "The template changed; refresh the preview.");
+            if (result.TooMany) return Results.Problem(statusCode: 409, title: "Too many devices to preview safely.");
+            return result.Impact is null ? Results.NotFound() : Results.Ok(result.Impact);
+        }).Produces<PublicationImpact>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Preview devices assigned to a publication template");
         admin.MapGet("/{kind}/{id:guid}", async (string kind, Guid id, PublicationAdministration publications, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

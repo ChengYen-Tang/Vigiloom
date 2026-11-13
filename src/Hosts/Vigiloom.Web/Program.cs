@@ -181,6 +181,7 @@ builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClie
 builder.Services.AddScoped<Vigiloom.Web.Workspace.WorkspaceOverviewReader>();
 builder.Services.AddScoped<IWorkspaceOverviewClient, Vigiloom.Web.Workspace.ServerWorkspaceOverviewClient>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();
