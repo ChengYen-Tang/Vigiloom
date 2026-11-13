@@ -20,13 +20,13 @@ else if (service is null)
 }
 else
 {
-    <header class="service-heading"><h1>@service.Name</h1><p>環境：@service.Environment · @(service.CollectionStopped ? "收集已停止" : service.SourceRevoked ? "來源已撤銷" : "已加入")</p></header>
+    <header class="service-heading"><h1>@service.Name</h1><p>環境：@service.Environment · @(service.CollectionStopped ? "收集已停止" : service.SourceRevoked ? "來源已撤銷" : "已加入")</p><p><a href="@($"/services/connect?service={ServiceId:D}")">查看接入導引</a></p></header>
     <section class="service-card" aria-labelledby="health-heading">
         <h2 id="health-heading">服務健康</h2>
         <p class="service-state">目前狀態：<strong class="@HealthClass(health?.State)">@(healthError ? "無法讀取" : HealthName(health?.State))</strong></p>
         @if (health is { UnknownReasons: not ServiceHealthUnknownReason.None }) { <p>@HealthReasons(health.UnknownReasons)</p> }
         <p>健康狀態依已設定的檢查判斷，不代表主機或網路狀態。@(health is { UnknownParticipants: > 0 } ? $"有 {health.UnknownParticipants} 個檢查資料不足。" : "")</p>
-        <AuthorizeView Roles="Administrator"><Authorized><p><a href="/settings/service-health">管理健康檢查</a></p></Authorized></AuthorizeView>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="@($"/settings/service-health?service={ServiceId:D}")">管理健康檢查</a></p></Authorized></AuthorizeView>
         <button type="button" class="health-evidence-button" disabled="@(!interactive || healthEvidenceLoading)" @onclick="() => LoadHealthEvidenceAsync(1)">查看健康檢查依據</button>
         @if (healthEvidenceLoading) { <p role="status">正在載入健康檢查依據…</p> }
         @if (healthEvidenceError) { <p role="alert">無法讀取健康檢查依據，請稍後再試。</p> }

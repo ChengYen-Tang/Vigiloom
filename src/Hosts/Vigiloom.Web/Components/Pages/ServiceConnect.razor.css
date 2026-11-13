@@ -1,0 +1,6 @@
+.service-connect h1, .service-connect h2 { color: #10264c; }
+.service-connect p { line-height: 1.6; }
+.service-connect code { overflow-wrap: anywhere; }
+.service-connect dd { overflow-wrap: anywhere; }
+.service-connect .service-last-received { grid-column: 1 / -1; }
+.service-connect .step-number { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; margin-right: .7rem; border-radius: 50%; background: #e4efff; color: #0759d9; font-size: 1rem; vertical-align: .15rem; }

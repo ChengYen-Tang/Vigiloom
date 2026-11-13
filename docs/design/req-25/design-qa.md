@@ -1,6 +1,6 @@
 # REQ-25 design QA
 
-Final result: in progress — service details have been reviewed; the onboarding guide and its final visual check are still being implemented.
+Final result: pass — service details and the onboarding guide were compared with their respective visual references.
 
 The selected Vigiloom visual language is the blue/white reference in `../Vigiloom-UI-Concept-2-Revision-2.png`. The service-detail concepts use illustrative data only. The empty-state comparison uses `../req-25-service-details-empty-concept.png` and the rendered, signed-in Read only page in `desktop.png`; both depict an approved service with no health observations, instances or HTTP metrics. The concept depicts an Administrator and illustrative navigation, while the tested page uses the application's existing navigation and does not show administrator actions to Read only.
 
@@ -11,3 +11,5 @@ The first visual pass found an actionable contrast defect: the unselected range 
 Intentional differences from the concept: the real application does not invent a third dependency metric, a P95, last-update values, placeholder instances or an administrator-only guide for the Read only role. It reports the supported average only when the received histogram can be evaluated, with explicit missing-data wording. Existing application navigation and full-width page layout are reused rather than recreating conceptual navigation.
 
 Validation: `ServiceDetailsBrowserTests` exercises the real SQL-backed page, Server and WebAssembly interactivity, 390px layout, missing health observations, time-range validation, Trace-to-Log navigation and cancellation of a superseded request. The browser screenshots use synthetic test records and contain no credentials.
+
+The guide reference (`guide-concept.png`) and signed-in Read only implementation (`guide-desktop.png`) are combined in `guide-comparison.png` at a 1486×1058 viewport. The first comparison exposed a cramped last-received summary and weak step numbering. The revised capture shows a full-width summary and blue numbered markers; `guide-mobile.png` verifies the 390px layout. The implementation deliberately expands the instructions and shows the HTTP warning, uses the existing application navigation, and removes management actions for Read only. The concept's suggestion that an IP can establish source trust is not used: source credentials establish trust. `SampleOnboardingTests` runs the actual sample through candidate discovery, approval, three OTLP signals and an independent health check.

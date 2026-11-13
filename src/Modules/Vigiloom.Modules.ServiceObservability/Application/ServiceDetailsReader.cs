@@ -14,7 +14,7 @@ public sealed class ServiceDetailsReader(IDbContextFactory<ServiceObservabilityD
         if (id.Version != 7) throw new ArgumentException("Invalid service identifier.", nameof(id));
         await using var db = await contexts.CreateDbContextAsync(token);
         var result = await db.Services.AsNoTracking().Where(x => x.Id == id)
-            .Select(x => new ServiceDetails(x.Id, x.DisplayName, x.Environment, x.ApprovedAt, x.RevokedAt != null,
+            .Select(x => new ServiceDetails(x.Id, x.DisplayName, x.ServiceKey, x.ServiceNamespace, x.Environment, x.ApprovedAt, x.RevokedAt != null,
                 db.Sources.Any(source => source.Id == x.SourceId && source.RevokedAt != null),
                 db.LogRecords.Where(log => log.ServiceId == x.Id).Max(log => (DateTimeOffset?)log.ReceivedAt),
                 db.MetricPoints.Where(metric => metric.ServiceId == x.Id).Max(metric => (DateTimeOffset?)metric.ReceivedAt),

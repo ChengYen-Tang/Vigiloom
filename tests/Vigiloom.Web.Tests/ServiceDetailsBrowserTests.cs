@@ -73,12 +73,35 @@ public sealed class ServiceDetailsBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "清除篩選" }).ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "清除篩選" }).WaitForAsync(new() { State = WaitForSelectorState.Hidden });
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Button, new() { Name = "清除篩選" }).CountAsync());
+        await page.GetByRole(AriaRole.Link, new() { Name = "查看接入導引" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "應用服務接入導引" }).WaitForAsync();
+        await page.GetByText("orders", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "建立來源與管理待加入服務" }).CountAsync());
+        Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "設定服務健康檢查" }).CountAsync());
+        if (Environment.GetEnvironmentVariable("VIGILOOM_SERVICE_UI_EVIDENCE_DIR") is { Length: > 0 } guideEvidence)
+        {
+            Directory.CreateDirectory(guideEvidence);
+            await page.SetViewportSizeAsync(1486, 1058);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(guideEvidence, "guide-desktop.png"), FullPage = true });
+            await page.SetViewportSizeAsync(390, 844);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(guideEvidence, "guide-mobile.png"), FullPage = true });
+        }
+        await page.SetViewportSizeAsync(390, 844);
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
         await page.SetViewportSizeAsync(390, 844);
         await page.GotoAsync($"{url}/services/{longServiceId:D}");
         var longHeading = page.Locator(".service-overview[data-interactive='true'] .service-heading");
         await longHeading.WaitForAsync(new() { Timeout = 60000 });
         Assert.IsTrue(await longHeading.EvaluateAsync<bool>("element => element.scrollWidth <= element.clientWidth"));
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
+        await using var administrator = await browser.NewContextAsync();
+        var adminPage = await administrator.NewPageAsync();
+        await adminPage.GotoAsync($"{url}/services/connect?service={serviceId:D}");
+        await adminPage.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await adminPage.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = "建立來源與管理待加入服務" }).WaitForAsync();
+        Assert.AreEqual(1, await adminPage.GetByRole(AriaRole.Link, new() { Name = "設定服務健康檢查" }).CountAsync());
     }, TestContext.CancellationToken);
 
     [TestMethod]
