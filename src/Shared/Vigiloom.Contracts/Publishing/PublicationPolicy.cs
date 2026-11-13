@@ -49,10 +49,10 @@ public static partial class PublicationPolicy
 }
 
 /// <summary>Explicit administrative publication change with an optimistic concurrency token.</summary>
-public sealed record PublicationChange(bool Public, string? DisplayName, string? PolicyVersion, string? Version);
+public sealed record PublicationChange(bool Public, string? DisplayName, string? PolicyVersion, string? Version, Guid? TemplateId = null, string? TemplateVersion = null);
 
 /// <summary>Current non-secret publication configuration for an administrator.</summary>
-public sealed record PublicationSettings(Guid Id, bool Public, string? DisplayName, string? PolicyVersion, string Version);
+public sealed record PublicationSettings(Guid Id, bool Public, string? DisplayName, string? PolicyVersion, string Version, Guid? TemplateId = null, string? TemplateVersion = null);
 
 /// <summary>Preview data for an administrator; it contains no internal addresses.</summary>
 public sealed record PublicationPreview(string State, double? LatencyMilliseconds);

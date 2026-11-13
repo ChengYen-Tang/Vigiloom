@@ -10,6 +10,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Publishing;
@@ -32,6 +33,7 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         var device = new Device("router", "10.1.2.3", false, DateTimeOffset.UtcNow);
         await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
         var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+            host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>(),
             new FailingAuditWriter(), TimeProvider.System);
         var settings = await admin.ReadAsync(PublicationResourceKind.Device, device.Id, token);
         Assert.IsNotNull(settings);
