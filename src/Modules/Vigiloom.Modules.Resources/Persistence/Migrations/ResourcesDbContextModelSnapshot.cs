@@ -67,6 +67,12 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<DateTimeOffset?>("PublicSince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("PublicTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -86,6 +92,9 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
 
+                    b.HasIndex("PublicTemplateId")
+                        .HasFilter("[PublicTemplateId] IS NOT NULL");
+
                     b.HasIndex("RowId")
                         .IsUnique();
 
@@ -96,6 +105,8 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                     b.ToTable("Devices", "resources", t =>
                         {
                             t.HasCheckConstraint("CK_Devices_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Devices_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
                         });
                 });
 

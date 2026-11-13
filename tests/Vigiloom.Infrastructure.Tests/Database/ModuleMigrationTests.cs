@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -212,10 +214,47 @@ public sealed class ModuleMigrationTests
         Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'logquota.Policies', N'U') IS NOT NULL AND OBJECT_ID(N'logquota.Buckets', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
         Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'service.Candidates', N'U') IS NOT NULL AND OBJECT_ID(N'service.Services', N'U') IS NOT NULL AND OBJECT_ID(N'service.Sources', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
         Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'security.InventorySources', N'U') IS NOT NULL AND OBJECT_ID(N'security.InventorySnapshots', N'U') IS NOT NULL AND OBJECT_ID(N'security.InventoryChunks', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
+        Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'publishing.Templates', N'U') IS NOT NULL AND OBJECT_ID(N'publishing.__EFMigrationsHistory', N'U') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync(token));
         Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID(N'operations.AuditEvents') AND name = N'IX_AuditEvents_OccurredAt_RowId'").SingleAsync(token));
         await using var identity = new IdentityAccessDbContext(new DbContextOptionsBuilder<IdentityAccessDbContext>()
             .UseSqlServer(connectionString, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "identity")).Options);
         Assert.AreEqual(2, await identity.Roles.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task PublicationPeriodMigration_PreservesBaselineAndProtectsHistory() => WithDatabase(async (connectionString, token) =>
+    {
+        await using var db = Resources(connectionString);
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261113160848_ResourcePublication", token);
+        var publicId = Guid.CreateVersion7();
+        var privateId = Guid.CreateVersion7();
+        var before = DateTimeOffset.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [resources].[Devices] ([Id], [Name], [Address], [HasAgent], [IsArchived], [CreatedAt], [UpdatedAt], [IsPublic], [PublicDisplayName], [PublicPolicyVersion])
+            VALUES ({publicId}, {"Existing public"}, {"public.example"}, {false}, {false}, {before}, {before}, {true}, {"Public name"}, {"baseline-v1"}),
+                   ({privateId}, {"Existing private"}, {"private.example"}, {false}, {false}, {before}, {before}, {false}, NULL, NULL)
+            """, token);
+        await db.Database.MigrateAsync(token);
+        var publicDevice = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == publicId, token);
+        var privateDevice = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == privateId, token);
+        Assert.IsTrue(publicDevice.IsPublic);
+        Assert.AreEqual("baseline-v1", publicDevice.PublicPolicyVersion);
+        Assert.IsNull(publicDevice.PublicTemplateId);
+        Assert.IsNotNull(publicDevice.PublicSince);
+        Assert.IsGreaterThanOrEqualTo(before.AddSeconds(-2), publicDevice.PublicSince.Value);
+        Assert.IsNull(privateDevice.PublicSince);
+        var oldUnpublish = await Assert.ThrowsExactlyAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE [resources].[Devices] SET [IsPublic] = 0 WHERE [Id] = {publicId}", token));
+        Assert.AreEqual(547, oldUnpublish.Number);
+        Assert.Contains("CK_Devices_PublicPeriod", oldUnpublish.Message);
+        var oldPublish = await Assert.ThrowsExactlyAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE [resources].[Devices] SET [IsPublic] = 1 WHERE [Id] = {privateId}", token));
+        Assert.AreEqual(547, oldPublish.Number);
+        Assert.Contains("CK_Devices_PublicPeriod", oldPublish.Message);
+        var failure = await Assert.ThrowsExactlyAsync<SqlException>(() => migrator.MigrateAsync("20261113160848_ResourcePublication", token));
+        Assert.AreEqual(51005, failure.Number);
+        Assert.IsTrue(await db.Devices.AsNoTracking().AnyAsync(x => x.Id == publicId && x.IsPublic, token));
     });
 
     [TestMethod]

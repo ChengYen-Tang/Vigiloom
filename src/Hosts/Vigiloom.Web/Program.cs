@@ -18,6 +18,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -56,6 +57,7 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configurati
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service");
 builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "security", pooled: true);
+builder.Services.AddModuleSqlServer<PublishingDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "publishing", pooled: true);
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
 builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");

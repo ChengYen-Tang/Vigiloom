@@ -7,6 +7,7 @@ namespace Vigiloom.Contracts.Publishing;
 public static partial class PublicationPolicy
 {
     public const string BaselineVersion = "baseline-v1";
+    public const string TemplateVersion = "template-v1";
     public const int MaximumNameLength = 256;
     private const int MaximumAddressChecks = 2048;
 
