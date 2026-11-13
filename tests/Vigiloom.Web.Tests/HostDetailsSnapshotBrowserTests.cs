@@ -90,6 +90,9 @@ public sealed class HostDetailsSnapshotBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "查看盤點變更", Exact = true }).ClickAsync();
         var inventoryChanges = page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" });
         await inventoryChanges.GetByText("部分觀察：首次看到", new() { Exact = true }).WaitForAsync();
+        var processChange = inventoryChanges.GetByRole(AriaRole.Row).Filter(new() { HasText = "test process" });
+        await processChange.GetByText("變更後", new() { Exact = true }).ClickAsync();
+        await processChange.GetByText("程序 ID：5", new() { Exact = false }).WaitForAsync();
         if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
         {
             Directory.CreateDirectory(evidence);

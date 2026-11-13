@@ -53,7 +53,7 @@
                     else
                     {
                         <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="盤點表格，可左右捲動"><table><thead><tr><th>名稱</th><th>識別／詳細資料</th></tr></thead><tbody>
-                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
+                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry, selectedSource) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
                         </tbody></table></div>
                     }
                     <div class="host-pagination"><button type="button" disabled="@(chunkIndex == 0)" @onclick="() => LoadChunkAsync(chunkIndex - 1)">上一頁</button><button type="button" disabled="@(chunkIndex + 1 >= chunk.ChunkCount)" @onclick="() => LoadChunkAsync(chunkIndex + 1)">下一頁</button></div>
