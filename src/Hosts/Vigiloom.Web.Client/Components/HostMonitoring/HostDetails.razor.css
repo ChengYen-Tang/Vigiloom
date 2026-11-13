@@ -11,3 +11,11 @@
 .host-pagination { display: flex; gap: 8px; }
 .host-scroll-hint { display: none; }
 @media (max-width: 700px) { .host-scroll-hint { display: block; color: #31567b; } }
+
+.metric-status { margin: 16px 0; padding: 16px; background: #f4f8fd; border: 1px solid #dce7f3; border-radius: 8px; }
+.metric-status h3 { margin-top: 0; }
+.metric-status p { margin: 8px 0; }
+
+.host-field { display: inline-flex; align-items: center; max-width: 100%; }
+.host-field label { white-space: nowrap; }
+.host-field select { min-width: 0; }

@@ -171,6 +171,7 @@ public sealed class HostDetailsSnapshotBrowserTests
             chunkIndex != 0 ? null : snapshotId == partial ? new(partial, source, now, 0, 1, [new InventoryEntry("partial", "partial package", NumericId: 1, ProcessStartedAt: now)])
                 : new(snapshot, source, now, 0, 2, [new InventoryEntry("one", "original package", NumericId: 2, ProcessStartedAt: now)]));
         public Task<HostMetricPage?> GetMetricsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, AgentMetricKind? kind, CancellationToken token) => throw new NotSupportedException();
+        public Task<HostMetricThresholdStatus?> GetMetricThresholdAsync(Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension, CancellationToken token) => Task.FromResult<HostMetricThresholdStatus?>(null);
         public Task<HostMetricAggregate?> AggregateMetricsAsync(Guid deviceId, Guid agentId, DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension, int bucketSeconds, CancellationToken token) => throw new NotSupportedException();
         public Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => throw new NotSupportedException();
         public Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token) => Task.FromResult<DeviceIntegrityView?>(

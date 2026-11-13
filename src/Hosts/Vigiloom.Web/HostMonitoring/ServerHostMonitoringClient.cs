@@ -10,7 +10,7 @@ using Vigiloom.Web.Authentication;
 namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostLogHistory logs,
+    DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostMetricThresholds thresholds, HostLogHistory logs,
     IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
@@ -35,6 +35,11 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     {
         await AuthorizeAsync(token);
         return await metrics.GetAsync(deviceId, from, until, cursor, kind, token);
+    }
+    public async Task<HostMetricThresholdStatus?> GetMetricThresholdAsync(Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension, CancellationToken token)
+    {
+        await AuthorizeAsync(token);
+        return await thresholds.GetAsync(deviceId, agentId, kind, source, dimension, token);
     }
     public async Task<HostMetricAggregate?> AggregateMetricsAsync(Guid deviceId, Guid agentId, DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension, int bucketSeconds, CancellationToken token)
     {
