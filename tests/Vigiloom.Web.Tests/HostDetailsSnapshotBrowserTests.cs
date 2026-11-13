@@ -45,6 +45,7 @@ public sealed class HostDetailsSnapshotBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
         await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
+        await page.GetByText("程序、作業系統服務與監聽連線是週期性快照", new() { Exact = false }).WaitForAsync();
         await page.GetByText("partial package", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual(2, client.InventoryReads, "Prerender must not perform a duplicate inventory read.");
         Assert.Contains("最後成功盤點", await page.Locator(".host-details").InnerTextAsync());
