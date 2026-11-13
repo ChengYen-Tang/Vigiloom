@@ -62,7 +62,7 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@Operation(entry)</span></td>
-                            <td>@(entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
+                            <td>@(entry.PublicationTemplate is not null ? "公開範本" : entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")</td>
                             <td>
                                 @if (entry.SpeedSettings is { } change)
                                 {
@@ -165,6 +165,7 @@
                                     <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(health.PreviousVersion) ? "初始設定" : health.PreviousVersion) → @health.CurrentVersion</span></details>
                                 }
                                 else if (entry.Publication is { } publication) { <div>類型：@publication.ResourceKind</div><div>公開：@Enabled(publication.PreviousPublic) → @Enabled(publication.CurrentPublic)</div>@if (publication.NameChanged) { <div>公開名稱已變更。</div> } }
+                                else if (entry.PublicationTemplate is { } template) { <div>範本識別碼：@entry.ResourceId</div><div>受影響設備：@template.AffectedDevices</div> }
                                 else if (entry.HealthNetworkPolicy is { } networks) { <div>網段政策版本：@networks.PreviousGeneration → @networks.CurrentGeneration</div> }
                                 else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>來源識別碼：@sourceId</div> } }
                                 else { <span>無法顯示此紀錄的內容。</span> }
@@ -339,6 +340,10 @@
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Stopped => "停止收集",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Resumed => "恢復收集",
         _ when entry.Publication is not null => "變更公開設定",
+        _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Created => "建立公開範本",
+        _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Updated => "修改公開範本",
+        _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.DefaultChanged => "設定預設範本",
+        _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Retired => "刪除公開範本",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Created => "新增檢查",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Updated => "更新檢查",
         _ when entry.HealthNetworkPolicy is not null => "更新網段",

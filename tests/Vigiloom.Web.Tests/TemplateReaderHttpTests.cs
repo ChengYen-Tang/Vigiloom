@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Publishing;
@@ -70,5 +71,16 @@ public sealed class TemplateReaderHttpTests(TestContext context)
             }
             using var retiredResponse = await admin.GetAsync(url, token);
             Assert.AreEqual(HttpStatusCode.NotFound, retiredResponse.StatusCode);
+            var create = new CreatePublicationTemplate("New template", false, true);
+            using (var response = await anonymous.PostAsJsonAsync(listUrl, create, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+            using (var response = await reader.PostAsJsonAsync(listUrl, create, token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+            using (var response = await admin.PostAsJsonAsync(listUrl, create, token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            var antiforgery = await admin.GetFromJsonAsync<JsonElement>("/api/v1/session/antiforgery", token);
+            admin.DefaultRequestHeaders.Add("RequestVerificationToken", antiforgery.GetProperty("requestToken").GetString());
+            using var created = await admin.PostAsJsonAsync(listUrl, create, token);
+            Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+            var createdTemplate = await created.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token);
+            Assert.IsNotNull(createdTemplate);
+            Assert.AreEqual("New template", createdTemplate.Name);
         }, context.CancellationToken);
 }

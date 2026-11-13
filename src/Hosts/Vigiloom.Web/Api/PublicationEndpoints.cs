@@ -10,6 +10,21 @@ internal static class PublicationEndpoints
     public static void MapPublicationEndpoints(this WebApplication app)
     {
         var admin = app.MapGroup("/api/v1/admin/publications").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+        admin.MapPost("/templates", async (CreatePublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await templates.CreateAsync(input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Created => Results.Ok(result.Template),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["請輸入 1 至 256 個字元的範本名稱。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template name is already in use or the settings are being changed.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
+            .WithSummary("Create a publication template");
         admin.MapGet("/templates", async (int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
