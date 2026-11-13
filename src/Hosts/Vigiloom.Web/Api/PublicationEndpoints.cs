@@ -34,7 +34,7 @@ internal static class PublicationEndpoints
                 {
                     PublicationChangeStatus.Updated => Results.Ok(result.Settings),
                     PublicationChangeStatus.NotFound => Results.NotFound(),
-                    PublicationChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["publication"] = ["請確認公開名稱、政策及版本。名稱不可包含 IP 位址。"] }),
+                    PublicationChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["publication"] = ["請確認公開名稱、政策及版本。名稱不可包含 IP 位址或過於複雜的符號組合。"] }),
                     _ => Results.Problem(statusCode: 409, title: "Publication settings changed or the resource is unavailable.")
                 };
             }, allowApiCredential: false);

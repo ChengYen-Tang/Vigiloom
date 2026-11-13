@@ -23,7 +23,7 @@
                     {
                         <label for="public-name">公開顯示名稱</label>
                         <InputText id="public-name" @bind-Value="model.Name" maxlength="256" disabled="@Disabled" />
-                        <p>名稱不可包含 IP 位址。請確認名稱適合公開。</p>
+                        <p>名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。</p>
                         <label for="public-policy">公開範本</label>
                         <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled"><option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option></InputSelect>
                     }
@@ -86,7 +86,7 @@
         if (settings is null || saving) return;
         success = false; message = null;
         if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || model.Policy != PublicationPolicy.BaselineVersion))
-        { message = "請輸入不含 IP 位址的公開名稱，並選擇公開範本。"; return; }
+        { message = "請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"; return; }
         saving = true;
         try
         {

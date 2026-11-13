@@ -149,7 +149,7 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
     {
         var result = new Validation();
         if (input.Public && (!allowPublic || input.PublicPolicyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(input.PublicDisplayName, out _)))
-            result.Errors["public"] = ["請確認公開名稱與範本，名稱不可包含 IP 位址。"];
+            result.Errors["public"] = ["請確認公開名稱與範本，名稱不可包含 IP 位址或過於複雜的符號組合。"];
         result.Name = input.Name?.Trim() ?? "";
         if (result.Name.Length is 0 or > 256) result.Errors["name"] = ["請輸入 1 至 256 個字元的設備名稱。"];
         if (!TargetAddress.TryNormalize(input.Address, out var address)) result.Errors["address"] = ["請輸入有效的 IPv4、IPv6 或 DNS 名稱。"];

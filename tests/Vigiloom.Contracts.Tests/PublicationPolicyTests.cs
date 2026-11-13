@@ -6,6 +6,13 @@ namespace Vigiloom.Contracts.Tests;
 public sealed class PublicationPolicyTests
 {
     [TestMethod]
+    public void PublicName_RejectsExcessiveAddressLikeTextWithoutAcceptingAnAddressAfterIt()
+    {
+        Assert.IsFalse(PublicationPolicy.TryValidateName(string.Concat(Enumerable.Repeat("a:", 100)) + "192.168.1.1", out _));
+        Assert.IsFalse(PublicationPolicy.TryValidateName(string.Concat(Enumerable.Repeat("x.", 128)), out _));
+    }
+
+    [TestMethod]
     [DataRow("台北對外網路")]
     [DataRow("Router 1")]
     [DataRow("Orders service")]

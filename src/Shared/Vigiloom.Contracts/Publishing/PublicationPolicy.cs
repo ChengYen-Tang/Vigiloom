@@ -8,6 +8,7 @@ public static partial class PublicationPolicy
 {
     public const string BaselineVersion = "baseline-v1";
     public const int MaximumNameLength = 256;
+    private const int MaximumAddressChecks = 2048;
 
     /// <summary>Requires a confirmed public name without literal IPv4 or IPv6 addresses.</summary>
     public static bool TryValidateName(string? value, out string name)
@@ -17,6 +18,7 @@ public static partial class PublicationPolicy
         if (IPAddress.TryParse(name, out _)) return false;
         foreach (Match match in IntegerAddressCandidates().Matches(name))
             if (IPAddress.TryParse(match.ValueSpan, out _)) return false;
+        var checks = 0;
         foreach (Match match in AddressCharacters().Matches(name))
         {
             var candidate = match.ValueSpan;
@@ -27,8 +29,12 @@ public static partial class PublicationPolicy
             for (var start = 0; start < candidate.Length; start++)
                 for (var length = 2; length <= candidate.Length - start; length++)
                 {
+                    // An anonymous page may validate many saved names. Bound substring work and
+                    // fail closed instead of accepting an address after abandoning the scan.
+                    if (++checks > MaximumAddressChecks) return false;
                     var segment = candidate.Slice(start, length);
-                    if ((segment.Contains(':') || segment.Contains('.')) && IPAddress.TryParse(segment, out _)) return false;
+                    if (!segment.Contains(':') && !segment.Contains('.')) continue;
+                    if (IPAddress.TryParse(segment, out _)) return false;
                 }
         }
         return true;
