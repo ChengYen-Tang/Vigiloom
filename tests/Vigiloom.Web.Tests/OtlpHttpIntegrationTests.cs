@@ -149,13 +149,14 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             var approved = await scope.ServiceProvider.GetRequiredService<ServiceApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
             Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
             // A new reading after approval is eligible; pre-approval samples are not backfilled.
-            log.TimeUnixNano = (ulong)DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds() * 1_000_000;
+            log.TimeUnixNano = 0;
+            log.ObservedTimeUnixNano = (ulong)DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds() * 1_000_000;
             using (var accepted = await client.PostAsync(path, Body(request.ToByteArray()), token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
                 Assert.IsNull(ExportLogsServiceResponse.Parser.ParseFrom(await accepted.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
             }
-            var nanos = log.TimeUnixNano;
+            var nanos = log.ObservedTimeUnixNano;
             var metric = new Metric { Name = "load", Gauge = new Gauge { DataPoints = { new NumberDataPoint { TimeUnixNano = nanos, AsDouble = 1.5 } } } };
             var metricRequest = new ExportMetricsServiceRequest { ResourceMetrics = { new ResourceMetrics
                 { Resource = resource, ScopeMetrics = { new ScopeMetrics { Metrics = { metric } } } } } };
@@ -223,10 +224,62 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             var rollupFrom = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-10).ToString("O"));
             var rollupQuery = $"{history}/metrics/windows?from={rollupFrom}&to={to}";
             using (var noAccess = await reader.GetAsync($"{history}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            var serviceDetails = $"/api/v1/service-details/{approved.ServiceId:D}";
+            using (var noAccess = await reader.GetAsync($"{serviceDetails}/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            using (var noAccess = await reader.GetAsync($"{serviceDetails}/instances", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            using (var noAccess = await reader.GetAsync($"{serviceDetails}/health-observations", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            using (var noAccess = await reader.GetAsync($"{serviceDetails}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
+            using (var machineDenied = await client.GetAsync($"{serviceDetails}/traces?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             using (var noAccess = await reader.GetAsync(rollupQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, noAccess.StatusCode);
             using (var machineDenied = await client.GetAsync($"{history}/logs?{window}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             using (var machineDenied = await client.GetAsync(rollupQuery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, machineDenied.StatusCode);
             await LoginAsync(reader, "reader", token);
+            using (var response = await reader.GetAsync($"{serviceDetails}/", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var details = await response.Content.ReadFromJsonAsync<Vigiloom.Contracts.Services.ServiceDetails>(token);
+                Assert.IsNotNull(details);
+                Assert.AreEqual(approved.ServiceId, details.Id);
+                Assert.AreEqual("prod", details.Environment);
+                Assert.IsFalse(details.CollectionStopped);
+                Assert.IsNotNull(details.LastLogReceivedAt);
+                Assert.IsNotNull(details.LastMetricReceivedAt);
+                Assert.IsNotNull(details.LastTraceReceivedAt);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            }
+            using (var response = await reader.GetAsync($"{serviceDetails}/instances?page=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            using (var response = await reader.GetAsync($"{serviceDetails}/instances", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.IsNotNull(await response.Content.ReadFromJsonAsync<ServiceInstancePage>(token));
+            }
+            var observations = await reader.GetFromJsonAsync<HealthObservationPage>($"{serviceDetails}/health-observations", token);
+            Assert.IsNotNull(observations);
+            Assert.IsEmpty(observations.Items);
+            using (var response = await reader.GetAsync($"{serviceDetails}/logs?{window}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var result = await response.Content.ReadFromJsonAsync<ServiceEvidencePage<ServiceLogEvidence>>(token);
+                Assert.IsNotNull(result);
+                Assert.AreEqual("private payload", result.Items.Single().Body);
+                Assert.IsTrue(result.Items.Single().UsedObservedTime);
+                Assert.IsFalse(result.Items.Single().UsedReceivedTime);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            }
+            using (var response = await reader.GetAsync($"{serviceDetails}/traces?{window}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var result = await response.Content.ReadFromJsonAsync<ServiceEvidencePage<ServiceTraceEvidence>>(token);
+                Assert.IsNotNull(result);
+                Assert.AreEqual("request", result.Items.Single().Name);
+                Assert.AreEqual(32, result.Items.Single().TraceId.Length);
+            }
+            var correlated = await reader.GetFromJsonAsync<ServiceEvidencePage<ServiceLogEvidence>>($"{serviceDetails}/logs?{window}&traceId={Convert.ToHexString(log.TraceId.ToByteArray())}", token);
+            Assert.IsNotNull(correlated);
+            Assert.HasCount(1, correlated.Items);
+            using (var invalid = await reader.GetAsync($"{serviceDetails}/logs?{window}&traceId=invalid", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             string seriesQuery;
             MetricRollupWindowResponse selectedWindow;
             using (var response = await reader.GetAsync(rollupQuery, token))
@@ -453,6 +506,19 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             Assert.IsNotNull(lastLogs); Assert.IsFalse(lastLogs.Truncated); Assert.IsFalse(lastLogs.HasMore);
             Assert.IsNotNull(lastTraces); Assert.IsFalse(lastTraces.Truncated); Assert.IsFalse(lastTraces.HasMore);
             Assert.IsNotNull(lastMetrics); Assert.IsFalse(lastMetrics.Truncated); Assert.IsFalse(lastMetrics.HasMore);
+            log.ObservedTimeUnixNano = 0;
+            log.Body.StringValue = "received-time-only";
+            using (var accepted = await client.PostAsync(path, Body(request.ToByteArray()), token))
+                Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+            var fallback = await reader.GetFromJsonAsync<ServiceEvidencePage<ServiceLogEvidence>>($"{serviceDetails}/logs?{window}", token);
+            Assert.IsNotNull(fallback);
+            var receivedTimeLog = fallback.Items.Single(x => x.Body == "received-time-only");
+            Assert.IsTrue(receivedTimeLog.UsedReceivedTime);
+            Assert.IsFalse(receivedTimeLog.UsedObservedTime);
+            Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<SourceAdministration>().RevokeAsync(credential.SourceId, Guid.CreateVersion7(), token));
+            var stopped = await reader.GetFromJsonAsync<Vigiloom.Contracts.Services.ServiceDetails>($"{serviceDetails}/", token);
+            Assert.IsNotNull(stopped);
+            Assert.IsTrue(stopped.SourceRevoked);
         }, context.CancellationToken);
 
     [TestMethod]
