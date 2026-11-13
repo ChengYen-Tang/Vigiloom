@@ -213,14 +213,14 @@ public partial class HostDetails
     private static string InventoryStatusName(InventoryCompletion? value) => value switch { InventoryCompletion.Complete => "已接受完整資料", InventoryCompletion.Partial => "部分資料", InventoryCompletion.Expired => "接收逾期", InventoryCompletion.Rejected => "已拒收", _ => "尚未完成" };
     private static string IntegrityStatusName(IntegrityCompletion? value) => value switch { IntegrityCompletion.Complete => "已接受完整資料", IntegrityCompletion.Partial => "部分資料", IntegrityCompletion.Expired => "接收逾期", IntegrityCompletion.Rejected => "已拒收", _ => "尚未完成" };
     internal static string SourceName(InventorySource source) => source switch { InventorySource.WindowsSoftware32 => "Windows 軟體（32 位元登錄檢視）", InventorySource.WindowsSoftware64 => "Windows 軟體（64 位元登錄檢視）", InventorySource.LinuxDpkg => "Debian 軟體", InventorySource.LinuxRpm => "RPM 軟體", InventorySource.LinuxAccounts => "Linux 帳號", InventorySource.WindowsAccounts => "Windows 帳號", InventorySource.LinuxGroups => "Linux 群組", InventorySource.WindowsGroups => "Windows 群組", InventorySource.WindowsQuickFix => "Windows 修補程式", InventorySource.HostSystem => "系統資訊", InventorySource.HostNetwork => "網路介面", InventorySource.HostVolumes => "磁碟空間", InventorySource.HostProcesses => "程序", InventorySource.HostServices => "作業系統服務", InventorySource.HostListeners => "監聽連線", _ => source.ToString() };
-    internal static string EntryDetails(InventoryEntry entry)
+    internal static string EntryDetails(InventoryEntry entry, InventorySource source)
     {
         var fields = new List<string> { $"識別：{entry.Key}" };
         void Add(string name, object? value) { if (value is not null && !string.IsNullOrWhiteSpace(value.ToString())) fields.Add($"{name}：{value}"); }
         Add("版本", entry.Version); Add("作業系統", entry.OperatingSystem); Add("架構", entry.Architecture);
         Add("作業系統系列", entry.OperatingSystemFamily); Add("發行版", entry.DistributionId); Add("發行版版本", entry.DistributionVersion);
         Add("程序架構", entry.ProcessArchitecture); Add("執行階段", entry.Runtime); Add("Agent 版本", entry.AgentVersion); Add("可用處理器數", entry.AvailableProcessorCount);
-        Add("供應商", entry.Supplier); Add("安裝日期", entry.InstalledOn); Add("帳號／群組 ID", entry.NumericId); Add("主要群組 ID", entry.PrimaryGroupId);
+        Add("供應商", entry.Supplier); Add("安裝日期", entry.InstalledOn); Add(source == InventorySource.HostProcesses ? "程序 ID" : "帳號／群組 ID", entry.NumericId); Add("主要群組 ID", entry.PrimaryGroupId);
         Add("啟動時間（UTC）", entry.BootedAt?.ToUniversalTime().ToString("u")); Add("記憶體（bytes）", entry.TotalMemoryBytes);
         Add("容量（bytes）", entry.CapacityBytes); Add("位址", entry.Address); Add("連接埠", entry.Port); Add("通訊協定", entry.Protocol);
         Add("狀態", entry.ServiceStatus); Add("啟動模式", entry.StartupMode); Add("執行身分", entry.RunAs);

@@ -28,7 +28,7 @@
                 <div @key="page" class="host-table" tabindex="0" role="region" aria-label="盤點變更表格，可左右捲動"><table><thead><tr><th>觀察時間（UTC）</th><th>來源／Agent</th><th>變更</th><th>項目</th><th>詳細資料</th></tr></thead><tbody>
                 @foreach (var item in page.Items)
                 {
-                    <tr><td>@item.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>@HostDetails.SourceName(item.Source)<br />@item.AgentId</td><td>@KindName(item.Kind)</td><td>@(item.After?.Name ?? item.Before?.Name ?? "—")</td><td><InventoryChangeEntry Label="變更前" Entry="item.Before" /><InventoryChangeEntry Label="變更後" Entry="item.After" /></td></tr>
+                    <tr><td>@item.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>@HostDetails.SourceName(item.Source)<br />@item.AgentId</td><td>@KindName(item.Kind)</td><td>@(item.After?.Name ?? item.Before?.Name ?? "—")</td><td><InventoryChangeEntry Label="變更前" Entry="item.Before" Source="item.Source" /><InventoryChangeEntry Label="變更後" Entry="item.After" Source="item.Source" /></td></tr>
                 }
                 </tbody></table></div>
             }

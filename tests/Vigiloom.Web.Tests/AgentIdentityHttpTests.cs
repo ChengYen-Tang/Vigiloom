@@ -173,7 +173,7 @@ public sealed class AgentIdentityHttpTests
                     await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
                     var table = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" });
                     var selfRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
-                    await selfRow.GetByText($"帳號／群組 ID：{Environment.ProcessId}", new() { Exact = false }).WaitForAsync();
+                    await selfRow.GetByText($"程序 ID：{Environment.ProcessId}", new() { Exact = false }).WaitForAsync();
                     await selfRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
                     await page.GetByText("原因：AccessDenied", new() { Exact = false }).WaitForAsync();
                     await gate.ReleaseAsync();
