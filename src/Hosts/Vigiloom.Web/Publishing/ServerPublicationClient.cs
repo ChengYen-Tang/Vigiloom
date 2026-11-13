@@ -8,7 +8,8 @@ using Vigiloom.Web.Authentication;
 namespace Vigiloom.Web.Publishing;
 
 internal sealed class ServerPublicationClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    PublicationAdministration administration, PublicationPreviewReader preview, TemplateReader templates) : IPublicationClient
+    PublicationAdministration administration, PublicationPreviewReader preview, TemplateReader templates,
+    TemplateAdministration templateAdministration, TemplateUpdateWorkflow updates, TemplateRetirementWorkflow retirements) : IPublicationClient
 {
     public async Task<PublicationSettings?> GetAsync(string kind, Guid id, CancellationToken token)
     {
@@ -28,6 +29,30 @@ internal sealed class ServerPublicationClient(AuthenticationStateProvider authen
     { await ActorAsync(token); return await templates.GetAsync(id, token); }
     public async Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token)
     { await ActorAsync(token); return await templates.DefaultAsync(token); }
+    public async Task<TemplateOperationResult<PublicationImpact>> TemplateImpactAsync(Guid id, int page, CancellationToken token)
+    {
+        await ActorAsync(token);
+        if (page is < 1 or > (TemplateImpact.MaximumDevices + TemplateImpact.PageSize - 1) / TemplateImpact.PageSize) return new(TemplateOperationStatus.Invalid);
+        var result = await templates.ImpactAsync(id, page, token);
+        return result.Changed || result.TooMany ? new(TemplateOperationStatus.Conflict) : result.Impact is null ? new(TemplateOperationStatus.NotFound) : new(TemplateOperationStatus.Success, result.Impact);
+    }
+
+    public async Task<TemplateOperationResult<PublicationTemplateItem>> CreateTemplateAsync(CreatePublicationTemplate input, CancellationToken token)
+    { var result = await templateAdministration.CreateAsync(input, await ActorAsync(token), token); return new(Status(result.Status), result.Template); }
+    public async Task<TemplateOperationResult<PublicationTemplateItem>> SetDefaultTemplateAsync(Guid id, SetDefaultPublicationTemplate input, CancellationToken token)
+    { var result = await templateAdministration.SetDefaultAsync(id, input, await ActorAsync(token), token); return new(Status(result.Status), result.Template); }
+    public async Task<TemplateOperationResult<PublicationTemplateUpdatePreview>> PreviewTemplateUpdateAsync(Guid id, PublicationTemplateUpdate input, CancellationToken token)
+    { var result = await updates.PreviewAsync(id, input, await ActorAsync(token), token); return new(Status(result.Status), result.Preview); }
+    public async Task<TemplateOperationResult<PublicationTemplateItem>> ConfirmTemplateUpdateAsync(Guid id, ConfirmPublicationTemplateUpdate input, CancellationToken token)
+    { var result = await updates.ConfirmAsync(id, input, await ActorAsync(token), token); return new(Status(result.Status), result.Template); }
+    public async Task<TemplateOperationResult<PublicationTemplateRetirementPreview>> PreviewTemplateRetirementAsync(Guid id, PublicationTemplateRetirement input, CancellationToken token)
+    { var result = await retirements.PreviewAsync(id, input, await ActorAsync(token), token); return new(Status(result.Status), result.Preview); }
+    public async Task<TemplateOperationResult<bool>> ConfirmTemplateRetirementAsync(Guid id, ConfirmPublicationTemplateRetirement input, CancellationToken token)
+    { var result = await retirements.ConfirmAsync(id, input, await ActorAsync(token), token); return new(Status(result), result == TemplateChangeStatus.Updated); }
+
+    private static TemplateOperationStatus Status(TemplateChangeStatus status) => status switch
+    { TemplateChangeStatus.Created or TemplateChangeStatus.Updated => TemplateOperationStatus.Success,
+        TemplateChangeStatus.NotFound => TemplateOperationStatus.NotFound, TemplateChangeStatus.Invalid => TemplateOperationStatus.Invalid, _ => TemplateOperationStatus.Conflict };
 
     public async Task<PublicationSaveResult> SaveAsync(string kind, Guid id, PublicationChange change, CancellationToken token)
     {

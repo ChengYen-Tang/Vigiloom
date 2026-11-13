@@ -67,6 +67,13 @@ public interface IPublicationClient
     Task<PublicationTemplatePage> TemplatesAsync(int page, CancellationToken token);
     Task<PublicationTemplateItem?> TemplateAsync(Guid id, CancellationToken token);
     Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token);
+    Task<TemplateOperationResult<PublicationImpact>> TemplateImpactAsync(Guid id, int page, CancellationToken token);
+    Task<TemplateOperationResult<PublicationTemplateItem>> CreateTemplateAsync(CreatePublicationTemplate input, CancellationToken token);
+    Task<TemplateOperationResult<PublicationTemplateItem>> SetDefaultTemplateAsync(Guid id, SetDefaultPublicationTemplate input, CancellationToken token);
+    Task<TemplateOperationResult<PublicationTemplateUpdatePreview>> PreviewTemplateUpdateAsync(Guid id, PublicationTemplateUpdate input, CancellationToken token);
+    Task<TemplateOperationResult<PublicationTemplateItem>> ConfirmTemplateUpdateAsync(Guid id, ConfirmPublicationTemplateUpdate input, CancellationToken token);
+    Task<TemplateOperationResult<PublicationTemplateRetirementPreview>> PreviewTemplateRetirementAsync(Guid id, PublicationTemplateRetirement input, CancellationToken token);
+    Task<TemplateOperationResult<bool>> ConfirmTemplateRetirementAsync(Guid id, ConfirmPublicationTemplateRetirement input, CancellationToken token);
     Task<PublicationSaveResult> SaveAsync(string kind, Guid id, PublicationChange change, CancellationToken token);
 }
 

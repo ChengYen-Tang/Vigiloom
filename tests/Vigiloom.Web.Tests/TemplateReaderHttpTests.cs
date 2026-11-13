@@ -42,6 +42,8 @@ public sealed class TemplateReaderHttpTests(TestContext context)
             using var admin = PingTestSite.Client(host);
             await PingTestSite.LoginAsync(reader, "reader", token);
             await PingTestSite.LoginAsync(admin, "admin", token);
+            using (var response = await anonymous.GetAsync("/settings/publication-templates", token)) Assert.AreNotEqual(HttpStatusCode.OK, response.StatusCode);
+            using (var response = await reader.GetAsync("/settings/publication-templates", token)) Assert.AreNotEqual(HttpStatusCode.OK, response.StatusCode);
             var url = $"/api/v1/admin/publications/templates/{template.Id:D}/impact";
             const string listUrl = "/api/v1/admin/publications/templates";
             using (var response = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);

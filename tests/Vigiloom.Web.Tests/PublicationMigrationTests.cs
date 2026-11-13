@@ -27,16 +27,17 @@ public sealed class PublicationMigrationTests(TestContext context)
         var now = DateTimeOffset.UtcNow;
         await using (var resources = new ResourcesDbContext(resourceOptions))
         {
-            await resources.Database.MigrateAsync(token);
-            var device = new Device("router", "10.1.2.3", false, now);
-            device.SetPublication(true, "Public router", PublicationPolicy.BaselineVersion, now);
-            resources.Devices.Add(device);
-            await resources.SaveChangesAsync(token);
+            await resources.GetService<IMigrator>().MigrateAsync("20261113160848_ResourcePublication", token);
+            var id = Guid.CreateVersion7();
+            await resources.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [resources].[Devices] ([Id], [Name], [Address], [HasAgent], [IsArchived], [CreatedAt], [UpdatedAt], [IsPublic], [PublicDisplayName], [PublicPolicyVersion])
+                VALUES ({id}, {"router"}, {"10.1.2.3"}, {false}, {false}, {now}, {now}, {true}, {"Public router"}, {PublicationPolicy.BaselineVersion})
+                """, token);
             var failure = await Assert.ThrowsAsync<SqlException>(() => resources.GetService<IMigrator>().MigrateAsync("20261103233336_GroupMembership", token));
             Assert.AreEqual(51001, failure.Number);
         }
         await using (var resources = new ResourcesDbContext(resourceOptions))
-            Assert.IsTrue(await resources.Devices.AnyAsync(x => x.IsPublic && x.PublicDisplayName == "Public router", token));
+            Assert.AreEqual(1, await resources.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [resources].[Devices] WHERE [IsPublic] = 1 AND [PublicDisplayName] = N'Public router'").SingleAsync(token));
 
         await using (var services = new ServiceObservabilityDbContext(serviceOptions))
         {
