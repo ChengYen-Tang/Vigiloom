@@ -46,7 +46,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         SELECT g.[Id], g.[PublicDisplayName] AS [Name], g.[RowId], g.[Version],
           (SELECT COUNT(*) FROM [resources].[DeviceGroups] AS m JOIN [resources].[Devices] AS d ON d.[Id] = m.[DeviceId]
             WHERE m.[GroupId] = g.[Id] AND d.[IsPublic] = CAST(1 AS bit) AND d.[IsArchived] = CAST(0 AS bit)
-              AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND d.[PublicDisplayName] IS NOT NULL) AS [DeviceCount],
+              AND ((d.[PublicTemplateId] IS NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
+                OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL) AS [DeviceCount],
           (SELECT COUNT(*) FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
             WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
               AND s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
@@ -54,10 +55,21 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         WHERE g.[IsPublic] = CAST(1 AS bit) AND g.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(g.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND g.[PublicDisplayName] IS NOT NULL
           AND (EXISTS (SELECT 1 FROM [resources].[DeviceGroups] AS m JOIN [resources].[Devices] AS d ON d.[Id] = m.[DeviceId]
                 WHERE m.[GroupId] = g.[Id] AND d.[IsPublic] = CAST(1 AS bit) AND d.[IsArchived] = CAST(0 AS bit)
-                  AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND d.[PublicDisplayName] IS NOT NULL)
+                  AND ((d.[PublicTemplateId] IS NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
+                    OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL)
             OR EXISTS (SELECT 1 FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
                 WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
                   AND s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND s.[PublicDisplayName] IS NOT NULL))
+        """);
+
+    private static IQueryable<DeviceRow> VisibleDevices(ResourcesDbContext db) => db.Database.SqlQuery<DeviceRow>($"""
+        SELECT d.[Id], d.[PublicDisplayName] AS [Name], d.[Address] AS [Target], d.[IsEnabled] AS [Enabled], d.[Version], d.[RowId],
+               d.[PublicTemplateId] AS [TemplateId], t.[Version] AS [TemplateVersion], t.[ShowLatency], t.[ShowObservedAt]
+        FROM [resources].[Devices] AS d
+        LEFT JOIN [publishing].[Templates] AS t ON t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0
+        WHERE d.[IsPublic] = 1 AND d.[IsArchived] = 0 AND d.[PublicDisplayName] IS NOT NULL AND
+          ((d.[PublicTemplateId] IS NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
+           OR (t.[Id] IS NOT NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion})))
         """);
 
     public async Task<PublicPage<PublicDevice>> DevicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
@@ -65,21 +77,19 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         await using var db = await resources.CreateDbContextAsync(token);
         var groupVersion = groupId is { } requestedGroup ? await GroupVersionAsync(requestedGroup, token) : null;
         if (groupId is not null && groupVersion is null) return new([], page, false);
-        var query = db.Devices.AsNoTracking().Where(x => x.IsPublic && !x.IsArchived && EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2 && x.PublicDisplayName != null);
+        var query = VisibleDevices(db);
         if (groupId is { } group)
             query = query.Where(x => db.DeviceGroups.Any(m => m.DeviceId == x.Id && m.GroupId == group) &&
                 db.Groups.Any(g => g.Id == group && g.IsPublic && EF.Functions.Collate(g.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(g.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2 && g.PublicDisplayName != null));
-        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.PublicDisplayName!.Contains(search));
-        var rows = await query.OrderBy(x => x.PublicDisplayName).ThenBy(x => x.RowId).Skip((page - 1) * PageSize).Take(PageSize + 1)
-            .Select(x => new DeviceRow(x.Id, x.PublicDisplayName!, x.Address, x.IsEnabled, x.Version)).ToArrayAsync(token);
+        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.Name.Contains(search));
+        var rows = await query.OrderBy(x => x.Name).ThenBy(x => x.RowId).Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
         var status = await ping.GetStatusesAsync(rows.Where(x => x.Enabled).Select(x => new PingDeviceSnapshot(x.Id, x.Version, [x.Target])).ToArray(), token);
         var ids = rows.Select(x => x.Id).ToArray();
-        var currentQuery = db.Devices.AsNoTracking().Where(x => ids.Contains(x.Id) && x.IsPublic && !x.IsArchived && EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2);
+        var currentQuery = VisibleDevices(db).Where(x => ids.Contains(x.Id));
         if (groupId is { } selectedGroup) currentQuery = currentQuery.Where(x => db.DeviceGroups.Any(m => m.DeviceId == x.Id && m.GroupId == selectedGroup));
-        var current = await currentQuery
-            .Select(x => new { x.Id, x.Version }).ToDictionaryAsync(x => x.Id, x => x.Version, token);
+        var current = await currentQuery.ToDictionaryAsync(x => x.Id, token);
         if (groupId is { } finalGroup && !Same(groupVersion, await GroupVersionAsync(finalGroup, token))) return new([], page, false);
-        var checkedRows = rows.Where(x => current.TryGetValue(x.Id, out var version) && version.AsSpan().SequenceEqual(x.Version) && PublicationPolicy.TryValidateName(x.Name, out _)).ToArray();
+        var checkedRows = rows.Where(x => current.TryGetValue(x.Id, out var latest) && SameDevicePolicy(x, latest) && PublicationPolicy.TryValidateName(x.Name, out _)).ToArray();
         var items = checkedRows.Take(PageSize).Select(row => Map(row, status)).ToArray();
         return new(items, page, checkedRows.Length > PageSize);
     }
@@ -88,13 +98,11 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     {
         if (id.Version != 7) return null;
         await using var db = await resources.CreateDbContextAsync(token);
-        var row = await db.Devices.AsNoTracking().Where(x => x.Id == id && x.IsPublic && !x.IsArchived && EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2 && x.PublicDisplayName != null)
-            .Select(x => new DeviceRow(x.Id, x.PublicDisplayName!, x.Address, x.IsEnabled, x.Version)).SingleOrDefaultAsync(token);
+        var row = await VisibleDevices(db).SingleOrDefaultAsync(x => x.Id == id, token);
         if (row is null || !PublicationPolicy.TryValidateName(row.Name, out _)) return null;
         var states = await ping.GetStatusesAsync(row.Enabled ? [new PingDeviceSnapshot(row.Id, row.Version, [row.Target])] : [], token);
-        var version = await db.Devices.AsNoTracking().Where(x => x.Id == id && x.IsPublic && !x.IsArchived && EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2)
-            .Select(x => x.Version).SingleOrDefaultAsync(token);
-        return version is not null && version.AsSpan().SequenceEqual(row.Version) ? Map(row, states) : null;
+        var current = await VisibleDevices(db).SingleOrDefaultAsync(x => x.Id == id, token);
+        return current is not null && SameDevicePolicy(row, current) ? Map(row, states) : null;
     }
 
     public async Task<PublicPage<PublicService>> ServicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
@@ -162,7 +170,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         var target = status.Targets[0];
         var state = target.State switch { Reachability.Reachable => "Operational", Reachability.Unreachable => "Unavailable", _ => "Unknown" };
         var latency = target.State == Reachability.Reachable && target.LastOutcome == PingOutcome.Success && !target.Stale ? target.LatencyMilliseconds : null;
-        return new(row.Id, row.Name, state, latency, target.MeasuredAt);
+        return new(row.Id, row.Name, state, row.TemplateId is null || row.ShowLatency == true ? latency : null,
+            row.TemplateId is null || row.ShowObservedAt == true ? target.MeasuredAt : null);
     }
 
     private static PublicService Map(ServiceRow row, HealthStatusReader.OverviewStatus status) =>
@@ -180,7 +189,21 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     private static bool Same(byte[]? left, byte[]? right) => left is not null && right is not null && left.AsSpan().SequenceEqual(right);
     private static PublicGroup Map(GroupRow row) => new(row.Id, row.Name, row.DeviceCount, row.ServiceCount);
 
-    private sealed record DeviceRow(Guid Id, string Name, string Target, bool Enabled, byte[] Version);
+    private static bool SameDevicePolicy(DeviceRow left, DeviceRow right) => Same(left.Version, right.Version) && left.TemplateId == right.TemplateId &&
+        (left.TemplateId is null || Same(left.TemplateVersion, right.TemplateVersion));
+    private sealed class DeviceRow
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Target { get; set; } = "";
+        public bool Enabled { get; set; }
+        public byte[] Version { get; set; } = [];
+        public long RowId { get; set; }
+        public Guid? TemplateId { get; set; }
+        public byte[]? TemplateVersion { get; set; }
+        public bool? ShowLatency { get; set; }
+        public bool? ShowObservedAt { get; set; }
+    }
     private sealed record ServiceRow(Guid Id, string Name, byte[] Version, Guid SourceId, byte[] SourceVersion);
     private sealed class GroupRow
     {

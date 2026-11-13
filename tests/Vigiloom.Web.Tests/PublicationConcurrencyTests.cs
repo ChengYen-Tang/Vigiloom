@@ -11,6 +11,8 @@ using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
+using Vigiloom.Modules.Publishing.Domain;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Publishing;
@@ -145,9 +147,20 @@ public sealed class PublicationConcurrencyTests(TestContext context)
                 await db.Database.MigrateAsync(token);
             await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
+            await using (var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using (var db = await host.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(database.ConnectionString))
+            { await connection.OpenAsync(token); await ReadCommittedSnapshot.EnsureAsync(connection, true, token); }
             await test(database.ConnectionString, token);
         }, context.CancellationToken)
-        : ReusableWebDatabase.ExecuteAsync((database, token) => test(database.ConnectionString, token), context.CancellationToken);
+        : ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(database.ConnectionString))
+            { await connection.OpenAsync(token); await ReadCommittedSnapshot.EnsureAsync(connection, false, token); }
+            await test(database.ConnectionString, token);
+        }, context.CancellationToken);
 
     private sealed class PauseSecondGroupQuery : DbCommandInterceptor
     {
@@ -163,6 +176,66 @@ public sealed class PublicationConcurrencyTests(TestContext context)
                 Reached.TrySetResult();
                 await Continue.Task.WaitAsync(cancellationToken);
             }
+            return result;
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task DeviceRead_RechecksTemplateAfterConcurrentRestriction(bool detail, bool snapshotReads) => WithReadModeAsync(snapshotReads, async (connectionString, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(connectionString);
+        var now = DateTimeOffset.UtcNow;
+        var template = new PublicationTemplate("Policy", true, true, now);
+        await using (var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
+        { db.Templates.Add(template); await db.SaveChangesAsync(token); }
+        var device = new Device("router", "example.com", false, now);
+        device.SetTemplatePublication("Public router", template.Id, false, now);
+        await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var gate = new PauseSecondDeviceQuery();
+        var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(connectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).AddInterceptors(gate).Options;
+        using var scope = host.Services.CreateScope();
+        var reader = new PublicReader(new PooledDbContextFactory<ResourcesDbContext>(options),
+            host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+            scope.ServiceProvider.GetRequiredService<PingStore>(), scope.ServiceProvider.GetRequiredService<HealthStatusReader>());
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var read = detail ? ReadDetail() : ReadList();
+        Exception? failure = null;
+        try
+        {
+            await gate.Reached.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
+            await using (var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
+            { var row = await db.Templates.SingleAsync(x => x.Id == template.Id, token); row.Update("Policy", false, false, DateTimeOffset.UtcNow); await db.SaveChangesAsync(token); }
+            gate.Continue.TrySetResult();
+            Assert.IsFalse(await read, "A query using an outdated publication policy must not return the device.");
+        }
+        catch (Exception exception) { failure = exception; throw; }
+        finally
+        {
+            gate.Continue.TrySetResult();
+            if (!read.IsCompleted) await cancellation.CancelAsync();
+            try { await read; } catch when (failure is not null) { }
+        }
+        async Task<bool> ReadDetail() => await reader.DeviceAsync(device.Id, cancellation.Token) is not null;
+        async Task<bool> ReadList() => (await reader.DevicesAsync(null, 1, null, cancellation.Token)).Items.Any();
+    });
+
+    private sealed class PauseSecondDeviceQuery : DbCommandInterceptor
+    {
+        private int count;
+        public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("FROM [resources].[Devices] AS d", StringComparison.Ordinal) && Interlocked.Increment(ref count) == 2)
+            { Reached.TrySetResult(); await Continue.Task.WaitAsync(cancellationToken); }
             return result;
         }
     }
