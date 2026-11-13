@@ -41,63 +41,6 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 logs.Bind(null);
                 inventory.Bind(null);
                 integrity.Bind(null);
-                try
-                {
-                    owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
-                    if (!IsCurrent(directory, server)) continue;
-                    runtime.Bind(owner);
-                    capacity.Bind(owner);
-                    metrics.Bind(owner);
-                    logs.Bind(owner);
-                    inventory.Bind(owner);
-                    integrity.Bind(owner);
-                    var saved = await client.LoadSavedAsync(vault, uri, stoppingToken);
-                    if (IsCurrent(directory, server) && saved.Settings is not null) runtime.Publish(owner, saved.Settings);
-                }
-                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
-                {
-                    logger.LogWarning("Agent saved configuration could not be loaded: {ErrorType}.", ex.GetType().Name);
-                }
-                try
-                {
-                    var savedMetrics = await metricClient.LoadSavedAsync(vault, uri, stoppingToken);
-                    if (IsCurrent(directory, server) && savedMetrics.Settings is not null) metrics.Publish(owner, savedMetrics.Settings);
-                }
-                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
-                {
-                    metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
-                    logger.LogWarning("Agent saved metric settings could not be loaded: {ErrorType}.", ex.GetType().Name);
-                }
-                try
-                {
-                    var savedInventory = await inventoryClient.LoadSavedAsync(vault, uri, stoppingToken);
-                    if (IsCurrent(directory, server) && savedInventory.Settings is not null) inventory.Publish(owner, savedInventory.Settings);
-                }
-                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
-                {
-                    inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
-                    logger.LogWarning("Agent saved inventory settings could not be loaded: {ErrorType}.", ex.GetType().Name);
-                }
-                try
-                {
-                    var savedIntegrity = await integrityClient.LoadSavedAsync(vault, uri, stoppingToken);
-                    if (IsCurrent(directory, server) && savedIntegrity.Settings is not null) integrity.Publish(owner, savedIntegrity.Settings);
-                }
-                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
-                {
-                    integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
-                    logger.LogWarning("Agent saved integrity settings could not be loaded: {ErrorType}.", ex.GetType().Name);
-                }
-                try
-                {
-                    var savedLogs = await logClient.LoadSavedAsync(vault, uri, stoppingToken);
-                    if (IsCurrent(directory, server) && savedLogs.Settings is not null) logs.Publish(owner, savedLogs.Settings);
-                }
-                catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
-                {
-                    logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
-                    logger.LogWarning("Agent saved log settings could not be loaded: {ErrorType}.", ex.GetType().Name);
-                }
                 do
                 {
                     if (!IsCurrent(directory, server)) break;
@@ -111,6 +54,24 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         logs.Bind(owner);
                         inventory.Bind(owner);
                         integrity.Bind(owner);
+                        if (owner is not null)
+                        {
+                            if (runtime.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await client.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => runtime.RestoreIfEmpty(owner, saved), () => runtime.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                            if (metrics.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await metricClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => metrics.RestoreIfEmpty(owner, saved), () => metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                            if (inventory.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await inventoryClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => inventory.RestoreIfEmpty(owner, saved), () => inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                            if (logs.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await logClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => logs.RestoreIfEmpty(owner, saved), () => logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                            if (integrity.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await integrityClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => integrity.RestoreIfEmpty(owner, saved), () => integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                        }
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Settings is not null) runtime.Publish(owner, result.Settings);
@@ -262,6 +223,22 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 logger.LogWarning("Agent configuration synchronizer unavailable: {ErrorType}.", ex.GetType().Name);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
             }
+        }
+    }
+
+    private async Task RestoreAsync<T>(Func<Task<T?>> load, Action<T> publish, Action markFailure,
+        string directory, string server, CancellationToken token) where T : class
+    {
+        try
+        {
+            var saved = await load();
+            if (!IsCurrent(directory, server)) return;
+            if (saved is not null) publish(saved);
+        }
+        catch (Exception ex) when (IsRecoverable(ex, token))
+        {
+            markFailure();
+            logger.LogWarning("Agent saved settings could not be loaded: {ErrorType}.", ex.GetType().Name);
         }
     }
 

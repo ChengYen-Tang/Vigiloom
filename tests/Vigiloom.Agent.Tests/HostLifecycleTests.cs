@@ -279,6 +279,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentLogSettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
@@ -314,6 +316,145 @@ public sealed class HostLifecycleTests(TestContext testContext)
     }
 
     [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task Host_RetriesRestoringSettingsAfterTemporaryIdentityLockWhileOffline()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsRetryHostTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var server = new Uri("https://example.test/");
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var cached = AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 60 });
+            var cachedMetrics = AgentMetricSettingsSnapshot.Create(new(45, 90));
+            await new AgentSettingsStore(vault, server, id).SaveAsync(cached, null, DateTimeOffset.UtcNow, token);
+            await new AgentMetricSettingsStore(vault, server, id).SaveAsync(cachedMetrics, null, DateTimeOffset.UtcNow, token);
+            var clock = new ObservedTimeProvider();
+            using var unavailable = new HttpClient(new AlwaysUnavailableSettingsHandler());
+            var builder = AgentHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root,
+                ["Vigiloom:Agent:Server"] = server.AbsoluteUri
+            });
+            foreach (var worker in builder.Services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                x.ImplementationType?.Name != "AgentSettingsWorker").ToArray()) builder.Services.Remove(worker);
+            builder.Services.AddSingleton(new AgentSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentLogSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(unavailable, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await using (var locked = vault.Acquire())
+                {
+                    await host.StartAsync(token);
+                    await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+                    Assert.AreEqual(AgentSettings.Default, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
+                }
+                clock.Advance(TimeSpan.FromSeconds(361));
+                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                var runtime = host.Services.GetRequiredService<AgentSettingsRuntime>();
+                Assert.AreEqual(cached.Settings, runtime.Current);
+                Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
+                Assert.AreEqual(AgentConfigurationFailure.Unavailable, runtime.Report()?.Report.Failure);
+                var firstOwner = new AgentSettingsOwner(id, server.AbsoluteUri, vault.StateDirectory);
+                var secondOwner = new AgentSettingsOwner(Guid.CreateVersion7(), server.AbsoluteUri, vault.StateDirectory);
+                var metricRuntime = host.Services.GetRequiredService<AgentMetricSettingsRuntime>();
+                runtime.Bind(secondOwner);
+                metricRuntime.Bind(secondOwner);
+                runtime.Bind(firstOwner);
+                metricRuntime.Bind(firstOwner);
+                Assert.AreEqual(AgentSettings.Default, runtime.Current);
+                clock.Advance(TimeSpan.FromSeconds(361));
+                await clock.ThirdSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                Assert.AreEqual(cached.Settings, runtime.Current);
+                Assert.AreEqual(cachedMetrics.Settings, metricRuntime.Current);
+                Assert.AreEqual(AgentConfigurationFailure.Unavailable, runtime.Report()?.Report.Failure);
+            }
+            finally { await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomSettingsRetryHostTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task Host_RetriesOnlyTheSettingsGroupThatCouldNotBeRead()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomSettingsGroupRetryHostTests", Path.GetRandomFileName());
+        try
+        {
+            var token = testContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            var server = new Uri("https://example.test/");
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_') }, token);
+            var cached = AgentSettingsSnapshot.Create(AgentSettings.Default with { HeartbeatSeconds = 60 });
+            var cachedMetrics = AgentMetricSettingsSnapshot.Create(new(45, 90));
+            await new AgentSettingsStore(vault, server, id).SaveAsync(cached, null, DateTimeOffset.UtcNow, token);
+            await new AgentMetricSettingsStore(vault, server, id).SaveAsync(cachedMetrics, null, DateTimeOffset.UtcNow, token);
+            var metricPath = Path.Combine(root, "metric-settings.dat");
+            var validMetricBytes = await File.ReadAllBytesAsync(metricPath, token);
+            await File.WriteAllBytesAsync(metricPath, [0, 1, 2], token);
+            var clock = new ObservedTimeProvider();
+            using var unavailable = new HttpClient(new AlwaysUnavailableSettingsHandler());
+            var builder = AgentHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Agent:StateDirectory"] = root,
+                ["Vigiloom:Agent:Server"] = server.AbsoluteUri
+            });
+            foreach (var worker in builder.Services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                x.ImplementationType?.Name != "AgentSettingsWorker").ToArray()) builder.Services.Remove(worker);
+            builder.Services.AddSingleton(new AgentSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentQueueCapacityClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentMetricSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentLogSettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(unavailable, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(unavailable, clock));
+            builder.Services.AddSingleton<TimeProvider>(clock);
+            using var host = builder.Build();
+            try
+            {
+                await host.StartAsync(token);
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+                Assert.AreEqual(cached.Settings, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
+                Assert.AreEqual(AgentMetricSettings.Default, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
+                await File.WriteAllBytesAsync(metricPath, validMetricBytes, token);
+                clock.Advance(TimeSpan.FromSeconds(361));
+                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                var runtime = host.Services.GetRequiredService<AgentSettingsRuntime>();
+                Assert.AreEqual(cached.Settings, runtime.Current);
+                Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
+                Assert.AreEqual(AgentConfigurationFailure.Unavailable, runtime.Report()?.Report.Failure);
+            }
+            finally { await host.StopAsync(CancellationToken.None); }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomSettingsGroupRetryHostTests")) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     [Timeout(15000, CooperativeCancellation = true)]
     public async Task Host_RestoresSettingsOfflineThenAppliesAnUpdatedSnapshot()
     {
@@ -340,12 +481,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:StateDirectory"] = root,
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
-            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker", "MetricWorker", "LogWorker" })
-                builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
+            foreach (var worker in builder.Services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                x.ImplementationType?.Name != "AgentSettingsWorker").ToArray()) builder.Services.Remove(worker);
             builder.Services.AddSingleton(new AgentSettingsClient(http, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentLogSettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(capacityHttp, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(capacityHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             using var host = builder.Build();
             try
@@ -1432,6 +1575,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public TaskCompletionSource SecondDailyScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SecondSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ThirdSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ConfiguredBatchScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int dailyCount;
         private int settingsCount;
@@ -1454,8 +1598,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
             if (dueTime >= TimeSpan.FromSeconds(10) && dueTime <= TimeSpan.FromSeconds(12)) ConfiguredBatchScheduled.TrySetResult();
             if (dueTime >= TimeSpan.FromSeconds(240) && dueTime <= TimeSpan.FromSeconds(360))
             {
-                if (Interlocked.Increment(ref settingsCount) == 1) SettingsScheduled.TrySetResult();
-                else SecondSettingsScheduled.TrySetResult();
+                var count = Interlocked.Increment(ref settingsCount);
+                if (count == 1) SettingsScheduled.TrySetResult();
+                else if (count == 2) SecondSettingsScheduled.TrySetResult();
+                else ThirdSettingsScheduled.TrySetResult();
             }
             if (dueTime == TimeSpan.FromDays(1))
             {
