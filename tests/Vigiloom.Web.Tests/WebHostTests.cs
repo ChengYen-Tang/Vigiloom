@@ -280,6 +280,11 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(deviceWriteSecurity[1].TryGetProperty("ApiBearer", out _));
         Assert.Contains("monitoring.write", deviceWrite.GetProperty("description").GetString()!);
         Assert.IsTrue(deviceWrite.GetProperty("responses").TryGetProperty("429", out _));
+        var thresholdWriteSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-metric-threshold").GetProperty("put").GetProperty("security");
+        Assert.AreEqual(1, thresholdWriteSecurity.GetArrayLength());
+        Assert.IsTrue(thresholdWriteSecurity[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(thresholdWriteSecurity[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsFalse(thresholdWriteSecurity[0].TryGetProperty("ApiBearer", out _));
         var addressMatches = paths.GetProperty("/api/v1/devices/address-matches").GetProperty("get");
         Assert.Contains("monitoring.write", addressMatches.GetProperty("description").GetString()!);
         Assert.IsFalse(addressMatches.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
