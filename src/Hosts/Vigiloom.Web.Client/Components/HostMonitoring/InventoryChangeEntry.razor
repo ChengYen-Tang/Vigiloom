@@ -2,10 +2,11 @@
 
 <details><summary>@Label</summary>
     @if (Entry is null) { <p>無此項目。</p> }
-    else { <p>@Entry.Name · @HostDetails.EntryDetails(Entry)</p>@if (Entry.Members is { Count: > 0 }) { <InventoryMembers Members="Entry.Members" /> } }
+    else { <p>@Entry.Name · @HostDetails.EntryDetails(Entry, Source)</p>@if (Entry.Members is { Count: > 0 }) { <InventoryMembers Members="Entry.Members" /> } }
 </details>
 
 @code {
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public InventoryEntry? Entry { get; set; }
+    [Parameter] public InventorySource Source { get; set; }
 }
