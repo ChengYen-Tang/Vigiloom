@@ -6,11 +6,14 @@ using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Resource.V1;
 using OpenTelemetry.Proto.Logs.V1;
 using OpenTelemetry.Proto.Trace.V1;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Domain;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -30,7 +33,13 @@ public sealed class ServiceDetailsBrowserTests
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         factory.UseKestrel(0); factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var device = await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+        {
+            var now = DateTimeOffset.UtcNow;
+            db.PingSamples.Add(new PingSample(device.Id, "acceptance", now, now, true, 12));
+            await db.SaveChangesAsync(token);
+        }
         Guid serviceId, longServiceId;
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -69,6 +78,7 @@ public sealed class ServiceDetailsBrowserTests
             var longName = new Group(new string('Z', 256), DateTimeOffset.UtcNow);
             resources.Groups.Add(longName);
             resources.ServiceGroups.Add(new ServiceGroup(longName.Id, serviceId));
+            resources.DeviceGroups.Add(new DeviceGroup(longName.Id, device.Id));
             await resources.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
@@ -86,7 +96,7 @@ public sealed class ServiceDetailsBrowserTests
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "Unrelated group" }).CountAsync());
         await groupLink.ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "Associated group" }).WaitForAsync();
-        await page.GotoAsync($"{url}/services/{serviceId:D}");
+        await page.GetByRole(AriaRole.Link, new() { Name = "Orders", Exact = true }).ClickAsync();
         await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
         await page.SetViewportSizeAsync(390, 844);
         await page.GetByRole(AriaRole.Navigation, new() { Name = "所屬群組分頁" }).GetByRole(AriaRole.Link, new() { Name = "下一頁" }).ClickAsync();
@@ -134,6 +144,78 @@ public sealed class ServiceDetailsBrowserTests
         await adminPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await adminPage.GetByRole(AriaRole.Link, new() { Name = "建立來源與管理待加入服務" }).WaitForAsync();
         Assert.AreEqual(1, await adminPage.GetByRole(AriaRole.Link, new() { Name = "設定服務健康檢查" }).CountAsync());
+        await adminPage.SetViewportSizeAsync(390, 844);
+        await adminPage.GotoAsync($"{url}/devices/{device.Id:D}/edit");
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = new string('Z', 256), Exact = true }).WaitForAsync();
+        Assert.IsTrue(await adminPage.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
+        await adminPage.SetViewportSizeAsync(1280, 800);
+        await adminPage.GotoAsync($"{url}/groups");
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = "新增群組" }).ClickAsync();
+        await adminPage.GetByLabel("群組名稱").FillAsync("Acceptance group");
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "儲存群組" }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Heading, new() { Name = "Acceptance group" }).WaitForAsync();
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = "編輯群組" }).ClickAsync();
+        await adminPage.GetByLabel("群組名稱").FillAsync("Renamed group");
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "儲存群組" }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Heading, new() { Name = "Renamed group" }).WaitForAsync();
+        await adminPage.Locator("select[name=filter]").SelectOptionAsync("available");
+        await adminPage.Locator("form.device-filters").First.GetByRole(AriaRole.Button, new() { Name = "搜尋" }).ClickAsync();
+        await adminPage.GetByLabel("選取 Loopback router").CheckAsync();
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "加入所選設備" }).ClickAsync();
+        var groupUrl = adminPage.Url;
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = "Loopback router", Exact = true }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Heading, new() { Name = "Loopback router", Exact = true }).WaitForAsync();
+        await adminPage.GotoAsync(groupUrl);
+        await adminPage.GetByLabel("選取 Loopback router").CheckAsync();
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "移出所選設備" }).ClickAsync();
+        await adminPage.GetByText("群組中有 0 台設備。", new() { Exact = true }).WaitForAsync();
+        await adminPage.Locator("select[name=filter]").SelectOptionAsync("available");
+        await adminPage.Locator("form.device-filters").First.GetByRole(AriaRole.Button, new() { Name = "搜尋" }).ClickAsync();
+        await adminPage.GetByLabel("選取 Loopback router").CheckAsync();
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "加入所選設備" }).ClickAsync();
+        await adminPage.Locator("select[name=serviceFilter]").SelectOptionAsync("available");
+        await adminPage.Locator("form.device-filters").Nth(1).GetByRole(AriaRole.Button, new() { Name = "搜尋" }).ClickAsync();
+        await adminPage.GetByLabel("選取 Orders").CheckAsync();
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "加入所選服務" }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Link, new() { Name = "Orders", Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            var service = await db.Services.SingleAsync(x => x.Id == serviceId, token);
+            service.SetPublication(true, "Public orders", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(token);
+        }
+        bool deviceEnabled;
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
+            deviceEnabled = current.IsEnabled;
+            current.SetPublication(true, "Public network", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(token);
+        }
+        await adminPage.GetByLabel("我了解以上影響").CheckAsync();
+        await adminPage.GetByRole(AriaRole.Button, new() { Name = "確認刪除群組" }).ClickAsync();
+        await adminPage.GetByRole(AriaRole.Heading, new() { Name = "群組", Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            var service = await db.Services.SingleAsync(x => x.Id == serviceId, token);
+            Assert.IsTrue(service.IsPublic);
+            Assert.AreEqual("Public orders", service.PublicDisplayName);
+            Assert.IsNull(service.RevokedAt);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
+            Assert.IsTrue(current.IsPublic);
+            Assert.AreEqual("Public network", current.PublicDisplayName);
+            Assert.AreEqual(deviceEnabled, current.IsEnabled);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+            Assert.AreEqual(1, await db.PingSamples.CountAsync(x => x.DeviceId == device.Id && x.Location == "acceptance", token));
+        await page.GotoAsync($"{url}/services/{serviceId:D}");
+        await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByLabel("結束時間（UTC）").FillAsync(DateTimeOffset.UtcNow.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture));
+        await page.GetByRole(AriaRole.Button, new() { Name = "查看 Traces" }).ClickAsync();
+        await page.GetByText("order request", new() { Exact = true }).WaitForAsync();
     }, TestContext.CancellationToken);
 
     [TestMethod]

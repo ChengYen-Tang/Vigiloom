@@ -36,7 +36,7 @@ public sealed class PublicationHttpTests(TestContext context)
         var hidden = new Device("Private server 10.1.2.3", "10.1.2.3", true, now);
         var group = new Group("Internal group", now);
         var emptyGroup = new Group("Secret only", now);
-        Guid serviceId;
+        Guid serviceId, privateServiceId;
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
         {
             db.Devices.Add(hidden); db.Groups.AddRange(group, emptyGroup);
@@ -48,11 +48,13 @@ public sealed class PublicationHttpTests(TestContext context)
             var source = new ServiceSource("internal-source", new byte[32], now);
             var candidate = new ServiceCandidate(source.Id, "private-service-key", "internal-environment", "Internal service", now);
             var service = new MonitoredService(candidate, now); serviceId = service.Id;
-            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            var privateCandidate = new ServiceCandidate(source.Id, "hidden-group-service", "internal-environment", "Hidden group service", now);
+            var privateService = new MonitoredService(privateCandidate, now); privateServiceId = privateService.Id;
+            db.Sources.Add(source); db.Candidates.AddRange(candidate, privateCandidate); db.Services.AddRange(service, privateService);
             await db.SaveChangesAsync(token);
         }
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
-        { db.ServiceGroups.Add(new ServiceGroup(group.Id, serviceId)); await db.SaveChangesAsync(token); }
+        { db.ServiceGroups.AddRange(new ServiceGroup(group.Id, serviceId), new ServiceGroup(group.Id, privateServiceId)); await db.SaveChangesAsync(token); }
 
         using var anonymous = PingTestSite.Client(factory);
         using var admin = PingTestSite.Client(factory);
@@ -135,7 +137,15 @@ public sealed class PublicationHttpTests(TestContext context)
         Assert.DoesNotContain("internal-environment", serviceJson);
         Assert.DoesNotContain("private-service-key", serviceJson);
         using (var filtered = await anonymous.GetAsync($"/api/v1/public/groups/{group.Id:D}/services", token))
-        { Assert.AreEqual(HttpStatusCode.OK, filtered.StatusCode); Assert.Contains("Order service", await filtered.Content.ReadAsStringAsync(token)); }
+        {
+            Assert.AreEqual(HttpStatusCode.OK, filtered.StatusCode);
+            var body = await filtered.Content.ReadAsStringAsync(token);
+            Assert.Contains("Order service", body);
+            Assert.DoesNotContain("Hidden group service", body);
+            Assert.DoesNotContain(privateServiceId.ToString(), body);
+        }
+        using (var hiddenService = await anonymous.GetAsync($"/api/v1/public/services/{privateServiceId:D}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, hiddenService.StatusCode);
 
         // Unknown policy identifiers must fail closed even under SQL Server's case-insensitive,
         // trailing-space-insensitive comparison rules.

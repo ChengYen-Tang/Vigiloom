@@ -12,6 +12,8 @@ namespace Vigiloom.Modules.Resources.Application;
 
 public enum GroupResultStatus { Success, NotFound, Conflict, Invalid }
 public sealed record GroupResult(GroupResultStatus Status, GroupDetails? Group = null, IReadOnlyDictionary<string, string[]>? Errors = null);
+public sealed record DeviceGroupSummary(Guid Id, string Name);
+public sealed record DeviceGroupPage(IReadOnlyList<DeviceGroupSummary> Items, int Page, int PageSize, int Total);
 
 /// <summary>Owns group state and membership transactions. Callers must authorize access.</summary>
 public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit> audit)
@@ -36,6 +38,18 @@ public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contex
         await using var db = await contexts.CreateDbContextAsync(token);
         var row = await Project(db, db.Groups.AsNoTracking().Where(x => x.Id == id)).SingleOrDefaultAsync(token);
         return row is null ? null : Map(row);
+    }
+
+    public async Task<DeviceGroupPage> ListForDeviceAsync(Guid deviceId, int page, CancellationToken token)
+    {
+        page = Math.Clamp(page, 1, int.MaxValue / PageSize);
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var query = db.Groups.AsNoTracking().Where(g => db.DeviceGroups.Any(m => m.DeviceId == deviceId && m.GroupId == g.Id));
+        var total = await query.CountAsync(token);
+        page = Math.Min(page, total == 0 ? 1 : (total - 1) / PageSize + 1);
+        var items = await query.OrderBy(g => g.Name).ThenBy(g => g.RowId).Skip((page - 1) * PageSize).Take(PageSize)
+            .Select(g => new DeviceGroupSummary(g.Id, g.Name)).ToArrayAsync(token);
+        return new(items, page, PageSize, total);
     }
 
     /// <summary>Lists active devices; ungrouped means no memberships at all.</summary>

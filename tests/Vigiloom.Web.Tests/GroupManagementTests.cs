@@ -21,6 +21,7 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -104,6 +105,11 @@ public sealed class GroupManagementTests
         Assert.IsNotNull(group);
         Assert.AreEqual("Office", group.Name);
         Assert.AreEqual("Test", group.Description);
+        using (var anonymousMutation = await anonymous.PutAsJsonAsync($"/api/v1/groups/{group.Id:D}/devices", new GroupMembershipChange(group.Version, [device.Id], []), token))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousMutation.StatusCode);
+        var unchanged = await reader.GetFromJsonAsync<GroupDetails>($"/api/v1/groups/{group.Id:D}", token);
+        Assert.IsNotNull(unchanged);
+        Assert.AreEqual(0, unchanged.DeviceCount);
         using (var duplicate = await writer.PostAsJsonAsync("/api/v1/groups/", new GroupInput("Office", null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.StatusCode);
         using (var missing = await writer.PutAsJsonAsync($"/api/v1/groups/{group.Id:D}/devices", new GroupMembershipChange(group.Version, [Guid.CreateVersion7()], []), token))
             Assert.AreEqual(HttpStatusCode.BadRequest, missing.StatusCode);
@@ -139,6 +145,47 @@ public sealed class GroupManagementTests
         using var adminClient = Client(factory);
         await LoginAsync(adminClient, "admin", "Strong-Password-123", token);
         using (var noCsrf = await adminClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("No CSRF", null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using (var edit = await adminClient.GetAsync($"/devices/{device.Id:D}/edit", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await edit.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group.Id:D}']"));
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
+        }
+        using (var members = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
+        {
+            var deviceForm = await FormAsync(members, "group-members", token);
+            var deviceFields = Hidden(deviceForm);
+            deviceFields["deviceIds"] = device.Id.ToString();
+            deviceFields["operation"] = "remove";
+            using var removed = await adminClient.PostAsync($"/groups/{group2.Id:D}", new FormUrlEncodedContent(deviceFields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, removed.StatusCode, await removed.Content.ReadAsStringAsync(token));
+        }
+        using (var availableDevices = await adminClient.GetAsync($"/groups/{group2.Id:D}?filter=available", token))
+        {
+            var deviceForm = await FormAsync(availableDevices, "group-members", token);
+            Assert.IsNotNull(deviceForm.QuerySelector($"input[name='deviceIds'][value='{device.Id:D}']"));
+            var removedGroup = await reader.GetFromJsonAsync<GroupDetails>($"/api/v1/groups/{group2.Id:D}", token);
+            Assert.IsNotNull(removedGroup);
+            Assert.AreEqual(0, removedGroup.DeviceCount);
+            using (var edit = await adminClient.GetAsync($"/devices/{device.Id:D}/edit", token))
+            {
+                var document = await new HtmlParser().ParseDocumentAsync(await edit.Content.ReadAsStringAsync(token), token);
+                Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group.Id:D}']"));
+                Assert.IsNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
+            }
+            var deviceFields = Hidden(deviceForm);
+            deviceFields["deviceIds"] = device.Id.ToString();
+            deviceFields["operation"] = "add";
+            using var added = await adminClient.PostAsync($"/groups/{group2.Id:D}?filter=available", new FormUrlEncodedContent(deviceFields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, added.StatusCode, await added.Content.ReadAsStringAsync(token));
+        }
+        var restoredGroup = await reader.GetFromJsonAsync<GroupDetails>($"/api/v1/groups/{group2.Id:D}", token);
+        Assert.IsNotNull(restoredGroup);
+        Assert.AreEqual(1, restoredGroup.DeviceCount);
+        var restoredMembers = await reader.GetFromJsonAsync<GroupDevicePage>($"/api/v1/groups/{group2.Id:D}/devices?member=true", token);
+        Assert.IsNotNull(restoredMembers);
+        Assert.HasCount(1, restoredMembers.Items);
+        Assert.AreEqual(device.Id, restoredMembers.Items[0].Id);
         using (var available = await adminClient.GetAsync($"/groups/{group2.Id:D}?serviceFilter=available", token))
         {
             var serviceForm = await FormAsync(available, "group-services", token);
@@ -222,7 +269,7 @@ public sealed class GroupManagementTests
         using var auditScope = factory.Services.CreateScope();
         var audit = auditScope.ServiceProvider.GetRequiredService<OperationAuditQueryService>();
         var events = await audit.QueryGroupsAsync(new OperationAuditQuery(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1)), token);
-        Assert.HasCount(8, events.Items);
+        Assert.HasCount(10, events.Items);
         Assert.AreEqual(3, events.Items.Count(x => x.Group?.Action == GroupAction.ServicesChanged));
         Assert.IsTrue(events.Items.Any(x => x.ResourceId == group.Id && x.Group?.Action == GroupAction.Deleted));
         using (var auditPage = await adminClient.GetAsync("/settings/audit?source=groups", token))
@@ -264,6 +311,36 @@ public sealed class GroupManagementTests
             Assert.IsFalse(await db.ServiceGroups.AnyAsync(x => x.GroupId == group2.Id && x.ServiceId == serviceId, token));
             var persistedVersion = await db.Groups.Where(x => x.Id == group2.Id).Select(x => x.Version).SingleAsync(token);
             Assert.AreEqual(other.Version, Convert.ToBase64String(persistedVersion));
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            for (var index = 0; index < 50; index++)
+            {
+                var extra = new Group($"Page {index:D2}", DateTimeOffset.UtcNow);
+                db.Groups.Add(extra);
+                db.DeviceGroups.Add(new DeviceGroup(extra.Id, device.Id));
+            }
+            await db.SaveChangesAsync(token);
+        }
+        using (var firstPage = await adminClient.GetAsync($"/devices/{device.Id:D}/edit", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await firstPage.Content.ReadAsStringAsync(token), token);
+            var pagination = document.QuerySelector("nav[aria-label='所屬群組分頁']");
+            Assert.IsNotNull(pagination);
+            Assert.IsNotNull(pagination.QuerySelector("a[href*='groupsPage=2']"));
+            Assert.DoesNotContain("Systems", WebUtility.HtmlDecode(document.QuerySelector("#device-groups-heading")!.ParentElement!.TextContent));
+        }
+        using (var secondPage = await adminClient.GetAsync($"/devices/{device.Id:D}/edit?groupsPage=2", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await secondPage.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
+            Assert.IsNotNull(document.QuerySelector("nav[aria-label='所屬群組分頁'] a[href*='groupsPage=1']"));
+        }
+        using (var outOfRange = await adminClient.GetAsync($"/devices/{device.Id:D}/edit?groupsPage=999999", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await outOfRange.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group2.Id:D}']"));
+            Assert.Contains("第 2 頁", document.QuerySelector("nav[aria-label='所屬群組分頁']")!.TextContent);
         }
     }, TestContext.CancellationToken);
 
