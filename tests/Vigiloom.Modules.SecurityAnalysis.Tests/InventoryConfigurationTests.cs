@@ -46,12 +46,12 @@ public sealed class InventoryConfigurationTests
 
     [TestMethod]
     public Task Settings_InheritOverrideResetAndAuditWithConcurrencyProtection() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
-            await using (var db = new SecurityAnalysisDbContext(options)) await db.Database.MigrateAsync(token);
+
             var deviceId = Guid.CreateVersion7();
             var actorId = Guid.CreateVersion7();
             var service = new InventoryConfiguration(new Factory(options), new Devices(deviceId), TimeProvider.System);

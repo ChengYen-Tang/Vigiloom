@@ -42,13 +42,13 @@ public sealed class IntegrityStageTests
 
     [TestMethod]
     public Task ChangeQuery_PaginatesTiedTimesAcrossAgentsAndRetiredScopes() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var device = Guid.CreateVersion7();
             var scope = Guid.CreateVersion7();
             var agents = new[] { Guid.CreateVersion7(), Guid.CreateVersion7() };
@@ -78,13 +78,13 @@ public sealed class IntegrityStageTests
 
     [TestMethod]
     public Task RegistryDuplicateAcrossChunks_IsRejectedWithoutReplacingBaseline() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var device = Guid.CreateVersion7();
             var owner = new IntegrityOwner(Guid.CreateVersion7(), device, 1);
             var config = new IntegrityConfiguration(new Factory(options), new Devices(device), TimeProvider.System);
@@ -122,13 +122,13 @@ public sealed class IntegrityStageTests
 
     [TestMethod]
     public Task CompletePartialAndChangedPolicy_ProtectBaselineAndRecordGaps() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var device = Guid.CreateVersion7();
             var actor = Guid.CreateVersion7();
             var owner = new IntegrityOwner(Guid.CreateVersion7(), device, 1);

@@ -70,13 +70,13 @@ public sealed class InventoryPublicationTests
 
     [TestMethod]
     public Task Stage_ProcessPartialIsClearedOnCapacityRejectionAndExpiry() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var now = DateTimeOffset.UtcNow;
             var item = new InventoryEntry("linux:boot:42:1", "worker", NumericId: 42, ProcessStartedAt: now);
@@ -132,13 +132,13 @@ public sealed class InventoryPublicationTests
 
     [TestMethod]
     public Task Finish_OnlyPublishesVerifiedCompleteSnapshotsAndPersistsChanges() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var transaction = await db.Database.BeginTransactionAsync(token);
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var now = DateTimeOffset.UtcNow;

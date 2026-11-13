@@ -17,13 +17,13 @@ public sealed class InventoryExpiryTests
 
     [TestMethod]
     public Task Expiry_ScansPastLockedAgentsWithoutStarvingLaterCandidates() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             var now = DateTimeOffset.UtcNow;
             var owners = Enumerable.Range(0, 101).Select(_ => new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 0)).ToArray();
             foreach (var owner in owners)
@@ -50,13 +50,13 @@ public sealed class InventoryExpiryTests
 
     [TestMethod]
     public Task Expiry_ClosesOnlyStaleGenerationAndPreservesCurrentSnapshot() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
-            await db.Database.MigrateAsync(token);
+
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 0);
