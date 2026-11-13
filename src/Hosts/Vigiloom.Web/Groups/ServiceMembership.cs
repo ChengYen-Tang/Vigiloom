@@ -19,6 +19,23 @@ internal sealed class ServiceMembership(
     TimeProvider clock,
     IOperationAuditWriter<OperationAudit> audit)
 {
+    internal sealed record GroupLink(Guid Id, string Name);
+    internal sealed record GroupLinkPage(IReadOnlyList<GroupLink> Items, bool HasMore);
+
+    public async Task<GroupLinkPage> ListGroupsAsync(Guid serviceId, int page, CancellationToken token)
+    {
+        const int pageSize = 20;
+        page = Math.Clamp(page, 1, 1000);
+        await using var db = await resources.CreateDbContextAsync(token);
+        var rows = await (from membership in db.ServiceGroups.AsNoTracking()
+                          join g in db.Groups.AsNoTracking() on membership.GroupId equals g.Id
+                          where membership.ServiceId == serviceId
+                          orderby g.Name, g.RowId
+                          select new GroupLink(g.Id, g.Name))
+            .Skip((page - 1) * pageSize).Take(pageSize + 1).ToArrayAsync(token);
+        return new(rows.Take(pageSize).ToArray(), page < 1000 && rows.Length > pageSize);
+    }
+
     public async Task<GroupServicePage> ListAsync(Guid? groupId, bool ungrouped, bool? member, string? search, int page, CancellationToken token)
     {
         page = Math.Clamp(page, 1, int.MaxValue / GroupManagement.PageSize);

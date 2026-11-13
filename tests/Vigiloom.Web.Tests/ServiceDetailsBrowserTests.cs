@@ -9,6 +9,8 @@ using OpenTelemetry.Proto.Trace.V1;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -53,6 +55,21 @@ public sealed class ServiceDetailsBrowserTests
             var longCandidate = (await discovery.ListAsync(1, token)).Single(x => x.ServiceKey == "long-service");
             var longService = await scope.ServiceProvider.GetRequiredService<ServiceApproval>().ApproveAsync(longCandidate.Id, Guid.CreateVersion7(), token);
             Assert.IsNotNull(longService.ServiceId); longServiceId = longService.ServiceId.Value;
+            await using var resources = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token);
+            var associated = new Group("Associated group", DateTimeOffset.UtcNow);
+            var unrelated = new Group("Unrelated group", DateTimeOffset.UtcNow);
+            resources.Groups.AddRange(associated, unrelated);
+            resources.ServiceGroups.Add(new ServiceGroup(associated.Id, serviceId));
+            for (var index = 0; index < 19; index++)
+            {
+                var extra = new Group($"Extra group {index:D2}", DateTimeOffset.UtcNow);
+                resources.Groups.Add(extra);
+                resources.ServiceGroups.Add(new ServiceGroup(extra.Id, serviceId));
+            }
+            var longName = new Group(new string('Z', 256), DateTimeOffset.UtcNow);
+            resources.Groups.Add(longName);
+            resources.ServiceGroups.Add(new ServiceGroup(longName.Id, serviceId));
+            await resources.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
         using var playwright = await Playwright.CreateAsync();
@@ -64,6 +81,21 @@ public sealed class ServiceDetailsBrowserTests
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
+        var groupLink = page.GetByRole(AriaRole.Link, new() { Name = "Associated group" });
+        await groupLink.WaitForAsync();
+        Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "Unrelated group" }).CountAsync());
+        await groupLink.ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Associated group" }).WaitForAsync();
+        await page.GotoAsync($"{url}/services/{serviceId:D}");
+        await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
+        await page.SetViewportSizeAsync(390, 844);
+        await page.GetByRole(AriaRole.Navigation, new() { Name = "所屬群組分頁" }).GetByRole(AriaRole.Link, new() { Name = "下一頁" }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = new string('Z', 256) }).WaitForAsync();
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
+        await page.GetByRole(AriaRole.Navigation, new() { Name = "所屬群組分頁" }).GetByRole(AriaRole.Link, new() { Name = "上一頁" }).ClickAsync();
+        await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByRole(AriaRole.Link, new() { Name = "Associated group" }).WaitForAsync();
+        Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = new string('Z', 256) }).CountAsync());
         await page.GetByLabel("結束時間（UTC）").FillAsync(DateTimeOffset.UtcNow.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
         await page.GetByRole(AriaRole.Button, new() { Name = "查看 Traces" }).ClickAsync();
         await page.GetByText("order request", new() { Exact = true }).WaitForAsync();
@@ -138,6 +170,7 @@ public sealed class ServiceDetailsBrowserTests
         await page.Locator(".service-overview[data-runtime='Server'][data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
         await page.GetByText("目前狀態：", new() { Exact = false }).WaitForAsync();
         await page.GetByText("尚未設定健康檢查", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("此服務尚未加入群組。", new() { Exact = true }).WaitForAsync();
         var unselected = page.GetByRole(AriaRole.Button, new() { Name = "最近 1 小時" });
         Assert.AreEqual("rgb(23, 66, 126)", await unselected.EvaluateAsync<string>("element => getComputedStyle(element).color"));
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "管理健康檢查" }).CountAsync());
