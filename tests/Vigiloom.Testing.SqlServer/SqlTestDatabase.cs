@@ -376,7 +376,6 @@ public sealed class SqlTestDatabase : IAsyncDisposable
             var master = new SqlConnectionStringBuilder(server.ConnectionString) { ApplicationName = $"Vigiloom.Testing.{RunId}" };
             await using var connection = new SqlConnection(master.ConnectionString);
             await connection.OpenAsync(token);
-            if (operation != "create") { await action(connection); return; }
             await using var command = connection.CreateCommand();
             command.CommandTimeout = 65;
             command.CommandText = "DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource = N'Vigiloom.Testing.LocalDb.Ddl', @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 60000; SELECT @result;";
