@@ -4,7 +4,7 @@
 
 The bounded scheduling management reader uses a five-second connect timeout and therefore a second SqlClient pool. Cleanup clears that exact pool for the owned test database as well as its normal pool; it never clears unrelated pools.
 
-On LocalDB, CREATE and owned-database cleanup are coordinated across test processes by a session-owned application lock on the unpooled master connection. Initialization and test execution remain outside the lock; cancellation or connection loss releases the session lock.
+On LocalDB, CREATE is coordinated across test processes by a session-owned application lock on the unpooled master connection. Initialization, test execution and owned-database cleanup remain outside the cross-process lock; cancellation or connection loss releases the session lock.
 
 An isolated SQL Server can be supplied explicitly with `VIGILOOM_TEST_SQL_CONNECTION` (initial catalog must be `master`) and `VIGILOOM_TEST_SQL_ALLOW_SOURCE` (the exact data source). Provision a dedicated test server and account; do not point either setting at a development or production database. Neither setting is read from product configuration or written to the manifest. Missing LocalDB or an invalid test configuration fails the database tests.
 

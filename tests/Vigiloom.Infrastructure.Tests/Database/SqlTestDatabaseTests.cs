@@ -34,7 +34,9 @@ public sealed class SqlTestDatabaseTests
             try
             {
                 var runId = Path.GetFileName(Path.GetDirectoryName(SqlTestDatabase.RunManifestPath)!);
-                command.CommandText = "SELECT COUNT(*) FROM sys.dm_exec_requests r JOIN sys.dm_exec_sessions s ON s.session_id = r.session_id WHERE r.blocking_session_id = @@SPID AND r.wait_type LIKE 'LCK_M_%' AND s.program_name = @program";
+                // Another testhost may be ahead of this request in SQL Server's lock queue,
+                // so its immediate blocker need not be our original lock-holding session.
+                command.CommandText = "SELECT COUNT(*) FROM sys.dm_exec_sessions s JOIN sys.dm_tran_locks w ON w.request_session_id = s.session_id JOIN sys.dm_tran_locks h ON h.request_session_id = @@SPID AND h.resource_type = w.resource_type AND h.resource_database_id = w.resource_database_id AND h.resource_description = w.resource_description WHERE s.program_name = @program AND w.resource_type = 'APPLICATION' AND w.request_status = 'WAIT' AND h.request_status = 'GRANT'";
                 command.Parameters.AddWithValue("@program", $"Vigiloom.Testing.{runId}");
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
                 deadline.CancelAfter(TimeSpan.FromSeconds(20));
