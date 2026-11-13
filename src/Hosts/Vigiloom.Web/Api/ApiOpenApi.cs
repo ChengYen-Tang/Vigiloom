@@ -41,7 +41,12 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
         foreach (var (path, item) in document.Paths)
         foreach (var (method, operation) in item.Operations ?? [])
         {
-            if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
+            if (path.StartsWith("/api/v1/public/", StringComparison.OrdinalIgnoreCase))
+            {
+                operation.Security = [];
+                operation.Description = "Anonymous published data only; private resources and network addresses are excluded.";
+            }
+            else if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
             {
                 var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
@@ -94,6 +99,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 var authorization = needsWrite
                     ? "Requires an Administrator session or an API credential with monitoring.write."
                     : "Requires an Administrator or Read only session, or an API credential with monitoring.read.";
+                if (path.TrimEnd('/').Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) && method.ToString().Equals("Post", StringComparison.OrdinalIgnoreCase))
+                    authorization += " Creating a published device additionally requires an Administrator session and antiforgery token.";
                 operation.Description = string.IsNullOrWhiteSpace(operation.Description) ? authorization : $"{operation.Description}\n\n{authorization}";
             }
             else if (path.StartsWith("/api/v1/speed-tests", StringComparison.OrdinalIgnoreCase))
@@ -124,7 +131,8 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
                 operation.Description = "Accepts discovery metadata only; this endpoint does not receive telemetry.";
             }
-            else if (path.StartsWith("/api/v1/service-discovery/candidates", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.StartsWith("/api/v1/admin/publications", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/api/v1/service-discovery/candidates", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-discovery/sources", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-discovery/services", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/service-instances", StringComparison.OrdinalIgnoreCase) ||
@@ -149,6 +157,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/operations/audit/service-approvals", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/service-sources", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/groups", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/publications", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/instance-policy", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/log-quota", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/trace-quota", StringComparison.OrdinalIgnoreCase) ||

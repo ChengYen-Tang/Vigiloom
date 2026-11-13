@@ -156,6 +156,16 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.AreEqual("bearer", schemes.GetProperty("ApiBearer").GetProperty("scheme").GetString());
         Assert.AreEqual("cookie", schemes.GetProperty("BrowserSession").GetProperty("in").GetString());
         var paths = document.RootElement.GetProperty("paths");
+        var publicSecurity = paths.GetProperty("/api/v1/public/devices").GetProperty("get").GetProperty("security");
+        Assert.AreEqual(0, publicSecurity.GetArrayLength());
+        var publicationPath = paths.GetProperty("/api/v1/admin/publications/{kind}/{id}");
+        var publicationRead = publicationPath.GetProperty("get").GetProperty("security")[0];
+        Assert.IsTrue(publicationRead.TryGetProperty("BrowserSession", out _));
+        Assert.IsFalse(publicationRead.TryGetProperty("ApiBearer", out _));
+        var publicationWrite = publicationPath.GetProperty("put").GetProperty("security")[0];
+        Assert.IsTrue(publicationWrite.TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(publicationWrite.TryGetProperty("Antiforgery", out _));
+        Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/publications").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var metricAgentSecurity = paths.GetProperty("/api/v1/agent/metric-settings").GetProperty("get").GetProperty("security");
         Assert.AreEqual(1, metricAgentSecurity.GetArrayLength());
         Assert.IsTrue(metricAgentSecurity[0].TryGetProperty("AgentBearer", out _));

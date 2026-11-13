@@ -25,9 +25,10 @@ internal static class DeviceEndpoints
             .RequireAuthorization("DeviceWrite").Produces<IReadOnlyList<DeviceDetails>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Find devices using a target address");
         devices.MapPost("/", async (DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
-            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.CreateAsync(input, actor, token), created: true)))
+            input.Public && !context.User.IsInRole("Administrator") ? Results.Forbid() :
+            await ApiMutation.ExecuteAsync(context, async actor => Response(await service.CreateAsync(input, actor, token), created: true), allowApiCredential: !input.Public))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
-            .WithSummary("Create a private device");
+            .WithSummary("Create a device, private by default");
         devices.MapPut("/{id:guid}", async (Guid id, DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.UpdateAsync(id, input, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)

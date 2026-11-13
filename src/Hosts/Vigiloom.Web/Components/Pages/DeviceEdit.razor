@@ -29,6 +29,7 @@
                 @if (errors.TryGetValue("additionalTargets", out var targetErrors)) { <p class="device-field-error">@string.Join(" ", targetErrors)</p> }
                 <fieldset><legend>監控模式</legend><InputRadioGroup @bind-Value="Input.DeepMonitoring"><label><InputRadio Value="false" /> 僅 Ping</label><label><InputRadio Value="true" /> 深入監控</label></InputRadioGroup><p>兩種模式都會 Ping；深入監控需要另外註冊 Agent。</p></fieldset>
                 <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用監控</label>
+                @if (isNew) { <label class="device-checkbox"><InputCheckbox @bind-Value="Input.ConfigurePublication" /> 儲存後設定公開資訊</label><p>設備先以 Private 建立；下一步可確認公開名稱與範本。</p> }
                 @if (duplicateNames.Count != 0)
                 {
                     <div class="device-alert"><p>部分目標已被其他設備使用：@string.Join("、", duplicateNames)。設備不會自動合併。</p><label><InputCheckbox @bind-Value="Input.ConfirmDuplicates" /> 仍要使用這些目標</label></div>
@@ -92,7 +93,7 @@
             else message = "設備已變更或不存在，請重新整理後再試。";
         }
         catch (Exception exception) { Logger.LogWarning("Could not save a device: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請返回清單確認後再試。"; }
-        if (savedId is { } id) Navigation.NavigateTo($"/devices/{id:D}", forceLoad: true);
+        if (savedId is { } id) Navigation.NavigateTo(isNew && Input.ConfigurePublication ? $"/settings/publication/devices/{id:D}" : $"/devices/{id:D}", forceLoad: true);
     }
     private sealed class DeviceForm
     {
@@ -104,5 +105,6 @@
         public string? Version { get; set; }
         public bool ConfirmDuplicates { get; set; }
         public bool ConfirmAddress { get; set; }
+        public bool ConfigurePublication { get; set; }
     }
 }

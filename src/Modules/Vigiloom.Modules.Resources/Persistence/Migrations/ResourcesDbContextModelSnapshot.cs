@@ -51,10 +51,21 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicDisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicPolicyVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -79,6 +90,8 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .IsUnique();
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("IsPublic", "PublicDisplayName", "RowId");
 
                     b.ToTable("Devices", "resources", t =>
                         {
@@ -164,10 +177,21 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicDisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicPolicyVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -195,6 +219,8 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         .IsUnique();
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("IsPublic", "PublicDisplayName", "RowId");
 
                     b.ToTable("Groups", "resources", t =>
                         {

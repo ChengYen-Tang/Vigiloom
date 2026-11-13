@@ -1,4 +1,5 @@
 using Vigiloom.BuildingBlocks.Identifiers;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Modules.Resources.Domain;
 
@@ -18,6 +19,9 @@ public sealed class Group
     public long RowId { get; private set; }
     public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
+    public bool IsPublic { get; private set; }
+    public string? PublicDisplayName { get; private set; }
+    public string? PublicPolicyVersion { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public byte[] Version { get; private set; } = [];
@@ -31,4 +35,13 @@ public sealed class Group
     }
 
     public void Touch(DateTimeOffset now) => UpdatedAt = now.ToUniversalTime();
+
+    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
+    {
+        if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
+            throw new ArgumentException("An approved publication policy and public name are required.");
+        IsPublic = isPublic;
+        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
+        Touch(now);
+    }
 }

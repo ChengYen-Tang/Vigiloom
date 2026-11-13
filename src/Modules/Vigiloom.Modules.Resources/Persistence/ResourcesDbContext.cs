@@ -23,6 +23,9 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         device.HasIndex(x => x.RowId).IsUnique().IsClustered();
         device.Property(x => x.Name).HasMaxLength(256).IsRequired();
         device.Property(x => x.Address).HasMaxLength(253).IsRequired();
+        device.Property(x => x.PublicDisplayName).HasMaxLength(256);
+        device.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
+        device.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });
         device.Property(x => x.DeepMonitoring).HasColumnName("HasAgent");
         device.Property(x => x.IsEnabled).HasDefaultValue(true);
         device.Property(x => x.Version).IsRowVersion();
@@ -51,6 +54,9 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         group.Property(x => x.Name).HasMaxLength(256).IsRequired();
         group.HasIndex(x => x.Name).IsUnique();
         group.Property(x => x.Description).HasMaxLength(1024);
+        group.Property(x => x.PublicDisplayName).HasMaxLength(256);
+        group.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
+        group.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });
         group.Property(x => x.Version).IsRowVersion();
 
         var membership = modelBuilder.Entity<DeviceGroup>();

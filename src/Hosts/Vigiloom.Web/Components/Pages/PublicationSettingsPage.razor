@@ -1,0 +1,58 @@
+@page "/settings/publication/{Kind}/{Id:guid}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.ServiceObservability.Application
+@inject DeviceManagement Devices
+@inject GroupManagement Groups
+@inject ServiceInstanceAdministration Services
+@inject ILogger<PublicationSettingsPage> Logger
+
+<PageTitle>公開設定 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="@back">← 返回</a>
+    <header class="device-heading"><div><h1>公開設定</h1><p>設定此資源對外顯示的內容。</p></div></header>
+    @if (unavailable) { <section class="device-panel" role="alert">無法載入資源，請稍後再試。</section> }
+    else if (name is null) { <section class="device-panel"><h2>找不到資源</h2><p>資源不存在或已無法管理。</p></section> }
+    else
+    {
+        <section class="device-panel"><strong>@ResourceLabel</strong>：@name</section>
+        <Vigiloom.Web.Client.Components.Publishing.PublicationEditor Kind="@Kind" Id="Id" InitialName="@name" BackHref="@back" @rendermode="InteractiveAuto" />
+    }
+</main>
+
+@code {
+    [Parameter] public string Kind { get; set; } = "";
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private string? name;
+    private string back = "/workspace";
+    private bool unavailable;
+    private string ResourceLabel => Kind switch { "devices" => "設備名稱", "services" => "服務名稱", "groups" => "群組名稱", _ => "資源名稱" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.Version != 7) return;
+        try
+        {
+            switch (Kind)
+            {
+                case "devices":
+                    back = $"/devices/{Id:D}";
+                    var device = await Devices.GetAsync(Id, HttpContext.RequestAborted);
+                    if (device is { Archived: false }) name = device.Name;
+                    break;
+                case "services":
+                    back = $"/services/{Id:D}";
+                    name = (await Services.GetServiceAsync(Id, HttpContext.RequestAborted))?.Name;
+                    break;
+                case "groups":
+                    back = $"/groups/{Id:D}";
+                    name = (await Groups.GetAsync(Id, HttpContext.RequestAborted))?.Name;
+                    break;
+            }
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load resource for publication"); unavailable = true; }
+    }
+}

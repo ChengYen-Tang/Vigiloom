@@ -1,7 +1,8 @@
 namespace Vigiloom.Contracts.Devices;
 
 /// <summary>Device fields supplied by an administrator. Additional targets share the same device identity.</summary>
-public sealed record DeviceInput(string? Name, string? Address, string[]? AdditionalTargets, bool DeepMonitoring, bool Enabled = true, string? Version = null, bool Public = false);
+public sealed record DeviceInput(string? Name, string? Address, string[]? AdditionalTargets, bool DeepMonitoring, bool Enabled = true, string? Version = null, bool Public = false,
+    string? PublicDisplayName = null, string? PublicPolicyVersion = null);
 
 /// <summary>A device visible to authenticated monitoring users.</summary>
 public sealed record DeviceDetails(Guid Id, string Name, string Address, IReadOnlyList<string> AdditionalTargets,

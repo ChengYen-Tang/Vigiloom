@@ -48,7 +48,9 @@ public sealed class InstanceManagementTests(TestContext context)
                 await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261104014140_ServiceCollectionVersion", token));
             }
             await using var check = new ServiceObservabilityDbContext(options);
-            var saved = await check.Services.AsNoTracking().SingleAsync(token);
+            // A later migration may already have been reverted before the guarded downgrade
+            // fails, so select only columns present at the tested historical boundary.
+            var saved = await check.Services.AsNoTracking().Select(x => new { x.Id, x.ServiceNamespace }).SingleAsync(token);
             Assert.AreEqual(service, saved.Id);
             Assert.AreEqual(" ", saved.ServiceNamespace);
         }, context.CancellationToken);

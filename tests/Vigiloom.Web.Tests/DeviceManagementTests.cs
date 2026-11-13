@@ -120,7 +120,7 @@ public sealed class DeviceManagementTests
         using (var response = await apiReader.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("Denied", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         using var apiWriter = Client(factory);
         apiWriter.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", writeCredential);
-        using (var response = await apiWriter.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("Public", "example.org", [], false, Public: true), token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        using (var response = await apiWriter.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("Public", "example.org", [], false, Public: true), token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         using (var response = await apiWriter.PostAsync("/api/v1/devices/", new StringContent("{\"name\":\"API device\",\"address\":\"example.org\",\"deepMonitoring\":true}", Encoding.UTF8, "application/json"), token))
         {
             Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);

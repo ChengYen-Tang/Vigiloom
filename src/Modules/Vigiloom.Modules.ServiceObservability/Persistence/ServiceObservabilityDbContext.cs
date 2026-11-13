@@ -167,6 +167,9 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
 
         var service = modelBuilder.Entity<MonitoredService>();
         service.ToTable("Services");
+        service.Property(x => x.PublicDisplayName).HasMaxLength(256);
+        service.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
+        service.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });
         service.HasKey(x => x.Id).IsClustered(false);
         service.Property(x => x.Id).ValueGeneratedNever();
         service.Property(x => x.RowId).UseIdentityColumn();
