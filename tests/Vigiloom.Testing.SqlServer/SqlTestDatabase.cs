@@ -94,10 +94,8 @@ public sealed class SqlTestDatabase : IAsyncDisposable
             }
             File.Move(temporaryManifest, manifestPath);
 
-            await WithLocalDbDdlGateAsync(server, "create", async () =>
+            await WithLocalDbDdlGateAsync(server, "create", async connection =>
             {
-                await using var connection = new SqlConnection(server.ConnectionString);
-                await connection.OpenAsync(cancellationToken);
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT DB_ID(@database)";
                 command.Parameters.AddWithValue("@database", name);
@@ -291,10 +289,10 @@ public sealed class SqlTestDatabase : IAsyncDisposable
     private static async Task DropOwnedAsync(TestDatabaseServer server, DatabaseManifest manifest, string manifestPath, CancellationToken cancellationToken)
     {
         ValidateManifest(server, manifest, manifestPath);
-        await WithLocalDbDdlGateAsync(server, "cleanup", () => DropOwnedCoreAsync(server, manifest, cancellationToken), cancellationToken);
+        await WithLocalDbDdlGateAsync(server, "cleanup", connection => DropOwnedCoreAsync(server, manifest, connection, cancellationToken), cancellationToken);
     }
 
-    private static async Task DropOwnedCoreAsync(TestDatabaseServer server, DatabaseManifest manifest, CancellationToken cancellationToken)
+    private static async Task DropOwnedCoreAsync(TestDatabaseServer server, DatabaseManifest manifest, SqlConnection connection, CancellationToken cancellationToken)
     {
         // Only clear this test database's pool; administrative connections remain unpooled.
         using (var pooledConnection = new SqlConnection(server.ForDatabase(manifest.DatabaseName)))
@@ -308,8 +306,6 @@ public sealed class SqlTestDatabase : IAsyncDisposable
         {
             SqlConnection.ClearPool(pooledManagementConnection);
         }
-        await using var connection = new SqlConnection(server.ConnectionString);
-        await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT DB_ID(@database)";
         command.Parameters.AddWithValue("@database", manifest.DatabaseName);
@@ -361,13 +357,36 @@ public sealed class SqlTestDatabase : IAsyncDisposable
         }
     }
 
-    private static async Task WithLocalDbDdlGateAsync(TestDatabaseServer server, string operation, Func<Task> action, CancellationToken token)
+    private static async Task WithLocalDbDdlGateAsync(TestDatabaseServer server, string operation, Func<SqlConnection, Task> action, CancellationToken token)
     {
-        if (!IsLocalDb(server)) { await action(); return; }
+        if (!IsLocalDb(server))
+        {
+            await using var remote = new SqlConnection(server.ConnectionString);
+            await remote.OpenAsync(token);
+            await action(remote);
+            return;
+        }
         var start = Stopwatch.GetTimestamp();
         await LocalDbDdlGate.WaitAsync(token);
         var entered = Stopwatch.GetTimestamp();
-        try { await action(); }
+        try
+        {
+            // LocalDB is shared by testhost processes. A session lock coordinates their
+            // DDL; the same unpooled master connection executes the protected operation.
+            var master = new SqlConnectionStringBuilder(server.ConnectionString) { ApplicationName = $"Vigiloom.Testing.{RunId}" };
+            await using var connection = new SqlConnection(master.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandTimeout = 65;
+            command.CommandText = "DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource = N'Vigiloom.Testing.LocalDb.Ddl', @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 60000; SELECT @result;";
+            object? response;
+            try { response = await command.ExecuteScalarAsync(token); }
+            catch (SqlException) when (token.IsCancellationRequested) { throw new OperationCanceledException(token); }
+            token.ThrowIfCancellationRequested();
+            var result = (int)(response ?? throw new InvalidOperationException("No LocalDB DDL lock result."));
+            if (result < 0) throw new InvalidOperationException($"Could not acquire LocalDB DDL lock ({result}).");
+            await action(connection);
+        }
         finally
         {
             var waited = Stopwatch.GetElapsedTime(start, entered);

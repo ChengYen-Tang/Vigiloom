@@ -4,6 +4,8 @@
 
 The bounded scheduling management reader uses a five-second connect timeout and therefore a second SqlClient pool. Cleanup clears that exact pool for the owned test database as well as its normal pool; it never clears unrelated pools.
 
+On LocalDB, CREATE and owned-database cleanup are coordinated across test processes by a session-owned application lock on the unpooled master connection. Initialization and test execution remain outside the lock; cancellation or connection loss releases the session lock.
+
 An isolated SQL Server can be supplied explicitly with `VIGILOOM_TEST_SQL_CONNECTION` (initial catalog must be `master`) and `VIGILOOM_TEST_SQL_ALLOW_SOURCE` (the exact data source). Provision a dedicated test server and account; do not point either setting at a development or production database. Neither setting is read from product configuration or written to the manifest. Missing LocalDB or an invalid test configuration fails the database tests.
 
 The Migrator deployment-lock integration tests additionally inspect `sys.dm_exec_requests` and terminate their own test-created SQL session with `KILL`. The isolated test account therefore needs permission to observe the test session and terminate it (for example, the CI LocalDB owner or isolated SQL Server sysadmin). These are test-fixture privileges only; Web, Worker and production runtime accounts do not require them.
