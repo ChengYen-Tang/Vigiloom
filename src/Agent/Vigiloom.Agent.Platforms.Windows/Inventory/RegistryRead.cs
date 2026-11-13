@@ -14,13 +14,25 @@ internal static partial class RegistryRead
     private const int NotFound = 2;
 
     internal static unsafe bool Stamp(SafeRegistryHandle key, out uint subkeys, out long lastWrite) =>
-        RegQueryInfoKey(key, null, null, null, out subkeys, null, null, null, null, null, null, out lastWrite) == Success;
+        RegQueryInfoKey(key, null, null, null, out subkeys, null, null, out _, null, null, null, out lastWrite) == Success;
+
+    internal static unsafe bool IntegrityStamp(SafeRegistryHandle key, out uint subkeys, out uint values, out long lastWrite) =>
+        RegQueryInfoKey(key, null, null, null, out subkeys, null, null, out values, null, null, null, out lastWrite) == Success;
 
     internal static unsafe int Name(SafeRegistryHandle key, uint index, out string? name)
     {
         char* buffer = stackalloc char[256];
         uint length = 256;
         var status = RegEnumKeyEx(key, index, buffer, &length, null, null, null, null);
+        name = status == Success ? new string(buffer, 0, (int)length) : null;
+        return status;
+    }
+
+    internal static unsafe int ValueName(SafeRegistryHandle key, uint index, out string? name)
+    {
+        char* buffer = stackalloc char[2049];
+        uint length = 2049;
+        var status = RegEnumValue(key, index, buffer, &length, null, null, null, null);
         name = status == Success ? new string(buffer, 0, (int)length) : null;
         return status;
     }
@@ -48,6 +60,11 @@ internal static partial class RegistryRead
     private static unsafe partial int RegEnumKeyEx(SafeRegistryHandle key, uint index, char* name, uint* length,
         void* reserved, void* className, void* classLength, void* lastWriteTime);
 
+    [LibraryImport("advapi32.dll", EntryPoint = "RegEnumValueW")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    private static unsafe partial int RegEnumValue(SafeRegistryHandle key, uint index, char* name, uint* length,
+        void* reserved, void* type, void* data, void* size);
+
     [LibraryImport("advapi32.dll", EntryPoint = "RegQueryValueExW", StringMarshalling = StringMarshalling.Utf16)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
     private static unsafe partial int RegQueryValueEx(SafeRegistryHandle key, string valueName, void* reserved,
@@ -56,6 +73,6 @@ internal static partial class RegistryRead
     [LibraryImport("advapi32.dll", EntryPoint = "RegQueryInfoKeyW")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
     private static unsafe partial int RegQueryInfoKey(SafeRegistryHandle key, void* className, void* classLength,
-        void* reserved, out uint subkeys, void* maximumSubkey, void* maximumClass, void* values,
+        void* reserved, out uint subkeys, void* maximumSubkey, void* maximumClass, out uint values,
         void* maximumValueName, void* maximumValue, void* security, out long lastWrite);
 }

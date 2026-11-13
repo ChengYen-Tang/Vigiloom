@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
@@ -22,6 +23,16 @@ using Vigiloom.Modules.Resources.Domain;
 using Microsoft.AspNetCore.WebUtilities;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Collections.Immutable;
+using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Agent.Core.Integrity;
+using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Configuration;
+using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Hosting;
+using Vigiloom.Agent.Hosting.Metrics;
+using Vigiloom.Agent.Core.Metrics;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Web.Tests;
 
@@ -31,6 +42,313 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentSettingsUiHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    private sealed class IntegrityTestResourceMonitor : IMetricResourceMonitor
+    {
+        public long ReadWorkingSetBytes() => 1;
+        public TimeSpan ReadCpuTime() => TimeSpan.Zero;
+        public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token) => ValueTask.FromResult(new ProcessIoSnapshot(0, 0));
+        public void Dispose() { }
+    }
+
+    [TestMethod]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task Integrity_RealWindowsScanFlowsThroughAgentQueueAndPrivateApi()
+    {
+        if (!OperatingSystem.IsWindows()) { Assert.Inconclusive("Requires Windows."); return; }
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomIntegrityHttpTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        var hostStopped = true;
+        Exception? failure = null;
+        try
+        {
+            var files = Path.Combine(root, "files");
+            Directory.CreateDirectory(files);
+            await File.WriteAllTextAsync(Path.Combine(files, "observed.txt"), "before", TestContext.CancellationToken);
+            await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+            {
+                using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+                await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+                var device = new Device("real integrity host", "127.0.0.1", true, DateTimeOffset.UtcNow);
+                await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+                var secret = RandomNumberGenerator.GetBytes(32);
+                Guid agentId;
+                await using (var serviceScope = factory.Services.CreateAsyncScope())
+                {
+                    var identity = serviceScope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                    var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                    agentId = (await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token)).AgentId
+                        ?? throw new InvalidOperationException("Agent registration failed.");
+                }
+                using var admin = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+                await LoginAsync(admin, "admin", token);
+                using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+                {
+                    var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                    admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+                }
+                var input = new IntegrityScopeInput(IntegrityScopeKind.Directory, files, true,
+                    ImmutableArray<string>.Empty, 60, 250, 1048576, 10485760, 16);
+                using var created = await admin.PostAsJsonAsync($"/api/v1/agent-management/devices/{device.Id:D}/integrity-scopes/", input, token);
+                Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+                using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+                var vault = new IdentityVault(Path.Combine(root, "state"));
+                var server = new Uri("https://localhost/");
+                await using (var session = vault.Acquire())
+                    await session.WriteAsync(new IdentityState { AgentId = agentId, Server = server.AbsoluteUri, MachineSecret = WebEncoders.Base64UrlEncode(secret) }, token);
+                var owner = new AgentSettingsOwner(agentId, server.AbsoluteUri, vault.StateDirectory);
+                var synced = await new AgentIntegritySettingsClient(http, TimeProvider.System).SyncAsync(vault, server, token);
+                Assert.IsNotNull(synced.Settings);
+                var scope = synced.Settings.Snapshot.Scopes.Single();
+                var cycle = new IntegrityCycle(new IntegrityStatusClient(http, TimeProvider.System), TimeProvider.System);
+                var sender = new AgentBatchClient(http, TimeProvider.System);
+                var builder = AgentHost.CreateBuilder([]);
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Vigiloom:Agent:StateDirectory"] = vault.StateDirectory, ["Vigiloom:Agent:Server"] = server.AbsoluteUri
+                });
+                foreach (var hosted in builder.Services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                    x.ImplementationType?.Name is not ("AgentSettingsWorker" or "IntegrityWorker" or "BatchWorker")).ToArray())
+                    builder.Services.Remove(hosted);
+                builder.Services.AddSingleton(new AgentSettingsClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentQueueCapacityClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentMetricSettingsClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentLogSettingsClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentInventorySettingsClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentIntegritySettingsClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new IntegrityStatusClient(http, TimeProvider.System));
+                builder.Services.AddSingleton(new AgentBatchClient(http, TimeProvider.System));
+                // The in-process host shares this test runner's CPU/I/O counters with unrelated parallel tests.
+                builder.Services.AddSingleton<IMetricResourceMonitor>(new IntegrityTestResourceMonitor());
+                using (var host = builder.Build())
+                {
+                    Exception? hostFailure = null;
+                    try
+                    {
+                        hostStopped = false;
+                        await host.StartAsync(token);
+                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+                        while (true)
+                        {
+                            using var status = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity", deadline.Token);
+                            var view = await status.Content.ReadFromJsonAsync<DeviceIntegrityView>(cancellationToken: deadline.Token);
+                            if (view?.Scopes.Single().SnapshotId is not null) break;
+                            await Task.Delay(100, deadline.Token);
+                        }
+                    }
+                    catch (Exception ex) { hostFailure = ex; throw; }
+                    finally
+                    {
+                        try
+                        {
+                            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                            await host.StopAsync(timeout.Token);
+                            foreach (var worker in host.Services.GetServices<IHostedService>().OfType<BackgroundService>())
+                                if (worker.ExecuteTask is { } task) await task.WaitAsync(timeout.Token);
+                            hostStopped = true;
+                        }
+                        catch (Exception stopError) when (hostFailure is not null) { throw new AggregateException(hostFailure, stopError); }
+                    }
+                }
+                // The central baseline may be visible just before the worker's local terminal reconciliation.
+                await cycle.ResumeOutstandingAsync(vault, server, owner, token);
+                for (var index = 0; index < 105; index++)
+                    await File.WriteAllTextAsync(Path.Combine(files, $"new-{index:D3}.txt"), "new", token);
+                await File.WriteAllTextAsync(Path.Combine(files, "observed.txt"), "after", token);
+                var queue = new DurableBatchQueue(vault, agentId);
+                var gap = await queue.MarkIntegrityGapAsync(owner, scope.Id, scope.Revision, token);
+                Assert.AreEqual(IntegrityCycleKind.Queued, (await cycle.RunAsync(vault, server, owner, synced.Settings, scope,
+                    Vigiloom.Agent.Platforms.Windows.Integrity.FileScopeReader.ReadAsync, token)).Kind);
+                Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                var pending = await queue.ReadOutstandingIntegrityAsync(owner, token);
+                Assert.IsNotNull(pending);
+                Assert.AreEqual(gap, await queue.ReadIntegrityGapAsync(owner, scope.Id, scope.Revision, token));
+                using (var beforeRecovery = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity", token))
+                {
+                    var view = await beforeRecovery.Content.ReadFromJsonAsync<DeviceIntegrityView>(cancellationToken: token);
+                    Assert.AreNotEqual(pending.SnapshotId, view!.Scopes.Single().SnapshotId);
+                }
+                // Recreate transport components as after an Agent restart; the unsent chunks remain durable.
+                var restartedVault = new IdentityVault(vault.StateDirectory);
+                var restartedQueue = new DurableBatchQueue(restartedVault, agentId);
+                var restartedSender = new AgentBatchClient(http, TimeProvider.System);
+                while (await restartedQueue.PeekAsync(token) is not null)
+                    Assert.AreEqual(BatchSendResult.Delivered, (await restartedSender.SendNextAsync(restartedVault, server, token)).Status);
+                var restartedCycle = new IntegrityCycle(new IntegrityStatusClient(http, TimeProvider.System), TimeProvider.System);
+                Assert.AreEqual(IntegrityCycleKind.Complete, (await restartedCycle.ResumeOutstandingAsync(restartedVault, server, owner, token))!.Kind);
+                Assert.IsNull(await restartedQueue.ReadIntegrityGapAsync(owner, scope.Id, scope.Revision, token));
+                var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O"));
+                var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(1).ToString("O"));
+                using var response = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity/changes?from={from}&until={until}", token);
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var changes = await response.Content.ReadFromJsonAsync<IntegrityChangePage>(cancellationToken: token);
+                Assert.IsNotNull(changes);
+                var all = new List<IntegrityChangeView>(changes.Items);
+                var cursor = changes.NextCursor;
+                for (var page = 0; cursor is not null && page < 3; page++)
+                {
+                    using var next = await admin.GetAsync($"/api/v1/devices/{device.Id:D}/integrity/changes?from={from}&until={until}&cursor={Uri.EscapeDataString(cursor)}", token);
+                    Assert.AreEqual(HttpStatusCode.OK, next.StatusCode);
+                    var data = await next.Content.ReadFromJsonAsync<IntegrityChangePage>(cancellationToken: token);
+                    Assert.IsNotNull(data);
+                    all.AddRange(data.Items);
+                    cursor = data.NextCursor;
+                }
+                Assert.IsNull(cursor);
+                Assert.AreEqual(105, all.Count(x => x.Kind == IntegrityChangeType.Added));
+                Assert.IsTrue(all.Any(x => x.Kind == IntegrityChangeType.Modified && x.After?.Key.Contains("observed.txt", StringComparison.Ordinal) == true));
+            }, TestContext.CancellationToken);
+        }
+        catch (Exception ex) { failure = ex; throw; }
+        finally
+        {
+            try
+            {
+                if (!hostStopped) throw new InvalidOperationException($"Host did not stop; test directory retained: {root}");
+                var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(root).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch (Exception cleanupError) when (failure is not null) { throw new AggregateException(failure, cleanupError); }
+        }
+    }
+
+    [TestMethod]
+    public Task IntegrityScopes_AuthorizeAdministrationAndIsolateAgentPolicies() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var first = new Device("first integrity host", "127.0.0.1", true, DateTimeOffset.UtcNow);
+            var second = new Device("second integrity host", "127.0.0.2", true, DateTimeOffset.UtcNow);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+            { db.Devices.AddRange(first, second); await db.SaveChangesAsync(token); }
+            async Task<string> EnrollAsync(Guid device)
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issue = await identity.IssueAsync(device, Guid.CreateVersion7(), token);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registration = await identity.RedeemAsync(issue.Secret, SHA256.HashData(secret), token);
+                return $"vla_{registration.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
+            }
+            var firstToken = await EnrollAsync(first.Id);
+            var secondToken = await EnrollAsync(second.Id);
+            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
+            using var anonymous = factory.CreateClient(options);
+            using var reader = factory.CreateClient(options);
+            using var admin = factory.CreateClient(options);
+            using var agent = factory.CreateClient(options);
+            await LoginAsync(reader, "reader", token);
+            await LoginAsync(admin, "admin", token);
+            var url = $"/api/v1/agent-management/devices/{first.Id:D}/integrity-scopes/";
+            using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            var input = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/app", true,
+                ImmutableArray.Create("logs/**"), 3600, 1000, 1048576, 10485760, 16);
+            using (var denied = await admin.PostAsJsonAsync(url, input, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+            }
+            using var created = await admin.PostAsJsonAsync(url, input, token);
+            Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+            var saved = await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token);
+            Assert.IsNotNull(saved);
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
+            using var firstResponse = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
+            Assert.AreEqual(HttpStatusCode.OK, firstResponse.StatusCode);
+            var firstSettings = await firstResponse.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token);
+            Assert.IsNotNull(firstSettings);
+            Assert.IsTrue(firstSettings.IsValid());
+            Assert.AreEqual(saved.Scope.Id, firstSettings.Scopes.Single().Id);
+            var settingsStatusUrl = $"/api/v1/devices/{first.Id:D}/integrity/settings-status";
+            using (var initialStatus = await reader.GetAsync(settingsStatusUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, initialStatus.StatusCode);
+                var value = await initialStatus.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
+                Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, value!.State);
+            }
+            var epoch = Guid.CreateVersion7();
+            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            var report = new AgentHeartbeatReport(1, epoch, 1, null, IntegrityConfiguration:
+                new(firstSettings.Revision, firstSettings.Generation, DateTimeOffset.UtcNow, null));
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            using (var status = await reader.GetAsync(settingsStatusUrl, token))
+            {
+                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
+                Assert.AreEqual(AgentSettingsApplyState.Applied, value!.State);
+                Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
+            }
+            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report with { Sequence = 2, IntegrityConfiguration = report.IntegrityConfiguration! with { Failure = AgentConfigurationFailure.Unavailable } }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            using (var stale = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, stale.StatusCode);
+            using (var status = await reader.GetAsync(settingsStatusUrl, token))
+            {
+                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
+                Assert.AreEqual(AgentSettingsApplyState.Failed, value!.State);
+                Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
+            }
+            var replacementEpoch = Guid.CreateVersion7();
+            using (var replacementSession = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(epoch, replacementEpoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, replacementSession.StatusCode);
+            using (var status = await reader.GetAsync(settingsStatusUrl, token))
+            {
+                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
+                Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, value!.State);
+                Assert.IsNull(value.AppliedRevision);
+            }
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secondToken);
+            using var secondResponse = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
+            Assert.AreEqual(HttpStatusCode.OK, secondResponse.StatusCode);
+            var secondSettings = await secondResponse.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token);
+            Assert.IsNotNull(secondSettings);
+            Assert.IsEmpty(secondSettings.Scopes);
+            var now = DateTimeOffset.UtcNow;
+            var item = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["settings.json"]), IntegrityItemKind.File, new string('a', 64));
+            var batch = IntegrityChunkBuilder.Build(saved.Scope.Id, saved.Scope.Revision, Guid.CreateVersion7(), 1, now, now,
+                IntegrityScanOutcome.Complete, [item]).Single();
+            async Task<HttpStatusCode> SendAsync()
+            {
+                using var content = new ByteArrayContent(batch.Payload);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using var result = await agent.PostAsync("/api/v1/agent/batches", content, token);
+                return result.StatusCode;
+            }
+            Assert.AreEqual(HttpStatusCode.Conflict, await SendAsync());
+            agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
+            Assert.AreEqual(HttpStatusCode.NoContent, await SendAsync());
+            Assert.AreEqual(HttpStatusCode.NoContent, await SendAsync());
+            using (var statusResponse = await agent.GetAsync($"/api/v1/agent/integrity-status/{saved.Scope.Id:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, statusResponse.StatusCode);
+                var progress = await statusResponse.Content.ReadFromJsonAsync<IntegrityScopeStatus>(cancellationToken: token);
+                Assert.IsNotNull(progress);
+                Assert.AreEqual(1, progress.HighWaterGeneration);
+                Assert.AreEqual(IntegrityCompletion.Complete, progress.LastStatus);
+            }
+            var monitoring = $"/api/v1/devices/{first.Id:D}/integrity";
+            using (var denied = await anonymous.GetAsync(monitoring, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var monitored = await reader.GetAsync(monitoring, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, monitored.StatusCode);
+                var view = await monitored.Content.ReadFromJsonAsync<DeviceIntegrityView>(cancellationToken: token);
+                Assert.IsNotNull(view);
+                Assert.AreEqual(saved.Scope.Id, view.Scopes.Single().ScopeId);
+                Assert.IsNotNull(view.Scopes.Single().SnapshotId);
+                using var chunk = await reader.GetAsync($"{monitoring}/scopes/{saved.Scope.Id:D}/snapshots/{view.Scopes.Single().SnapshotId:D}/chunks/0", token);
+                Assert.AreEqual(HttpStatusCode.OK, chunk.StatusCode);
+                Assert.IsNotNull(await chunk.Content.ReadFromJsonAsync<IntegritySnapshotChunkView>(cancellationToken: token));
+                using var otherDevice = await reader.GetAsync($"/api/v1/devices/{second.Id:D}/integrity/scopes/{saved.Scope.Id:D}/snapshots/{view.Scopes.Single().SnapshotId:D}/chunks/0", token);
+                Assert.AreEqual(HttpStatusCode.NotFound, otherDevice.StatusCode);
+            }
+            await using var security = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(1, await security.IntegrityScopeStates.CountAsync(x => x.DeviceId == first.Id && x.CurrentGeneration == 1, token));
+        }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task HostLogSources_AuthorizeMutationsAndIsolateAgentSettings() =>

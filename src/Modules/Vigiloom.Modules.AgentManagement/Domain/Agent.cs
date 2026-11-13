@@ -90,6 +90,10 @@ public sealed class Agent
     public long? InventoryConfigurationSequence { get; private set; }
     public DateTimeOffset? InventoryConfigurationReportedAt { get; private set; }
     public string? InventoryConfigurationJson { get; private set; }
+    public Guid? IntegrityConfigurationEpoch { get; private set; }
+    public long? IntegrityConfigurationSequence { get; private set; }
+    public DateTimeOffset? IntegrityConfigurationReportedAt { get; private set; }
+    public string? IntegrityConfigurationJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -224,6 +228,14 @@ public sealed class Agent
         InventoryConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
         InventoryConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
     }
+
+    public void RecordIntegrityConfiguration(IntegritySettingsReport? report, long sequence, DateTimeOffset now)
+    {
+        IntegrityConfigurationEpoch = report is null ? null : QueueReportEpoch;
+        IntegrityConfigurationSequence = report is null ? null : sequence;
+        IntegrityConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
+        IntegrityConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
+    }
     public void BeginQueueSession(Guid epoch)
     {
         QueueReportEpoch = epoch;
@@ -266,6 +278,10 @@ public sealed class Agent
         InventoryConfigurationSequence = null;
         InventoryConfigurationReportedAt = null;
         InventoryConfigurationJson = null;
+        IntegrityConfigurationEpoch = null;
+        IntegrityConfigurationSequence = null;
+        IntegrityConfigurationReportedAt = null;
+        IntegrityConfigurationJson = null;
     }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }

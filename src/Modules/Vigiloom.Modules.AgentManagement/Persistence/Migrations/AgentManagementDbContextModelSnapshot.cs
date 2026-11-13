@@ -79,6 +79,19 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<long?>("InboxReceiptPayloadBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("IntegrityConfigurationEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IntegrityConfigurationJson")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("IntegrityConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("IntegrityConfigurationSequence")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid?>("InventoryConfigurationEpoch")
                         .HasColumnType("uniqueidentifier");
 

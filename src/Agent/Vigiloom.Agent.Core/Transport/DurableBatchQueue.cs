@@ -3,6 +3,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Globalization;
@@ -22,13 +23,13 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
 
     /// <summary>Persist an entire sample atomically, or leave the queue unchanged when capacity is insufficient. Keep the batches and payloads unchanged until the call completes.</summary>
     public Task<EnqueueResult> EnqueueManyAsync(IReadOnlyList<QueuedBatch> batches, CancellationToken token) =>
-        EnqueueManyCoreAsync(batches, null, null, token);
+        EnqueueManyCoreAsync(batches, null, null, null, token);
 
     /// <summary>Atomically verify the registered owner and persist its sample under the same identity lease.</summary>
     public Task<EnqueueResult> EnqueueManyForOwnerAsync(IReadOnlyList<QueuedBatch> batches, AgentSettingsOwner owner, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        return EnqueueManyCoreAsync(batches, owner, null, token);
+        return EnqueueManyCoreAsync(batches, owner, null, null, token);
     }
 
     /// <summary>Atomically queues one complete source generation and its durable outstanding marker.</summary>
@@ -50,11 +51,41 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 throw new ArgumentException("Inventory batches do not form the specified generation.", nameof(batches));
             fingerprint.AppendData(SHA256.HashData(batch.Payload));
         }
-        return EnqueueManyCoreAsync(batches, owner, new(source, generation, snapshotId, fingerprint.GetHashAndReset()), token);
+        return EnqueueManyCoreAsync(batches, owner, new(source, generation, snapshotId, fingerprint.GetHashAndReset()), null, token);
+    }
+
+    /// <summary>Atomically queues an integrity generation and its durable outstanding marker.</summary>
+    public Task<EnqueueResult> EnqueueIntegrityForOwnerAsync(IReadOnlyList<QueuedBatch> batches, AgentSettingsOwner owner,
+        Guid scopeId, long scopeRevision, long generation, Guid snapshotId, Guid policySaveToken, long? gapGeneration, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(batches);
+        ArgumentNullException.ThrowIfNull(owner);
+        if (scopeId.Version != 7 || scopeRevision < 1 || generation < 1 || snapshotId.Version != 7 || policySaveToken.Version != 7 || gapGeneration is <= 0 || batches.Count is < 1 or > IntegrityChunkCodec.MaximumChunks)
+            throw new ArgumentException("Invalid integrity generation.");
+        using var fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        IntegrityChunk? manifest = null;
+        for (var index = 0; index < batches.Count; index++)
+        {
+            var batch = batches[index];
+            if (batch is null || !IntegrityChunkCodec.TryRead(batch.Payload, out var chunk) || chunk!.BatchId != batch.BatchId ||
+                chunk.EnqueuedAt != batch.EnqueuedAt || Math.Max(1, chunk.Items.Count) != batch.RecordCount || chunk.ScopeId != scopeId ||
+                chunk.ScopeRevision != scopeRevision || chunk.Generation != generation || chunk.SnapshotId != snapshotId ||
+                chunk.ChunkIndex != index || chunk.ChunkCount != batches.Count)
+                throw new ArgumentException("Integrity batches do not form the specified generation.", nameof(batches));
+            if (manifest is not null && (chunk.EnqueuedAt != manifest.EnqueuedAt || chunk.ObservedAt != manifest.ObservedAt || chunk.Outcome != manifest.Outcome ||
+                chunk.CoverageGap != manifest.CoverageGap || chunk.PartialReason != manifest.PartialReason ||
+                chunk.TotalItems != manifest.TotalItems || chunk.TotalBytes != manifest.TotalBytes ||
+                !CryptographicOperations.FixedTimeEquals(chunk.Digest, manifest.Digest)))
+                throw new ArgumentException("Integrity batch manifests differ.", nameof(batches));
+            manifest ??= chunk;
+            fingerprint.AppendData(SHA256.HashData(batch.Payload));
+        }
+        if (gapGeneration is not null && manifest?.CoverageGap != true) throw new ArgumentException("Pending coverage gap must be reported.", nameof(batches));
+        return EnqueueManyCoreAsync(batches, owner, null, new(scopeId, scopeRevision, generation, snapshotId, policySaveToken, gapGeneration, fingerprint.GetHashAndReset()), token);
     }
 
     private async Task<EnqueueResult> EnqueueManyCoreAsync(IReadOnlyList<QueuedBatch> batches, AgentSettingsOwner? owner,
-        InventoryQueueMarker? inventory, CancellationToken token)
+        InventoryQueueMarker? inventory, IntegrityQueueMarker? integrity, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(batches);
         if (batches.Count == 0) throw new ArgumentException("At least one batch is required.", nameof(batches));
@@ -67,8 +98,8 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             if (batch is null || batch.BatchId.Version != 7 || batch.RecordCount is < 1 or > MaximumBatchRecords ||
                 batch.Payload is not { Length: > 0 and <= MaximumBatchBytes } || !ids.Add(batch.BatchId))
                 throw new ArgumentException("Invalid or duplicate batch.", nameof(batches));
-            if (inventory is null && IsInventoryPayload(batch.Payload))
-                throw new ArgumentException("Inventory batches require the atomic inventory queue operation.", nameof(batches));
+            if (inventory is null && integrity is null && IsReservedSnapshotPayload(batch.Payload))
+                throw new ArgumentException("Snapshot batches require their atomic queue operation.", nameof(batches));
         }
         await gate.WaitAsync(token);
         try
@@ -81,6 +112,14 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                     !string.Equals(identity.Server, owner.Server, StringComparison.Ordinal) ||
                     !string.Equals(owner.StateDirectory, vault.StateDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                     return EnqueueResult.OwnerChanged;
+            }
+            if (integrity is not null)
+            {
+                var policy = await session.ReadIntegritySettingsAsync(token);
+                if (policy is null || policy.AgentId != agentId || !string.Equals(policy.Server, owner!.Server, StringComparison.Ordinal) ||
+                    policy.SaveToken != integrity.PolicySaveToken || policy.Snapshot is null || !policy.Snapshot.IsValid() ||
+                    !policy.Snapshot.Scopes.Any(x => x.Id == integrity.ScopeId && x.Revision == integrity.ScopeRevision && x.Enabled))
+                    return EnqueueResult.IntegrityPolicyChanged;
             }
             var effective = capacityBytes is null || maximumBatches is null
                 ? await AgentQueueCapacityStore.ReadEffectiveLockedAsync(session, agentId, token) : AgentQueueCapacity.Default;
@@ -101,6 +140,23 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                         ? CryptographicOperations.FixedTimeEquals((byte[])reader[3], inventory.Fingerprint) ? EnqueueResult.AlreadyQueued : EnqueueResult.ConflictingBatch
                         : EnqueueResult.InventoryOutstanding;
             }
+            if (integrity is not null)
+            {
+                EnsureInventoryOutstandingTable(connection, transaction);
+                EnsureIntegrityOutstandingTable(connection, transaction);
+                using var outstanding = connection.CreateCommand();
+                outstanding.Transaction = transaction;
+                outstanding.CommandText = "SELECT scope_id, scope_revision, generation, snapshot_id, fingerprint, gap_generation FROM integrity_outstanding WHERE singleton = 1";
+                using var reader = outstanding.ExecuteReader();
+                if (reader.Read())
+                    return string.Equals(reader.GetString(0), integrity.ScopeId.ToString("D"), StringComparison.Ordinal) &&
+                        reader.GetInt64(1) == integrity.ScopeRevision && reader.GetInt64(2) == integrity.Generation &&
+                        string.Equals(reader.GetString(3), integrity.SnapshotId.ToString("D"), StringComparison.Ordinal)
+                        ? CryptographicOperations.FixedTimeEquals((byte[])reader[4], integrity.Fingerprint) &&
+                            (reader.IsDBNull(5) ? integrity.GapGeneration is null : reader.GetInt64(5) == integrity.GapGeneration)
+                            ? EnqueueResult.AlreadyQueued : EnqueueResult.ConflictingBatch
+                        : EnqueueResult.IntegrityOutstanding;
+            }
             long newBytes = 0;
             var pending = new List<QueuedBatch>(batches.Count);
             using var existing = connection.CreateCommand();
@@ -119,7 +175,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 }
                 else { pending.Add(batch); newBytes += batch.Payload.Length; }
             }
-            if (inventory is not null && pending.Count != batches.Count) return EnqueueResult.ConflictingBatch;
+            if ((inventory is not null || integrity is not null) && pending.Count != batches.Count) return EnqueueResult.ConflictingBatch;
             if (pending.Count == 0) return EnqueueResult.AlreadyQueued;
             // Waiting for queued batches to drain cannot make an oversized sample fit.
             if (newBytes > byteLimit || pending.Count > batchLimit) return EnqueueResult.ExceedsCapacity;
@@ -183,6 +239,26 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                     insertMember.ExecuteNonQuery();
                 }
             }
+            if (integrity is not null)
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "INSERT INTO integrity_outstanding(singleton, scope_id, scope_revision, generation, snapshot_id, gap_generation, fingerprint) VALUES (1, $scope, $revision, $generation, $snapshot, $gap, $fingerprint)";
+                command.Parameters.AddWithValue("$scope", integrity.ScopeId.ToString("D"));
+                command.Parameters.AddWithValue("$revision", integrity.ScopeRevision);
+                command.Parameters.AddWithValue("$generation", integrity.Generation);
+                command.Parameters.AddWithValue("$snapshot", integrity.SnapshotId.ToString("D"));
+                command.Parameters.AddWithValue("$gap", (object?)integrity.GapGeneration ?? DBNull.Value);
+                command.Parameters.Add("$fingerprint", SqliteType.Blob).Value = integrity.Fingerprint;
+                command.ExecuteNonQuery();
+                command.Parameters.Clear();
+                command.CommandText = "INSERT INTO integrity_outstanding_batches(batch_id) VALUES ($id)";
+                var member = command.Parameters.Add("$id", SqliteType.Text);
+                foreach (var batch in batches) { member.Value = batch.BatchId.ToString("D"); command.ExecuteNonQuery(); }
+                command.CommandText = "PRAGMA user_version = 6";
+                command.Parameters.Clear();
+                command.ExecuteNonQuery();
+            }
             token.ThrowIfCancellationRequested();
             transaction.Commit();
             return EnqueueResult.Queued;
@@ -197,7 +273,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
         if (batchId.Version != 7) throw new ArgumentException("A version 7 batch ID is required.", nameof(batchId));
         if (recordCount is < 1 or > MaximumBatchRecords) throw new ArgumentOutOfRangeException(nameof(recordCount));
         if (payload.Length is < 1 or > MaximumBatchBytes) throw new ArgumentOutOfRangeException(nameof(payload));
-        if (IsInventoryPayload(payload.Span)) throw new ArgumentException("Inventory batches require the atomic inventory queue operation.", nameof(payload));
+        if (IsReservedSnapshotPayload(payload.Span)) throw new ArgumentException("Snapshot batches require their atomic queue operation.", nameof(payload));
         if (capacityBytes is < 1) throw new InvalidOperationException("Queue capacity must be positive.");
         if (maximumBatches is < 1 or > MaximumQueuedBatches) throw new InvalidOperationException("Queue batch limit is outside the supported range.");
         await gate.WaitAsync(token);
@@ -370,18 +446,23 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
             var version = (long)command.ExecuteScalar()!;
-            if (version is not (0 or 1 or 2 or 3 or 4 or 5)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
-            if (version is 4 or 5)
+            if (version is not (0 or 1 or 2 or 3 or 4 or 5 or 6)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
+            if (version is 4 or 5 or 6)
             {
                 command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('inventory_outstanding', 'inventory_outstanding_batches', 'inventory_retained_batches')";
                 if (Convert.ToInt64(command.ExecuteScalar()) != 3) throw new InvalidDataException("The Agent inventory queue format is incomplete.");
             }
-            if (version == 5)
+            if (version is 5 or 6)
             {
                 command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v5')";
                 if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent inventory version fence is incomplete.");
             }
-            if (version is 1 or 2 or 3 or 4 or 5)
+            if (version == 6)
+            {
+                command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('integrity_outstanding', 'integrity_outstanding_batches', 'integrity_retained_v6', 'integrity_generations', 'integrity_gap_state')";
+                if (Convert.ToInt64(command.ExecuteScalar()) != 5) throw new InvalidDataException("The Agent integrity queue format is incomplete.");
+            }
+            if (version is 1 or 2 or 3 or 4 or 5 or 6)
             {
                 command.CommandText = "SELECT agent_id FROM queue_state WHERE singleton = 1";
                 if (!string.Equals(command.ExecuteScalar() as string, agentId.ToString("D"), StringComparison.Ordinal))
@@ -413,7 +494,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
         catch { connection.Dispose(); throw; }
     }
 
-    private static bool IsInventoryPayload(ReadOnlySpan<byte> payload)
+    private static bool IsReservedSnapshotPayload(ReadOnlySpan<byte> payload)
     {
         try
         {
@@ -426,9 +507,9 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 if (!reader.Read()) return false;
                 if (isVersion)
                 {
-                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion;
+                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or IntegrityChunkCodec.SchemaVersion;
                     return reader.TokenType == JsonTokenType.String &&
-                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion;
+                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or IntegrityChunkCodec.SchemaVersion;
                 }
                 reader.Skip();
             }
@@ -438,7 +519,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
     }
 }
 
-public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full, OwnerChanged, ExceedsCapacity, InventoryOutstanding }
+public enum EnqueueResult { Queued, AlreadyQueued, ConflictingBatch, Full, OwnerChanged, ExceedsCapacity, InventoryOutstanding, IntegrityOutstanding, IntegrityPolicyChanged }
 public enum QueueRejection { InvalidLocalBatch = 1, BadRequest = 2, Conflict = 3, PayloadTooLarge = 4, UnsupportedMediaType = 5, Expired = 6 }
 public sealed record QueuedBatch(Guid BatchId, DateTimeOffset EnqueuedAt, int RecordCount, byte[] Payload);
 public readonly record struct QueueStatus(long TotalBytes, long TotalBatches, long QuarantinedBatches);

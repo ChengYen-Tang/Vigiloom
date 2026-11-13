@@ -17,6 +17,57 @@ public sealed class AgentHeartbeatClientTests
     [TestMethod]
     [DataRow(HttpStatusCode.BadRequest)]
     [DataRow(HttpStatusCode.RequestEntityTooLarge)]
+    public async Task Heartbeat_OlderServerKeepsQueueReportWhenIntegritySettingsAreUnsupported(HttpStatusCode rejected)
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var observation = (owner, new IntegritySettingsReport(new string('a', 64), 1, DateTimeOffset.UtcNow, null));
+            var handler = new OldIntegritySettingsHandler(rejected);
+            using var http = new HttpClient(handler);
+            var result = await new AgentHeartbeatClient(http).SendAsync(vault, new Uri(owner.Server), null, null, null, null, null, observation, token);
+            Assert.AreEqual(HeartbeatResult.Accepted, result);
+            Assert.HasCount(2, handler.Reports);
+            Assert.IsNotNull(handler.Reports[0].IntegrityConfiguration);
+            Assert.IsNull(handler.Reports[1].IntegrityConfiguration);
+            Assert.IsNotNull(handler.Reports[1].Queue);
+            Assert.AreEqual(handler.Reports[0].Epoch, handler.Reports[1].Epoch);
+            Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class OldIntegritySettingsHandler(HttpStatusCode rejected) : HttpMessageHandler
+    {
+        public List<AgentHeartbeatReport> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) }
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            var report = (await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!;
+            Reports.Add(report);
+            return new HttpResponseMessage(report.IntegrityConfiguration is null ? HttpStatusCode.NoContent : rejected);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.BadRequest)]
+    [DataRow(HttpStatusCode.RequestEntityTooLarge)]
     public async Task Heartbeat_OlderServerKeepsQueueReportWhenInventorySettingsAreUnsupported(HttpStatusCode rejected)
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests");

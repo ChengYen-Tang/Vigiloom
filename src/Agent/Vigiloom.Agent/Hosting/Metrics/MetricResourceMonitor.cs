@@ -6,7 +6,7 @@ using WindowsProcessIo = Vigiloom.Agent.Platforms.Windows.Metrics.ProcessIoReade
 namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>Observes resources of this Agent process, not the monitored host as a whole.</summary>
-internal interface IMetricResourceMonitor : IDisposable
+public interface IMetricResourceMonitor : IDisposable
 {
     long ReadWorkingSetBytes();
     TimeSpan ReadCpuTime();

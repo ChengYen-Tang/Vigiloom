@@ -23,6 +23,410 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("CoverageGap")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("ScopeRevision")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RecordedAt", "RowId");
+
+                    b.HasIndex("DeviceId", "ObservedAt", "RowId");
+
+                    b.HasIndex("AgentId", "ScopeId", "ObservedAt", "RowId");
+
+                    b.HasIndex("DeviceId", "ScopeId", "ObservedAt", "RowId");
+
+                    b.ToTable("IntegrityChanges", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityChanges_Content", "([Kind] = 1 AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 2 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
+
+                            t.HasCheckConstraint("CK_IntegrityChanges_Values", "[ScopeRevision] > 0 AND [Generation] > 0 AND [Kind] BETWEEN 1 AND 3");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChunkData", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("Payload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "ScopeId", "Generation", "ChunkIndex")
+                        .IsUnique();
+
+                    b.ToTable("IntegrityChunks", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityChunks_Values", "[Generation] > 0 AND [ChunkIndex] BETWEEN 0 AND 1023 AND DATALENGTH([Payload]) BETWEEN 1 AND 1048576");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityPolicyState", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("IntegrityPolicyStates", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityPolicyStates_Generation", "[Generation] > 0 AND [DeviceId] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScan", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ChunkCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CoverageGap")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PartialReason")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ReceivedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ReceivedChunks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReceivedItems")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("ScopeRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<long>("TotalBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("TotalItems")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasAlternateKey("AgentId", "ScopeId", "Generation");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("AgentId", "ScopeId", "Generation"), false);
+
+                    b.HasIndex("AgentId", "SnapshotId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "StartedAt", "RowId");
+
+                    b.ToTable("IntegrityScans", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityScans_Complete", "[Status] <> 2 OR ([Outcome] = 1 AND [ReceivedChunks] = [ChunkCount] AND [ReceivedItems] = [TotalItems] AND [ReceivedBytes] = [TotalBytes])");
+
+                            t.HasCheckConstraint("CK_IntegrityScans_Limits", "[ChunkCount] BETWEEN 1 AND 1024 AND [TotalItems] BETWEEN 0 AND 20000 AND [TotalBytes] BETWEEN 2 AND 33554432 AND [ReceivedChunks] BETWEEN 0 AND [ChunkCount] AND [ReceivedItems] BETWEEN 0 AND [TotalItems] AND [ReceivedBytes] BETWEEN 0 AND [TotalBytes]");
+
+                            t.HasCheckConstraint("CK_IntegrityScans_Terminal", "([Status] = 1 AND [FinishedAt] IS NULL) OR ([Status] <> 1 AND [FinishedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_IntegrityScans_Values", "[Generation] > 0 AND [ScopeRevision] > 0 AND [DeviceGeneration] >= 0 AND [Outcome] BETWEEN 1 AND 5 AND [Status] BETWEEN 1 AND 5");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ScopeId");
+
+                    b.HasIndex("DeviceId", "OccurredAt", "RowId");
+
+                    b.ToTable("IntegrityScopeAudits", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityScopeAudits_Action", "[Action] BETWEEN 1 AND 3 AND [Revision] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasMaxLength(32768)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("DeviceId", "RetiredAt");
+
+                    b.ToTable("IntegrityScopes", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityScopes_Definition", "ISJSON([DefinitionJson]) = 1 AND DATALENGTH([DefinitionJson]) BETWEEN 2 AND 65536");
+
+                            t.HasCheckConstraint("CK_IntegrityScopes_Ids", "[Id] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000' AND [UpdatedBy] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_IntegrityScopes_Revision", "[Revision] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeState", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long?>("ActiveGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("ClosedGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("CurrentGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("LastAttemptGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastCompleteAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool?>("LastCoverageGap")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("LastOutcome")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("LastPartialReason")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("LastSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("LastStatus")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasAlternateKey("AgentId", "ScopeId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("AgentId", "ScopeId"), false);
+
+                    b.HasIndex("ScopeId");
+
+                    b.HasIndex("DeviceId", "ScopeId");
+
+                    b.ToTable("IntegrityScopeStates", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IntegrityScopeStates_Generations", "[ClosedGeneration] >= 0 AND ([ActiveGeneration] IS NULL OR [ActiveGeneration] > [ClosedGeneration]) AND ([CurrentGeneration] IS NULL OR ([CurrentGeneration] > 0 AND [CurrentGeneration] <= [ClosedGeneration]))");
+
+                            t.HasCheckConstraint("CK_IntegrityScopeStates_Ids", "[AgentId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000' AND [ScopeId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceGeneration] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChangeRecord", b =>
                 {
                     b.Property<long>("RowId")
@@ -397,6 +801,44 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 15");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChunkData", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScan", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId", "ScopeId", "Generation")
+                        .HasPrincipalKey("AgentId", "ScopeId", "Generation")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScan", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeState", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId", "ScopeId")
+                        .HasPrincipalKey("AgentId", "ScopeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeSetting", null)
+                        .WithMany()
+                        .HasForeignKey("ScopeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeState", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityScopeSetting", null)
+                        .WithMany()
+                        .HasForeignKey("ScopeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChunkData", b =>

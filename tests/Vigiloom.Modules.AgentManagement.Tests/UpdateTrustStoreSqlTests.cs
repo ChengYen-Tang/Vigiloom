@@ -89,9 +89,10 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
             try { await lease.DisposeAsync(); }
             catch (Microsoft.Data.SqlClient.SqlException) { /* KILL already ended the SQL session. */ }
             catch (InvalidOperationException error) when (lockLossVerified &&
-                error.Message.Contains("connection's current state: Broken", StringComparison.OrdinalIgnoreCase))
+                (error.Message.Contains("connection's current state: Broken", StringComparison.OrdinalIgnoreCase) ||
+                 error.Message.Contains("ExecuteNonQuery requires an open and available Connection", StringComparison.OrdinalIgnoreCase)))
             {
-                // The killed connection can transition to Broken between the state check and release.
+                // SqlClient may report the killed connection as Open or Broken while releasing the session lock.
             }
         }
         await using var replacement = await store.AcquireAsync(token);
