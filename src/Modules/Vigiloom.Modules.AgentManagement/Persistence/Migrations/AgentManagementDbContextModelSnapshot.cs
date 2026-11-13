@@ -1226,6 +1226,130 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.ToTable("HostMetrics", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricThreshold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Comparison")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Dimension")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("FreshnessSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("SeriesHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("float");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("AgentId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("DeviceId", "SeriesHash")
+                        .IsUnique();
+
+                    b.ToTable("HostMetricThresholds", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_HostMetricThresholds_Comparison", "[Comparison] IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_HostMetricThresholds_Freshness", "[FreshnessSeconds] BETWEEN 30 AND 86400");
+
+                            t.HasCheckConstraint("CK_HostMetricThresholds_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_HostMetricThresholds_Value", "[Value] >= 0 AND [Value] <= 1e30");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricThresholdAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Comparison")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("FreshnessSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ThresholdId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("float");
+
+                    b.Property<byte[]>("Version")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ThresholdId");
+
+                    b.HasIndex("DeviceId", "OccurredAt", "RowId");
+
+                    b.ToTable("HostMetricThresholdAudits", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.ReceivedBatch", b =>
                 {
                     b.Property<long>("RowId")
@@ -1480,6 +1604,24 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
                         .WithMany()
                         .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricThreshold", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricThresholdAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.HostMetricThreshold", null)
+                        .WithMany()
+                        .HasForeignKey("ThresholdId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

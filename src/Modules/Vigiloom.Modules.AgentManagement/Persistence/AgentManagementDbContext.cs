@@ -13,6 +13,8 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
+    public DbSet<HostMetricThreshold> HostMetricThresholds => Set<HostMetricThreshold>();
+    public DbSet<HostMetricThresholdAudit> HostMetricThresholdAudits => Set<HostMetricThresholdAudit>();
     public DbSet<HostLog> HostLogs => Set<HostLog>();
     public DbSet<HostLogSource> HostLogSources => Set<HostLogSource>();
     public DbSet<HostLogSourceAudit> HostLogSourceAudits => Set<HostLogSourceAudit>();
@@ -190,7 +192,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
             ([GapReason] IS NOT NULL AND [GapReason] BETWEEN 1 AND 5 AND
              ([GapAffectedCount] IS NULL OR [GapAffectedCount] > 0) AND [Content] = N'' AND
              [Provider] IS NULL AND [EventId] IS NULL AND [Level] IS NULL AND [User] IS NULL AND [Process] IS NULL)
-            """));
+            """.Replace("\r\n", "\n", StringComparison.Ordinal)));
         log.HasKey(x => x.RowId).IsClustered();
         log.Property(x => x.RowId).UseIdentityColumn();
         log.Property(x => x.SourceName).HasMaxLength(512).IsRequired();
@@ -263,6 +265,33 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         capacityAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
         capacityAudit.HasIndex(x => new { x.OccurredAt, x.RowId });
         capacityAudit.HasOne<AgentQueueCapacitySetting>().WithMany().HasForeignKey(x => x.SettingId).OnDelete(DeleteBehavior.NoAction);
+
+        var threshold = modelBuilder.Entity<HostMetricThreshold>();
+        threshold.ToTable("HostMetricThresholds", table =>
+        {
+            table.HasCheckConstraint("CK_HostMetricThresholds_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_HostMetricThresholds_Comparison", "[Comparison] IN (1, 2)");
+            table.HasCheckConstraint("CK_HostMetricThresholds_Freshness", "[FreshnessSeconds] BETWEEN 30 AND 86400");
+            table.HasCheckConstraint("CK_HostMetricThresholds_Value", "[Value] >= 0 AND [Value] <= 1e30");
+        });
+        threshold.HasKey(x => x.Id).IsClustered(false);
+        threshold.Property(x => x.Id).ValueGeneratedNever();
+        threshold.Property(x => x.RowId).UseIdentityColumn();
+        threshold.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        threshold.HasIndex(x => new { x.DeviceId, x.SeriesHash }).IsUnique();
+        threshold.Property(x => x.SeriesHash).HasColumnType("binary(32)").IsRequired();
+        threshold.Property(x => x.Source).HasMaxLength(128).IsRequired();
+        threshold.Property(x => x.Dimension).HasMaxLength(256);
+        threshold.Property(x => x.Version).IsRowVersion();
+        threshold.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var thresholdAudit = modelBuilder.Entity<HostMetricThresholdAudit>();
+        thresholdAudit.ToTable("HostMetricThresholdAudits");
+        thresholdAudit.HasKey(x => x.RowId).IsClustered();
+        thresholdAudit.Property(x => x.RowId).UseIdentityColumn();
+        thresholdAudit.Property(x => x.Version).HasColumnType("binary(8)").IsRequired();
+        thresholdAudit.HasIndex(x => new { x.DeviceId, x.OccurredAt, x.RowId });
+        thresholdAudit.HasOne<HostMetricThreshold>().WithMany().HasForeignKey(x => x.ThresholdId).OnDelete(DeleteBehavior.NoAction);
 
         var metricSetting = modelBuilder.Entity<AgentMetricSetting>();
         metricSetting.ToTable("MetricSettings", table => table.HasCheckConstraint("CK_MetricSettings_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
