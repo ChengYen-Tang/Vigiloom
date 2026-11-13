@@ -31,6 +31,53 @@ public sealed class ReusableServiceDatabaseTests(TestContext context)
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ReadModes_UseSeparateDatabasesAndResetInEitherOrder(bool reverse)
+    {
+        var modes = reverse ? new[] { true, false, true, false } : new[] { false, true, false, true };
+        var names = new Dictionary<bool, string>();
+        foreach (var mode in modes)
+            await ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
+            {
+                if (!names.TryAdd(mode, database.DatabaseName)) Assert.AreEqual(names[mode], database.DatabaseName);
+                await using (var connection = new SqlConnection(database.ConnectionString))
+                {
+                    await connection.OpenAsync(token);
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = "SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = DB_ID()";
+                    Assert.AreEqual(mode, await command.ExecuteScalarAsync(token));
+                }
+                await using var db = Open(database.ConnectionString);
+                Assert.AreEqual(0, await db.Sources.CountAsync(token));
+                db.Sources.Add(new ServiceSource("source", new byte[32], DateTimeOffset.UtcNow));
+                await db.SaveChangesAsync(token);
+            }, mode, context.CancellationToken);
+        Assert.AreNotEqual(names[false], names[true]);
+    }
+
+    [TestMethod]
+    public async Task ChangedSnapshotMode_DiscardsDatabase()
+    {
+        string? rejected = null;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
+        {
+            rejected = database.DatabaseName;
+            var master = new SqlConnectionStringBuilder(database.ConnectionString) { InitialCatalog = "master", Pooling = false };
+            await using var connection = new SqlConnection(master.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"ALTER DATABASE [{database.DatabaseName}] SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE";
+            await command.ExecuteNonQueryAsync(token);
+        }, true, context.CancellationToken));
+        await ReusableServiceDatabase.ExecuteForReadModeAsync((database, _) =>
+        {
+            Assert.AreNotEqual(rejected, database.DatabaseName);
+            return Task.CompletedTask;
+        }, true, context.CancellationToken);
+    }
+
+    [TestMethod]
     public async Task FailedAndCancelledCases_AreReset()
     {
         using var cancelled = new CancellationTokenSource();

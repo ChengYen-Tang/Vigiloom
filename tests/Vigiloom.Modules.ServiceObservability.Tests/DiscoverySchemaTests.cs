@@ -84,18 +84,12 @@ public sealed class DiscoverySchemaTests(TestContext context)
     [DataRow(false)]
     [DataRow(true)]
     public Task Approval_ConcurrentObservationKeepsOneApprovedService(bool snapshotReads) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options))
-            {
-                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
-                await db.Database.MigrateAsync(token);
-            }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
             var discovery = new CandidateDiscovery(factory);
@@ -113,7 +107,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
             await using var check = new ServiceObservabilityDbContext(options);
             Assert.AreEqual(1, await check.Services.CountAsync(token));
             Assert.AreEqual(0, await check.Candidates.CountAsync(token));
-        }, context.CancellationToken);
+        }, snapshotReads, context.CancellationToken);
 
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
@@ -341,18 +335,12 @@ public sealed class DiscoverySchemaTests(TestContext context)
     [DataRow(false)]
     [DataRow(true)]
     public Task SourceRotation_PreservesIdentityRejectsOldVersionAndRollsBackWithAudit(bool snapshotReads) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options))
-            {
-                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
-                await db.Database.MigrateAsync(token);
-            }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var actor = Guid.CreateVersion7();
             var admin = new SourceAdministration(factory, new OperationAuditWriter());
@@ -416,24 +404,18 @@ public sealed class DiscoverySchemaTests(TestContext context)
             var history = await new OperationAuditQueryService(new OperationsFactory(operations)).QueryServiceSourcesAsync(query, token);
             Assert.HasCount(2, history.Items);
             Assert.IsTrue(history.Items.Any(x => x.ServiceSource!.Action == ServiceSourceAction.CredentialRotated));
-        }, context.CancellationToken);
+        }, snapshotReads, context.CancellationToken);
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task Approval_ConcurrentClicksAreIdempotentAndAuditIsAtomic(bool snapshotReads) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options))
-            {
-                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
-                await db.Database.MigrateAsync(token);
-            }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
             var discovery = new CandidateDiscovery(factory);
@@ -468,21 +450,16 @@ public sealed class DiscoverySchemaTests(TestContext context)
             Assert.AreEqual(results[0].ServiceId, entry.ResourceId);
             Assert.AreEqual(source.SourceId, entry.ServiceApproval!.SourceId);
             Assert.IsEmpty((await history.QueryAsync(query, token)).Items);
-        }, context.CancellationToken);
+        }, snapshotReads, context.CancellationToken);
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task CandidateDiscovery_LastSourceSlotIsSerializedAndExistingReportsStillUpdate(bool snapshotReads) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
-            await using (var db = new ServiceObservabilityDbContext(options))
-            {
-                await db.Database.ExecuteSqlRawAsync(snapshotReads ? "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE" : "ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE", token);
-                await db.Database.MigrateAsync(token);
-            }
             var factory = new Factory(options);
             var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
             await using (var db = new ServiceObservabilityDbContext(options))
@@ -502,7 +479,7 @@ public sealed class DiscoverySchemaTests(TestContext context)
             await using var verify = new ServiceObservabilityDbContext(options);
             Assert.AreEqual(CandidateDiscovery.PerSourceLimit, await verify.Candidates.CountAsync(token));
             Assert.AreEqual("Updated", (await verify.Candidates.SingleAsync(x => x.SourceId == source.SourceId && x.ServiceKey == "key-0", token)).DisplayName);
-        }, context.CancellationToken);
+        }, snapshotReads, context.CancellationToken);
 
     [TestMethod]
     public Task CandidateDiscovery_UsesSourceIdentityAndRejectsRevokedSources() =>

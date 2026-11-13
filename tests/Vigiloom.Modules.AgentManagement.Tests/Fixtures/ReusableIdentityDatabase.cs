@@ -16,31 +16,28 @@ internal static class ReusableIdentityDatabase
 
     internal static Task ExecuteAsync(Func<string, CancellationToken, Task> action, CancellationToken token,
         Func<SqlConnection, Task>? resetOverride = null, Func<SqlTestDatabase, ValueTask>? disposeOverride = null) =>
-        Pool.ExecuteAsync((database, ct) => action(database.ConnectionString, ct), token, resetOverride, disposeOverride);
+        ExecuteAsync(Pool, false, action, token, resetOverride, disposeOverride);
 
     internal static Task ExecuteSnapshotAsync(Func<string, CancellationToken, Task> action, CancellationToken token) =>
-        SnapshotPool.ExecuteAsync(async (database, ct) =>
+        ExecuteAsync(SnapshotPool, true, action, token);
+
+    private static Task ExecuteAsync(ReusableSqlTestDatabase pool, bool snapshotReads, Func<string, CancellationToken, Task> action,
+        CancellationToken token, Func<SqlConnection, Task>? resetOverride = null, Func<SqlTestDatabase, ValueTask>? disposeOverride = null) =>
+        pool.ExecuteAsync(async (database, ct) =>
         {
             await using (var connection = new SqlConnection(database.ConnectionString))
             {
                 await connection.OpenAsync(ct);
-                await CheckSnapshotAsync(connection, true, ct);
+                await ReadCommittedSnapshot.EnsureAsync(connection, snapshotReads, ct);
             }
             await action(database.ConnectionString, ct);
-        }, token);
+        }, token, resetOverride, disposeOverride);
 
     internal static async ValueTask DisposeAsync() => await Task.WhenAll(Pool.DisposeAsync().AsTask(), SnapshotPool.DisposeAsync().AsTask());
 
     private static async Task<Func<SqlConnection, CancellationToken, Task>> InitializeAsync(SqlTestDatabase created, bool snapshotReads, CancellationToken ct)
     {
-        var master = new SqlConnectionStringBuilder(created.ConnectionString) { InitialCatalog = "master", Pooling = false };
-        await using (var connection = new SqlConnection(master.ConnectionString))
-        {
-            await connection.OpenAsync(ct);
-            await using var command = connection.CreateCommand();
-            command.CommandText = $"ALTER DATABASE [{created.DatabaseName}] SET READ_COMMITTED_SNAPSHOT {(snapshotReads ? "ON" : "OFF")}";
-            await command.ExecuteNonQueryAsync(ct);
-        }
+        await ReadCommittedSnapshot.ConfigureAsync(created, snapshotReads, ct);
         var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(created.ConnectionString,
             sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
         await using (var db = new ResourcesDbContext(resources)) await db.Database.MigrateAsync(ct);
@@ -58,19 +55,11 @@ internal static class ReusableIdentityDatabase
         });
         return async (connection, cancellationToken) =>
         {
-            await CheckSnapshotAsync(connection, snapshotReads, cancellationToken);
+            await ReadCommittedSnapshot.EnsureAsync(connection, snapshotReads, cancellationToken);
             if (await ReadSeedPolicyAsync(connection, cancellationToken) != seedPolicy)
                 throw new InvalidOperationException("A reusable test changed its preserved seed.");
             await respawner.ResetAsync(connection);
         };
-    }
-
-    private static async Task CheckSnapshotAsync(SqlConnection connection, bool expected, CancellationToken token)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = DB_ID()";
-        if (await command.ExecuteScalarAsync(token) is not bool actual || actual != expected)
-            throw new InvalidOperationException("A reusable test changed its database read-committed snapshot mode.");
     }
 
     private static async Task<string> ReadSeedPolicyAsync(SqlConnection connection, CancellationToken token)
