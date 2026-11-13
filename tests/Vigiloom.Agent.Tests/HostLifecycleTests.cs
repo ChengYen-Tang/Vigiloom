@@ -41,12 +41,15 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using var logHttp = new HttpClient(new LogSettingsHostHandler(snapshot));
             var builder = AgentHost.CreateBuilder([]);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri });
-            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker", "MetricWorker" })
+            foreach (var name in new[] { "HeartbeatWorker", "BatchWorker", "MetricWorker", "InventoryWorker", "IntegrityWorker" })
                 builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
             builder.Services.AddSingleton(new AgentSettingsClient(otherHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(otherHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(otherHttp, clock));
-            builder.Services.AddSingleton(new AgentLogSettingsClient(logHttp, clock));
+            // Keep the I/O deadline on wall time while advancing the host scheduler's fake clock.
+            builder.Services.AddSingleton(new AgentLogSettingsClient(logHttp, TimeProvider.System));
+            builder.Services.AddSingleton(new AgentInventorySettingsClient(otherHttp, clock));
+            builder.Services.AddSingleton(new AgentIntegritySettingsClient(otherHttp, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);
             builder.Services.AddSingleton<IMetricResourceMonitor>(new HostLowUsageMonitor());
             using var host = builder.Build();
@@ -54,10 +57,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
             {
                 await host.StartAsync(token);
                 await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
-                var saved = await new AgentLogSettingsStore(vault, server, id).ReadAsync(token);
-                Assert.IsNotNull(saved);
-                Assert.AreEqual(snapshot.Revision, saved.Snapshot.Revision);
                 var owner = new AgentSettingsOwner(id, server.AbsoluteUri, vault.StateDirectory);
+                for (var attempt = 0; attempt < 80 && host.Services.GetRequiredService<AgentLogSettingsRuntime>().ForOwner(owner)?.Revision != snapshot.Revision; attempt++)
+                {
+                    clock.Advance(TimeSpan.FromSeconds(361));
+                    await Task.Delay(100, token);
+                }
                 Assert.AreEqual(snapshot.Revision, host.Services.GetRequiredService<AgentLogSettingsRuntime>().ForOwner(owner)?.Revision);
                 AgentLogStatusReport? report = null;
                 for (var attempt = 0; attempt < 80; attempt++)
@@ -77,6 +82,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
                     "After the record is queued, a later check may already have reached the end of the source.");
             }
             finally { await host.StopAsync(CancellationToken.None); }
+            var saved = await new AgentLogSettingsStore(vault, server, id).ReadAsync(token);
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(snapshot.Revision, saved.Snapshot.Revision);
             var batch = await new DurableBatchQueue(vault, id).PeekAsync(token);
             Assert.IsNotNull(batch);
             Assert.IsTrue(AgentLogBatchCodec.TryRead(batch.Payload, out var parsed));
