@@ -98,6 +98,19 @@ public sealed class PingHttpTests
         Assert.IsNotNull(status); Assert.HasCount(1, status.Targets);
         Assert.AreEqual(Reachability.Reachable, status.Targets[0].State);
         Assert.AreEqual(PingOutcome.Success, status.Targets[0].LastOutcome);
+        var dayStart = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        var historyUrl = $"/api/v1/devices/{device.Id:D}/ping/history?from={Uri.EscapeDataString(dayStart.ToString("O"))}&to={Uri.EscapeDataString(dayStart.AddDays(1).ToString("O"))}&target=127.0.0.1&location=central";
+        using (var deniedHistory = await anonymous.GetAsync(historyUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedHistory.StatusCode);
+        using (var allowedHistory = await reader.GetAsync(historyUrl, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, allowedHistory.StatusCode);
+            Assert.IsTrue(allowedHistory.Headers.CacheControl?.NoStore);
+            var history = await allowedHistory.Content.ReadFromJsonAsync<PingHistoryPage>(cancellationToken: token);
+            Assert.IsNotNull(history);
+            Assert.AreEqual(2L, history.Total);
+            Assert.AreEqual(2L, history.Buckets.Sum(x => x.Successes));
+        }
+        using (var invalidHistory = await reader.GetAsync(historyUrl + "&page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidHistory.StatusCode);
         using var detail = await reader.GetAsync($"/devices/{device.Id:D}", token);
         var text = (await new HtmlParser().ParseDocumentAsync(await detail.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
         Assert.Contains("可達", text); Assert.Contains("127.0.0.1", text);

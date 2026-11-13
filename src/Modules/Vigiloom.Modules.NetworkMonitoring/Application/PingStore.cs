@@ -9,6 +9,7 @@ using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application;
 
@@ -127,8 +128,10 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         state.MeasuredAt = measuredAt.ToUniversalTime(); state.Location = location;
         var receivedAt = await DatabaseNowAsync(db, token);
         state.DueAt = receivedAt.AddSeconds(settings.IntervalSeconds);
-        db.PingSamples.Add(new PingSample(lease.DeviceId, lease.Target, measurement.Address, location, lease.Generation,
-            measuredAt, receivedAt, measurement.Outcome, measurement.LatencyMilliseconds));
+        var sample = new PingSample(lease.DeviceId, lease.Target, measurement.Address, location, lease.Generation,
+            measuredAt, receivedAt, measurement.Outcome, measurement.LatencyMilliseconds);
+        db.PingSamples.Add(sample);
+        await PingRollupWriter.AddAsync(db, sample, token);
         if (previous != state.State)
             db.PingStateEvents.Add(new PingStateEvent { DeviceId = lease.DeviceId, Target = lease.Target, Generation = lease.Generation,
                 OccurredAt = measuredAt.ToUniversalTime(), Previous = previous, Current = state.State });

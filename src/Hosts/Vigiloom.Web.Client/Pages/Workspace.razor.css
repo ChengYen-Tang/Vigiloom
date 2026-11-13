@@ -1,4 +1,13 @@
-.workspace { max-width: 1100px; margin: 0 auto; padding: 32px 24px; color: var(--vigiloom-ink); font-family: system-ui, sans-serif; }
+.workspace { min-height: calc(100vh - 70px); margin: 0 auto; padding: 32px max(24px, calc((100vw - 1280px) / 2)); background: #f3f8fc; color: var(--vigiloom-ink); font-family: system-ui, sans-serif; }
 .workspace-card { margin: 20px 0; padding: 24px; background: var(--vigiloom-surface); border: 1px solid var(--vigiloom-border); border-radius: 8px; }
 .workspace-card button { min-height: 44px; padding: 10px 18px; border: 0; border-radius: 5px; color: #fff; background: var(--vigiloom-primary); font: inherit; cursor: pointer; }
 .workspace-card a { color: var(--vigiloom-primary); }
+.workspace-actions, .workspace-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.workspace-actions button { min-height: 44px; padding: 10px 18px; border: 0; border-radius: 5px; color: #fff; background: var(--vigiloom-primary); font: inherit; cursor: pointer; }
+.workspace-actions span { font-size: .85rem; color: #52657d; }
+.workspace-identity { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #52657d; font-size: .9rem; }
+.workspace-identity button { border: 0; background: transparent; color: var(--vigiloom-primary); text-decoration: underline; font: inherit; cursor: pointer; }
+.workspace-section-heading h2 { margin: 0; font-size: 1.1rem; }
+.workspace-groups { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; list-style: none; }
+.workspace-groups a { display: block; padding: 8px 12px; border-radius: 5px; background: #eef5ff; overflow-wrap: anywhere; }
+.workspace-overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }

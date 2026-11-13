@@ -1,5 +1,6 @@
 using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Web.Authentication;
 
@@ -9,6 +10,18 @@ internal static class PingEndpoints
 {
     public static void MapPingEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/devices/{id:guid}/ping/history", async (Guid id, DateTimeOffset from, DateTimeOffset to,
+            string location, DeviceManagement devices, PingHistoryReader history, HttpContext context, CancellationToken token,
+            string? target = null, int page = 1, bool descending = true) =>
+        {
+            var query = new PingHistoryQuery(id, from, to, target, location, page, descending);
+            if (!PingHistoryReader.Valid(query)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["range"] = ["Use a five-minute-aligned UTC range of at most seven days and a valid target and location."] });
+            if (await devices.GetAsync(id, token) is null) return Results.NotFound();
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(await history.QueryAsync(query, token));
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<PingHistoryPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
+            .WithSummary("Query authorized Ping samples and five-minute statistics");
         app.MapGet("/api/v1/devices/{id:guid}/ping", async (Guid id, DeviceManagement devices, PingStore store, CancellationToken token) =>
         {
             var device = await devices.GetAsync(id, token);

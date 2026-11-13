@@ -29,7 +29,7 @@ public sealed class SchedulingAuditFeed(IDbContextFactory<SchedulingDbContext> c
                 long.TryParse(row.JobId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0
                 ? id.ToString(CultureInfo.InvariantCulture)
                 : (action is SchedulingAuditAction.RecurringRemove or SchedulingAuditAction.RecurringTrigger) &&
-                    (row.JobId is "vigiloom-outbox-dispatch" or "vigiloom-speed-test" or "vigiloom-speed-retention" or "vigiloom-agent-inbox-retention" or "vigiloom-inventory-expiry") ? row.JobId : null;
+                    (row.JobId is "vigiloom-outbox-dispatch" or "vigiloom-speed-test" or "vigiloom-speed-retention" or "vigiloom-agent-inbox-retention" or "vigiloom-inventory-expiry" or "vigiloom-ping-rollup-backfill") ? row.JobId : null;
             return new SchedulingAuditEntry(row.OccurredAt, row.ActorId, action, Outcome(row.Result), reference);
         }).ToArray();
         var more = rows.Length > PageSize;

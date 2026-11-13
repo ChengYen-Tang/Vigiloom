@@ -1,10 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
+using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Application;
@@ -220,6 +224,8 @@ public sealed class PingSqlTests
         Assert.AreEqual(3, probe.Calls, "A subsequent scan must not resend work before its due time.");
         await using var db = network.CreateDbContext();
         Assert.AreEqual(3, await db.PingSamples.CountAsync(token));
+        Assert.AreEqual(3L, await db.PingRollups.SumAsync(x => x.Attempts, token));
+        Assert.IsTrue(await db.PingSamples.AllAsync(x => x.Aggregated, token));
         await using (var resource = resources.CreateDbContext())
         {
             var current = await resource.Devices.SingleAsync(x => x.Id == device.Id, token);
@@ -350,6 +356,170 @@ public sealed class PingSqlTests
             Task.FromResult(target.EndsWith(".invalid", StringComparison.Ordinal)
                 ? new PingMeasurement(PingOutcome.DnsError, null, null) : new(PingOutcome.Success, target, 1));
     }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task RollupBackfill_IsIdempotentAndPreservesLegacyAndOutcomeSemantics(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, network, token) =>
+    {
+        var (device, _) = await SeedAsync(resources, token);
+        var start = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.AddRange(
+                new PingSample(device.Id, "central", start.AddMinutes(1), start.AddMinutes(2), true, 10),
+                new PingSample(device.Id, "central", start.AddMinutes(2), start.AddMinutes(3), false, null),
+                new PingSample(device.Id, "router", null, "central", 1, start.AddMinutes(4), start.AddMinutes(5), PingOutcome.Success, 30),
+                new PingSample(device.Id, "router", null, "central", 2, start.AddMinutes(5), start.AddMinutes(6), PingOutcome.Timeout, null),
+                new PingSample(device.Id, "router", null, "central", 3, start.AddMinutes(4), start.AddMinutes(7), PingOutcome.DnsError, null),
+                new PingSample(device.Id, "extreme", null, "central", 1, start.AddMinutes(1), start.AddMinutes(1), PingOutcome.Success, 1e308),
+                new PingSample(device.Id, "extreme", null, "central", 2, start.AddMinutes(2), start.AddMinutes(2), PingOutcome.Success, 1e308));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new PingRollupBackfill(network);
+        var pending = await new PingHistoryReader(network).QueryAsync(new(device.Id, start, start.AddMinutes(10), "router", "central"), token);
+        Assert.IsTrue(pending.RollupsPending);
+        Assert.AreEqual(3L, pending.Total);
+        await Task.WhenAll(backfill.RunBatchAsync(token), backfill.RunBatchAsync(token));
+        Assert.AreEqual(0, await backfill.RunBatchAsync(token));
+        await using var check = network.CreateDbContext();
+        var rows = await check.PingRollups.AsNoTracking().OrderBy(x => x.WindowStart).ThenBy(x => x.Target).ToArrayAsync(token);
+        Assert.HasCount(4, rows);
+        var legacy = rows.Single(x => x.Target is null);
+        Assert.AreEqual(2L, legacy.Attempts); Assert.AreEqual(1L, legacy.Successes); Assert.AreEqual(1L, legacy.UnknownFailures);
+        Assert.AreEqual(10d, legacy.LatencySum);
+        var current = rows.Single(x => x.Target == "router" && x.WindowStart == start);
+        Assert.AreEqual(2L, current.Attempts); Assert.AreEqual(1L, current.Successes); Assert.AreEqual(1L, current.DnsErrors);
+        Assert.AreEqual(30d, current.LatencyMin); Assert.AreEqual(30d, current.LatencyMax);
+        Assert.AreEqual(1L, rows.Single(x => x.WindowStart == start.AddMinutes(5)).Timeouts);
+        Assert.IsTrue(await check.PingSamples.AllAsync(x => x.Aggregated, token));
+        var history = await new PingHistoryReader(network).QueryAsync(new(device.Id, start, start.AddMinutes(10), "router", "central"), token);
+        Assert.AreEqual(3L, history.Total);
+        Assert.HasCount(2, history.Buckets);
+        Assert.AreEqual(30d, history.Buckets[0].AverageMilliseconds);
+        Assert.IsNull(history.Buckets[1].AverageMilliseconds);
+        Assert.IsFalse(history.RollupsPending);
+        Assert.IsTrue(history.Options.Any(x => x.Target is null && x.Location == "central"));
+        Assert.IsTrue(history.Options.Any(x => x.Target == "router" && x.Location == "central"));
+        var extreme = await new PingHistoryReader(network).QueryAsync(new(device.Id, start, start.AddMinutes(10), "extreme", "central"), token);
+        Assert.IsTrue(extreme.Buckets[0].LatencyOverflow);
+        Assert.IsNull(extreme.Buckets[0].AverageMilliseconds);
+        await check.PingSamples.Where(x => x.DeviceId == device.Id && x.Target == "router").ExecuteDeleteAsync(token);
+        var afterRawRemoval = await new PingHistoryReader(network).QueryAsync(new(device.Id, start, start.AddMinutes(10), "router", "central"), token);
+        Assert.AreEqual(0L, afterRawRemoval.Total);
+        Assert.HasCount(2, afterRawRemoval.Buckets);
+        Assert.AreEqual(start.AddMinutes(5), afterRawRemoval.LastObservedAt);
+        Assert.IsTrue(afterRawRemoval.Options.Any(x => x.Target == "router"));
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task PingSampleAndRollup_RollBackTogether(bool snapshotReads) => WithDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(policy, token);
+        await DueAsync(network, token);
+        var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+        await using (var db = network.CreateDbContext())
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [network].[PingRollups] ADD CONSTRAINT [CK_TestRejectPingRollup] CHECK ([Attempts] < 0)", token);
+        var failed = await Assert.ThrowsAsync<DbUpdateException>(() => store.CommitAsync(lease, policy, new(PingOutcome.Success, "127.0.0.1", 10), clock.Now, "central", token));
+        Assert.IsInstanceOfType<SqlException>(failed.InnerException);
+        Assert.AreEqual(547, ((SqlException)failed.InnerException).Number);
+        await using (var db = network.CreateDbContext())
+        {
+            Assert.AreEqual(0, await db.PingSamples.CountAsync(token));
+            Assert.AreEqual(0, await db.PingRollups.CountAsync(token));
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE [network].[PingRollups] DROP CONSTRAINT [CK_TestRejectPingRollup]", token);
+        }
+        Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.Success, "127.0.0.1", 10), clock.Now, "central", token));
+        await using var check = network.CreateDbContext();
+        Assert.AreEqual(1, await check.PingSamples.CountAsync(token));
+        Assert.AreEqual(1L, (await check.PingRollups.SingleAsync(token)).Attempts);
+    }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task PingLiveWriteAndBackfill_KeepBothSamples(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(policy, token); await DueAsync(network, token);
+        var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.Add(new PingSample(device.Id, lease.Target, "127.0.0.1", "central", lease.Generation + 1000,
+                clock.Now, clock.Now, PingOutcome.Success, 10));
+            await db.SaveChangesAsync(token);
+        }
+        var live = store.CommitAsync(lease, policy, new(PingOutcome.Success, "127.0.0.1", 30), clock.Now, "central", token);
+        var backfill = new PingRollupBackfill(network).RunBatchAsync(token);
+        await Task.WhenAll(live, backfill);
+        Assert.IsTrue(await live);
+        await using var check = network.CreateDbContext();
+        var bucket = await check.PingRollups.SingleAsync(x => x.DeviceId == device.Id, token);
+        Assert.AreEqual(2L, bucket.Attempts);
+        Assert.AreEqual(2L, bucket.Successes);
+        Assert.AreEqual(40d, bucket.LatencySum);
+        Assert.IsTrue(await check.PingSamples.Where(x => x.DeviceId == device.Id).AllAsync(x => x.Aggregated, token));
+    }, snapshotReads);
+
+    [TestMethod]
+    public Task RollupMigration_RejectsDataLosingDowngrade() => WithDatabase(async (resources, network, token) =>
+    {
+        var (device, _) = await SeedAsync(resources, token);
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.Add(new PingSample(device.Id, "central", now, now, true, 5));
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
+        await using var check = network.CreateDbContext();
+        var error = await Assert.ThrowsAsync<SqlException>(() => check.GetService<IMigrator>().MigrateAsync("20261109141451_SpeedRetention", token));
+        Assert.AreEqual(51000, error.Number);
+        Assert.AreEqual(1, await check.PingSamples.CountAsync(token));
+        Assert.AreEqual(1, await check.PingRollups.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task PingHistory_PagesByTimeAndKeepsTargetsAndLocationsSeparate() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var (device, other) = await SeedAsync(resources, token);
+        var start = new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero);
+        await using (var db = network.CreateDbContext())
+        {
+            for (var i = 0; i < 60; i++)
+                db.PingSamples.Add(new PingSample(device.Id, "router", null, "central", i + 1, start, start, PingOutcome.Success, i));
+            db.PingSamples.Add(new PingSample(device.Id, "other-target", null, "central", 1, start, start, PingOutcome.Success, 100));
+            db.PingSamples.Add(new PingSample(device.Id, "router", null, "other-location", 1000, start, start, PingOutcome.Success, 100));
+            db.PingSamples.Add(new PingSample(other.Id, "router", null, "central", 1, start, start, PingOutcome.Success, 100));
+            await db.SaveChangesAsync(token);
+        }
+        var reader = new PingHistoryReader(network);
+        var query = new PingHistoryQuery(device.Id, start, start.AddMinutes(5), "router", "central", 1, false);
+        var first = await reader.QueryAsync(query, token);
+        var second = await reader.QueryAsync(query with { Page = 2 }, token);
+        Assert.AreEqual(60L, first.Total);
+        Assert.HasCount(50, first.Items); Assert.HasCount(10, second.Items);
+        Assert.AreEqual(0d, first.Items[0].LatencyMilliseconds);
+        Assert.AreEqual(50d, second.Items[0].LatencyMilliseconds);
+        var reverse = await reader.QueryAsync(query with { Descending = true }, token);
+        Assert.AreEqual(59d, reverse.Items[0].LatencyMilliseconds);
+        Assert.IsTrue(first.RollupsPending);
+        Assert.IsFalse(PingHistoryReader.Valid(query with { To = start.AddDays(8) }));
+        Assert.IsFalse(PingHistoryReader.Valid(query with { From = start.AddMinutes(1) }));
+    });
 
     private Task WithOptionalSnapshotDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads) =>
         snapshotReads ? WithDatabase(test, true) : WithReusableDatabase(test);

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain.Health;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Health;
 
@@ -9,9 +10,26 @@ public sealed class HealthStatusReader(IDbContextFactory<ServiceObservabilityDbC
 {
     public async Task<ServiceHealthStatus?> ReadAsync(Guid serviceId, CancellationToken token)
     {
-        if (serviceId.Version != 7) throw new ArgumentException("Invalid service.", nameof(serviceId));
+        var statuses = await ReadManyAsync([serviceId], token);
+        return statuses.GetValueOrDefault(serviceId)?.Status;
+    }
+
+    public sealed record OverviewStatus(ServiceHealthStatus Status, DateTimeOffset? LastEvaluatedAt, bool CollectionStopped, bool SourceRevoked);
+
+    /// <summary>Uses the same evidence and freshness rules for a bounded page of services.</summary>
+    public async Task<IReadOnlyDictionary<Guid, OverviewStatus>> ReadManyAsync(IReadOnlyList<Guid> serviceIds, CancellationToken token)
+    {
+        if (serviceIds.Count > 250 || serviceIds.Any(id => id.Version != 7) || serviceIds.Distinct().Count() != serviceIds.Count)
+            throw new ArgumentException("Invalid services.", nameof(serviceIds));
+        if (serviceIds.Count == 0) return new Dictionary<Guid, OverviewStatus>();
         await using var db = await contexts.CreateDbContextAsync(token);
-        if (!await db.Services.AsNoTracking().AnyAsync(x => x.Id == serviceId, token)) return null;
+        var ids = serviceIds.ToArray();
+        var existing = await (from service in db.Services.AsNoTracking()
+                              join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
+                              where ids.Contains(service.Id)
+                              select new { service.Id, CollectionStopped = service.RevokedAt != null, SourceRevoked = source.RevokedAt != null }).ToArrayAsync(token);
+        var configured = await db.HealthTargets.AsNoTracking().Where(x => ids.Contains(x.ServiceId))
+            .Select(x => x.ServiceId).Distinct().ToArrayAsync(token);
 
         // Targets have a per-service limit. A single query captures all versions together so
         // a new authorization or network policy cannot reuse evidence from an old one.
@@ -23,19 +41,24 @@ public sealed class HealthStatusReader(IDbContextFactory<ServiceObservabilityDbC
                           join instance in db.Instances.AsNoTracking() on target.InstanceId equals (Guid?)instance.Id into instances
                           from instance in instances.DefaultIfEmpty()
                           from policy in db.HealthNetworkPolicies.AsNoTracking().Where(x => x.Name == "central").DefaultIfEmpty()
-                          where target.ServiceId == serviceId && target.Enabled
-                          select new { target.IntervalSeconds, target.TimeoutSeconds, TargetVersion = target.Version,
-                              ServiceVersion = service.Version, ServiceRevoked = service.RevokedAt,
-                              SourceVersion = source.Version, SourceRevoked = source.RevokedAt,
-                              InstanceId = target.InstanceId, InstanceVersion = instance == null ? null : instance.Version,
-                              InstanceRetired = instance == null ? null : instance.RetiredAt,
-                              PolicyVersion = policy == null ? null : policy.Version, Schedule = schedule }).ToArrayAsync(token);
+                          where ids.Contains(target.ServiceId) && target.Enabled
+                          select new HealthRow(target.ServiceId, target.IntervalSeconds, target.TimeoutSeconds, target.Version,
+                              service.Version, service.RevokedAt, source.Version, source.RevokedAt,
+                              target.InstanceId, instance == null ? null : instance.Version,
+                              instance == null ? null : instance.RetiredAt,
+                              policy == null ? null : policy.Version, schedule)).ToArrayAsync(token);
         var now = await DiscoveryTransaction.NowAsync(db, token);
+        var lookup = rows.ToLookup(row => row.ServiceId);
+        var configuredSet = configured.ToHashSet();
+        return existing.ToDictionary(x => x.Id, x => Evaluate(lookup[x.Id].ToArray(), configuredSet.Contains(x.Id), now, x.CollectionStopped, x.SourceRevoked));
+    }
+
+    private static OverviewStatus Evaluate(HealthRow[] rows, bool configured, DateTimeOffset now, bool collectionStopped, bool sourceRevoked)
+    {
         var states = new EvaluatedHealth[rows.Length];
         var reasons = ServiceHealthUnknownReason.None;
         if (rows.Length == 0)
-            reasons = await db.HealthTargets.AsNoTracking().AnyAsync(x => x.ServiceId == serviceId, token)
-                ? ServiceHealthUnknownReason.Disabled : ServiceHealthUnknownReason.NotConfigured;
+            reasons = configured ? ServiceHealthUnknownReason.Disabled : ServiceHealthUnknownReason.NotConfigured;
         for (var i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
@@ -62,8 +85,13 @@ public sealed class HealthStatusReader(IDbContextFactory<ServiceObservabilityDbC
             }
         }
         var aggregate = HealthAggregation.Combine(states);
-        return new((ServiceHealthState)aggregate.State, aggregate.Participants, aggregate.Unknown, reasons);
+        return new(new((ServiceHealthState)aggregate.State, aggregate.Participants, aggregate.Unknown, reasons),
+            rows.Max(x => x.Schedule?.LastEvaluatedAt), collectionStopped, sourceRevoked);
     }
+
+    private sealed record HealthRow(Guid ServiceId, int IntervalSeconds, int TimeoutSeconds, byte[] TargetVersion,
+        byte[] ServiceVersion, DateTimeOffset? ServiceRevoked, byte[] SourceVersion, DateTimeOffset? SourceRevoked,
+        Guid? InstanceId, byte[]? InstanceVersion, DateTimeOffset? InstanceRetired, byte[]? PolicyVersion, HealthSchedule? Schedule);
 
     private static bool Same(byte[]? left, byte[]? right) =>
         left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);

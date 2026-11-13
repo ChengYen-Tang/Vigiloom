@@ -32,11 +32,8 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         if (agent is null) return new(deviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
         var now = clock.GetUtcNow();
         var last = agent.LastHeartbeatAt;
-        var basis = last ?? agent.CreatedAt;
         var offlineAfter = Math.Max(OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
-        var state = basis > now ? AgentConnectionState.ClockUncertain
-            : now - basis >= TimeSpan.FromSeconds(offlineAfter) ? AgentConnectionState.Offline
-            : last is null ? AgentConnectionState.AwaitingFirstHeartbeat : AgentConnectionState.Online;
+        var state = ConnectionState(agent.CreatedAt, last, offlineAfter, now);
         AgentQueueSnapshot? snapshot = agent.QueueTotalBytes is { } bytes && agent.QueueTotalBatches is { } batches &&
                 agent.QueueQuarantinedBatches is { } quarantined && agent.QueueCapacityBytes is { } capacityBytes &&
                 agent.QueueCapacityBatches is { } capacityBatches ? new AgentQueueSnapshot(bytes, batches, quarantined, capacityBytes, capacityBatches) : null;
@@ -74,5 +71,35 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         var issue = agent.LastReplayIssue is { } reason && Enum.IsDefined(reason) && agent.LastReplayIssueAt is { } issueAt
             ? new AgentReplayIssueObservation(reason, issueAt) : null;
         return new(deviceId, state, last, offlineAfter, queue, batchTime?.ReceivedAt, batchTime, capacity, issue, metricLoss);
+    }
+
+    /// <summary>Reads only connectivity for a bounded set of already-resolved device generations.</summary>
+    public async Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(
+        IReadOnlyList<DeviceAgentState> devicesToRead, CancellationToken token)
+    {
+        if (devicesToRead.Count > 250) throw new ArgumentOutOfRangeException(nameof(devicesToRead));
+        var ids = devicesToRead.Where(x => x.Eligible).Select(x => x.DeviceId).ToArray();
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var agents = await db.Agents.AsNoTracking().Where(x => ids.Contains(x.DeviceId) && x.RevokedAt == null)
+            .Select(x => new { x.DeviceId, x.DeviceGeneration, x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds })
+            .ToArrayAsync(token);
+        var byDevice = agents.ToLookup(x => x.DeviceId);
+        var now = clock.GetUtcNow();
+        return devicesToRead.ToDictionary(x => x.DeviceId, device =>
+        {
+            if (!device.Eligible) return new AgentConnectionStatus(device.DeviceId, AgentConnectionState.Disabled, null, OfflineAfterSeconds);
+            var agent = byDevice[device.DeviceId].SingleOrDefault(x => x.DeviceGeneration == device.Generation);
+            if (agent is null) return new AgentConnectionStatus(device.DeviceId, AgentConnectionState.NotRegistered, null, OfflineAfterSeconds);
+            var timeout = Math.Max(OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
+            return new AgentConnectionStatus(device.DeviceId, ConnectionState(agent.CreatedAt, agent.LastHeartbeatAt, timeout, now), agent.LastHeartbeatAt, timeout);
+        });
+    }
+
+    private static AgentConnectionState ConnectionState(DateTimeOffset createdAt, DateTimeOffset? last, int offlineAfter, DateTimeOffset now)
+    {
+        var basis = last ?? createdAt;
+        return basis > now ? AgentConnectionState.ClockUncertain
+            : now - basis >= TimeSpan.FromSeconds(offlineAfter) ? AgentConnectionState.Offline
+            : last is null ? AgentConnectionState.AwaitingFirstHeartbeat : AgentConnectionState.Online;
     }
 }
