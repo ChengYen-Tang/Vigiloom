@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/Vigiloom.Sample.AspNetCore/Vigiloom.Sample.AspNetCore.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Agent/">
     <Project Path="src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />

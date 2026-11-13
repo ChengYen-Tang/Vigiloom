@@ -1,0 +1,69 @@
+@page "/services/connect"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Modules.ServiceObservability.Application
+@using ServiceDetailsDto = Vigiloom.Contracts.Services.ServiceDetails
+@inject ServiceDetailsReader Services
+@inject NavigationManager Navigation
+@inject ILogger<ServiceConnect> Logger
+
+<PageTitle>應用服務接入導引 - Vigiloom</PageTitle>
+<main class="device-page service-connect">
+    @if (ServiceId is { } id) { <a href="@($"/services/{id:D}")">← 返回服務詳情</a> }
+    <header class="device-heading"><h1>應用服務接入導引</h1><p>依序設定來源、應用程式與健康檢查，然後確認資料已開始接收。</p></header>
+    @if (loadError) { <p class="device-alert" role="alert">無法讀取服務資料，請重新整理後再試。</p> }
+    else if (ServiceId is not null && service is null) { <p class="device-alert" role="alert">找不到指定的服務；你仍可閱讀一般接入步驟。</p> }
+    else if (service is not null)
+    {
+        <section class="device-panel"><h2>目前服務</h2><dl class="device-details">
+            <div><dt>顯示名稱</dt><dd>@service.Name</dd></div><div><dt>服務識別名稱</dt><dd>@service.ServiceKey</dd></div>
+            <div><dt>命名空間</dt><dd>@(string.IsNullOrEmpty(service.ServiceNamespace) ? "未設定" : service.ServiceNamespace)</dd></div>
+            <div><dt>環境</dt><dd>@service.Environment</dd></div>
+            <div class="service-last-received"><dt>最後接收（UTC）</dt><dd>Logs：@Last(service.LastLogReceivedAt)；Metrics：@Last(service.LastMetricReceivedAt)；Traces：@Last(service.LastTraceReceivedAt)</dd></div>
+        </dl></section>
+    }
+    <section class="device-panel"><h2><span class="step-number">1</span>管理員建立受信任來源</h2>
+        <p>來源憑證用來辨識應用資料的信任範圍。互不信任的應用請使用不同來源；憑證只在建立或輪替時顯示，請交由部署端的安全儲存機制保管。</p>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="/settings/service-discovery">建立來源與管理待加入服務</a></p></Authorized><NotAuthorized><p>請聯絡管理員建立來源並安全交付憑證。</p></NotAuthorized></AuthorizeView>
+    </section>
+    <section class="device-panel"><h2><span class="step-number">2</span>設定應用程式與傳送路徑</h2>
+        <p>應用程式需加入 OpenTelemetry SDK 或適用的 instrumentation，並由應用或部署管理者設定；安裝主機 Agent 不會自動產生應用 Trace。服務不必綁定設備或 IP。</p>
+        <p>直接傳送時，OTLP HTTP/protobuf 的平台基本位址為 <code>@OtlpEndpoint</code>。應用端以受保護的設定提供來源憑證；不要將憑證放在原始碼、命令歷史或截圖中。</p>
+        @if (new Uri(Navigation.BaseUri).Scheme != Uri.UriSchemeHttps) { <p class="device-alert" role="alert">目前使用 HTTP 開啟平台；來源憑證需要安全連線。請改用平台的 HTTPS 位址設定傳送。</p> }
+        <p>也可以透過共用 Collector：應用使用該信任範圍的 Collector 入口憑證，Collector 再以對應的 Vigiloom 來源憑證傳送。這兩種憑證不同，不能互換。</p>
+        <p>服務識別名稱、命名空間與環境必須與來源回報一致；每個執行個體使用穩定且互不重複的 <code>service.instance.id</code>，不要用 IP 推定身分。</p>
+        <p><a href="https://github.com/ChengYen-Tang/Vigiloom/tree/master/samples/Vigiloom.Sample.AspNetCore" target="_blank" rel="noopener noreferrer">查看 .NET 10 範例與設定說明</a></p>
+    </section>
+    <section class="device-panel"><h2><span class="step-number">3</span>核准服務並確認正式資料</h2>
+        <p>應用開始回報後，最近三分鐘仍有訊號的未加入服務會出現在待加入清單。管理員核准後才開始保存正式觀測資料；核准前的內容不會補成歷史。</p>
+        <p>核准後讓應用持續處理請求，再回服務詳情查看最後接收時間、日誌與追蹤。範例預設使用 10% 根追蹤抽樣，沒有每次請求的 Trace 不代表失敗。</p>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="/settings/service-reception">查看來源與 Collector 接收診斷</a></p></Authorized></AuthorizeView>
+    </section>
+    <section class="device-panel"><h2><span class="step-number">4</span>設定獨立健康檢查</h2>
+        <p>Health Checks 與 OTLP 是不同訊號：應用需提供可由中央平台到達的健康端點，管理員先允許必要的目的網段，再為已核准服務設定端點與檢查頻率。範例僅示範基本存活檢查；如需確認資料庫等相依服務，應用端須另外註冊對應檢查。</p>
+        <p>狀態過期、沒有檢查或停止收集都不會自動顯示正常；健康結果不由主機 Ping 或 Collector 連線推定。</p>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="@HealthUrl">設定服務健康檢查</a></p></Authorized></AuthorizeView>
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "service")] public Guid? ServiceId { get; set; }
+    private ServiceDetailsDto? service;
+    private bool loadError;
+    private string OtlpEndpoint => new Uri(new Uri(Navigation.BaseUri), "api/v1/otlp").ToString().TrimEnd('/');
+    private string HealthUrl => ServiceId is { Version: 7 } id ? $"/settings/service-health?service={id:D}" : "/settings/service-health";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        service = null; loadError = false;
+        if (ServiceId is null) return;
+        if (ServiceId.Value.Version != 7) return;
+        try { service = await Services.ReadAsync(ServiceId.Value, HttpContext.RequestAborted); }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service for onboarding"); loadError = true; }
+    }
+
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private static string Last(DateTimeOffset? value) => value is { } time ? time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") : "尚無資料";
+}

@@ -219,13 +219,13 @@ public sealed class HealthRunnerTests(TestContext context)
                 Assert.IsGreaterThan(0, historical.Coverage);
                 var futureEvidence = DateTimeOffset.UtcNow.AddMinutes(5);
                 await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [EvidenceAt] = {futureEvidence}, [LastEvaluatedAt] = {futureEvidence} WHERE [TargetId] = {targetId}", token);
-                Assert.AreEqual(new Vigiloom.Contracts.Services.ServiceHealthStatus(Vigiloom.Contracts.Services.ServiceHealthState.Unknown, 1, 1), await status.ReadAsync(serviceId, token));
+                Assert.AreEqual(new Vigiloom.Contracts.Services.ServiceHealthStatus(Vigiloom.Contracts.Services.ServiceHealthState.Unknown, 1, 1, Vigiloom.Contracts.Services.ServiceHealthUnknownReason.Invalidated), await status.ReadAsync(serviceId, token));
                 historical = await history.ReadAsync(serviceId, intervals[0].StartedAt, end, token);
                 Assert.IsNotNull(historical);
                 Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Unknown, historical.Intervals[^1].State);
                 var oldEvidence = DateTimeOffset.UtcNow.AddSeconds(-70);
                 await verify.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [EvidenceAt] = {oldEvidence}, [LastEvaluatedAt] = {oldEvidence} WHERE [TargetId] = {targetId}", token);
-                Assert.AreEqual(new Vigiloom.Contracts.Services.ServiceHealthStatus(Vigiloom.Contracts.Services.ServiceHealthState.Unknown, 1, 1), await status.ReadAsync(serviceId, token));
+                Assert.AreEqual(new Vigiloom.Contracts.Services.ServiceHealthStatus(Vigiloom.Contracts.Services.ServiceHealthState.Unknown, 1, 1, Vigiloom.Contracts.Services.ServiceHealthUnknownReason.Expired), await status.ReadAsync(serviceId, token));
             }
             finally
             {

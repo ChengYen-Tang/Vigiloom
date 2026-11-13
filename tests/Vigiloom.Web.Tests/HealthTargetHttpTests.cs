@@ -120,7 +120,7 @@ public sealed class HealthTargetHttpTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, statusResponse.StatusCode);
                 Assert.IsTrue(statusResponse.Headers.CacheControl?.NoStore);
                 var health = await statusResponse.Content.ReadFromJsonAsync<ServiceHealthStatus>(cancellationToken: token);
-                Assert.AreEqual(new ServiceHealthStatus(ServiceHealthState.Unknown, 3, 3), health);
+                Assert.AreEqual(new ServiceHealthStatus(ServiceHealthState.Unknown, 3, 3, ServiceHealthUnknownReason.Invalidated), health);
             }
             var historyUrl = $"/api/v1/service-health/{service.Id:D}/history?from={Uri.EscapeDataString(now.AddMinutes(-1).ToString("O"))}&to={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddSeconds(-1).ToString("O"))}";
             using (var denied = await anonymous.GetAsync(historyUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);

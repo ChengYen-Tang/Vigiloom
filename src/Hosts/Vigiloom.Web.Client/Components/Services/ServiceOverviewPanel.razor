@@ -1,0 +1,120 @@
+@using Vigiloom.Contracts.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IAsyncDisposable
+@inject IServiceDetailsClient Client
+@inject ILogger<ServiceOverviewPanel> Logger
+
+<div class="service-overview" data-runtime="@(OperatingSystem.IsBrowser() ? "WebAssembly" : "Server")" data-interactive="@(interactive ? "true" : "false")">
+@if (loading)
+{
+    <p role="status">正在載入服務資料…</p>
+}
+else if (error is not null)
+{
+    <p class="service-error" role="alert">@error</p>
+    <button type="button" @onclick="LoadAsync">重新載入</button>
+}
+else if (service is null)
+{
+    <section class="service-card"><h1>找不到服務</h1><p>服務不存在或已無法存取。</p></section>
+}
+else
+{
+    <header class="service-heading"><h1>@service.Name</h1><p>環境：@service.Environment · @(service.CollectionStopped ? "收集已停止" : service.SourceRevoked ? "來源已撤銷" : "已加入")</p><p><a href="@($"/services/connect?service={ServiceId:D}")">查看接入導引</a></p></header>
+    <section class="service-card" aria-labelledby="health-heading">
+        <h2 id="health-heading">服務健康</h2>
+        <p class="service-state">目前狀態：<strong class="@HealthClass(health?.State)">@(healthError ? "無法讀取" : HealthName(health?.State))</strong></p>
+        @if (health is { UnknownReasons: not ServiceHealthUnknownReason.None }) { <p>@HealthReasons(health.UnknownReasons)</p> }
+        <p>健康狀態依已設定的檢查判斷，不代表主機或網路狀態。@(health is { UnknownParticipants: > 0 } ? $"有 {health.UnknownParticipants} 個檢查資料不足。" : "")</p>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="@($"/settings/service-health?service={ServiceId:D}")">管理健康檢查</a></p></Authorized></AuthorizeView>
+        <button type="button" class="health-evidence-button" disabled="@(!interactive || healthEvidenceLoading)" @onclick="() => LoadHealthEvidenceAsync(1)">查看健康檢查依據</button>
+        @if (healthEvidenceLoading) { <p role="status">正在載入健康檢查依據…</p> }
+        @if (healthEvidenceError) { <p role="alert">無法讀取健康檢查依據，請稍後再試。</p> }
+        @if (healthEvidence is not null)
+        {
+            <p>以下為每個檢查最近一次觀察，可能已過期，請以目前狀態為準。</p>
+            @if (healthEvidence.Items.Count == 0) { <p>此頁尚無健康檢查觀察。</p> }
+            else { <div class="service-table" tabindex="0" role="region" aria-label="健康檢查依據表格，可左右滑動"><table><thead><tr><th>檢查識別碼</th><th>最近觀察</th><th>觀察時間（UTC）</th><th>接收時間（UTC）</th></tr></thead><tbody>
+                @foreach (var observation in healthEvidence.Items) { <tr @key="observation.TargetId"><td>@observation.TargetId</td><td>@ObservationName(observation.Kind)</td><td>@Format(observation.ObservedAt)</td><td>@Format(observation.ReceivedAt)</td></tr> }
+            </tbody></table></div> }
+            @if (healthEvidencePage > 1 || healthEvidence.HasMore) { <div class="service-actions"><button type="button" disabled="@(healthEvidenceLoading || healthEvidencePage == 1)" @onclick="() => LoadHealthEvidenceAsync(healthEvidencePage - 1)">上一頁</button><span>第 @(healthEvidencePage) 頁</span><button type="button" disabled="@(healthEvidenceLoading || !healthEvidence.HasMore)" @onclick="() => LoadHealthEvidenceAsync(healthEvidencePage + 1)">下一頁</button></div> }
+        }
+        <div class="service-actions range-actions"><button type="button" aria-pressed="@(selectedRange == 1 ? "true" : "false")" disabled="@(!interactive)" @onclick="() => ChangeRangeAsync(1)">最近 1 小時</button><button type="button" aria-pressed="@(selectedRange == 24 ? "true" : "false")" disabled="@(!interactive)" @onclick="() => ChangeRangeAsync(24)">最近 24 小時</button><button type="button" aria-pressed="@(selectedRange == 168 ? "true" : "false")" disabled="@(!interactive)" @onclick="() => ChangeRangeAsync(168)">最近 7 天</button></div>
+        <div class="service-actions"><label>開始時間（UTC）<input type="datetime-local" step="1" disabled="@(!interactive)" value="@startText" @onchange="ChangeStart" /></label><label>結束時間（UTC）<input type="datetime-local" step="1" disabled="@(!interactive)" value="@endText" @onchange="ChangeEnd" /></label><button type="button" disabled="@(!interactive)" @onclick="ApplyRangeAsync">查詢</button></div>
+        @if (rangeError is not null) { <p class="service-error" role="alert">@rangeError</p> }
+        @if (historyError) { <p role="alert">無法載入健康歷史，請縮短時間範圍或重新整理。</p> }
+        else if (history is null) { <p>尚無健康歷史資料。</p> }
+        else
+        {
+            <p>資料涵蓋率 @history.Coverage.ToString("P1")；可用率 @(history.Availability is { } value ? value.ToString("P2") : "資料不足")。時間為 UTC。</p>
+            @if (history.Intervals.Count == 0) { <p>此時間範圍沒有健康狀態資料。</p> }
+            else {
+                @if (history.Intervals.Count <= 200) {
+                    <div class="health-timeline" aria-hidden="true">@foreach (var interval in history.Intervals) { <span class="@HealthClass(interval.State)" style="@TimelineWidth(interval)" title="@($"{Format(interval.Start)} – {Format(interval.End)}：{HealthName(interval.State)}")"></span> }</div>
+                    <p class="health-legend"><span class="health-healthy">正常</span><span class="health-degraded">降級</span><span class="health-unhealthy">異常</span><span class="health-unknown">未知或資料不足</span>；詳細時間與文字狀態如下。</p>
+                }
+                <details><summary>以表格查看健康歷史（@history.Intervals.Count 個區間）</summary>
+                <p class="scroll-hint">表格可左右滑動查看完整內容。</p><div class="service-table" tabindex="0" role="region" aria-label="健康歷史表格，可左右滑動"><table><thead><tr><th>開始</th><th>結束</th><th>狀態</th><th>資料不足的檢查</th></tr></thead><tbody>
+                @foreach (var interval in history.Intervals.Skip((historyPage - 1) * 50).Take(50)) { <tr><td>@Format(interval.Start)</td><td>@Format(interval.End)</td><td>@HealthName(interval.State)</td><td>@interval.UnknownParticipants</td></tr> }
+            </tbody></table></div>
+            @if (history.Intervals.Count > 50) { <div class="service-actions"><button type="button" disabled="@(!interactive || historyPage == 1)" @onclick="() => historyPage--">上一頁</button><span>第 @(historyPage) 頁</span><button type="button" disabled="@(!interactive || historyPage * 50 >= history.Intervals.Count)" @onclick="() => historyPage++">下一頁</button></div> }
+            </details>
+            }
+        }
+    </section>
+    <section class="service-card" aria-labelledby="http-metrics-heading">
+        <h2 id="http-metrics-heading">HTTP 服務指標</h2>
+        @if (metricsError) { <p role="alert">無法讀取 HTTP 指標，請重新載入。</p> }
+        else if (httpMetrics is not { State: "Available" }) {
+            <p>@MetricStatus(httpMetrics?.State)</p>
+            <div class="metric-cards"><div><span>平均回應延遲</span><strong>@(httpMetrics?.State == "NoData" ? "尚無資料" : "暫無法計算")</strong></div><div><span>錯誤率</span><strong>@(httpMetrics?.State == "NoData" ? "尚無資料" : "暫無法計算")</strong></div></div>
+        }
+        else
+        {
+            <p>收到的觀測區間（UTC）：@Format(httpMetrics.ObservedFrom!.Value) 至 @Format(httpMetrics.ObservedTo!.Value)</p>
+            <div class="metric-cards"><div><span>請求數</span><strong>@httpMetrics.RequestCount</strong></div><div><span>平均回應延遲</span><strong>@(httpMetrics.MeanDurationMilliseconds is { } duration ? $"{duration:F2} ms" : "無有效請求")</strong></div><div><span>錯誤率</span><strong>@(httpMetrics.ErrorRatio is { } ratio ? ratio.ToString("P2") : "資料不足")</strong></div></div>
+            <p>依收到的 HTTP duration histogram 計算；錯誤包含 HTTP 5xx 或 error.type。資料缺漏或來源重送可能影響觀測，不能保證涵蓋所有請求。</p>
+        }
+    </section>
+    <section class="service-card" aria-labelledby="instances-heading">
+        <h2 id="instances-heading">服務執行個體</h2>
+        @if (instancesError) { <p role="alert">無法讀取執行個體，請重新載入。</p> }
+        else if (instances is null || instances.Items.Count == 0) { <p>目前沒有已識別的執行個體。</p> }
+        else { <p class="scroll-hint">表格可左右滑動查看完整內容。</p><div class="service-table" tabindex="0" role="region" aria-label="服務執行個體表格，可左右滑動"><table><thead><tr><th>來源識別</th><th>狀態</th><th>建立時間（UTC）</th></tr></thead><tbody>
+            @foreach (var instance in instances.Items) { <tr @key="instance.Id"><td>@instance.Name</td><td>@(instance.Retired ? "已退役" : "未退役")</td><td>@Format(instance.CreatedAt)</td></tr> }
+        </tbody></table></div> }
+        @if (page > 1 || instances?.HasMore == true) { <div class="service-actions"><button type="button" disabled="@(!interactive || page == 1)" @onclick="PreviousAsync">上一頁</button><span>第 @(page) 頁</span><button type="button" disabled="@(!interactive || instances?.HasMore != true)" @onclick="NextAsync">下一頁</button></div> }
+    </section>
+    <section class="service-card" aria-labelledby="evidence-heading">
+        <h2 id="evidence-heading">觀測與證據</h2>
+        <p>最後接收（UTC）：Logs @LastReceived(service.LastLogReceivedAt) · Metrics @LastReceived(service.LastMetricReceivedAt) · Traces @LastReceived(service.LastTraceReceivedAt)</p>
+        <p>使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。資料受各自保存期限限制。</p>
+        <div class="service-actions"><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(false, 1)">查看 Logs</button><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(true, 1)">查看 Traces</button></div>
+        @if (evidenceLoading) { <p role="status">正在載入證據…</p> }
+        @if (evidenceError is not null) { <p role="alert">@evidenceError</p> }
+        @if (logs is not null)
+        {
+            <h3>Logs（日誌）</h3>
+            @if (activeTraceId is not null) { <p>Trace ID：@activeTraceId <button type="button" @onclick="() => LoadEvidenceAsync(false, 1)">清除篩選</button></p> }
+            @if (logs.Items.Count == 0) { <p>這段時間沒有日誌資料。</p> }
+            else { <p class="scroll-hint">表格可左右滑動查看完整內容。</p><div class="service-table" tabindex="0" role="region" aria-label="服務日誌表格，可左右滑動"><table><thead><tr><th>時間（UTC）與來源</th><th>等級</th><th>內容</th><th>Trace ID</th></tr></thead><tbody>
+                @foreach (var item in logs.Items) { <tr><td>@Format(item.OccurredAt)<br /><small>@(item.UsedReceivedTime ? "接收時間" : item.UsedObservedTime ? "觀察時間" : "來源時間")</small></td><td>@item.Severity</td><td class="evidence-body">@item.Body @if (item.BodyTruncated) { <span>（內容已截短）</span> }</td><td>@(item.TraceId ?? "—")</td></tr> }
+            </tbody></table></div> }
+            @if (logs.Truncated) { <p>結果達到查詢上限，請縮短時間範圍。</p> }
+        }
+        @if (traces is not null)
+        {
+            <h3>Traces（追蹤）</h3>
+            @if (traces.Items.Count == 0) { <p>這段時間沒有追蹤資料。</p> }
+            else { <p class="scroll-hint">表格可左右滑動查看完整內容。</p><div class="service-table" tabindex="0" role="region" aria-label="服務追蹤表格，可左右滑動"><table><thead><tr><th>開始時間（UTC）</th><th>操作</th><th>狀態</th><th>Trace ID</th><th>Span ID</th><th>相關證據</th></tr></thead><tbody>
+                @foreach (var item in traces.Items) { <tr><td>@Format(item.StartedAt)</td><td>@item.Name</td><td>@item.Status</td><td>@item.TraceId</td><td>@item.SpanId</td><td><button type="button" @onclick="() => LoadEvidenceAsync(false, 1, item.TraceId)">查看相關 Logs</button></td></tr> }
+            </tbody></table></div> }
+            @if (traces.Truncated) { <p>結果達到查詢上限，請縮短時間範圍。</p> }
+        }
+        @if (logs is not null || traces is not null)
+        {
+            <div class="service-actions"><button type="button" disabled="@(evidencePage == 1)" @onclick="() => LoadEvidenceAsync(showTraces, evidencePage - 1, activeTraceId)">上一頁</button><span>第 @(evidencePage) 頁</span><button type="button" disabled="@(!EvidenceHasMore)" @onclick="() => LoadEvidenceAsync(showTraces, evidencePage + 1, activeTraceId)">下一頁</button></div>
+        }
+    </section>
+}
+</div>
