@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Playwright;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Inventory;
@@ -54,7 +55,7 @@ public sealed class AgentIdentityHttpTests
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
     public Task Inventory_RealAgentCycleQueuesSendsAndConfirmsThroughHttp() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryEndToEndTests");
             var directory = Path.Combine(parent, Path.GetRandomFileName());
@@ -114,14 +115,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(observed.Status == InventoryReadStatus.Complete ? 1L : null, state.CurrentGeneration);
 
                 InventoryReadResult<InventoryEntry>? processObservation = null;
-                Task<InventoryReadResult<InventoryEntry>> CollectProcesses(InventorySource _, CancellationToken cancellation)
+                var watched = new HashSet<uint> { (uint)Environment.ProcessId };
+                async Task<InventoryReadResult<InventoryEntry>> CollectProcesses(InventorySource _, CancellationToken cancellation)
                 {
-                    var actual = Vigiloom.Agent.Core.Processes.ProcessReader.Read(cancellation);
-                    // Force the partial path to model a host with inaccessible processes while
-                    // retaining actual OS observations from two independent sampling passes.
-                    processObservation = new(InventoryReadStatus.Partial, actual.Items.Select(x => new InventoryEntry(x.StableKey, x.Name,
-                        NumericId: (uint)x.ProcessId, ProcessStartedAt: x.StartedAt, ParentProcessId: x.ParentProcessId, RunAs: x.RunAs)).ToArray());
-                    return Task.FromResult(processObservation);
+                    var actual = await AgentHarness::ProcessFixture.ReadAsync(cancellation);
+                    // Restrict this test to its own processes, while modeling an access-denied
+                    // partial scan. The entries and masked path come from the production collector.
+                    return processObservation = new(InventoryReadStatus.Partial,
+                        actual.Items.Where(x => x.NumericId is { } pid && watched.Contains(pid)).ToArray(), InventoryPartialReason.AccessDenied);
                 }
                 Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
                 var processSent = 0;
@@ -132,7 +133,9 @@ public sealed class AgentIdentityHttpTests
                 }
                 Assert.AreEqual(InventoryCycleKind.Complete, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
                 Assert.IsNotNull(processObservation);
-                Assert.IsTrue(processObservation.Items.Any(x => x.NumericId == (uint)Environment.ProcessId));
+                var self = processObservation.Items.Single(x => x.NumericId == (uint)Environment.ProcessId);
+                Assert.IsNotNull(self.ExecutablePath);
+                Assert.AreEqual(self.ExecutablePath + InventoryChunkCodec.MaskedArgumentsSuffix, self.CommandLine);
                 var processState = await verify.InventorySources.AsNoTracking().SingleAsync(x => x.AgentId == agentId && x.Source == InventorySource.HostProcesses, token);
                 Assert.AreEqual((InventoryOutcome)processObservation.Status, processState.LastOutcome);
 
@@ -144,6 +147,7 @@ public sealed class AgentIdentityHttpTests
                 try
                 {
                     Assert.AreEqual("READY", await child.StandardOutput.ReadLineAsync(token));
+                    watched.Add((uint)child.Id);
                     Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostProcesses, CollectProcesses, token)).Kind);
                     while (await queue.PeekAsync(token) is not null)
                         Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
@@ -152,6 +156,33 @@ public sealed class AgentIdentityHttpTests
                     var changes = await new InventoryChangeQuery(security).GetAsync(device.Id, queryNow.AddMinutes(-1), queryNow.AddMinutes(1), InventorySource.HostProcesses, null, token);
                     Assert.IsTrue(changes.Items.Any(x => x.Kind == InventoryChangeType.NewlyObserved && x.After?.NumericId == (uint)child.Id));
                     Assert.IsFalse(changes.Items.Any(x => x.Kind == InventoryChangeType.Removed));
+                    await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+                    using var browserFactory = PingTestSite.CreateFactory(database.ConnectionString);
+                    browserFactory.UseKestrel(0); browserFactory.StartServer();
+                    var url = browserFactory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+                    using var playwright = await Playwright.CreateAsync();
+                    await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+                    await using var browserContext = await browser.NewContextAsync();
+                    var page = await browserContext.NewPageAsync();
+                    await using var gate = await AutoRenderGate.HoldAsync(page);
+                    await page.GotoAsync($"{url}/devices/{device.Id:D}");
+                    await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+                    await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+                    await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+                    await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+                    await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
+                    var table = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" });
+                    var selfRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
+                    await selfRow.GetByText($"帳號／群組 ID：{Environment.ProcessId}", new() { Exact = false }).WaitForAsync();
+                    await selfRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
+                    await page.GetByText("原因：AccessDenied", new() { Exact = false }).WaitForAsync();
+                    await gate.ReleaseAsync();
+                    await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+                    await page.ReloadAsync();
+                    await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+                    await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
+                    var wasmRow = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
+                    await wasmRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
                 }
                 finally
                 {

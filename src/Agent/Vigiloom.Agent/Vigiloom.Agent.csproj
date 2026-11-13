@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Vigiloom.Agent.Tests" />
+    <InternalsVisibleTo Include="Vigiloom.Testing.AgentHost" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
