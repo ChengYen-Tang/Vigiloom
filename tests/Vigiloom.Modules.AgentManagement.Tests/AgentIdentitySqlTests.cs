@@ -2748,17 +2748,22 @@ public sealed class AgentIdentitySqlTests
     });
 
     private Task WithOptionalSnapshotDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test, bool snapshotReads) =>
-        snapshotReads ? WithDatabase(test, true) : WithReusableDatabase(test);
+        snapshotReads ? WithReusableDatabase(test, true) : WithReusableDatabase(test);
 
-    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test) =>
-        ReusableIdentityDatabase.ExecuteAsync(async (connection, token) =>
+    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test, bool snapshotReads = false)
+    {
+        Task Execute(Func<string, CancellationToken, Task> action) => snapshotReads
+            ? ReusableIdentityDatabase.ExecuteSnapshotAsync(action, TestContext.CancellationToken)
+            : ReusableIdentityDatabase.ExecuteAsync(action, TestContext.CancellationToken);
+        return Execute(async (connection, token) =>
         {
             var resources = new Factory<ResourcesDbContext>(() => new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
                 .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
             var agents = new Factory<AgentManagementDbContext>(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
                 .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
             await test(resources, agents, token);
-        }, TestContext.CancellationToken);
+        });
+    }
 
     private Task WithDatabase(Func<Factory<ResourcesDbContext>, Factory<AgentManagementDbContext>, CancellationToken, Task> test, bool snapshotReads = false) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
