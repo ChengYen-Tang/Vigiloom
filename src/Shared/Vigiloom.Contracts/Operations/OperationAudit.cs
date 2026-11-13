@@ -80,7 +80,7 @@ public enum PublicationResourceKind { Device = 1, Service = 2, Group = 3 }
 /// <summary>Records publication changes without retaining names or addresses.</summary>
 public sealed record PublicationChanged(PublicationResourceKind ResourceKind, bool PreviousPublic, bool CurrentPublic, bool NameChanged) : OperationAuditDetails;
 
-public enum PublicationTemplateAction { Created = 1, Updated = 2, DefaultChanged = 3, Retired = 4 }
+public enum PublicationTemplateAction { Created = 1, Updated = 2, DefaultChanged = 3, Retired = 4, DefaultCleared = 5 }
 /// <summary>Records template operations without storing names or device addresses.</summary>
 public sealed record PublicationTemplateChanged(PublicationTemplateAction Action, int AffectedDevices) : OperationAuditDetails;
 

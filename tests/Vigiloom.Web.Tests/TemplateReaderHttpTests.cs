@@ -105,5 +105,14 @@ public sealed class TemplateReaderHttpTests(TestContext context)
             var modified = await confirmed.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token);
             Assert.IsNotNull(modified);
             Assert.AreEqual("Updated template", modified.Name);
+            var retirementUrl = $"{listUrl}/{createdTemplate.Id:D}/retirement-preview";
+            var retirement = new PublicationTemplateRetirement(null, null);
+            using (var response = await reader.PostAsJsonAsync(retirementUrl, retirement, token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+            using var retirementResponse = await admin.PostAsJsonAsync(retirementUrl, retirement, token);
+            Assert.AreEqual(HttpStatusCode.OK, retirementResponse.StatusCode);
+            var retirementPreview = await retirementResponse.Content.ReadFromJsonAsync<PublicationTemplateRetirementPreview>(cancellationToken: token);
+            Assert.IsNotNull(retirementPreview);
+            using var retire = await admin.PostAsJsonAsync($"{listUrl}/{createdTemplate.Id:D}/retire", new ConfirmPublicationTemplateRetirement(retirementPreview.Confirmation), token);
+            Assert.AreEqual(HttpStatusCode.NoContent, retire.StatusCode);
         }, context.CancellationToken);
 }

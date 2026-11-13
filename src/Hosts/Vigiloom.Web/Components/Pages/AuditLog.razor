@@ -344,6 +344,7 @@
         _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Updated => "修改公開範本",
         _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.DefaultChanged => "設定預設範本",
         _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Retired => "刪除公開範本",
+        _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.DefaultCleared => "清除預設範本",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Created => "新增檢查",
         _ when entry.HealthTarget?.Action == HealthTargetAction.Updated => "更新檢查",
         _ when entry.HealthNetworkPolicy is not null => "更新網段",
