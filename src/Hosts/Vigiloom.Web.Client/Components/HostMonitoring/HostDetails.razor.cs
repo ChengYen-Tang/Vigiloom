@@ -10,7 +10,8 @@ public partial class HostDetails
 {
     [Parameter] public Guid DeviceId { get; set; }
     private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("integrity", "檔案完整性")];
-    private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = [(AgentMetricKind.CpuTotalPercent, "CPU 使用率"), (AgentMetricKind.CpuCorePercent, "CPU 核心使用率"), (AgentMetricKind.MemoryTotalBytes, "總記憶體"), (AgentMetricKind.MemoryAvailableBytes, "可用記憶體"), (AgentMetricKind.VolumeTotalBytes, "總磁碟空間"), (AgentMetricKind.VolumeAvailableBytes, "可用磁碟空間"), (AgentMetricKind.DiskReadBytesPerSecond, "磁碟讀取"), (AgentMetricKind.DiskWriteBytesPerSecond, "磁碟寫入"), (AgentMetricKind.NetworkReceivedBytesPerSecond, "網路接收"), (AgentMetricKind.NetworkSentBytesPerSecond, "網路傳送"), (AgentMetricKind.ProcessCpuPercent, "程序 CPU 使用率"), (AgentMetricKind.ProcessWorkingSetBytes, "程序工作集記憶體")];
+    private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = Enum.GetValues<AgentMetricKind>()
+        .Where(kind => kind != AgentMetricKind.CollectionUnavailable).Select(kind => (kind, HostMetricUnits.Name(kind))).ToArray();
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? activeLoad;
     private Guid loadedDevice;
@@ -27,6 +28,7 @@ public partial class HostDetails
     private int chunkIndex;
     private InventorySnapshotChunkView? chunk;
     private HostMetricPage? metricPage;
+    private HostMetricThresholdStatus? metricThreshold;
     private readonly Stack<string?> metricCursors = new();
     private string? metricCursor;
     private AgentMetricKind metricKind = AgentMetricKind.CpuTotalPercent;
@@ -130,7 +132,7 @@ public partial class HostDetails
         token.ThrowIfCancellationRequested();
         metricPage = page ?? throw new InvalidOperationException("Device missing");
         series = page.Items.DistinctBy(x => (x.AgentId, x.Source, x.Dimension)).ToList();
-        seriesIndex = 0; points = [];
+        seriesIndex = 0; points = []; metricThreshold = null;
         if (series.Count > 0) await LoadSeriesAsync(token);
     }
     private Task NextMetricsAsync() => metricPage?.NextCursor is { } cursor ? NavigateMetricsAsync(cursor, true) : Task.CompletedTask;
@@ -142,6 +144,7 @@ public partial class HostDetails
         if (forward) metricCursors.Push(metricCursor); else metricCursors.Pop();
         metricCursor = cursor;
     });
+    private Task RefreshMetricAsync() => RunAsync(LoadSeriesAsync);
     private async Task ChangeSeriesAsync(ChangeEventArgs args)
     {
         if (int.TryParse(args.Value?.ToString(), out var index) && index >= 0 && index < series.Count) { seriesIndex = index; await RunAsync(LoadSeriesAsync); }
@@ -160,8 +163,27 @@ public partial class HostDetails
             if (last is { } time && bucket.Start - time > TimeSpan.FromSeconds(result.BucketSeconds)) output.Add(new(time.AddSeconds(result.BucketSeconds), null));
             output.Add(new(bucket.Start, bucket.Average)); last = bucket.Start;
         }
+        var threshold = await Monitoring.GetMetricThresholdAsync(DeviceId, item.AgentId, metricKind, item.Source, item.Dimension, token);
+        token.ThrowIfCancellationRequested();
         points = output;
+        metricThreshold = threshold ?? throw new InvalidOperationException("Agent missing");
     }
+    private string ThresholdEditUrl(HostMetricValue item) => $"/devices/{DeviceId:D}/metric-threshold?agentId={item.AgentId:D}&kind={(int)metricKind}&source={Uri.EscapeDataString(item.Source)}{(item.Dimension is null ? "" : $"&dimension={Uri.EscapeDataString(item.Dimension)}")}";
+    private static string ThresholdStateName(HostMetricThresholdStatus status) => status.State switch
+    {
+        HostMetricThresholdState.NotConfigured => "未設定閾值",
+        HostMetricThresholdState.Disabled => "閾值已停用",
+        HostMetricThresholdState.Normal => "未達觸發條件",
+        HostMetricThresholdState.Exceeded => "已達閾值",
+        HostMetricThresholdState.Unknown => status.UnknownReason switch
+        {
+            HostMetricUnknownReason.NoSample => "未知：尚無樣本",
+            HostMetricUnknownReason.Stale => "未知：樣本已過期",
+            HostMetricUnknownReason.FutureTimestamp => "未知：樣本時間晚於平台時間",
+            _ => "未知：無法判定"
+        },
+        _ => "未知：無法判定"
+    };
     private Task NextLogsAsync() => logs?.NextCursor is { } cursor ? NavigateLogsAsync(cursor, true) : Task.CompletedTask;
     private Task PreviousLogsAsync() => logCursors.TryPeek(out var cursor) ? NavigateLogsAsync(cursor, false) : Task.CompletedTask;
     private Task NavigateLogsAsync(string? cursor, bool forward) => RunAsync(async token =>
@@ -229,5 +251,5 @@ public partial class HostDetails
         return string.Join(" · ", fields);
     }
     private static string SeriesName(HostMetricValue item) => $"{item.Source}{(item.Dimension is null ? "" : " · " + item.Dimension)} · Agent {item.AgentId:D}";
-    private static string MetricUnit(AgentMetricKind kind) => kind is AgentMetricKind.CpuTotalPercent or AgentMetricKind.CpuCorePercent or AgentMetricKind.ProcessCpuPercent ? "%" : kind is AgentMetricKind.MemoryTotalBytes or AgentMetricKind.MemoryAvailableBytes or AgentMetricKind.VolumeTotalBytes or AgentMetricKind.VolumeAvailableBytes or AgentMetricKind.ProcessWorkingSetBytes ? "bytes" : "bytes/s";
+
 }

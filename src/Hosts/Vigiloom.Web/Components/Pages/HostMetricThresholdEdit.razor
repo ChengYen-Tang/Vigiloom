@@ -1,0 +1,100 @@
+@page "/devices/{Id:guid}/metric-threshold"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Modules.AgentManagement.Application
+@inject HostMetricThresholds Thresholds
+@inject NavigationManager Navigation
+@inject ILogger<HostMetricThresholdEdit> Logger
+
+<PageTitle>設定效能閾值 - Vigiloom</PageTitle>
+<main class="device-page device-form-page">
+    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
+    <header class="device-heading"><div><h1>設定效能閾值</h1><p>此設定只套用於選定的 Agent 與資料來源。</p></div></header>
+    <section class="device-panel">
+        @if (status is null) { <p role="alert">找不到此來源，或暫時無法讀取設定。請返回設備詳情後重試。</p> }
+        else
+        {
+            <p>Agent：@AgentId · 指標：@HostMetricUnits.Name((AgentMetricKind)Kind) · 來源：@Source @(Dimension is null ? "" : $"· {Dimension}")</p>
+            <p>使用最新樣本判斷；樣本過期或不存在時顯示未知。</p>
+            @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
+            <EditForm Model="Input" FormName="metric-threshold-edit" method="post" OnSubmit="SaveAsync">
+                <InputHidden @bind-Value="Input.Version" />
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用閾值判斷</label>
+                <label for="threshold-comparison">判斷條件</label>
+                <InputSelect id="threshold-comparison" @bind-Value="Input.Comparison">
+                    <option value="AtLeast">大於等於閾值時</option><option value="AtMost">小於等於閾值時</option>
+                </InputSelect>
+                <label for="threshold-value">閾值（@HostMetricUnits.For((AgentMetricKind)Kind)）</label>
+                <InputNumber id="threshold-value" @bind-Value="Input.Value" min="0" step="any" />
+                <label for="threshold-freshness">樣本有效時間（秒，30～86400）</label>
+                <InputNumber id="threshold-freshness" @bind-Value="Input.FreshnessSeconds" min="30" max="86400" />
+                <div class="device-actions"><button type="submit">儲存設定</button><a href="@($"/devices/{Id:D}")">取消</a></div>
+            </EditForm>
+        }
+    </section>
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "agentId")] public Guid AgentId { get; set; }
+    [SupplyParameterFromQuery(Name = "kind")] public int Kind { get; set; }
+    [SupplyParameterFromQuery(Name = "source")] public string? Source { get; set; }
+    [SupplyParameterFromQuery(Name = "dimension")] public string? Dimension { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "metric-threshold-edit")] private EditInput Input { get; set; } = default!;
+    private HostMetricThresholdStatus? status;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            status = await Thresholds.GetAsync(Id, AgentId, (AgentMetricKind)Kind, Source ?? "", Dimension, HttpContext.RequestAborted);
+            if (!HttpMethods.IsPost(HttpContext.Request.Method) && status is not null)
+            {
+                var rule = status.Threshold;
+                Input = new() { Enabled = rule?.Enabled ?? true, Comparison = rule?.Comparison ?? HostMetricComparison.AtLeast,
+                    Value = rule?.Value, FreshnessSeconds = rule?.FreshnessSeconds ?? 300, Version = rule?.Version ?? "" };
+            }
+        }
+        catch (ArgumentException) { }
+        catch (Exception ex) { Logger.LogWarning("Unable to load host metric threshold: {ErrorType}.", ex.GetType().Name); }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (status is null || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor))
+        { message = "請確認來源與登入狀態。"; return; }
+        var fields = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (fields["Input.Value"].Count != 1 || !double.TryParse(fields["Input.Value"][0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ||
+            fields["Input.FreshnessSeconds"].Count != 1 || !int.TryParse(fields["Input.FreshnessSeconds"][0], out var freshness) ||
+            fields["Input.Comparison"].Count != 1 || !Enum.TryParse<HostMetricComparison>(fields["Input.Comparison"][0], out var comparison) || !Enum.IsDefined(comparison) ||
+            fields["Input.Enabled"].Count > 1 || fields["Input.Enabled"].Count == 1 && !bool.TryParse(fields["Input.Enabled"][0], out _) ||
+            fields["Input.Version"].Count != 1)
+        { message = "設定無效，請確認數字及選擇欄位。"; return; }
+        var enabled = fields["Input.Enabled"].Count == 1 && bool.Parse(fields["Input.Enabled"][0]!);
+        try
+        {
+            var result = await Thresholds.UpdateAsync(Id, AgentId, (AgentMetricKind)Kind, Source ?? "", Dimension,
+                new(enabled, comparison, value, freshness, fields["Input.Version"][0] ?? ""), actor, HttpContext.RequestAborted);
+            if (result is null) { message = "設定已變更或來源不存在，請重新整理後再試。"; return; }
+            Navigation.NavigateTo($"/devices/{Id:D}", forceLoad: true);
+        }
+        catch (ArgumentException) { message = "請確認閾值是非負數，且樣本有效時間為 30～86400 秒。"; }
+        catch (Exception ex) when (ex is not NavigationException)
+        { Logger.LogWarning("Unable to save host metric threshold: {ErrorType}.", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後查看。"; }
+    }
+
+    private sealed class EditInput
+    {
+        public bool Enabled { get; set; }
+        public HostMetricComparison Comparison { get; set; }
+        public double? Value { get; set; }
+        public int FreshnessSeconds { get; set; }
+        public string? Version { get; set; }
+    }
+}
