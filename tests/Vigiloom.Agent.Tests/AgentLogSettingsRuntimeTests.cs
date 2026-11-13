@@ -33,4 +33,25 @@ public sealed class AgentLogSettingsRuntimeTests
         Assert.IsNull(runtime.ForOwner(owner));
         Assert.IsNull(runtime.ForOwner(next));
     }
+    [TestMethod]
+    public void RestoreIfEmpty_PreservesUnauthorizedAndNeverReplacesNewerOrOtherOwner()
+    {
+        var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://one.test/", "state");
+        var other = new AgentSettingsOwner(Guid.CreateVersion7(), owner.Server, owner.StateDirectory);
+        var old = new AgentSavedLogSettings(AgentLogSettingsSnapshot.Create([]), DateTimeOffset.UtcNow,
+            Guid.CreateVersion7(), owner.AgentId, owner.Server);
+        var newer = old with { SaveToken = Guid.CreateVersion7() };
+        var runtime = new AgentLogSettingsRuntime();
+        runtime.Bind(owner);
+        runtime.MarkFailure(owner, AgentConfigurationFailure.Unauthorized);
+        runtime.RestoreIfEmpty(owner, old);
+        Assert.IsNull(runtime.SavedForOwner(owner));
+        runtime.Publish(owner, newer);
+        runtime.RestoreIfEmpty(owner, old);
+        Assert.AreEqual(newer, runtime.SavedForOwner(owner));
+        runtime.Bind(other);
+        runtime.RestoreIfEmpty(owner, old);
+        runtime.RestoreIfEmpty(other, old);
+        Assert.IsNull(runtime.SavedForOwner(other));
+    }
 }

@@ -19,6 +19,24 @@ internal sealed class AgentSettingsRuntime
             if (ReferenceEquals(Interlocked.CompareExchange(ref state, new(owner, null, null), current), current)) return;
         }
     }
+    public bool NeedsRestore(AgentSettingsOwner owner)
+    {
+        var current = Volatile.Read(ref state);
+        return current.Owner == owner && current.Applied is null;
+    }
+
+    // A delayed local read must neither replace a newer value nor clear a synchronization error.
+    public void RestoreIfEmpty(AgentSettingsOwner? owner, AgentAppliedSettings saved)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref state);
+            if (owner is null || current.Owner != owner || current.Applied is not null || saved.AgentId != owner.AgentId ||
+                !string.Equals(saved.Server, owner.Server, StringComparison.Ordinal)) return;
+            if (ReferenceEquals(Interlocked.CompareExchange(ref state, current with { Applied = saved }, current), current)) return;
+        }
+    }
+
     public void Publish(AgentSettingsOwner? owner, AgentAppliedSettings? value)
     {
         while (true)
