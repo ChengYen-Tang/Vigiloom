@@ -59,17 +59,17 @@ public sealed class ModuleMigrationTests
             SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
             WHERE i.is_primary_key = 1 AND i.type_desc = 'CLUSTERED'
-              AND ((s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits')) OR (s.name = 'network' AND t.name = 'PingSamples'))
+              AND ((s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits')) OR (s.name = 'network' AND t.name IN ('PingSamples', 'PingRollups')))
             """;
-        Assert.AreEqual(5, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.foreign_keys f
             JOIN sys.tables t ON t.object_id = f.parent_object_id
             JOIN sys.schemas s ON s.schema_id = t.schema_id
-            WHERE (s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits') OR s.name = 'network' AND t.name = 'PingSamples')
+            WHERE (s.name = 'resources' AND t.name IN ('DeviceGroups', 'ServiceGroups', 'DeviceTargets', 'DeviceAudits') OR s.name = 'network' AND t.name IN ('PingSamples', 'PingRollups'))
               AND f.delete_referential_action_desc = 'NO_ACTION'
             """;
-        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
         Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
@@ -83,7 +83,14 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
-        Assert.AreEqual(6, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = """
+            SELECT COUNT(*) FROM sys.indexes i
+            WHERE i.object_id = OBJECT_ID('network.PingRollups')
+              AND i.name = 'IX_PingRollups_DeviceId_WindowStart_Target_Location'
+              AND i.is_unique = 1 AND i.has_filter = 0
+            """;
+        Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID('network.SpeedSettings') AND name = 'CK_SpeedSettings_RetentionDays' AND is_disabled = 0 AND is_not_trusted = 0";
         Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
     });

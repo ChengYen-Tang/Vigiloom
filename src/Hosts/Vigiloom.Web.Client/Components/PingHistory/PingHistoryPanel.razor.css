@@ -1,0 +1,16 @@
+.ping-filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+.ping-filters label { display: grid; gap: .35rem; min-width: 0; }
+.ping-filters select { max-width: 100%; }
+.ping-history td { overflow-wrap: anywhere; }
+.ping-history thead { background: #edf4fd; }
+.ping-summary { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin: 1rem 0; }
+.ping-summary div { min-width: 9rem; }
+.ping-summary dt { color: #496485; font-size: .9rem; }
+.ping-summary dd { margin: .3rem 0 0; color: #10264c; font-size: 1.1rem; font-weight: 650; }
+.ping-outcome { display: inline-block; border-radius: .3rem; padding: .15rem .45rem; font-size: .9rem; }
+.ping-outcome.success { color: #126339; background: #e6f6ec; }
+.ping-outcome.failure { color: #844500; background: #fff1db; }
+.ping-history .device-pagination { flex-wrap: wrap; gap: .75rem; }
+.ping-history .device-pagination button { white-space: nowrap; }
+.ping-scroll-hint { display: none; color: #294e7e; }
+@media (max-width: 700px) { .ping-scroll-hint { display: block; } }

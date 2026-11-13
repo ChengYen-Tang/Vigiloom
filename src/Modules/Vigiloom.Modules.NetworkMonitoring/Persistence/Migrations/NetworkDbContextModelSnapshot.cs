@@ -23,6 +23,81 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.NetworkMonitoring.Domain.PingRollup", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("Attempts")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DnsErrors")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("FirstOccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("LastOccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<double?>("LatencyMax")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("LatencyMin")
+                        .HasColumnType("float");
+
+                    b.Property<bool>("LatencyOverflow")
+                        .HasColumnType("bit");
+
+                    b.Property<double>("LatencySum")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<long>("MonitorErrors")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PermissionDenied")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Successes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<long>("Timeouts")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UnknownFailures")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Unreachable")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("DeviceId", "WindowStart", "Target", "Location")
+                        .IsUnique();
+
+                    b.ToTable("PingRollups", "network");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.NetworkMonitoring.Domain.PingSample", b =>
                 {
                     b.Property<long>("RowId")
@@ -30,6 +105,9 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<bool>("Aggregated")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
@@ -68,6 +146,10 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RowId")
+                        .HasDatabaseName("IX_PingSamples_Unaggregated")
+                        .HasFilter("[Aggregated] = 0");
 
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 

@@ -4,7 +4,9 @@
 @implements IAsyncDisposable
 @using Vigiloom.Contracts.Workspace
 @using Vigiloom.Web.Client.Components
+@using Vigiloom.Web.Client.Components.Workspace
 @inject IWorkspaceIdentityClient IdentityClient
+@inject IWorkspaceOverviewClient OverviewClient
 @inject ILogger<Workspace> Logger
 
 <PageTitle>監控工作區 - Vigiloom</PageTitle>
@@ -32,13 +34,25 @@
     }
     else
     {
-        <section class="workspace-card" aria-labelledby="workspace-user">
-            <StatusBadge Text="已登入" Tone="StatusTone.Success" />
-            <h2 id="workspace-user">@identity.UserName</h2>
-            <p>角色：@string.Join("、", identity.Roles)</p>
-            <p>設備與應用服務的監控資料會在各自功能完成後顯示。</p>
-            <button type="button" @onclick="RefreshAsync">重新確認登入狀態</button>
-        </section>
+        <div class="workspace-identity"><span id="workspace-user">@identity.UserName</span><span>角色：@string.Join("、", identity.Roles)</span><button type="button" @onclick="RefreshAsync">重新確認登入狀態</button></div>
+        <p>設備與應用服務分別監測；狀態依各自來源判斷。</p>
+        <div class="workspace-actions"><button type="button" disabled="@overviewLoading" @onclick="LoadOverviewAsync">重新整理總覽</button>
+            @if (overview is not null) { <span>總覽讀取時間：@overview.GeneratedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }</div>
+        @if (overviewLoading && overview is null) { <p role="status">正在載入監控總覽…</p> }
+        else if (overviewError) { <section class="workspace-card" role="alert">無法載入總覽，請重新整理。</section> }
+        else if (overview is not null)
+        {
+            <section class="workspace-card" aria-labelledby="overview-groups"><div class="workspace-section-heading"><h2 id="overview-groups">依群組瀏覽</h2><a href="/groups">查看所有群組</a></div>
+                @if (overview.GroupsUnavailable) { <p role="alert">無法讀取群組。</p> }
+                else if (overview.Groups.Count == 0) { <p>尚無群組。</p> }
+                else { <ul class="workspace-groups">@foreach (var group in overview.Groups) { <li @key="group.Id"><a href="@($"/groups/{group.Id:D}")">@group.Name</a></li> }</ul> }
+            </section>
+            <div class="workspace-overview">
+                <WorkspaceSectionPanel Section="overview.Ping" HeadingId="overview-ping" Title="設備 Ping" Description="每台設備顯示最需要留意的監測目標。" EmptyText="尚無設備。" TimeLabel="最後量測" ItemPath="/devices" AllHref="/devices" AllLabel="查看設備" />
+                <WorkspaceSectionPanel Section="overview.Agents" HeadingId="overview-agents" Title="主機 Agent" Description="依各 Agent 的心跳與時限判斷連線。" EmptyText="尚無深入監控設備。" TimeLabel="最後心跳" ItemPath="/devices" AllHref="/devices" AllLabel="查看設備" />
+                <WorkspaceSectionPanel Section="overview.Services" HeadingId="overview-services" Title="應用服務健康" Description="依服務的健康檢查判斷，與設備獨立。" EmptyText="尚無已加入的服務。" TimeLabel="最近檢查" ItemPath="/services" AllHref="/groups" AllLabel="依群組查看服務" />
+            </div>
+        }
     }
 </main>
 
@@ -49,12 +63,37 @@
     private bool loading = true;
     private bool unavailable;
     private bool refreshing;
+    private bool overviewLoading;
+    private bool overviewError;
+    private bool overviewRequested;
+    private WorkspaceOverview? overview;
 
     protected override async Task OnInitializedAsync() => await RefreshAsync();
-    protected override Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && RendererInfo.IsInteractive) refreshLoop = RefreshPeriodicallyAsync(lifetime.Token);
-        return Task.CompletedTask;
+        if (RendererInfo.IsInteractive && identity is not null && !overviewRequested)
+        {
+            overviewRequested = true;
+            var work = LoadOverviewAsync();
+            StateHasChanged();
+            await work;
+            StateHasChanged();
+        }
+    }
+    private async Task LoadOverviewAsync()
+    {
+        if (overviewLoading) return;
+        overviewLoading = true;
+        overviewError = false;
+        try
+        {
+            overview = await OverviewClient.GetAsync(lifetime.Token);
+            if (overview is null) identity = null;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Could not load monitoring overview."); overview = null; overviewError = true; }
+        finally { overviewLoading = false; }
     }
     private async Task RefreshAsync()
     {

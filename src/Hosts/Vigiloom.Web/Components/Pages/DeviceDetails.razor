@@ -30,7 +30,7 @@
         <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
             <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a> }</Authorized></AuthorizeView>
         </header>
-        <section class="device-panel"><h2>監測資訊</h2><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+        <section class="device-panel"><h2>監測資訊</h2><p><a href="@($"/devices/{Id:D}/ping-history")">查看 Ping 歷史</a></p><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
             @if (device.DeepMonitoring)
             {
                 <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>

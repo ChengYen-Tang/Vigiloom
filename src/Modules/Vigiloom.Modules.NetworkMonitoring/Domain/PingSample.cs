@@ -29,6 +29,9 @@ public sealed class PingSample
     public string? ResolvedAddress { get; private set; }
     public long? Generation { get; private set; }
     public PingOutcome? Outcome { get; private set; }
+    public bool Aggregated { get; private set; }
+
+    internal void MarkAggregated() => Aggregated = true;
 
     public PingSample(Guid deviceId, string target, string? resolvedAddress, string location, long generation,
         DateTimeOffset occurredAt, DateTimeOffset receivedAt, PingOutcome outcome, double? latencyMilliseconds)

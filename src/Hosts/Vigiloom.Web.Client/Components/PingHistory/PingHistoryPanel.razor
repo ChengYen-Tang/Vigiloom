@@ -1,0 +1,49 @@
+@using Vigiloom.Contracts.Network
+@using Vigiloom.Web.Client.Components
+@implements IAsyncDisposable
+@inject IPingHistoryClient Client
+@inject ILogger<PingHistoryPanel> Logger
+
+<div class="ping-history" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
+    <section class="device-panel">
+        <div class="ping-filters">
+            <label>開始日期（UTC）<input type="date" value="@startDate" @onchange="e => startDate = e.Value?.ToString() ?? string.Empty" disabled="@(!RendererInfo.IsInteractive || loading)" /></label>
+            <label>結束日期（UTC）<input type="date" value="@endDate" @onchange="e => endDate = e.Value?.ToString() ?? string.Empty" disabled="@(!RendererInfo.IsInteractive || loading)" /></label>
+            <label>搜尋目標或監測位置<input type="search" @bind="optionSearch" @bind:event="oninput" maxlength="256" disabled="@(!RendererInfo.IsInteractive || loading)" /></label>
+            <label>目標與監測位置<select @bind="selection" disabled="@(!RendererInfo.IsInteractive || loading)">
+                @for (var index = 0; index < options.Count; index++) { @if (index == selection || MatchesOption(options[index])) { <option value="@index">@OptionName(options[index])</option> } }
+            </select></label>
+            <label>時間排序<select @bind="sortOrder" disabled="@(!RendererInfo.IsInteractive || loading)"><option value="desc">最新優先</option><option value="asc">最舊優先</option></select></label>
+            <button type="button" @onclick="ApplyAsync" disabled="@(!RendererInfo.IsInteractive || loading)">查詢</button>
+        </div>
+        <p>日期以 UTC 計算，最多查詢七天；資料只代表選定目標與監測位置。</p>
+        @if (invalid) { <p role="alert" class="device-alert">請選擇有效日期；開始日期不可晚於結束日期，範圍最多七天。</p> }
+    </section>
+    @if (loading) { <p role="status">正在載入 Ping 歷史…</p> }
+    else if (error is not null) { <section class="device-panel" role="alert"><p>@error</p><button type="button" @onclick="ReloadAsync">重新載入</button></section> }
+    else if (result is not null)
+    {
+        @if (query is not null) { <p>目前結果：@query.From.ToString("yyyy-MM-dd HH:mm") 至 @query.To.ToString("yyyy-MM-dd HH:mm")（UTC，不含結束時間）；@OptionName(new PingHistoryOption(query.Target, query.Location))。此範圍最後量測（UTC）：@(result.LastObservedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")。</p> }
+        @if (result.OptionsTruncated) { <p role="status">此範圍的目標與位置超過 100 組，請縮小日期範圍。</p> }
+        @if (result.RollupsPending) { <p role="status">舊資料仍在補算，趨勢可能尚不完整；原始紀錄仍可查看。</p> }
+        @if (result.Buckets.Any(x => x.LatencyOverflow)) { <p role="alert">部分歷史延遲無法安全加總，該時段平均值顯示為無資料。</p> }
+        <section class="device-panel"><h2>五分鐘平均延遲趨勢</h2>
+            @if (result.Buckets.Count == 0) { <p>此範圍沒有已彙總的 Ping 資料。</p> }
+            else { <TimeSeriesChart Title="Ping 延遲" Unit="ms" Points="points" /> }
+            <dl class="ping-summary"><div><dt>成功量測平均延遲</dt><dd>@AverageLatency()</dd></div><div><dt>成功量測最低延遲</dt><dd>@ExtremeLatency(minimum: true)</dd></div><div><dt>成功量測最高延遲</dt><dd>@ExtremeLatency(minimum: false)</dd></div></dl>
+            <p>明細為每次實際量測，趨勢以 UTC 每五分鐘彙總。只平均成功的量測；失敗或無資料不視為 0 ms。空白代表沒有可計算的延遲，請查看下方紀錄。</p>
+        </section>
+        <section class="device-panel"><h2>Ping 歷史明細</h2>
+            @if (result.Items.Count == 0) { <p>此頁沒有原始量測紀錄；資料可能尚未產生或已超過原始資料保存範圍。</p> }
+            else
+            {
+                <p class="ping-scroll-hint">左右滑動查看完整表格。</p>
+                <div class="device-table-wrap" tabindex="0" role="region" aria-label="Ping 歷史明細，可左右滑動"><table>
+                    <thead><tr><th scope="col">時間（UTC）</th><th scope="col">結果</th><th scope="col">延遲</th><th scope="col">解析位址</th></tr></thead>
+                    <tbody>@foreach (var item in result.Items) { <tr><td>@item.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td><span class="@(item.Succeeded ? "ping-outcome success" : "ping-outcome failure")">@OutcomeName(item)</span></td><td>@(item.LatencyMilliseconds is { } value ? $"{value:0.##} ms" : "—")</td><td>@(item.ResolvedAddress ?? "—")</td></tr> }</tbody>
+                </table></div>
+            }
+            @if (result.Total > 0 || result.Page > 1) { <div class="device-pagination"><button type="button" @onclick="PreviousAsync" disabled="@(loading || result.Page <= 1)">上一頁</button><span>第 @result.Page 頁，共 @result.Total 筆</span><button type="button" @onclick="NextAsync" disabled="@(loading || (long)result.Page * result.PageSize >= result.Total)">下一頁</button></div> }
+        </section>
+    }
+</div>

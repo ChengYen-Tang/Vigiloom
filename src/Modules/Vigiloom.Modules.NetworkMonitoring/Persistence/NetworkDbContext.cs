@@ -9,6 +9,7 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
     public DbSet<SpeedSetting> SpeedSettings => Set<SpeedSetting>();
     public DbSet<SpeedRun> SpeedRuns => Set<SpeedRun>();
     public DbSet<PingSample> PingSamples => Set<PingSample>();
+    public DbSet<PingRollup> PingRollups => Set<PingRollup>();
     public DbSet<PingSetting> PingSettings => Set<PingSetting>();
     public DbSet<PingTargetState> PingTargets => Set<PingTargetState>();
     public DbSet<PingStateEvent> PingStateEvents => Set<PingStateEvent>();
@@ -55,6 +56,15 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
         sample.Property(x => x.Target).HasMaxLength(253);
         sample.Property(x => x.ResolvedAddress).HasMaxLength(64);
         sample.HasIndex(x => new { x.DeviceId, x.Target, x.Generation }).IsUnique().HasFilter("[Generation] IS NOT NULL AND [Target] IS NOT NULL");
+        sample.HasIndex(x => x.RowId).HasFilter("[Aggregated] = 0").HasDatabaseName("IX_PingSamples_Unaggregated");
+
+        var rollup = modelBuilder.Entity<PingRollup>();
+        rollup.ToTable("PingRollups");
+        rollup.HasKey(x => x.RowId).IsClustered();
+        rollup.Property(x => x.RowId).UseIdentityColumn();
+        rollup.Property(x => x.Target).HasMaxLength(253);
+        rollup.Property(x => x.Location).HasMaxLength(256).IsRequired();
+        rollup.HasIndex(x => new { x.DeviceId, x.WindowStart, x.Target, x.Location }).IsUnique().HasFilter(null);
 
         var setting = modelBuilder.Entity<PingSetting>();
         setting.ToTable("PingSettings", t => t.HasCheckConstraint("CK_PingSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
