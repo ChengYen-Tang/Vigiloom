@@ -33,6 +33,60 @@ public sealed class ReusableIdentityDatabaseTests(TestContext context)
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task SnapshotCasesRemainIndependentAndSeparateFromOrdinaryReads(bool reverse)
+    {
+        string? snapshotName = null;
+        var labels = new[] { "first", "second", "third" };
+        if (reverse) Array.Reverse(labels);
+        foreach (var label in labels)
+        {
+            await ReusableIdentityDatabase.ExecuteSnapshotAsync(async (connection, token) =>
+            {
+                var name = new SqlConnectionStringBuilder(connection).InitialCatalog;
+                snapshotName ??= name;
+                Assert.AreEqual(snapshotName, name);
+                await AssertCleanAsync(connection, token);
+                await AssertReadModeAsync(connection, true, token);
+                await using var db = Resources(connection);
+                db.Devices.Add(new Device(label, "127.0.0.1", true, DateTimeOffset.UtcNow));
+                await db.SaveChangesAsync(token);
+            }, context.CancellationToken);
+        }
+        await ReusableIdentityDatabase.ExecuteAsync(async (connection, token) =>
+        {
+            Assert.AreNotEqual(snapshotName, new SqlConnectionStringBuilder(connection).InitialCatalog);
+            await AssertCleanAsync(connection, token);
+            await AssertReadModeAsync(connection, false, token);
+        }, context.CancellationToken);
+        await ReusableIdentityDatabase.ExecuteSnapshotAsync(AssertCleanAsync, context.CancellationToken);
+    }
+
+    [TestMethod]
+    public async Task ChangedSnapshotMode_IsRejectedAndDatabaseIsNotReused()
+    {
+        string? rejected = null;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableIdentityDatabase.ExecuteSnapshotAsync(async (connectionString, token) =>
+        {
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            rejected = builder.InitialCatalog;
+            builder.InitialCatalog = "master";
+            builder.Pooling = false;
+            await using var connection = new SqlConnection(builder.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"ALTER DATABASE [{rejected}] SET READ_COMMITTED_SNAPSHOT OFF WITH ROLLBACK IMMEDIATE";
+            await command.ExecuteNonQueryAsync(token);
+        }, context.CancellationToken));
+        await ReusableIdentityDatabase.ExecuteSnapshotAsync(async (connection, token) =>
+        {
+            Assert.AreNotEqual(rejected, new SqlConnectionStringBuilder(connection).InitialCatalog);
+            await AssertCleanAsync(connection, token);
+        }, context.CancellationToken);
+    }
+
+    [TestMethod]
     public async Task Reset_RemovesDataAfterFailureAndRetainsMigrationSeed()
     {
         string? firstDatabase = null;
@@ -135,6 +189,15 @@ public sealed class ReusableIdentityDatabaseTests(TestContext context)
 
     private static ResourcesDbContext Resources(string connection) => new(new DbContextOptionsBuilder<ResourcesDbContext>()
         .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options);
+
+    private static async Task AssertReadModeAsync(string connectionString, bool expected, CancellationToken token)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = DB_ID()";
+        Assert.AreEqual(expected, await command.ExecuteScalarAsync(token));
+    }
 
     private static async Task AssertCleanAsync(string connectionString, CancellationToken token)
     {

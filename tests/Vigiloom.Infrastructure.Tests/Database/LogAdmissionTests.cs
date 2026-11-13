@@ -172,11 +172,10 @@ public sealed class LogAdmissionTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Policy_UpdateIsVersionedAndRollsBackWhenAuditFails() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
-            await using (var db = new LogAdmissionDbContext(options)) await db.Database.MigrateAsync(token);
             var admin = new PolicyAdministration(new PooledDbContextFactory<LogAdmissionDbContext>(options));
             var actor = Guid.CreateVersion7();
             var original = await admin.GetAsync(token);

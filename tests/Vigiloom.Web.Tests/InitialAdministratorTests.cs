@@ -30,7 +30,7 @@ public sealed class InitialAdministratorTests
 
     [TestMethod]
     public Task SetupAndLogin_RequireAntiforgeryAndRejectExternalRedirects() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
@@ -42,7 +42,6 @@ public sealed class InitialAdministratorTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
             {
@@ -126,7 +125,7 @@ public sealed class InitialAdministratorTests
 
     [TestMethod]
     public Task InitialSetup_RejectsInvalidInputsAndCreatesOnlyOneAdministratorConcurrently() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
@@ -138,8 +137,6 @@ public sealed class InitialAdministratorTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token))
-                await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             async Task<InitialAdministratorResult> Attempt(string? secret, string name, string password)
             {

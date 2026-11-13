@@ -1,10 +1,16 @@
 using Microsoft.Data.SqlClient;
+using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Tests;
 
@@ -14,6 +20,60 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class ReusableWebDatabaseTests(TestContext context)
 {
+    [TestMethod]
+    public Task IndependentHosts_RunTogetherOnDifferentEphemeralPorts() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var first = PingTestSite.CreateFactory(database.ConnectionString);
+            using var second = PingTestSite.CreateFactory(database.ConnectionString);
+            await Task.WhenAll(Task.Run(() => { first.UseKestrel(0); first.StartServer(); }, token),
+                Task.Run(() => { second.UseKestrel(0); second.StartServer(); }, token));
+            var firstAddress = first.ClientOptions.BaseAddress;
+            var secondAddress = second.ClientOptions.BaseAddress;
+            Assert.AreNotEqual(0, firstAddress.Port);
+            Assert.AreNotEqual(0, secondAddress.Port);
+            Assert.AreNotEqual(5000, firstAddress.Port);
+            Assert.AreNotEqual(5000, secondAddress.Port);
+            Assert.AreNotEqual(firstAddress.Port, secondAddress.Port);
+            using var firstClient = first.CreateClient();
+            using var secondClient = second.CreateClient();
+            using var firstResponse = await firstClient.GetAsync("/health/live", token);
+            using var secondResponse = await secondClient.GetAsync("/health/live", token);
+            Assert.AreEqual(HttpStatusCode.OK, firstResponse.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, secondResponse.StatusCode);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public async Task FailedCase_ClearsInitialAdministratorBeforeNextHost()
+    {
+        const string setupToken = "test-only-bootstrap-secret-with-adequate-length";
+        string? firstDatabase = null;
+        async Task CreateAdministrator(Vigiloom.Testing.SqlServer.SqlTestDatabase database, CancellationToken token)
+        {
+            using var host = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["Vigiloom:SetupToken"] = setupToken })));
+            var identities = host.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
+            await RoleInitializer.InitializeAsync(identities, token);
+            await using var scope = host.Services.CreateAsyncScope();
+            var result = await scope.ServiceProvider.GetRequiredService<InitialAdministrator>()
+                .CreateAsync(setupToken, "admin", "Strong-Password-123", token);
+            Assert.AreEqual(InitialAdministratorStatus.Created, result.Status);
+        }
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            firstDatabase = database.DatabaseName;
+            await CreateAdministrator(database, token);
+            throw new InvalidOperationException("Expected test failure");
+        }, context.CancellationToken));
+        await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            Assert.AreEqual(firstDatabase, database.DatabaseName);
+            await CreateAdministrator(database, token);
+        }, context.CancellationToken);
+    }
+
     [TestMethod]
     public async Task FailedCase_IsResetBeforeAnotherHost()
     {

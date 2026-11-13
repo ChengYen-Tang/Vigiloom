@@ -20,7 +20,7 @@ public sealed class CollectorSchemaTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task CollectorAdministration_UsesVersionsAndRollsBackAuditFailures() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -33,10 +33,8 @@ public sealed class CollectorSchemaTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(monitor.Id, "collector", "monitoring", "Collector", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.AddRange(monitor, business, other); db.Services.Add(service); await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
             var actor = Guid.CreateVersion7();
             var admin = new CollectorAdministration(factory, new OperationAuditWriter());

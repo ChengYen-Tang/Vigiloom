@@ -96,7 +96,7 @@ public sealed class ServiceDetailsBrowserTests
         await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
         await page.GetByRole(AriaRole.Link, new() { Name = "Associated group" }).WaitForAsync();
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = new string('Z', 256) }).CountAsync());
-        await page.GetByLabel("結束時間（UTC）").FillAsync(DateTimeOffset.UtcNow.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
+        await page.GetByLabel("結束時間（UTC）").FillAsync(DateTimeOffset.UtcNow.AddMinutes(5).ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture));
         await page.GetByRole(AriaRole.Button, new() { Name = "查看 Traces" }).ClickAsync();
         await page.GetByText("order request", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "查看相關 Logs" }).ClickAsync();
