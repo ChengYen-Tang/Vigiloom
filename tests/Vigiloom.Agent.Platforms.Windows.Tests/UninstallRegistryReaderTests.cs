@@ -8,6 +8,48 @@ namespace Vigiloom.Agent.Platforms.Windows.Tests;
 public sealed class UninstallRegistryReaderTests
 {
     [TestMethod]
+    public void ReadKey_SeparatesExplicitRegistryViews()
+    {
+        if (!OperatingSystem.IsWindows() || !Environment.Is64BitOperatingSystem) { Assert.Inconclusive("Requires 64-bit Windows."); return; }
+        if (Environment.GetEnvironmentVariable("VIGILOOM_EXPECT_X86_TESTHOST") == "1")
+        {
+            Assert.IsFalse(Environment.Is64BitProcess);
+            Assert.StartsWith(".NET 10.", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+        }
+        var path = $@"Software\Classes\CLSID\{{{Guid.CreateVersion7():D}}}";
+        using var base32 = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry32);
+        using var base64 = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        try
+        {
+            using (var parent = base32.CreateSubKey(path))
+            using (var entry = parent.CreateSubKey("package32")) entry.SetValue("DisplayName", "32 view package");
+            using (var parent = base64.CreateSubKey(path))
+            using (var entry = parent.CreateSubKey("package64")) entry.SetValue("DisplayName", "64 view package");
+            using var view32 = base32.OpenSubKey(path) ?? throw new InvalidOperationException("32-bit view missing.");
+            using var view64 = base64.OpenSubKey(path) ?? throw new InvalidOperationException("64-bit view missing.");
+            var result32 = UninstallRegistryReader.ReadKey(view32, CancellationToken.None);
+            var result64 = UninstallRegistryReader.ReadKey(view64, CancellationToken.None);
+            Assert.AreEqual(InventoryReadStatus.Complete, result32.Status);
+            Assert.AreEqual(InventoryReadStatus.Complete, result64.Status);
+            Assert.AreEqual("32 view package", result32.Items.Single().Name);
+            Assert.AreEqual("64 view package", result64.Items.Single().Name);
+            var machine32 = UninstallRegistryReader.Read(RegistryView.Registry32, CancellationToken.None);
+            var machine64 = UninstallRegistryReader.Read(RegistryView.Registry64, CancellationToken.None);
+            Assert.IsTrue(machine32.Status is InventoryReadStatus.Complete or InventoryReadStatus.Partial);
+            Assert.IsTrue(machine64.Status is InventoryReadStatus.Complete or InventoryReadStatus.Partial);
+        }
+        finally
+        {
+            var errors = new List<Exception>();
+            try { base32.DeleteSubKeyTree(path, throwOnMissingSubKey: false); }
+            catch (Exception ex) { errors.Add(ex); }
+            try { base64.DeleteSubKeyTree(path, throwOnMissingSubKey: false); }
+            catch (Exception ex) { errors.Add(ex); }
+            if (errors.Count > 0) throw new AggregateException("Could not clean up the registry test fixture.", errors);
+        }
+    }
+
+    [TestMethod]
     public void ReadKey_DistinguishesCompleteEmptyAndPartialResults()
     {
         if (!OperatingSystem.IsWindows()) { Assert.Inconclusive("Requires Windows."); return; }
