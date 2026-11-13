@@ -1,6 +1,7 @@
 extern alias AgentHarness;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -139,6 +140,35 @@ public sealed class AgentIdentityHttpTests
                 var processState = await verify.InventorySources.AsNoTracking().SingleAsync(x => x.AgentId == agentId && x.Source == InventorySource.HostProcesses, token);
                 Assert.AreEqual((InventoryOutcome)processObservation.Status, processState.LastOutcome);
 
+                using var listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+                var listenerPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                async Task<InventoryReadResult<InventoryEntry>> CollectListener(InventorySource _, CancellationToken cancellation)
+                {
+                    var actual = await AgentHarness::ProcessFixture.ReadListenersAsync(cancellation);
+                    var own = actual.Items.Where(x => x.Port == listenerPort && x.Address == IPAddress.Loopback.ToString() && x.Protocol == "tcp").ToArray();
+                    Assert.HasCount(1, own);
+                    // Filter to the owned listener, so this is intentionally partial even if the scan was complete.
+                    return new(InventoryReadStatus.Partial, own, actual.PartialReason ?? InventoryPartialReason.Other);
+                }
+                Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostListeners, CollectListener, token)).Kind);
+                while (await queue.PeekAsync(token) is not null)
+                    Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                Assert.AreEqual(InventoryCycleKind.Complete, (await cycle.RunAsync(vault, server, InventorySource.HostListeners, CollectListener, token)).Kind);
+
+                var serviceObservation = await AgentHarness::ProcessFixture.ReadServicesAsync(token);
+                if (OperatingSystem.IsWindows()) Assert.IsNotEmpty(serviceObservation.Items);
+                var service = serviceObservation.Items.FirstOrDefault();
+                if (service is not null)
+                {
+                    Task<InventoryReadResult<InventoryEntry>> CollectService(InventorySource source, CancellationToken cancellation) =>
+                        Task.FromResult(new InventoryReadResult<InventoryEntry>(InventoryReadStatus.Partial, [service], serviceObservation.PartialReason ?? InventoryPartialReason.Other));
+                    Assert.AreEqual(InventoryCycleKind.Queued, (await cycle.RunAsync(vault, server, InventorySource.HostServices, CollectService, token)).Kind);
+                    while (await queue.PeekAsync(token) is not null)
+                        Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+                    Assert.AreEqual(InventoryCycleKind.Complete, (await cycle.RunAsync(vault, server, InventorySource.HostServices, CollectService, token)).Kind);
+                }
+
                 var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
                 start.ArgumentList.Add(typeof(AgentHarness::AgentHostHarnessMarker).Assembly.Location);
@@ -176,6 +206,17 @@ public sealed class AgentIdentityHttpTests
                     await selfRow.GetByText($"程序 ID：{Environment.ProcessId}", new() { Exact = false }).WaitForAsync();
                     await selfRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
                     await page.GetByText("原因：AccessDenied", new() { Exact = false }).WaitForAsync();
+                    await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostListeners).ToString());
+                    var listenerRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = $"TCP {listenerPort}" });
+                    await listenerRow.GetByText($"位址：127.0.0.1", new() { Exact = false }).WaitForAsync();
+                    if (service is not null)
+                    {
+                        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostServices).ToString());
+                        var serviceRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = service.Key });
+                        await serviceRow.GetByText(service.Name, new() { Exact = true }).WaitForAsync();
+                        if (service.ServiceStatus is not null) await serviceRow.GetByText($"狀態：{service.ServiceStatus}", new() { Exact = false }).WaitForAsync();
+                        if (service.StartupMode is not null) await serviceRow.GetByText($"啟動模式：{service.StartupMode}", new() { Exact = false }).WaitForAsync();
+                    }
                     await gate.ReleaseAsync();
                     await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
                     await page.ReloadAsync();
@@ -183,6 +224,15 @@ public sealed class AgentIdentityHttpTests
                     await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
                     var wasmRow = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
                     await wasmRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
+                    await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostListeners).ToString());
+                    await page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByText($"TCP {listenerPort}", new() { Exact = true }).WaitForAsync();
+                    if (service is not null)
+                    {
+                        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostServices).ToString());
+                        var serviceRow = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByRole(AriaRole.Row).Filter(new() { HasText = service.Key });
+                        await serviceRow.GetByText(service.Name, new() { Exact = true }).WaitForAsync();
+                        if (service.ServiceStatus is not null) await serviceRow.GetByText($"狀態：{service.ServiceStatus}", new() { Exact = false }).WaitForAsync();
+                    }
                 }
                 finally
                 {
