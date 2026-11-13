@@ -53,6 +53,38 @@ internal static class PublicationEndpoints
             return await templates.DefaultAsync(token) is { } template ? Results.Ok(template) : Results.NotFound();
         }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the current default publication template");
+        admin.MapPost("/templates/{id:guid}/update-preview", async (Guid id, PublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await workflow.PreviewAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Preview),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["請確認範本名稱。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The preview could not be prepared; refresh and try again.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateUpdatePreview>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Preview a publication template update");
+        admin.MapPut("/templates/{id:guid}", async (Guid id, ConfirmPublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await workflow.ConfirmAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Template),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["confirmation"] = ["預覽已失效，請重新預覽。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template or affected devices changed; refresh the preview.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Confirm a publication template update");
         admin.MapGet("/templates/{id:guid}/impact", async (Guid id, int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

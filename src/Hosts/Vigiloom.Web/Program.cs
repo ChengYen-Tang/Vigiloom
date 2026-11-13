@@ -183,6 +183,7 @@ builder.Services.AddScoped<IWorkspaceOverviewClient, Vigiloom.Web.Workspace.Serv
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationAdministration>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateUpdateWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();
