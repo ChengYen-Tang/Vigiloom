@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
@@ -16,7 +17,7 @@ internal sealed record PublicationChangeResult(PublicationChangeStatus Status, P
 /// <summary>Coordinates owner-module publication settings and audit in one database transaction.</summary>
 internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbContext> resources,
     IDbContextFactory<ServiceObservabilityDbContext> services, IDbContextFactory<PublishingDbContext> publishing,
-    IOperationAuditWriter<OperationAudit> audit, TimeProvider clock)
+    IOperationAuditWriter<OperationAudit> audit, TimeProvider clock, ILogger<PublicationAdministration> logger)
 {
     public async Task<PublicationSettings?> ReadAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
     {
@@ -32,9 +33,16 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         {
             var row = await resourceDb.Devices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
             if (row is null) return null;
-            await using var templateDb = await publishing.CreateDbContextAsync(token);
-            var templateVersion = row.PublicTemplateId is { } templateId
-                ? await templateDb.Templates.AsNoTracking().Where(x => x.Id == templateId && !x.IsRetired).Select(x => x.Version).SingleOrDefaultAsync(token) : null;
+            byte[]? templateVersion = null;
+            if (row.PublicTemplateId is { } templateId)
+            {
+                try
+                {
+                    await using var templateDb = await publishing.CreateDbContextAsync(token);
+                    templateVersion = await templateDb.Templates.AsNoTracking().Where(x => x.Id == templateId && !x.IsRetired).Select(x => x.Version).SingleOrDefaultAsync(token);
+                }
+                catch (DbException ex) when (!token.IsCancellationRequested) { logger.LogWarning(ex, "Unable to read the device publication template version"); }
+            }
             return Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version, row.PublicTemplateId, templateVersion);
         }
         if (kind == PublicationResourceKind.Group)

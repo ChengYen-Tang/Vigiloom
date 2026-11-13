@@ -55,7 +55,7 @@ public sealed record PublicationChange(bool Public, string? DisplayName, string?
 public sealed record PublicationSettings(Guid Id, bool Public, string? DisplayName, string? PolicyVersion, string Version, Guid? TemplateId = null, string? TemplateVersion = null);
 
 /// <summary>Preview data for an administrator; it contains no internal addresses.</summary>
-public sealed record PublicationPreview(string State, double? LatencyMilliseconds);
+public sealed record PublicationPreview(string State, double? LatencyMilliseconds, DateTimeOffset? ObservedAt = null);
 
 public enum PublicationSaveStatus { Updated, Invalid, Conflict, NotFound }
 public sealed record PublicationSaveResult(PublicationSaveStatus Status, PublicationSettings? Settings = null);
@@ -64,6 +64,9 @@ public interface IPublicationClient
 {
     Task<PublicationSettings?> GetAsync(string kind, Guid id, CancellationToken token);
     Task<PublicationPreview?> PreviewAsync(string kind, Guid id, CancellationToken token);
+    Task<PublicationTemplatePage> TemplatesAsync(int page, CancellationToken token);
+    Task<PublicationTemplateItem?> TemplateAsync(Guid id, CancellationToken token);
+    Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token);
     Task<PublicationSaveResult> SaveAsync(string kind, Guid id, PublicationChange change, CancellationToken token);
 }
 

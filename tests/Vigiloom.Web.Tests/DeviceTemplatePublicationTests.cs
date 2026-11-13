@@ -29,7 +29,7 @@ public sealed class DeviceTemplatePublicationTests(TestContext context)
             var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             var publishing = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
             var clock = new ManualClock(DateTimeOffset.UtcNow);
-            var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), publishing, new OperationAuditWriter(), clock);
+            var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), publishing, new OperationAuditWriter(), clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
             var actor = Guid.CreateVersion7();
             var first = new PublicationTemplate("First", true, false, clock.GetUtcNow());
             var second = new PublicationTemplate("Second", false, true, clock.GetUtcNow());
@@ -93,7 +93,7 @@ public sealed class DeviceTemplatePublicationTests(TestContext context)
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await publishing.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await host.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-            var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), publishing, new OperationAuditWriter(), TimeProvider.System);
+            var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), publishing, new OperationAuditWriter(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
             var now = DateTimeOffset.UtcNow;
             var device = new Device("Device", "example.com", false, now);
             device.SetTemplatePublication("Public device", Guid.CreateVersion7(), false, now);
@@ -103,8 +103,11 @@ public sealed class DeviceTemplatePublicationTests(TestContext context)
             await using var command = connection.CreateCommand();
             command.CommandText = "EXEC sp_rename N'[publishing].[Templates]', N'Templates_hidden_test'";
             await command.ExecuteNonQueryAsync(token);
+            var settings = await admin.ReadAsync(PublicationResourceKind.Device, device.Id, token);
+            Assert.IsNotNull(settings);
+            Assert.IsNull(settings.TemplateVersion);
             var result = await admin.SetAsync(PublicationResourceKind.Device, device.Id,
-                new(false, null, null, Convert.ToBase64String(device.Version)), Guid.CreateVersion7(), token);
+                new(false, null, null, settings.Version), Guid.CreateVersion7(), token);
             Assert.AreEqual(PublicationChangeStatus.Updated, result.Status);
             await using var verify = await resources.CreateDbContextAsync(token);
             var persisted = await verify.Devices.SingleAsync(x => x.Id == device.Id, token);

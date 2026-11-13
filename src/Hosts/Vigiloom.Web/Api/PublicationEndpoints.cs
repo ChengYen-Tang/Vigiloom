@@ -53,6 +53,12 @@ internal static class PublicationEndpoints
             return await templates.DefaultAsync(token) is { } template ? Results.Ok(template) : Results.NotFound();
         }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the current default publication template");
+        admin.MapGet("/templates/{id:guid}", async (Guid id, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await templates.GetAsync(id, token) is { } template ? Results.Ok(template) : Results.NotFound();
+        }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get a publication template");
         admin.MapPost("/templates/{id:guid}/update-preview", async (Guid id, PublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

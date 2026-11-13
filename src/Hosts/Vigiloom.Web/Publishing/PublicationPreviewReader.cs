@@ -21,7 +21,7 @@ internal sealed class PublicationPreviewReader(DeviceManagement devices, PingSto
             if (!device.Enabled) return new("Unknown", null);
             var status = (await ping.GetStatusAsync(id, [device.Address], device.Version, token)).Targets[0];
             return new(status.State switch { Reachability.Reachable => "Operational", Reachability.Unreachable => "Unavailable", _ => "Unknown" },
-                status.State == Reachability.Reachable && status.LastOutcome == PingOutcome.Success && !status.Stale ? status.LatencyMilliseconds : null);
+                status.State == Reachability.Reachable && status.LastOutcome == PingOutcome.Success && !status.Stale ? status.LatencyMilliseconds : null, status.MeasuredAt);
         }
         if (kind == PublicationResourceKind.Service)
         {

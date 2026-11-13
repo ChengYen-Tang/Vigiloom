@@ -36,7 +36,7 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
         var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
             host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>(),
-            new FailingAuditWriter(), TimeProvider.System);
+            new FailingAuditWriter(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
         var settings = await admin.ReadAsync(PublicationResourceKind.Device, device.Id, token);
         Assert.IsNotNull(settings);
         await Assert.ThrowsAsync<InvalidOperationException>(() => admin.SetAsync(PublicationResourceKind.Device, device.Id,

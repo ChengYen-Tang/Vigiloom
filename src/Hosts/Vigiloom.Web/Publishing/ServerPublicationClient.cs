@@ -8,7 +8,7 @@ using Vigiloom.Web.Authentication;
 namespace Vigiloom.Web.Publishing;
 
 internal sealed class ServerPublicationClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    PublicationAdministration administration, PublicationPreviewReader preview) : IPublicationClient
+    PublicationAdministration administration, PublicationPreviewReader preview, TemplateReader templates) : IPublicationClient
 {
     public async Task<PublicationSettings?> GetAsync(string kind, Guid id, CancellationToken token)
     {
@@ -21,6 +21,13 @@ internal sealed class ServerPublicationClient(AuthenticationStateProvider authen
         await ActorAsync(token);
         return PublicationEndpoints.TryKind(kind, out var type) ? await preview.ReadAsync(type, id, token) : null;
     }
+
+    public async Task<PublicationTemplatePage> TemplatesAsync(int page, CancellationToken token)
+    { await ActorAsync(token); return await templates.ListAsync(page, token); }
+    public async Task<PublicationTemplateItem?> TemplateAsync(Guid id, CancellationToken token)
+    { await ActorAsync(token); return await templates.GetAsync(id, token); }
+    public async Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token)
+    { await ActorAsync(token); return await templates.DefaultAsync(token); }
 
     public async Task<PublicationSaveResult> SaveAsync(string kind, Guid id, PublicationChange change, CancellationToken token)
     {

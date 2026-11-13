@@ -8,6 +8,9 @@ internal sealed class BrowserPublicationClient(HttpClient client) : IPublication
 {
     public Task<PublicationSettings?> GetAsync(string kind, Guid id, CancellationToken token) => ReadAsync<PublicationSettings>(Path(kind, id), token);
     public Task<PublicationPreview?> PreviewAsync(string kind, Guid id, CancellationToken token) => ReadAsync<PublicationPreview>(Path(kind, id) + "/preview", token);
+    public Task<PublicationTemplatePage> TemplatesAsync(int page, CancellationToken token) => ReadRequiredAsync<PublicationTemplatePage>($"api/v1/admin/publications/templates?page={page}", token);
+    public Task<PublicationTemplateItem?> TemplateAsync(Guid id, CancellationToken token) => ReadAsync<PublicationTemplateItem>($"api/v1/admin/publications/templates/{id:D}", token);
+    public Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token) => ReadAsync<PublicationTemplateItem>("api/v1/admin/publications/templates/default", token);
 
     public async Task<PublicationSaveResult> SaveAsync(string kind, Guid id, PublicationChange change, CancellationToken token)
     {
