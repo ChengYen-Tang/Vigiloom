@@ -35,31 +35,8 @@ internal sealed class AdvisoryRevisionBuilder(IDbContextFactory<SecurityAnalysis
         if (active?.RevisionId != import.BaseRevisionId ||
             (active is null ? import.BaseActivationVersion is not null : !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion))) return new(AdvisoryBuildStatus.Conflict);
 
-        if (active is not null)
-        {
-            var baseRevision = await db.IntelligenceRevisions.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId && x.Id == active.RevisionId, token);
-            if (baseRevision is null || baseRevision.Revoked || !baseRevision.Normalized || baseRevision.MappingVersion != MappingVersion ||
-                baseRevision.SchemaVersion != SchemaVersion || baseRevision.LicenseEvidence != LicenseEvidence ||
-                await db.AdvisoryRevisionEntries.CountAsync(x => x.RevisionId == active.RevisionId, token) != baseRevision.RecordCount ||
-                await (from member in db.AdvisoryRevisionEntries
-                       join entry in db.AdvisoryImportEntries on member.EntryRowId equals entry.RowId
-                       join origin in db.AdvisoryImports on entry.ImportId equals origin.Id
-                       where member.RevisionId == active.RevisionId &&
-                           (origin.SourceId != sourceId || origin.Phase != 4 || origin.ResultRevisionId == null || entry.Reconciliation)
-                       select member.RowId).AnyAsync(token) ||
-                await (from member in db.AdvisoryRevisionEntries
-                       join entry in db.AdvisoryImportEntries on member.EntryRowId equals entry.RowId
-                       join origin in db.AdvisoryImports on entry.ImportId equals origin.Id
-                       join provenance in db.IntelligenceRevisions on origin.ResultRevisionId equals (Guid?)provenance.Id
-                       where member.RevisionId == active.RevisionId &&
-                           (provenance.SourceId != sourceId || provenance.Revoked || !provenance.Normalized ||
-                            provenance.MappingVersion != MappingVersion || provenance.SchemaVersion != SchemaVersion ||
-                            provenance.LicenseEvidence != LicenseEvidence || db.IntelligenceRevisions.Any(r =>
-                                r.SourceId == sourceId && r.Digest == provenance.Digest && r.Revoked))
-                       select member.RowId).AnyAsync(token) ||
-                await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == baseRevision.Digest && x.Revoked, token))
-                return new(AdvisoryBuildStatus.InvalidBase);
-        }
+        if (active is not null && !await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, active.RevisionId, token))
+            return new(AdvisoryBuildStatus.InvalidBase);
 
         var candidate = db.AdvisoryImportEntries.Where(x => x.ImportId == importId && !x.Reconciliation);
         if (await candidate.CountAsync(token) != import.RecordCount) return new(AdvisoryBuildStatus.Conflict);
