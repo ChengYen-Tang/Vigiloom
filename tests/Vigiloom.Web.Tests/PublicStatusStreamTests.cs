@@ -1,15 +1,23 @@
 using System.Net;
+using System.Data.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Web.Publishing;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -23,7 +31,46 @@ public sealed class PublicStatusStreamTests(TestContext context)
 {
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
-    public Task Subscription_DeadlineCancelsBlockedResponseWrite() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    public Task Subscription_DeadlineBeforeHeadersReturnsRetryableError() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var device = await PingTestSite.InitializeAsync(host, token, schemaInitialized: true);
+        var gate = new BlockDatabaseRead();
+        var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString).AddInterceptors(gate).Options;
+        var contexts = new PooledDbContextFactory<ResourcesDbContext>(options);
+        var clock = new FakeTimeProvider();
+        using var admission = new PublicStreamAdmission(1, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), clock, TimeSpan.FromSeconds(30));
+        using var disconnect = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var reader = new PublicReader(contexts, services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+            services.GetRequiredService<PingStore>(), services.GetRequiredService<HealthStatusReader>());
+        var http = new DefaultHttpContext { RequestServices = services, RequestAborted = disconnect.Token };
+        await using var body = new MemoryStream();
+        http.Response.Body = body;
+        var execution = new PublicStatusStream(PublicationResourceKind.Device, device.Id, reader, admission).ExecuteAsync(http);
+        try
+        {
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30), token);
+            clock.Advance(TimeSpan.FromSeconds(3));
+            await execution.WaitAsync(TimeSpan.FromSeconds(10), token);
+            Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, http.Response.StatusCode);
+            Assert.AreEqual("15", http.Response.Headers.RetryAfter.ToString());
+            Assert.IsGreaterThan(0, body.Length);
+            Assert.AreEqual(1, admission.Slots.CurrentCount);
+        }
+        finally
+        {
+            disconnect.Cancel();
+            await execution;
+        }
+    }, context.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Subscription_CancellationReleasesBlockedResponseWrite(bool clientDisconnect) => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var host = PingTestSite.CreateFactory(database.ConnectionString);
         var device = await PingTestSite.InitializeAsync(host, token, schemaInitialized: true);
@@ -47,7 +94,8 @@ public sealed class PublicStatusStreamTests(TestContext context)
         {
             await body.Entered.Task.WaitAsync(TimeSpan.FromSeconds(30), token);
             Assert.AreEqual(0, admission.Slots.CurrentCount);
-            clock.Advance(TimeSpan.FromSeconds(3));
+            if (clientDisconnect) disconnect.Cancel();
+            else clock.Advance(TimeSpan.FromSeconds(3));
             await execution.WaitAsync(TimeSpan.FromSeconds(10), token);
             Assert.IsTrue(body.Canceled);
             Assert.AreEqual(1, admission.Slots.CurrentCount);
@@ -60,11 +108,15 @@ public sealed class PublicStatusStreamTests(TestContext context)
     }, context.CancellationToken);
 
     [TestMethod]
+    [DataRow("devices")]
+    [DataRow("services")]
+    [DataRow("groups")]
+    [DataRow("group-member")]
     [Timeout(120000, CooperativeCancellation = true)]
-    public Task Subscription_ReauthorizesAfterRevocationAndReleasesCapacity() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    public Task Subscription_ReauthorizesAfterRevocationAndReleasesCapacity(string kind) => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var original = PingTestSite.CreateFactory(database.ConnectionString);
-        var admission = new PublicStreamAdmission(1, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(30), TimeProvider.System);
+        var admission = new PublicStreamAdmission(1, TimeSpan.FromMilliseconds(200), TimeSpan.FromMinutes(2), TimeProvider.System);
         using var host = original.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<PublicStreamAdmission>();
@@ -74,15 +126,37 @@ public sealed class PublicStatusStreamTests(TestContext context)
         host.StartServer();
         var device = await PingTestSite.InitializeAsync(host, token, schemaInitialized: true);
         var contexts = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+        var serviceContexts = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("private-source", new byte[32], now);
+        var candidate = new ServiceCandidate(source.Id, "private-service", "private-environment", "Private name", now);
+        var service = new MonitoredService(candidate, now);
+        service.SetPublication(true, "Public service", PublicationPolicy.BaselineVersion, now);
+        var group = new Group("private-group", now);
+        group.SetPublication(true, "Public group", PublicationPolicy.BaselineVersion, now);
+        await using (var db = await serviceContexts.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            await db.SaveChangesAsync(token);
+        }
         await using (var db = await contexts.CreateDbContextAsync(token))
         {
             var saved = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
             saved.SetPublication(true, "Public network", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+            db.Groups.Add(group);
+            db.ServiceGroups.Add(new ServiceGroup(group.Id, service.Id));
             await db.SaveChangesAsync(token);
         }
 
         using var client = new HttpClient { BaseAddress = host.ClientOptions.BaseAddress };
-        var url = $"/api/v1/public/devices/{device.Id:D}/events";
+        var (id, publicName) = kind switch
+        {
+            "devices" => (device.Id, "Public network"),
+            "services" => (service.Id, "Public service"),
+            _ => (group.Id, "Public group")
+        };
+        var routeKind = kind == "group-member" ? "groups" : kind;
+        var url = $"/api/v1/public/{routeKind}/{id:D}/events";
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual("text/event-stream", response.Content.Headers.ContentType?.MediaType);
@@ -91,17 +165,26 @@ public sealed class PublicStatusStreamTests(TestContext context)
         using var reader = new StreamReader(stream);
         var first = await ReadEventAsync(reader, token);
         Assert.AreEqual("status", first.Event);
-        Assert.Contains("Public network", first.Data);
+        Assert.Contains(publicName, first.Data);
         Assert.DoesNotContain(device.Address, first.Data);
+        Assert.DoesNotContain("private-", first.Data);
 
         using (var busy = await client.GetAsync(url, token))
         {
             Assert.AreEqual(HttpStatusCode.ServiceUnavailable, busy.StatusCode);
             Assert.IsNotNull(busy.Headers.RetryAfter);
         }
-        await using (var db = await contexts.CreateDbContextAsync(token))
+        if (kind is "services" or "group-member")
         {
-            (await db.Devices.SingleAsync(x => x.Id == device.Id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
+            await using var db = await serviceContexts.CreateDbContextAsync(token);
+            (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(token);
+        }
+        else
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            if (kind == "devices") (await db.Devices.SingleAsync(x => x.Id == device.Id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
+            else (await db.Groups.SingleAsync(x => x.Id == group.Id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(token);
         }
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -109,7 +192,7 @@ public sealed class PublicStatusStreamTests(TestContext context)
         (string Event, string Data) next;
         do { next = await ReadEventAsync(reader, wait.Token); } while (next.Event == "status");
         Assert.AreEqual("unavailable", next.Event);
-        Assert.DoesNotContain("Public network", next.Data);
+        Assert.DoesNotContain(publicName, next.Data);
         Assert.DoesNotContain(device.Address, next.Data);
         Assert.IsNull(await reader.ReadLineAsync(wait.Token));
         Assert.IsTrue(await admission.Slots.WaitAsync(TimeSpan.FromSeconds(5), wait.Token));
@@ -140,6 +223,18 @@ public sealed class PublicStatusStreamTests(TestContext context)
         public bool HasStarted => true;
         public void OnStarting(Func<object, Task> callback, object state) { }
         public void OnCompleted(Func<object, Task> callback, object state) { }
+    }
+
+    private sealed class BlockDatabaseRead : DbCommandInterceptor
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return result;
+        }
     }
 
     private sealed class BlockingResponseStream : Stream
