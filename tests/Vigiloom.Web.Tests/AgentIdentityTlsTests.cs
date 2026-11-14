@@ -348,6 +348,20 @@ public sealed class AgentIdentityTlsTests
                                 Assert.DoesNotContain("after-rotation", body);
                                 Assert.DoesNotContain("TLS log", body);
                             }
+                            using var streamDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+                            streamDeadline.CancelAfter(TimeSpan.FromSeconds(10));
+                            using var streamResponse = await anonymous.GetAsync(new Uri(url, $"/api/v1/public/devices/{device.Id:D}/events"),
+                                HttpCompletionOption.ResponseHeadersRead, streamDeadline.Token);
+                            Assert.AreEqual(HttpStatusCode.OK, streamResponse.StatusCode);
+                            using var reader = new StreamReader(await streamResponse.Content.ReadAsStreamAsync(streamDeadline.Token));
+                            var eventText = new System.Text.StringBuilder();
+                            while (await reader.ReadLineAsync(streamDeadline.Token) is { Length: > 0 } line) eventText.AppendLine(line);
+                            var status = eventText.ToString();
+                            Assert.Contains("event: status", status);
+                            Assert.Contains("Public TLS device", status);
+                            Assert.DoesNotContain("multiline-start", status);
+                            Assert.DoesNotContain("after-rotation", status);
+                            Assert.DoesNotContain("TLS log", status);
                         }
                         using (var playwright = await Playwright.CreateAsync())
                         await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
