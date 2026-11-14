@@ -73,7 +73,7 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM resources.__EFMigrationsHistory";
-        Assert.AreEqual(8, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(9, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.indexes i
             JOIN sys.tables t ON t.object_id = i.object_id
@@ -235,7 +235,7 @@ public sealed class ModuleMigrationTests
             VALUES ({publicId}, {"Existing public"}, {"public.example"}, {false}, {false}, {before}, {before}, {true}, {"Public name"}, {"baseline-v1"}),
                    ({privateId}, {"Existing private"}, {"private.example"}, {false}, {false}, {before}, {before}, {false}, NULL, NULL)
             """, token);
-        await db.Database.MigrateAsync(token);
+        await migrator.MigrateAsync("20261113221637_DeviceTemplatePublication", token);
         var publicDevice = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == publicId, token);
         var privateDevice = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == privateId, token);
         Assert.IsTrue(publicDevice.IsPublic);
@@ -255,6 +255,11 @@ public sealed class ModuleMigrationTests
         var failure = await Assert.ThrowsExactlyAsync<SqlException>(() => migrator.MigrateAsync("20261113160848_ResourcePublication", token));
         Assert.AreEqual(51005, failure.Number);
         Assert.IsTrue(await db.Devices.AsNoTracking().AnyAsync(x => x.Id == publicId && x.IsPublic, token));
+        await db.Database.MigrateAsync(token);
+        var pending = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == publicId, token);
+        Assert.AreEqual(Device.PendingPublicSince, pending.PublicSince);
+        var newGuard = await Assert.ThrowsExactlyAsync<SqlException>(() => migrator.MigrateAsync("20261113221637_DeviceTemplatePublication", token));
+        Assert.AreEqual(51007, newGuard.Number);
     });
 
     [TestMethod]
