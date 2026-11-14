@@ -276,6 +276,25 @@ public sealed class AgentIdentityTlsTests
                             Assert.AreEqual("TLS log", gap.SourceName);
                             Assert.IsTrue(page.Items.Any(x => x.Content == "ok\n"));
                         }
+                        // Replace only this test-owned file, then verify the hosted collector
+                        // persists a gap before accepting records from the replacement.
+                        File.Move(logPath, logPath + ".previous");
+                        await File.WriteAllTextAsync(logPath, "after-rotation\n", deadline.Token);
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
+                            if (await entries.AnyAsync(x => x.GapReason == AgentLogGapReason.CursorLost, deadline.Token) &&
+                                await entries.AnyAsync(x => x.Content == "after-rotation\n", deadline.Token)) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
+                        {
+                            var gap = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.GapReason == AgentLogGapReason.CursorLost, deadline.Token);
+                            var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "after-rotation\n", deadline.Token);
+                            Assert.IsLessThan(resumed.RowId, gap.RowId);
+                        }
                         using (var playwright = await Playwright.CreateAsync())
                         await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
                         await using (var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
@@ -291,14 +310,14 @@ public sealed class AgentIdentityTlsTests
                             var table = page.GetByRole(AriaRole.Region, new() { Name = "日誌表格，可左右捲動" });
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
-                            await table.GetByText("採集缺口：", new() { Exact = true }).WaitForAsync();
+                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
                             await wasmGate.ReleaseAsync();
                             await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
                             await page.ReloadAsync();
                             await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
-                            await table.GetByText("採集缺口：", new() { Exact = true }).WaitForAsync();
+                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
