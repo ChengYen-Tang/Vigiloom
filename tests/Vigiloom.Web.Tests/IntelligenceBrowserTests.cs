@@ -1,0 +1,88 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Playwright;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Testing.SqlServer;
+using Vigiloom.Web.Tests.Fixtures;
+
+namespace Vigiloom.Web.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+[TestCategory("Browser")]
+[DoNotParallelize]
+public sealed class IntelligenceBrowserTests(TestContext context)
+{
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task SourceSettings_WorkAtDesktopAndMobileWidths() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0);
+        factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token);
+        var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow,
+            LastError = "KEV retrieval failed." };
+        var advisorySource = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+        var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test-catalog-v1", ReleasedAt = DateTimeOffset.UtcNow.AddDays(-1),
+            RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test",
+            LicenseEvidence = "test", RecordCount = 1, Normalized = true };
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            db.IntelligenceSources.AddRange(source, advisorySource);
+            db.IntelligenceRevisions.Add(revision);
+            db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(token);
+        }
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true, ExecutablePath = Environment.GetEnvironmentVariable("VIGILOOM_BROWSER_EXECUTABLE") });
+        await using var browserContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1024 } });
+        var page = await browserContext.NewPageAsync();
+        var errors = new List<string>();
+        page.PageError += (_, error) => errors.Add(error);
+        await page.GotoAsync(url + "/settings/intelligence");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "情報來源", Exact = true }).First.WaitForAsync();
+        await page.GetByText("更新設定", new() { Exact = true }).ClickAsync();
+        await page.GetByLabel("更新間隔（秒）").FillAsync("43200");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        Assert.Contains("設定已儲存", await page.Locator("main").InnerTextAsync());
+        var evidence = Environment.GetEnvironmentVariable("VIGILOOM_INTELLIGENCE_EVIDENCE_DIR") ?? Path.Combine(context.TestRunDirectory!, "intelligence-ui");
+        Directory.CreateDirectory(evidence);
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "desktop.png"), FullPage = true });
+        await page.SetViewportSizeAsync(390, 844);
+        await page.GotoAsync(url + "/settings/intelligence");
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        var versions = page.GetByRole(AriaRole.Region, new() { Name = "情報版本，可左右捲動" });
+        await versions.FocusAsync();
+        await page.Keyboard.PressAsync("ArrowRight");
+        await page.WaitForFunctionAsync("() => document.querySelector('[aria-label=\"情報版本，可左右捲動\"]')?.scrollLeft > 0");
+        await page.GetByText("更新設定", new() { Exact = true }).ClickAsync();
+        await page.GetByLabel("啟用自動更新").UncheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        Assert.Contains("設定已儲存", await page.Locator("main").InnerTextAsync());
+        await using (var disabledCheck = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            Assert.IsFalse((await disabledCheck.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token)).Enabled);
+        await page.GetByText("更新設定", new() { Exact = true }).ClickAsync();
+        await page.GetByLabel("啟用自動更新").CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        Assert.Contains("設定已儲存", await page.Locator("main").InnerTextAsync());
+        await page.GetByText("更新設定", new() { Exact = true }).ClickAsync();
+        await page.GetByLabel("匯入容量上限（MiB）").FillAsync("1.5");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        Assert.Contains("設定已儲存", await page.Locator("main").InnerTextAsync());
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "mobile.png"), FullPage = true });
+        Assert.IsEmpty(errors);
+        await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+        var current = await check.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token);
+        Assert.IsTrue(current.Enabled);
+        Assert.AreEqual(43200, current.UpdateIntervalSeconds);
+        Assert.AreEqual(1572864, current.MaximumBytes);
+    }, context.CancellationToken);
+}

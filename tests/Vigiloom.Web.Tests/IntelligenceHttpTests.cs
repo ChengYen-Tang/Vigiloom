@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -25,6 +26,146 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class IntelligenceHttpTests(TestContext context)
 {
+    [TestMethod]
+    public Task ManagementPage_ActivatesVersionAndProtectsCredential() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var kev = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
+            var gh = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            var revision = new IntelligenceRevision { SourceId = kev.Id, UpstreamVersion = "v-test", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "a795af4c4afc47df12906b4c04e656156cf06493", MappingVersion = "kev-cve-v1",
+                LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493", RecordCount = 1, Normalized = true };
+            var secondRevision = new IntelligenceRevision { SourceId = kev.Id, UpstreamVersion = "v-test-2", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = Enumerable.Repeat((byte)1, 32).ToArray(), Artifact = [], SchemaVersion = revision.SchemaVersion, MappingVersion = revision.MappingVersion,
+                LicenseEvidence = revision.LicenseEvidence, RecordCount = 1, Normalized = true };
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            { db.IntelligenceSources.AddRange(kev, gh); db.IntelligenceRevisions.AddRange(revision, secondRevision); await db.SaveChangesAsync(token); }
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            async Task<Dictionary<string, string>> Form(string url, string name)
+            {
+                using var page = await admin.GetAsync(url, token);
+                Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+                var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == name);
+                return form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            }
+            var kevUrl = $"/settings/intelligence?source={kev.Id:D}";
+            var activate = await Form(kevUrl, "intelligence-activation");
+            activate["ActivationInput.RevisionId"] = revision.Id.ToString("D");
+            activate["ActivationInput.ConfirmReduction"] = "false";
+            using (var response = await admin.PostAsync(kevUrl, new FormUrlEncodedContent(activate), token))
+            {
+                var doc = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("版本已啟用", doc.Body!.TextContent);
+                var next = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation");
+                var nextFields = next.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                nextFields["ActivationInput.RevisionId"] = secondRevision.Id.ToString("D");
+                using var nextResponse = await admin.PostAsync(kevUrl, new FormUrlEncodedContent(nextFields), token);
+                var nextDocument = await new HtmlParser().ParseDocumentAsync(await nextResponse.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("版本已啟用", nextDocument.Body!.TextContent);
+            }
+            var ghUrl = $"/settings/intelligence?source={gh.Id:D}";
+            var credentials = await Form(ghUrl, "intelligence-credential");
+            credentials["CredentialInput.Clear"] = "false";
+            credentials["CredentialInput.Value"] = "sensitive-test-token";
+            using (var response = await admin.PostAsync(ghUrl, new FormUrlEncodedContent(credentials), token))
+            {
+                var body = await response.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain("sensitive-test-token", body);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("憑證設定已儲存", doc.Body!.TextContent);
+                var clearForm = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-credential");
+                var clear = clearForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                clear["CredentialInput.Clear"] = "True";
+                using var cleared = await admin.PostAsync(ghUrl, new FormUrlEncodedContent(clear), token);
+                var clearedDocument = await new HtmlParser().ParseDocumentAsync(await cleared.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("憑證設定已儲存", clearedDocument.Body!.TextContent);
+            }
+            await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(secondRevision.Id, (await check.IntelligenceActivations.SingleAsync(x => x.SourceId == kev.Id, token)).RevisionId);
+            Assert.IsNull((await check.IntelligenceSources.SingleAsync(x => x.Id == gh.Id, token)).ProtectedCredential);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task ManagementPage_ProtectsAccessAndSavesSourcePolicy() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true };
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            using var anonymous = PingTestSite.Client(factory);
+            using var reader = PingTestSite.Client(factory);
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            var url = $"/settings/intelligence?source={source.Id:D}";
+            using (var response = await anonymous.GetAsync(url, token)) Assert.AreNotEqual(HttpStatusCode.OK, response.StatusCode);
+            using (var response = await reader.GetAsync(url, token)) Assert.AreNotEqual(HttpStatusCode.OK, response.StatusCode);
+            using var page = await admin.GetAsync(url, token);
+            Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
+            var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("CISA Known Exploited Vulnerabilities", document.Body!.TextContent);
+            var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-policy");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            fields["PolicyInput.Enabled"] = "true";
+            fields["PolicyInput.Interval"] = "43200";
+            fields["PolicyInput.Stale"] = "259200";
+            fields["PolicyInput.MiB"] = "16";
+            fields["PolicyInput.Records"] = "50000";
+            using var saved = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+            var savedDocument = await new HtmlParser().ParseDocumentAsync(await saved.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("設定已儲存", savedDocument.Body!.TextContent);
+            var nextForm = savedDocument.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-policy");
+            var nextFields = nextForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            nextFields["PolicyInput.Enabled"] = "true";
+            nextFields["PolicyInput.Interval"] = "21600";
+            nextFields["PolicyInput.Stale"] = "259200";
+            nextFields["PolicyInput.MiB"] = "16";
+            nextFields["PolicyInput.Records"] = "50000";
+            using var savedAgain = await admin.PostAsync(url, new FormUrlEncodedContent(nextFields), token);
+            var againDocument = await new HtmlParser().ParseDocumentAsync(await savedAgain.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("設定已儲存", againDocument.Body!.TextContent);
+            var latestForm = againDocument.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-policy");
+            var latestFields = latestForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            latestFields["PolicyInput.Enabled"] = "true";
+            latestFields["PolicyInput.Interval"] = "43200";
+            latestFields["PolicyInput.Stale"] = "259200";
+            latestFields["PolicyInput.MiB"] = "16";
+            latestFields["PolicyInput.Records"] = "50000";
+            foreach (var (key, value) in new[] { ("PolicyInput.Enabled", "invalid"), ("PolicyInput.Interval", "99999999999999999999"), ("PolicyInput.SourceId", "not-a-guid"), ("PolicyInput.MiB", "0.0000001") })
+            {
+                var malformed = new Dictionary<string, string>(latestFields) { [key] = value };
+                using var rejected = await admin.PostAsync(url, new FormUrlEncodedContent(malformed), token);
+                Assert.AreNotEqual(HttpStatusCode.InternalServerError, rejected.StatusCode);
+            }
+            await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            var persisted = await check.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token);
+            Assert.AreEqual(21600, persisted.UpdateIntervalSeconds);
+            Assert.IsTrue(persisted.Enabled);
+            var exact = new Dictionary<string, string>(latestFields) { ["PolicyInput.MiB"] = "0.0009765625" };
+            using var exactResponse = await admin.PostAsync(url, new FormUrlEncodedContent(exact), token);
+            var exactDocument = await new HtmlParser().ParseDocumentAsync(await exactResponse.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("設定已儲存", exactDocument.Body!.TextContent);
+            await check.Entry(persisted).ReloadAsync(token);
+            Assert.AreEqual(1024, persisted.MaximumBytes);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task Management_RequiresAdministratorAndAntiforgery_AndNeverReturnsArtifact() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
