@@ -73,7 +73,7 @@ internal static class AdvisoryPageValidator
         return time.ToUniversalTime();
     }
 
-    private static bool ValidId(string id)
+    internal static bool ValidId(string id)
     {
         if (id.Length != 19 || !id.StartsWith("GHSA-", StringComparison.Ordinal) || id[9] != '-' || id[14] != '-') return false;
         for (var i = 5; i < id.Length; i++)
