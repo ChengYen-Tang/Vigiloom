@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Operations;
@@ -13,7 +14,8 @@ public enum DeviceResultStatus { Success, NotFound, Conflict, Invalid }
 public sealed record DeviceResult(DeviceResultStatus Status, DeviceDetails? Device = null, IReadOnlyDictionary<string, string[]>? Errors = null);
 
 /// <summary>Owns device state and SQL transactions. Callers must authorize the current principal.</summary>
-public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit>? audit = null)
+public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit>? audit = null,
+    ILogger<DeviceManagement>? logger = null)
 {
     public const int PageSize = 50;
     public const int MaxAdditionalTargets = 16;
@@ -89,7 +91,10 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
                 new OperationAudit(actor, device.Id, now.ToUniversalTime(), new PublicationChanged(PublicationResourceKind.Device, false, true, true)), token);
             await tx!.CommitAsync(token);
         }
-        return new(DeviceResultStatus.Success, Map(device, validation.Targets));
+        var confirmed = input.Public ? await DevicePublicationPeriod.ConfirmAsync(contexts, device.Id, device.Version, logger, token) : null;
+        var result = Map(device, validation.Targets);
+        if (confirmed is not null) result = result with { Version = Convert.ToBase64String(confirmed) };
+        return new(DeviceResultStatus.Success, result);
     }
 
     public async Task<DeviceResult> UpdateAsync(Guid id, DeviceInput input, Guid actor, CancellationToken token)

@@ -111,6 +111,30 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     public async Task<bool> CommitAsync(PingLease lease, PingSettingsSnapshot settings, PingMeasurement measurement,
         DateTimeOffset measuredAt, string location, CancellationToken token)
     {
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return await CommitOnceAsync(lease, settings, measurement, measuredAt, location, token); }
+            catch (Exception ex) when (attempt < maxAttempts && IsDeadlock(ex))
+            {
+                // SQL Server has rolled back the victim transaction. Retry from a fresh context
+                // and revalidate the lease, device, and settings before writing the same result.
+                await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(10, 51) * attempt), token);
+            }
+        }
+    }
+
+    private static bool IsDeadlock(Exception ex)
+    {
+        // EF Core can wrap a transient SqlException in InvalidOperationException or DbUpdateException.
+        for (Exception? cause = ex; cause is not null; cause = cause.InnerException)
+            if (cause is SqlException { Number: 1205 }) return true;
+        return false;
+    }
+
+    private async Task<bool> CommitOnceAsync(PingLease lease, PingSettingsSnapshot settings, PingMeasurement measurement,
+        DateTimeOffset measuredAt, string location, CancellationToken token)
+    {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var tx = await db.Database.BeginTransactionAsync(token);
         var current = await db.PingSettings.FromSqlRaw("SELECT * FROM [network].[PingSettings] WITH (HOLDLOCK) WHERE [Name] = N'central'").SingleAsync(token);

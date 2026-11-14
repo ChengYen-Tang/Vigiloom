@@ -8,6 +8,7 @@ public static partial class PublicationPolicy
 {
     public const string BaselineVersion = "baseline-v1";
     public const string TemplateVersion = "template-v1";
+    public const string ServiceHistoryVersion = "service-history-v1";
     public const int MaximumNameLength = 256;
     private const int MaximumAddressChecks = 2048;
 
@@ -52,7 +53,7 @@ public static partial class PublicationPolicy
 public sealed record PublicationChange(bool Public, string? DisplayName, string? PolicyVersion, string? Version, Guid? TemplateId = null, string? TemplateVersion = null);
 
 /// <summary>Current non-secret publication configuration for an administrator.</summary>
-public sealed record PublicationSettings(Guid Id, bool Public, string? DisplayName, string? PolicyVersion, string Version, Guid? TemplateId = null, string? TemplateVersion = null);
+public sealed record PublicationSettings(Guid Id, bool Public, string? DisplayName, string? PolicyVersion, string Version, Guid? TemplateId = null, string? TemplateVersion = null, bool? HistoryReady = null);
 
 /// <summary>Preview data for an administrator; it contains no internal addresses.</summary>
 public sealed record PublicationPreview(string State, double? LatencyMilliseconds, DateTimeOffset? ObservedAt = null);
@@ -83,8 +84,20 @@ public sealed record PublicPage<T>(IReadOnlyList<T> Items, int Page, bool HasMor
 /// <summary>Public Ping data without network addresses or host information.</summary>
 public sealed record PublicDevice(Guid Id, string Name, string State, double? LatencyMilliseconds, DateTimeOffset? ObservedAt);
 
+/// <summary>An elapsed five-minute UTC bucket without target or host information.</summary>
+public sealed record PublicDeviceHistoryPoint(DateTimeOffset From, double? AverageLatencyMilliseconds);
+
+/// <summary>A bounded preview of latency buckets for the current publication period.</summary>
+public sealed record PublicDeviceHistory(IReadOnlyList<PublicDeviceHistoryPoint> Points);
+
 /// <summary>A public application's simple health state, independent of any host.</summary>
 public sealed record PublicService(Guid Id, string Name, string State);
+
+/// <summary>A UTC daily public health summary without internal target or source details.</summary>
+public sealed record PublicHealthDay(DateTimeOffset From, DateTimeOffset To, string State, double? Availability, double Coverage);
+
+/// <summary>A bounded view of a service's explicitly authorized public health history.</summary>
+public sealed record PublicServiceHistory(IReadOnlyList<PublicHealthDay> Days);
 
 /// <summary>Public-only group counts, never including private members.</summary>
 public sealed record PublicGroup(Guid Id, string Name, int DeviceCount, int ServiceCount);

@@ -166,7 +166,8 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         candidate.HasOne<ServiceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Restrict);
 
         var service = modelBuilder.Entity<MonitoredService>();
-        service.ToTable("Services");
+        service.ToTable("Services", table => table.HasCheckConstraint("CK_Services_PublicPeriod",
+            "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)"));
         service.Property(x => x.PublicDisplayName).HasMaxLength(256);
         service.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
         service.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });

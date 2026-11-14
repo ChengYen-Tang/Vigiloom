@@ -78,7 +78,7 @@ public sealed record GroupChanged(GroupAction Action, int Added, int Removed) : 
 
 public enum PublicationResourceKind { Device = 1, Service = 2, Group = 3 }
 /// <summary>Records publication changes without retaining names or addresses.</summary>
-public sealed record PublicationChanged(PublicationResourceKind ResourceKind, bool PreviousPublic, bool CurrentPublic, bool NameChanged, bool TemplateChanged = false) : OperationAuditDetails;
+public sealed record PublicationChanged(PublicationResourceKind ResourceKind, bool PreviousPublic, bool CurrentPublic, bool NameChanged, bool TemplateChanged = false, bool PolicyChanged = false) : OperationAuditDetails;
 
 public enum PublicationTemplateAction { Created = 1, Updated = 2, DefaultChanged = 3, Retired = 4, DefaultCleared = 5 }
 /// <summary>Records template operations without storing names or device addresses.</summary>
