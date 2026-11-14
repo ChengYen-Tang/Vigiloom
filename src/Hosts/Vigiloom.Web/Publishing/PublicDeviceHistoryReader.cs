@@ -28,7 +28,7 @@ internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbCon
         var oldest = now.AddDays(-before.HistoryDays);
         if (start < oldest) start = oldest;
         var end = to < now ? to : now;
-        var result = await DeviceHistoryBuckets.ReadAsync(network, id, before.Target, start, end, token);
+        var result = (await DeviceHistoryBuckets.ReadAsync(network, id, before.Target, start, end, token)) with { AsOf = now };
         var after = await AuthorizationAsync(db, id, token);
         return after is not null && before.TemplateId == after.TemplateId && before.DeviceSince == after.DeviceSince && before.HistorySince == after.HistorySince &&
             before.DeviceVersion.AsSpan().SequenceEqual(after.DeviceVersion) && before.TemplateVersion.AsSpan().SequenceEqual(after.TemplateVersion) ? result : null;
