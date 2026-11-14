@@ -96,9 +96,9 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
             var reconciled = await db.AdvisoryImports.AsNoTracking().SingleOrDefaultAsync(x => x.Id == result.ImportId && x.SourceId == source.Id, token);
             if (reconciled is null) return AdvisoryRefreshResult.Conflict;
             var built = await new AdvisoryRevisionBuilder(contexts, clock).StageAsync(source.Id, reconciled.Id, reconciled.Version, token);
-            if (built.Status is AdvisoryBuildStatus.LimitExceeded or AdvisoryBuildStatus.InvalidBase)
+            if (built.Status is AdvisoryBuildStatus.LimitExceeded or AdvisoryBuildStatus.InvalidBase or AdvisoryBuildStatus.InvalidContent)
                 await store.RecordFailureAsync(source.Id, reconciled.Id, reconciled.Version,
-                    built.Status == AdvisoryBuildStatus.LimitExceeded ? "limit-exceeded" : "invalid-base", token);
+                    built.Status switch { AdvisoryBuildStatus.LimitExceeded => "limit-exceeded", AdvisoryBuildStatus.InvalidBase => "invalid-base", _ => "invalid-response" }, token);
             return built.Status switch
             {
                 AdvisoryBuildStatus.Staged => AdvisoryRefreshResult.Staged,

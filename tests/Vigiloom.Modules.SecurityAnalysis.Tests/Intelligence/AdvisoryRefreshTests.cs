@@ -3,11 +3,15 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Tests.Fixtures;
+using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 
@@ -17,6 +21,72 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class AdvisoryRefreshTests(TestContext context)
 {
     private static readonly IDataProtectionProvider Protection = new EphemeralDataProtectionProvider();
+    [TestMethod]
+    public Task RunDue_RecordsInterruptedResponseWithoutAdvancingImport() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clients = new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BrokenResponseStream()) });
+            var refresh = new AdvisoryRefresh(contexts, clients, TimeProvider.System, Protection);
+            Assert.AreEqual(AdvisoryRefreshResult.Failed, await refresh.RunDueAsync(token));
+            await using var db = contexts.CreateDbContext();
+            var import = await db.AdvisoryImports.SingleAsync(token);
+            Assert.AreEqual("fetch-failed", import.FailureCode);
+            Assert.AreEqual(0, import.PageCount);
+            Assert.IsNull(import.Cursor);
+            Assert.AreEqual(0, await db.IntelligenceRevisions.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task RunDue_ConflictingBaseContentCanBeRecovered() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory(options);
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operationOptions)) await db.Database.MigrateAsync(token);
+            var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
+            var changed = false;
+            var clients = new ClientFactory(request =>
+            {
+                var payload = request.RequestUri!.Query.Contains("is_withdrawn=true", StringComparison.Ordinal) ? "[]" :
+                    $$"""[{"ghsa_id":"GHSA-abcd-1234-efgh","type":"reviewed","published_at":"2023-01-01T00:00:00Z","updated_at":"2023-01-03T00:00:00Z","withdrawn_at":null,"summary":"{{(changed ? "changed" : "original")}}","vulnerabilities":[]}]""";
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(payload, Encoding.UTF8, "application/json") };
+            });
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+            Guid sourceId;
+            Guid activeId;
+            await using (var db = contexts.CreateDbContext())
+            {
+                var initial = await db.AdvisoryImports.SingleAsync(token);
+                sourceId = initial.SourceId;
+                activeId = initial.ResultRevisionId!.Value;
+                db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = sourceId, RevisionId = activeId, ActivatedAt = clock.GetUtcNow() });
+                await db.SaveChangesAsync(token);
+            }
+            changed = true;
+            clock.Advance(TimeSpan.FromDays(2));
+            Assert.AreEqual(AdvisoryRefreshResult.Failed, await refresh.RunDueAsync(token));
+            var status = new IntelligenceStatus(contexts, clock);
+            var failed = await status.GetAdvisoryProgressAsync(sourceId, token);
+            Assert.IsNotNull(failed);
+            Assert.AreEqual("failed", failed.State);
+            Assert.AreEqual("invalid-response", failed.FailureCode);
+            Assert.AreEqual(AdvisoryRefreshResult.Failed, await refresh.RunDueAsync(token));
+            var recovery = new AdvisoryRecovery(contexts, new OperationAuditWriter(), clock);
+            Assert.AreEqual(AdvisoryRecoveryResult.Abandoned, await recovery.AbandonAsync(sourceId,
+                new AdvisoryImportRecoveryRequest(failed.ImportId!.Value, failed.Version!), Guid.CreateVersion7(), token));
+            changed = false;
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(activeId, (await check.IntelligenceActivations.SingleAsync(token)).RevisionId);
+            Assert.AreEqual(2, await check.IntelligenceRevisions.CountAsync(token));
+        }, context.CancellationToken);
     [TestMethod]
     public Task Progress_WaitsForSourceWriterBeforeReadingImport() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>

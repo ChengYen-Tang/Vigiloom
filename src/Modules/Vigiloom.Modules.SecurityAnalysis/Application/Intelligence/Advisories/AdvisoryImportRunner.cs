@@ -102,7 +102,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                     return new(AdvisoryRunResult.Deferred, importId);
                 }
             }
-            catch (Exception error) when (error is HttpRequestException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
+            catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
             {
                 var code = error switch
                 {

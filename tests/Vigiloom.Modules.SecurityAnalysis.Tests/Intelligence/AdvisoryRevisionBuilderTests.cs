@@ -205,7 +205,7 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             }
             var changed = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", true));
             var result = await builder.StageAsync(source.Id, changed.Id, changed.Version, token);
-            Assert.AreEqual(AdvisoryBuildStatus.Conflict, result.Status);
+            Assert.AreEqual(AdvisoryBuildStatus.InvalidContent, result.Status);
             await using var check = contexts.CreateDbContext();
             Assert.AreEqual(1, await check.IntelligenceRevisions.CountAsync(token));
             Assert.AreEqual(initialResult.RevisionId, (await check.IntelligenceActivations.SingleAsync(token)).RevisionId);
