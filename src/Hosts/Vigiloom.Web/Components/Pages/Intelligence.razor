@@ -29,7 +29,7 @@
                         <strong>@(item.Description?.Name ?? item.Key)</strong><span>@SourceState(item)</span>
                     </a>
                 }
-                <nav aria-label="情報來源分頁">@if (sources.Page > 1) { <a href="@($"?sourcePage={sources.Page - 1}")">上一頁</a> } @if (sources.HasMore) { <a href="@($"?sourcePage={sources.Page + 1}")">下一頁</a> }</nav>
+                <nav aria-label="情報來源分頁">@if (sources.Page > 1) { <a href="@($"/settings/intelligence?sourcePage={sources.Page - 1}")">上一頁</a> } @if (sources.HasMore) { <a href="@($"/settings/intelligence?sourcePage={sources.Page + 1}")">下一頁</a> }</nav>
             </section>
             @if (selected is not null)
             {
@@ -91,11 +91,13 @@
                         else
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th></tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td></tr> }
+                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th>@if (selected.Key == "sigmahq-rules") { <th>規則</th> }</tr></thead><tbody>
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td>@if (selected.Key == "sigmahq-rules") { <td><a href="@RulesUrl(revision.Id, 1)">查看規則</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
-                            @if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
+                            @if (selected.Key is not ("cisa-kev" or "github-reviewed"))
+                            { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
+                            else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
@@ -107,6 +109,22 @@
                             else { <p>此頁沒有其他可選的版本。</p> }
                         }
                     </section>
+                    @if (sigmaRules is not null && shownRulesRevision is { } sigmaRevision)
+                    {
+                        <section class="device-panel">
+                            <h2>規則來源資料</h2>
+                            <p>以下是已保存的上游規則與作者資料；尚未啟用偵測，個別授權仍須在發布前核對。</p>
+                            @if (sigmaRules.Items.Count == 0) { <p>此頁沒有規則。</p> }
+                            else
+                            {
+                                <p class="intelligence-scroll-hint">左右滑動可查看完整規則資訊。</p>
+                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="規則來源資料，可左右捲動"><table><thead><tr><th>規則</th><th>上游適用來源</th><th>作者</th><th>來源狀態</th><th>授權聲明</th></tr></thead><tbody>
+                                    @foreach (var rule in sigmaRules.Items) { <tr @key="rule.Path"><td><strong>@rule.Title</strong><br /><small>@rule.Path</small></td><td>@(rule.Product ?? "未指定")<br /><small>@string.Join(" / ", new[] { rule.Category, rule.Service }.Where(x => !string.IsNullOrEmpty(x)))</small></td><td>@(rule.Author ?? "未提供")</td><td>@(rule.Status ?? "未提供")</td><td>@(rule.License ?? "採用來源規則授權")</td></tr> }
+                                </tbody></table></div>
+                            }
+                            <nav aria-label="規則資料分頁">@if (sigmaRules.Page > 1) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page - 1)">上一頁</a> } <span>第 @sigmaRules.Page 頁</span> @if (sigmaRules.HasMore) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page + 1)">下一頁</a> }</nav>
+                        </section>
+                    }
                 </div>
             }
         </div>

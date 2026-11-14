@@ -26,14 +26,20 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow,
             LastError = "KEV retrieval failed." };
         var advisorySource = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+        var sigmaSource = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
         var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test-catalog-v1", ReleasedAt = DateTimeOffset.UtcNow.AddDays(-1),
             RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test",
             LicenseEvidence = "test", RecordCount = 1, Normalized = true };
+        var sigmaRevision = new IntelligenceRevision { SourceId = sigmaSource.Id, UpstreamVersion = "sigma-test", RetrievedAt = DateTimeOffset.UtcNow,
+            Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v1",
+            LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
         {
             await db.Database.MigrateAsync(token);
-            db.IntelligenceSources.AddRange(source, advisorySource);
-            db.IntelligenceRevisions.Add(revision);
+            db.IntelligenceSources.AddRange(source, advisorySource, sigmaSource);
+            db.IntelligenceRevisions.AddRange(revision, sigmaRevision);
+            db.SigmaRules.Add(new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", Title = "Example rule",
+                Author = "Example author", Product = "windows", Digest = new byte[32], Content = [1] });
             db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync(token);
         }
@@ -78,6 +84,12 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
         Assert.Contains("設定已儲存", await page.Locator("main").InnerTextAsync());
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "mobile.png"), FullPage = true });
+        await page.Locator(".intelligence-source").Filter(new() { HasText = "SigmaHQ 規則" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "規則來源資料" }).WaitForAsync();
+        Assert.Contains("Example rule", await page.Locator("main").InnerTextAsync());
+        Assert.Contains("尚未啟用偵測", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "sigma-mobile.png"), FullPage = true });
         Assert.IsEmpty(errors);
         await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
         var current = await check.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token);

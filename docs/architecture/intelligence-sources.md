@@ -296,6 +296,18 @@ actual consumer integration before the source can be declared end-to-end usable.
 
 ### SigmaHQ rule-source adapter
 
+The central Worker stages `rules/`, `rules-emerging-threats/` and
+`rules-threat-hunting/` from the resolved SigmaHQ commit. Each revision retains
+the original rule bytes, digest, path and available metadata; a bounded
+administrator view exposes metadata without distributing the source files.
+The repository `LICENSE` must match the reviewed SHA-256
+`4213ed7e21d9435b0aa0aa7d11016e6ab3e4664fa71738ff507306fadce79597`;
+a changed or absent license fails the import and is shown as a source error.
+The source can be inspected, but it cannot be activated or used for detection
+until consumer compatibility and each applicable rule's terms are verified.
+The staging validator does not claim to fully validate Sigma semantics or
+dependency closure. Unsupported semantics must still be handled by REQ-33.
+
 SigmaHQ's versioned rule repository is the first behavioral-rule provider to
 support. Fetch a release or immutable commit from its fixed official source;
 record the exact resolved commit, file paths, per-file digests, retrieval time,

@@ -151,5 +151,24 @@ internal static class IntelligenceModel
         advisoryRevision.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
         advisoryRevision.HasOne<AdvisoryImportEntry>().WithMany().HasForeignKey(x => new { x.EntryRowId, x.AdvisoryId })
             .HasPrincipalKey(x => new { x.RowId, x.AdvisoryId }).OnDelete(DeleteBehavior.NoAction);
+
+        var sigma = model.Entity<SigmaRule>();
+        sigma.ToTable("SigmaRules", t => t.HasCheckConstraint("CK_SigmaRules_Content", "DATALENGTH([Content]) BETWEEN 1 AND 1048576"));
+        sigma.HasKey(x => x.RowId).IsClustered();
+        sigma.Property(x => x.RowId).UseIdentityColumn();
+        sigma.Property(x => x.Path).HasMaxLength(512).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        sigma.Property(x => x.RuleId).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2");
+        sigma.Property(x => x.Title).HasMaxLength(256).IsRequired();
+        sigma.Property(x => x.Author).HasMaxLength(1024);
+        sigma.Property(x => x.Status).HasMaxLength(128);
+        sigma.Property(x => x.License).HasMaxLength(256);
+        sigma.Property(x => x.Product).HasMaxLength(128);
+        sigma.Property(x => x.Category).HasMaxLength(128);
+        sigma.Property(x => x.Service).HasMaxLength(128);
+        sigma.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        sigma.Property(x => x.Content).IsRequired();
+        sigma.HasIndex(x => new { x.RevisionId, x.Path }).IsUnique();
+        sigma.HasIndex(x => new { x.RevisionId, x.RuleId }).IsUnique().HasFilter("[RuleId] IS NOT NULL");
+        sigma.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
     }
 }
