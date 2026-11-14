@@ -73,3 +73,44 @@ final result: passed
 See `docs/design/req-13-history/design-qa.md` for the reference, same-state comparisons, narrow capture, and iteration.
 
 final result: passed
+
+# REQ-14 public status design QA
+
+**Findings**
+
+No actionable P0/P1/P2 visual issues remain in the compared states. The device history is an intentional interaction difference: the source depicts status bars while the authorized public data provides five-minute average latency, so a named control expands the real latency chart in its device row. This also avoids automatically issuing a history query for every device on the page.
+
+**Comparison target and state**
+
+- Source: `docs/design/req-13-public-status-concept.png`, 1487 × 1058 pixels.
+- Browser-rendered implementation: `docs/design/req-14/desktop-latest.png`, 1487 × 1058 CSS pixels at device scale factor 1. Both are placed at their original dimensions in `docs/design/req-14/comparison-latest.png`.
+- Responsive capture: `docs/design/req-14/mobile-latest.png`, 390 × 844 CSS viewport, full-page image. Expanded device: `docs/design/req-14/device-expanded.png` at 1280 × 900 CSS viewport.
+- Both show the anonymous public status overview. Source uses illustrative healthy states, two groups and three devices/services; the isolated actual dataset uses one visible group, one device and one service with unknown states. The time bars, content density and colors therefore differ for legitimate data reasons.
+- The full-view combined image and the device and service table regions were inspected. The expanded capture demonstrates the row disclosure and the explicitly unavailable history state; it does not verify a populated chart on a narrow viewport.
+
+**Comparison history**
+
+1. `desktop-before.png` showed overly tall service rows. They were compacted in `desktop.png`.
+2. `comparison.png` showed vertically stacked desktop group and section headings. These were aligned and captured in `comparison-final.png`.
+3. The device row had no obvious history action and the service strip lacked UTC range labels. A single row can now expand its real permitted latency history; the strip now shows its actual UTC query window. `comparison-latest.png` and `device-expanded.png` show the revised implementation.
+4. An initial narrow capture showed the device name and history prompt running together. The name control was aligned vertically and re-captured in `mobile-latest.png`.
+5. A 256-character public name initially squeezed the adjacent service status into individual vertical characters. Flexible widths and an unwrapped status fixed this; the actual 390 px result is `mobile-long-names.png`, and the browser test checks both page overflow and status height.
+
+**Fidelity surfaces**
+
+- Typography: system sans-serif, dark blue headings, hierarchy and muted copy follow the existing visual language; the mock has heavier icon-led headings.
+- Spacing and layout: desktop group and section headings align horizontally; narrow controls stack and the history row remains readable.
+- Colors: pale blue background, white cards, dark blue text and state colors follow the source. Unknown has an explicit text label.
+- Images and assets: no new photographs or illustrations. The reference section icons are omitted; no substitute drawing is used.
+- Copy and content: example data differ as described; copy distinguishes public devices from independent services and unknown from healthy.
+
+**Interactions and limitations**
+
+- Browser tests cover group filtering, device disclosure, actual public data access, service date filtering and revocation during an in-flight list request, including both Server and WebAssembly rendering.
+- The new UTC range and recent-publication alignment have component tests. A screen-reader pass and a narrow-viewport capture containing a populated device latency chart were not performed.
+
+**Follow-up polish**
+
+- Consider approved section icons when assets are available.
+
+final result: passed

@@ -1,0 +1,40 @@
+@using Vigiloom.Contracts.Publishing
+
+@if (Days.Count == 0)
+{
+    <p class="history-empty">目前沒有可公開的歷史資料。</p>
+}
+else
+{
+    <div class="history-strip" style="grid-template-columns: repeat(@DayCount, minmax(24px, 1fr))" aria-label="服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要">
+        @foreach (var day in Days)
+        {
+            <button type="button" class="history-day @StateClass(day.State)" style="grid-column: @Column(day.From)" @key="day.From"
+                    aria-label="@Description(day)" title="@Description(day)"
+                    aria-pressed="@(Selected == day.From ? "true" : "false")" @onclick="() => OnSelect.InvokeAsync(day)"></button>
+        }
+    </div>
+    <div class="history-range" aria-label="所選歷史時間範圍">
+        <time datetime="@From.ToString("O")">@From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</time>
+        <span>至</span>
+        <time datetime="@To.ToString("O")">@To.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</time>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PublicHealthDay> Days { get; set; } = [];
+    [Parameter, EditorRequired] public DateTimeOffset From { get; set; }
+    [Parameter, EditorRequired] public DateTimeOffset To { get; set; }
+    [Parameter] public DateTimeOffset? Selected { get; set; }
+    [Parameter] public EventCallback<PublicHealthDay> OnSelect { get; set; }
+
+    private int DayCount => Math.Clamp((To.AddTicks(-1).UtcDateTime.Date - From.UtcDateTime.Date).Days + 1, 1, 91);
+    private int Column(DateTimeOffset date) => Math.Clamp((date.UtcDateTime.Date - From.UtcDateTime.Date).Days + 1, 1, DayCount);
+
+    private static string StateClass(string state) => state switch
+    { "Healthy" => "good", "Degraded" => "degraded", "Unhealthy" => "bad", _ => "unknown" };
+    private static string StateText(string state) => state switch
+    { "Healthy" => "正常", "Degraded" => "部分影響", "Unhealthy" => "異常", _ => "未知或無資料" };
+    private static string Description(PublicHealthDay day) =>
+        $"{day.From:yyyy-MM-dd HH:mm} 至 {day.To:yyyy-MM-dd HH:mm} UTC，{StateText(day.State)}，資料涵蓋率 {day.Coverage:P1}";
+}

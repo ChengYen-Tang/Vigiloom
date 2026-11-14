@@ -1,0 +1,5 @@
+.public-state { font-weight: 600; }
+.good { color: #147c50; }
+.degraded { color: #935600; }
+.bad { color: #b12133; }
+.unknown { color: #59677b; }

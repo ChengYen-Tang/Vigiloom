@@ -1,0 +1,15 @@
+.public-section { min-width: 0; overflow-wrap: anywhere; background: #fff; border: 1px solid #d9e5f7; border-radius: 12px; padding: 1.25rem; }
+h2 { color: #12254d; margin: 0; font-size: 1.25rem; }
+h2, h2 + p { display: inline-block; }
+h2 + p { margin-left: 1rem; }
+p { color: #56677f; margin: .5rem 0; }
+small { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.public-head { display: grid; grid-template-columns: 22% 18% 1fr; background: #edf4ff; color: #304b74; font-weight: 600; padding: .55rem .75rem; margin-top: 1rem; border-radius: 6px; }
+.public-rows { list-style: none; margin: 0; padding: 0; }
+.public-rows li { display: grid; grid-template-columns: 40% minmax(0, 1fr); align-items: center; gap: .5rem; border-top: 1px solid #e2eafa; padding: .6rem .75rem; }
+.public-row-heading { display: grid; grid-template-columns: minmax(0, 55%) minmax(0, 1fr); min-width: 0; align-items: center; gap: .5rem; }
+.public-row-heading ::deep .public-state { flex: none; white-space: nowrap; }
+.history-content { min-width: 0; }
+.name { display: flex; align-items: center; justify-content: flex-start; min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: #174eb5; border: 0; background: transparent; padding: 0; font-weight: 700; text-align: left; cursor: pointer; }
+.name:focus-visible { outline: 2px solid #125cff; outline-offset: 3px; }
+@media (max-width: 650px) { h2, h2 + p { display: block; } h2 + p { margin-left: 0; } .public-head { display: none; } .public-rows li { grid-template-columns: minmax(0, 1fr); } .public-row-heading { display: flex; justify-content: space-between; gap: 1rem; } .public-row-heading .name { flex: 1 1 auto; } }
