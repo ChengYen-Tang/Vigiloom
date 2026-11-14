@@ -47,26 +47,27 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
             .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
             .SingleOrDefaultAsync(token);
         if (import is null || !import.Version.AsSpan().SequenceEqual(expectedVersion) || !import.SourceVersion.AsSpan().SequenceEqual(source.Version) ||
-            import.Phase != (withdrawn ? 2 : 1) || import.Cursor != requestedCursor || page.From != import.WindowStart || page.To != import.WindowEnd ||
+            (import.Phase == 3 ? import.ReconciliationPhase : import.Phase) != (withdrawn ? 2 : 1) || import.Cursor != requestedCursor || page.From != import.WindowStart || page.To != import.WindowEnd ||
             page.Withdrawn != withdrawn || page.RequestedCursor != requestedCursor) return AdvisoryStageResult.Conflict;
+        var reconciliation = import.Phase == 3;
         var active = await db.IntelligenceActivations.AsNoTracking().Where(x => x.SourceId == sourceId)
             .Select(x => new { x.RevisionId, x.Version }).SingleOrDefaultAsync(token);
         if (active?.RevisionId != import.BaseRevisionId ||
             (active is null ? import.BaseActivationVersion is not null : !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion)))
             return AdvisoryStageResult.Conflict;
         if (page.NextCursor is not null && (page.NextCursor == requestedCursor || await db.AdvisoryImportPages.AnyAsync(
-                x => x.ImportId == importId && x.Phase == import.Phase && x.NextCursor == page.NextCursor, token)))
+                x => x.ImportId == importId && x.Reconciliation == reconciliation && x.Phase == (withdrawn ? 2 : 1) && x.NextCursor == page.NextCursor, token)))
             return AdvisoryStageResult.Invalid;
         if (import.PageCount >= 100_000 || import.TotalBytes + page.RawBytes.Length > 1_073_741_824L)
             return AdvisoryStageResult.LimitExceeded;
         var ids = page.Records.Select(x => x.Id).ToArray();
-        var existing = await db.AdvisoryImportEntries.Where(x => x.ImportId == importId && ids.Contains(x.AdvisoryId))
+        var existing = await db.AdvisoryImportEntries.Where(x => x.ImportId == importId && x.Reconciliation == reconciliation && ids.Contains(x.AdvisoryId))
             .ToDictionaryAsync(x => x.AdvisoryId, StringComparer.Ordinal, token);
         var newCount = page.Records.Count(x => !existing.ContainsKey(x.Id));
-        if ((long)import.RecordCount + newCount > 100_000) return AdvisoryStageResult.LimitExceeded;
+        if ((long)(reconciliation ? import.ReconciliationRecordCount : import.RecordCount) + newCount > 100_000) return AdvisoryStageResult.LimitExceeded;
         var storedPage = new AdvisoryImportPage
         {
-            ImportId = importId, Number = import.PageCount + 1, Phase = import.Phase,
+            ImportId = importId, Number = import.PageCount + 1, Phase = withdrawn ? 2 : 1, Reconciliation = reconciliation,
             Digest = SHA256.HashData(page.RawBytes), Payload = page.RawBytes, NextCursor = page.NextCursor
         };
         db.AdvisoryImportPages.Add(storedPage);
@@ -89,18 +90,32 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
             else
                 db.AdvisoryImportEntries.Add(new AdvisoryImportEntry
                 {
-                    ImportId = importId, PageRowId = storedPage.RowId, Ordinal = i, AdvisoryId = record.Id,
+                    ImportId = importId, PageRowId = storedPage.RowId, Ordinal = i, AdvisoryId = record.Id, Reconciliation = reconciliation,
                     Digest = digest, UpdatedAt = record.UpdatedAt, WithdrawnAt = record.WithdrawnAt
                 });
         }
         import.PageCount++;
-        import.RecordCount += newCount;
+        if (reconciliation) import.ReconciliationRecordCount += newCount;
+        else import.RecordCount += newCount;
         import.TotalBytes += page.RawBytes.Length;
         import.Cursor = page.NextCursor;
-        if (page.NextCursor is null) import.Phase++;
+        if (page.NextCursor is null)
+        {
+            if (reconciliation) import.ReconciliationPhase++;
+            else import.Phase++;
+        }
         import.NotBefore = null;
         import.RateLimitAttempts = 0;
         await db.SaveChangesAsync(token);
+        if (reconciliation && import.ReconciliationPhase == 3)
+        {
+            var original = db.AdvisoryImportEntries.Where(x => x.ImportId == importId && !x.Reconciliation);
+            var verified = db.AdvisoryImportEntries.Where(x => x.ImportId == importId && x.Reconciliation);
+            var differs = import.RecordCount != import.ReconciliationRecordCount || await original.AnyAsync(a =>
+                !verified.Any(b => b.AdvisoryId == a.AdvisoryId && b.Digest == a.Digest && b.UpdatedAt == a.UpdatedAt && b.WithdrawnAt == a.WithdrawnAt), token);
+            if (differs) import.ReconciliationPhase = 4;
+            await db.SaveChangesAsync(token);
+        }
         await transaction.CommitAsync(token);
         return AdvisoryStageResult.Stored;
     }
@@ -115,7 +130,7 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         var import = await db.AdvisoryImports
             .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
             .SingleOrDefaultAsync(token);
-        if (import is null || import.Phase is not (1 or 2) || !import.Version.AsSpan().SequenceEqual(expectedVersion) ||
+        if (import is null || import.Phase is not (1 or 2 or 3) || !import.Version.AsSpan().SequenceEqual(expectedVersion) ||
             !import.SourceVersion.AsSpan().SequenceEqual(source.Version)) return false;
         import.RateLimitAttempts = Math.Min(import.RateLimitAttempts + 1, 20);
         var minimum = clock.GetUtcNow().AddMinutes(1 << Math.Min(import.RateLimitAttempts - 1, 6));
@@ -135,7 +150,7 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         var old = await db.AdvisoryImports
             .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
             .SingleOrDefaultAsync(token);
-        if (old is null || old.Phase is not (1 or 2) || old.Cursor is null || old.RestartCount >= 3 ||
+        if (old is null || old.Phase is not (1 or 2 or 3) || old.Cursor is null || old.RestartCount >= 3 ||
             !old.Version.AsSpan().SequenceEqual(expectedVersion) || !old.SourceVersion.AsSpan().SequenceEqual(source.Version)) return null;
         var active = await db.IntelligenceActivations.AsNoTracking().Where(x => x.SourceId == sourceId)
             .Select(x => new { x.RevisionId, x.Version }).SingleOrDefaultAsync(token);

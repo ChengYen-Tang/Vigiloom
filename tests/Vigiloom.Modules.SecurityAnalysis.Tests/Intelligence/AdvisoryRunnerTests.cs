@@ -203,6 +203,35 @@ public sealed class AdvisoryRunnerTests(TestContext context)
             Assert.IsNotNull(await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token));
         }, context.CancellationToken);
 
+    [TestMethod]
+    public Task Reconciliation_ResumesAfterRateLimit() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var import = await new AdvisoryImportStore(contexts, clock).BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var calls = 0;
+            var clients = new ClientFactory(_ => ++calls == 4
+                ? new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") });
+            var runner = new AdvisoryImportRunner(contexts, clients, clock);
+            Assert.AreEqual(AdvisoryRunResult.AwaitingReconciliation, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, (await runner.RunSliceAsync(source.Id, import.Id, null, token, reconcile: true)).Status);
+            await using (var db = contexts.CreateDbContext())
+            {
+                var progress = await db.AdvisoryImports.SingleAsync(token);
+                Assert.AreEqual(2, progress.ReconciliationPhase);
+                Assert.AreEqual(3, progress.PageCount);
+            }
+            clock.Advance(TimeSpan.FromMinutes(2));
+            Assert.AreEqual(AdvisoryRunResult.Reconciled, (await runner.RunSliceAsync(source.Id, import.Id, null, token, reconcile: true)).Status);
+            Assert.AreEqual(5, calls);
+        }, context.CancellationToken);
+
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
     {
         public SecurityAnalysisDbContext CreateDbContext() => new(options);

@@ -456,6 +456,14 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<int>("RateLimitAttempts")
                         .HasColumnType("int");
 
+                    b.Property<int>("ReconciliationPhase")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<int>("ReconciliationRecordCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("RecordCount")
                         .HasColumnType("int");
 
@@ -519,6 +527,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_AdvisoryImports_RateLimitAttempts", "[RateLimitAttempts] BETWEEN 0 AND 20");
 
+                            t.HasCheckConstraint("CK_AdvisoryImports_Reconciliation", "[ReconciliationPhase] BETWEEN 1 AND 4 AND [ReconciliationRecordCount] BETWEEN 0 AND 100000");
+
                             t.HasCheckConstraint("CK_AdvisoryImports_RestartCount", "[RestartCount] BETWEEN 0 AND 3");
 
                             t.HasCheckConstraint("CK_AdvisoryImports_Values", "[Id] <> '00000000-0000-0000-0000-000000000000' AND [WindowStart] <= [WindowEnd] AND [Phase] BETWEEN 1 AND 5 AND [PageCount] BETWEEN 0 AND 100000 AND [RecordCount] BETWEEN 0 AND 100000 AND [TotalBytes] BETWEEN 0 AND 1073741824");
@@ -552,6 +562,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<long>("PageRowId")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("Reconciliation")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -562,10 +575,10 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
-                    b.HasIndex("ImportId", "AdvisoryId")
-                        .IsUnique();
-
                     b.HasIndex("ImportId", "PageRowId");
+
+                    b.HasIndex("ImportId", "Reconciliation", "AdvisoryId")
+                        .IsUnique();
 
                     b.ToTable("AdvisoryImportEntries", "security", t =>
                         {
@@ -604,6 +617,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<int>("Phase")
                         .HasColumnType("int");
 
+                    b.Property<bool>("Reconciliation")
+                        .HasColumnType("bit");
+
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
@@ -615,7 +631,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.HasIndex("ImportId", "Number")
                         .IsUnique();
 
-                    b.HasIndex("ImportId", "Phase", "NextCursor");
+                    b.HasIndex("ImportId", "Reconciliation", "Phase", "NextCursor");
 
                     b.ToTable("AdvisoryImportPages", "security", t =>
                         {

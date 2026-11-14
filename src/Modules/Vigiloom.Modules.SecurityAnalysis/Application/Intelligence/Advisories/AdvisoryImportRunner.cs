@@ -6,7 +6,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
-internal enum AdvisoryRunResult { Busy, Deferred, RateLimited, AwaitingReconciliation, Conflict, Invalid, CursorRejected, Failed }
+internal enum AdvisoryRunResult { Busy, Deferred, RateLimited, AwaitingReconciliation, Reconciled, Inconsistent, Conflict, Invalid, CursorRejected, Failed }
 
 internal sealed record AdvisoryRunOutcome(AdvisoryRunResult Status, Guid ImportId);
 
@@ -18,7 +18,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
     private static readonly TimeSpan SliceDuration = TimeSpan.FromMinutes(15);
 
     internal async Task<AdvisoryRunOutcome> RunSliceAsync(Guid sourceId, Guid importId, string? tokenValue, CancellationToken token,
-        TimeSpan? duration = null)
+        TimeSpan? duration = null, bool reconcile = false)
     {
         if (sourceId == Guid.Empty || importId == Guid.Empty) throw new ArgumentException("Invalid advisory source or import.");
         var timeLimit = duration ?? SliceDuration;
@@ -49,13 +49,16 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                 importId = successor;
                 continue;
             }
-            if (import.Phase == 3) return new(AdvisoryRunResult.AwaitingReconciliation, importId);
-            if (import.Phase is not (1 or 2)) return new(AdvisoryRunResult.Conflict, importId);
+            if (import.Phase == 3 && import.ReconciliationPhase == 3) return new(AdvisoryRunResult.Reconciled, importId);
+            if (import.Phase == 3 && import.ReconciliationPhase == 4) return new(AdvisoryRunResult.Inconsistent, importId);
+            if (import.Phase == 3 && !reconcile) return new(AdvisoryRunResult.AwaitingReconciliation, importId);
+            if (import.Phase is not (1 or 2 or 3)) return new(AdvisoryRunResult.Conflict, importId);
             if (import.NotBefore is { } notBefore && notBefore > clock.GetUtcNow()) return new(AdvisoryRunResult.RateLimited, importId);
+            var withdrawn = (import.Phase == 3 ? import.ReconciliationPhase : import.Phase) == 2;
             AdvisoryPage page;
             try
             {
-                page = await client.FetchAsync(import.WindowStart, import.WindowEnd, import.Phase == 2,
+                page = await client.FetchAsync(import.WindowStart, import.WindowEnd, withdrawn,
                     import.Cursor, tokenValue, budget.Token);
             }
             catch (AdvisoryRateLimitException error)
@@ -95,7 +98,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                 return new(AdvisoryRunResult.Failed, importId);
             }
             AdvisoryStageResult result;
-            try { result = await store.StageAsync(sourceId, importId, import.Version, import.Cursor, import.Phase == 2, page, budget.Token); }
+            try { result = await store.StageAsync(sourceId, importId, import.Version, import.Cursor, withdrawn, page, budget.Token); }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && budget.IsCancellationRequested)
             {
                 return new(AdvisoryRunResult.Deferred, importId);
