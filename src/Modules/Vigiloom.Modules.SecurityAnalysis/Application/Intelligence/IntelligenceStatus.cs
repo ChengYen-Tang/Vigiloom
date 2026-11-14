@@ -72,9 +72,22 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
             row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
-            row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null)).ToArray();
+            row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
+            Describe(row.Source.Key))).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
+
+    private static IntelligenceSourceDescription? Describe(string key) => key switch
+    {
+        "cisa-kev" => new("CISA Known Exploited Vulnerabilities", "known-exploited-vulnerabilities",
+            "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+            "Known exploited CVEs across products; not a complete vulnerability catalog or proof of asset applicability.", KevUpdate.LicenseEvidence),
+        "github-reviewed" => new("GitHub Reviewed Advisories", "open-source-package-advisories",
+            "https://api.github.com/advisories",
+            "GitHub-reviewed package advisories; excludes unreviewed and malware advisories and does not establish asset applicability.",
+            AdvisoryRevisionBuilder.LicenseEvidence),
+        _ => null
+    };
 
     public async Task<IntelligenceRevisionPage?> GetRevisionsAsync(Guid sourceId, int page, CancellationToken token)
     {

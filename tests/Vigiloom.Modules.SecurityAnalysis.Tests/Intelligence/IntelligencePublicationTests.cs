@@ -48,6 +48,9 @@ public sealed class IntelligencePublicationTests(TestContext context)
             var actor = Guid.CreateVersion7();
             var status = new IntelligenceStatus(contexts, TimeProvider.System);
             var initial = (await status.GetSourcesAsync(1, token)).Items.Single();
+            Assert.IsNotNull(initial.Description);
+            Assert.AreEqual("known-exploited-vulnerabilities", initial.Description.Category);
+            Assert.AreEqual(KevUpdate.LicenseEvidence, initial.Description.LicenseEvidence);
             Assert.IsNull(initial.ActiveRevisionId);
             Assert.AreEqual("", initial.ActivationVersion);
             var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
@@ -114,6 +117,9 @@ public sealed class IntelligencePublicationTests(TestContext context)
             var advisoryPolicy = new IntelligencePolicyUpdate(true, 86_400, 259_200, 1_073_741_824, 100_000, Convert.ToBase64String(advisory.Version));
             Assert.AreEqual(IntelligencePolicyResult.Updated, await policy.UpdateAsync(advisory.Id, advisoryPolicy, actor, token));
             var advisoryCurrent = (await status.GetSourcesAsync(1, token)).Items.Single(x => x.Id == advisory.Id);
+            Assert.IsNotNull(advisoryCurrent.Description);
+            Assert.AreEqual("open-source-package-advisories", advisoryCurrent.Description.Category);
+            Assert.Contains("excludes unreviewed", advisoryCurrent.Description.Coverage);
             Assert.AreEqual(IntelligencePolicyResult.Invalid, await policy.UpdateAsync(advisory.Id,
                 advisoryPolicy with { Version = advisoryCurrent.Version, MaximumRecords = 100_001 }, actor, token));
             Assert.AreEqual(IntelligencePolicyResult.Updated, await policy.UpdateAsync(advisory.Id,
