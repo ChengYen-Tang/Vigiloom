@@ -21,6 +21,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -327,6 +328,24 @@ public sealed class AgentIdentityTlsTests
                             var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "x\n", deadline.Token);
                             Assert.IsNull(gap.GapAffectedCount);
                             Assert.IsLessThan(resumed.RowId, gap.RowId);
+                        }
+                        await using (var db = await resources.CreateDbContextAsync(deadline.Token))
+                        {
+                            var published = await db.Devices.SingleAsync(x => x.Id == device.Id, deadline.Token);
+                            published.SetPublication(true, "Public TLS device", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+                            await db.SaveChangesAsync(deadline.Token);
+                        }
+                        using (var anonymous = CreateClient())
+                        {
+                            foreach (var path in new[] { "/api/v1/public/devices", $"/api/v1/public/devices/{device.Id:D}", "/" })
+                            {
+                                using var response = await anonymous.GetAsync(new Uri(url, path), deadline.Token);
+                                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                                var body = await response.Content.ReadAsStringAsync(deadline.Token);
+                                Assert.DoesNotContain("multiline-start", body);
+                                Assert.DoesNotContain("after-rotation", body);
+                                Assert.DoesNotContain("TLS log", body);
+                            }
                         }
                         using (var playwright = await Playwright.CreateAsync())
                         await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
