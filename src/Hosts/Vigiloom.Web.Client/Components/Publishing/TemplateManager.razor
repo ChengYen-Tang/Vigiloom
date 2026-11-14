@@ -19,7 +19,7 @@
                 <div class="table-scroll" tabindex="0" aria-label="公開範本清單，可左右捲動"><table><thead><tr><th>範本名稱</th><th>公開欄位</th><th>指派設備</th><th>操作</th></tr></thead><tbody>
                     @foreach (var item in items)
                     {
-                        <tr class="@(selected?.Id == item.Id ? "selected-row" : "")"><td>@item.Name @if (item.IsDefault) { <span class="badge">預設</span> }</td><td>名稱、狀態@(item.ShowLatency ? "、延遲" : "")@(item.ShowObservedAt ? "、觀測時間" : "")</td><td>@item.AssignedCount</td>
+                        <tr class="@(selected?.Id == item.Id ? "selected-row" : "")"><td>@item.Name @if (item.IsDefault) { <span class="badge">預設</span> }</td><td>名稱、狀態@(item.ShowLatency ? "、目前延遲" : "")@(item.ShowObservedAt ? "、觀測時間" : "")@(item.HistoryDays > 0 ? $"、歷史平均延遲（{item.HistoryDays} 天）" : "") @if (item.HistoryDays > 0 && !item.HistoryReady) { <span>（歷史尚未就緒）</span> }</td><td>@item.AssignedCount</td>
                             <td><div class="actions"><button disabled="@Disabled" @onclick="() => Edit(item)">編輯</button><button disabled="@(Disabled || item.IsDefault)" @onclick="() => SetDefaultAsync(item)">設為預設</button><button disabled="@Disabled" @onclick="() => Retire(item)">刪除</button></div></td></tr>
                     }
                 </tbody></table></div>
@@ -35,10 +35,18 @@
                 {
                     <label for="template-name">範本名稱</label><input id="template-name" @bind="name" maxlength="256" disabled="@Disabled" />
                     <fieldset><legend>可公開的設備欄位</legend><p>公開名稱與簡易狀態固定顯示。</p>
-                        <label><input type="checkbox" @bind="showLatency" disabled="@Disabled" /> 延遲時間</label>
+                        <label><input type="checkbox" @bind="showLatency" disabled="@Disabled" /> 目前延遲時間</label>
                         <label><input type="checkbox" @bind="showObservedAt" disabled="@Disabled" /> 觀測時間</label>
                     </fieldset>
-                    <p>IP 與主機進階資訊不會公開；歷史資料尚未開放。</p>
+                    <label for="template-history">歷史平均延遲</label>
+                    <select id="template-history" @bind="historyDays" disabled="@Disabled">
+                        <option value="0">不公開歷史</option>
+                        @for (var day = 1; day <= 7; day++) { <option value="@day">最近 @day 天</option> }
+                    </select>
+                    <div class="history-guidance">
+                        <p>歷史平均延遲與目前延遲可分開設定。</p>
+                        <ul><li>啟用或擴大範圍後，從變更生效時開始顯示。</li><li>縮短範圍不重設起點。</li><li>IP 與主機進階資訊不會公開。</li></ul>
+                    </div>
                     <div class="actions"><button disabled="@Disabled" @onclick="SaveOrPreviewAsync">@(mode == "new" ? "建立範本" : "預覽變更")</button><button disabled="@Disabled" @onclick="Cancel">取消</button></div>
                 }
                 else
@@ -47,7 +55,11 @@
                     @ImpactList()
                     <p>延遲時間：@Enabled(updatePreview.Current.ShowLatency) → @Enabled(updatePreview.Proposed.ShowLatency)；觀測時間：@Enabled(updatePreview.Current.ShowObservedAt) → @Enabled(updatePreview.Proposed.ShowObservedAt)。</p>
                     <p>範本名稱：@updatePreview.Current.Name → @updatePreview.Proposed.Name</p>
+                    <p>歷史平均延遲：@HistoryText(updatePreview.Current.HistoryDays) → @HistoryText(updatePreview.Proposed.HistoryDays ?? updatePreview.Current.HistoryDays)。</p>
+                    @if (updatePreview.Proposed.HistoryDays > updatePreview.Current.HistoryDays)
+                    { <p class="notice guidance">啟用或擴大歷史範圍後，從變更生效時開始累積可公開資料，不會回填之前的歷史。</p> }
                     @SamplePreview(updatePreview.Current.ShowLatency, updatePreview.Current.ShowObservedAt, updatePreview.Proposed.ShowLatency, updatePreview.Proposed.ShowObservedAt)
+                    @HistoryPreview()
                     <div class="actions"><button disabled="@Disabled" @onclick="ConfirmUpdateAsync">確認儲存</button><button disabled="@Disabled" @onclick="BackToEdit">返回修改</button></div>
                 }
             </section>
@@ -86,12 +98,15 @@
     private int page;
     private string? message, mode, name, replacement;
     private bool showLatency, showObservedAt;
+    private int historyDays;
     private PublicationTemplateItem? selected, currentDefault;
     private PublicationTemplateUpdatePreview? updatePreview;
     private PublicationTemplateRetirementPreview? retirementPreview;
     private PublicationImpact? impactPage;
     private PublicationSettings? sampleSettings;
     private PublicationPreview? sample;
+    private PublicDeviceHistory? sampleHistory;
+    private bool historyPreviewUnavailable;
     private bool Disabled => busy || !RendererInfo.IsInteractive;
     protected override Task OnInitializedAsync() => ReloadAsync();
     private async Task ReloadAsync()
@@ -105,9 +120,9 @@
     private async Task ReadPageAsync()
     { var result = await Client.TemplatesAsync(page + 1, lifetime.Token); foreach (var item in result.Items) if (!items.Any(x => x.Id == item.Id)) items.Add(item); page = result.Page; more = result.HasMore; }
     private Task LoadMoreAsync() => RunAsync(async () => await ReadPageAsync());
-    private void ClearPreview() { updatePreview = null; retirementPreview = null; impactPage = null; sample = null; sampleSettings = null; }
-    private void New() { ClearPreview(); mode = "new"; selected = null; name = ""; showLatency = showObservedAt = false; message = null; }
-    private void Edit(PublicationTemplateItem item) { ClearPreview(); selected = item; mode = "edit"; name = item.Name; showLatency = item.ShowLatency; showObservedAt = item.ShowObservedAt; message = null; }
+    private void ClearPreview() { updatePreview = null; retirementPreview = null; impactPage = null; sample = null; sampleSettings = null; sampleHistory = null; historyPreviewUnavailable = false; }
+    private void New() { ClearPreview(); mode = "new"; selected = null; name = ""; showLatency = showObservedAt = false; historyDays = 0; message = null; }
+    private void Edit(PublicationTemplateItem item) { ClearPreview(); selected = item; mode = "edit"; name = item.Name; showLatency = item.ShowLatency; showObservedAt = item.ShowObservedAt; historyDays = item.HistoryDays; message = null; }
     private void Retire(PublicationTemplateItem item) { ClearPreview(); selected = item; mode = "retire"; replacement = null; message = null; }
     private void Cancel() { ClearPreview(); mode = null; selected = null; }
     private void BackToEdit() => ClearPreview();
@@ -122,19 +137,19 @@
         if (string.IsNullOrWhiteSpace(name)) { message = "請輸入範本名稱。"; return; }
         if (mode == "new")
         {
-            var result = await Client.CreateTemplateAsync(new(name, showLatency, showObservedAt), lifetime.Token);
-            if (!Accept(result.Status)) return; Cancel(); message = "範本已建立。"; success = true; await ReloadAsync(); return;
+            var result = await Client.CreateTemplateAsync(new(name, showLatency, showObservedAt, historyDays), lifetime.Token);
+            if (!Accept(result.Status)) return; Cancel(); message = result.Value is { HistoryDays: > 0, HistoryReady: false } ? "範本已建立，但歷史尚未就緒；請稍後編輯並重新儲存。" : "範本已建立。"; success = true; await ReloadAsync(); return;
         }
         if (selected is null) return;
         ClearPreview();
-        var preview = await Client.PreviewTemplateUpdateAsync(selected.Id, new(name, showLatency, showObservedAt), lifetime.Token);
+        var preview = await Client.PreviewTemplateUpdateAsync(selected.Id, new(name, showLatency, showObservedAt, historyDays), lifetime.Token);
         if (!Accept(preview.Status) || preview.Value is null) return;
         updatePreview = preview.Value; impactPage = updatePreview.Impact;
         await LoadSampleAsync(updatePreview.Impact);
     });
     private async Task LoadSampleAsync(PublicationImpact impact)
     {
-        sample = null; sampleSettings = null;
+        sample = null; sampleSettings = null; sampleHistory = null; historyPreviewUnavailable = false;
         var firstPublic = impact.Items.FirstOrDefault(x => x.Public);
         if (firstPublic is not null)
         {
@@ -142,7 +157,23 @@
             {
                 sampleSettings = await Client.GetAsync("devices", firstPublic.Id, lifetime.Token);
                 if (sampleSettings is { Public: true } && sampleSettings.TemplateId == selected?.Id && sampleSettings.TemplateVersion == impact.TemplateVersion)
+                {
                     sample = await Client.PreviewAsync("devices", firstPublic.Id, lifetime.Token);
+                    if (updatePreview?.Current is { HistoryDays: > 0, HistoryReady: true })
+                    {
+                        try
+                        {
+                            var now = DateTimeOffset.UtcNow;
+                            sampleHistory = await Client.PublishedDeviceHistoryAsync(firstPublic.Id, now.AddDays(-7), now, lifetime.Token);
+                            var current = await Client.GetAsync("devices", firstPublic.Id, lifetime.Token);
+                            if (current is null || !current.Public || current.Version != sampleSettings.Version ||
+                                current.TemplateId != sampleSettings.TemplateId || current.TemplateVersion != sampleSettings.TemplateVersion)
+                            { sampleHistory = null; sample = null; sampleSettings = null; historyPreviewUnavailable = true; }
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        { Logger.LogWarning(ex, "Unable to load published history preview"); sampleHistory = null; historyPreviewUnavailable = true; }
+                    }
+                }
                 else { sampleSettings = null; sample = null; }
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to load public sample"); sample = null; sampleSettings = null; }
@@ -152,7 +183,7 @@
     {
         if (selected is null || updatePreview is null) return;
         var result = await Client.ConfirmTemplateUpdateAsync(selected.Id, new(updatePreview.Confirmation), lifetime.Token);
-        if (!Accept(result.Status)) { updatePreview = null; return; } Cancel(); message = "範本已更新。"; success = true; await ReloadAsync();
+        if (!Accept(result.Status)) { updatePreview = null; return; } Cancel(); message = result.Value is { HistoryDays: > 0, HistoryReady: false } ? "範本已更新，但歷史尚未就緒；請稍後編輯並重新儲存。" : "範本已更新。"; success = true; await ReloadAsync();
     });
     private Task PreviewRetirementAsync() => RunAsync(async () =>
     {
@@ -183,6 +214,7 @@
         return false;
     }
     private static string Enabled(bool enabled) => enabled ? "公開" : "不公開";
+    private static string HistoryText(int days) => days == 0 ? "不公開" : $"最近 {days} 天";
     private static string StateText(string state) => state switch { "Operational" => "可達", "Unavailable" => "不可達", _ => "未知或尚無資料" };
     private Task ChangeImpactPageAsync(int target) => RunAsync(async () =>
     {
@@ -207,6 +239,23 @@
         @if (sample is null || sampleSettings is null || !sampleSettings.Public) { <p>目前這一頁沒有可顯示的公開設備資料。</p> }
         else { <div><strong>變更前</strong><p>@sampleSettings.DisplayName · @StateText(sample.State) @if (oldLatency && sample.LatencyMilliseconds is { } before) { <span>· @before.ToString("0.##") ms</span> } @if (oldTime && sample.ObservedAt is { } beforeTime) { <span>· @beforeTime.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }</p></div>
                <div><strong>變更後</strong><p>@sampleSettings.DisplayName · @StateText(sample.State) @if (newLatency && sample.LatencyMilliseconds is { } after) { <span>· @after.ToString("0.##") ms</span> } @if (newTime && sample.ObservedAt is { } afterTime) { <span>· @afterTime.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }</p></div> }
+    </div>;
+    private RenderFragment HistoryPreview() => @<div class="history-comparison">
+        <div><strong>目前公開的歷史</strong>
+            @if (updatePreview?.Current.HistoryDays is not > 0) { <p>目前不公開歷史。</p> }
+            else if (historyPreviewUnavailable || sampleHistory is null) { <p>目前無法取得可公開的歷史預覽。</p> }
+            else if (sampleHistory.Points.Count == 0) { <p>目前沒有可顯示的歷史資料。</p> }
+            else { var point = sampleHistory.Points[^1]; <p>@point.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC · @(point.AverageLatencyMilliseconds is { } value ? $"{value:0.##} ms" : "無延遲資料")</p> }
+        </div>
+        <div><strong>變更後</strong>
+            @if (updatePreview?.Proposed.HistoryDays is not > 0) { <p>不公開歷史。</p> }
+            else if (updatePreview.Proposed.HistoryDays > updatePreview.Current.HistoryDays) { <p>最多 @updatePreview.Proposed.HistoryDays 天；從變更生效後開始累積，不公開之前的歷史。</p> }
+            else if (historyPreviewUnavailable || sampleHistory?.AsOf is null) { <p>目前無法取得可公開的歷史預覽。</p> }
+            else if (sampleHistory.Points.LastOrDefault(x => x.From >= sampleHistory.AsOf.Value.AddDays(-updatePreview.Proposed.HistoryDays.Value)) is { } after)
+            { <p>@after.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC · @(after.AverageLatencyMilliseconds is { } value ? $"{value:0.##} ms" : "無延遲資料")</p> }
+            else { <p>此範圍沒有可顯示的歷史資料。</p> }
+            <p>顯示已結束的五分鐘平均延遲；資料可能持續彙整。</p>
+        </div>
     </div>;
     public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
 }
