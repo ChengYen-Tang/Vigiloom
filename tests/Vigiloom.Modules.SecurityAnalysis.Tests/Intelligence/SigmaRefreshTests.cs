@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -50,6 +52,11 @@ public sealed class SigmaRefreshTests(TestContext context)
                 Assert.AreEqual(First, revision.UpstreamVersion);
                 Assert.AreEqual(2, revision.RecordCount);
                 Assert.AreEqual(2, await check.SigmaRules.CountAsync(token));
+                var manifest = await check.SigmaManifests.SingleAsync(token);
+                Assert.AreEqual(1, manifest.IncludedCount);
+                Assert.AreEqual(1, manifest.ExcludedCount);
+                Assert.AreEqual(SigmaManifestBuilder.PolicyVersion, manifest.PolicyVersion);
+                Assert.AreEqual("outside-core-rules", (await check.SigmaRules.SingleAsync(x => x.RuleId == null, token)).ExclusionReason);
                 Assert.IsNull((await check.SigmaRules.SingleAsync(x => x.RuleId == null, token)).License);
                 Assert.AreEqual(0, await check.IntelligenceActivations.CountAsync(token));
                 var rules = await new IntelligenceStatus(contexts, clock).GetSigmaRulesAsync(source.Id, revision.Id, 1, token);
@@ -58,6 +65,51 @@ public sealed class SigmaRefreshTests(TestContext context)
                 Assert.IsTrue(rules.Items.Any(x => x.Path.StartsWith("rules-threat-hunting/", StringComparison.Ordinal)));
                 Assert.AreEqual("windows", rules.Items.Single(x => x.RuleId == "abc").Product);
                 Assert.IsNull(await new IntelligenceStatus(contexts, clock).GetSigmaRulesAsync(Guid.CreateVersion7(), revision.Id, 1, token));
+                Assert.AreEqual(1, await SigmaRevisionEligibility.IncludedCountAsync(check, source.Id, revision.Id, token));
+                var eligibleRule = await check.SigmaRules.SingleAsync(x => x.RuleId == "abc", token);
+                eligibleRule.Author = "Changed attribution";
+                await check.SaveChangesAsync(token);
+                Assert.IsNull(await SigmaRevisionEligibility.IncludedCountAsync(check, source.Id, revision.Id, token));
+                eligibleRule.Author = "Author";
+                await check.SaveChangesAsync(token);
+                Assert.AreEqual(1, await SigmaRevisionEligibility.IncludedCountAsync(check, source.Id, revision.Id, token));
+                var publisher = new IntelligencePublication(contexts, new OperationAuditWriter(), clock);
+                Assert.AreEqual(IntelligencePublicationResult.Published,
+                    await publisher.ActivateScheduledAsync(source.Id, revision.Id, null, "", token));
+                var catalog = new SigmaCatalog(contexts, clock);
+                var selection = await catalog.GetActiveAsync(token);
+                Assert.AreEqual(SigmaAvailability.Ready, selection.Availability);
+                Assert.AreEqual(1, selection.IncludedCount);
+                Assert.AreEqual(1, selection.ExcludedCount);
+                var page = await catalog.ReadPageAsync(selection, null, token);
+                Assert.AreEqual(SigmaAvailability.Ready, page.Availability);
+                Assert.HasCount(1, page.Rules);
+                Assert.AreEqual("rules/example.yml", page.Rules[0].Path);
+                Assert.AreEqual("Author", page.Rules[0].Author);
+                Assert.AreEqual($"https://github.com/SigmaHQ/sigma/blob/{First}/rules/example.yml", page.Rules[0].SourceUrl);
+                Assert.AreEqual(SigmaAvailability.Ready, (await catalog.ReadRuleAsync(selection, page.Rules[0].Path, token)).Availability);
+                Assert.AreEqual(SigmaAvailability.Unavailable, (await catalog.ReadRuleAsync(selection, "rules-threat-hunting/other.yml", token)).Availability);
+                Assert.AreEqual(SigmaAvailability.SelectionChanged,
+                    (await catalog.ReadPageAsync(selection with { ActivationVersion = "invalid" }, null, token)).Availability);
+                var original = eligibleRule.Content;
+                eligibleRule.Content = [1];
+                await check.SaveChangesAsync(token);
+                Assert.AreEqual(SigmaAvailability.Unavailable, (await catalog.ReadRuleAsync(selection, page.Rules[0].Path, token)).Availability);
+                eligibleRule.Content = original;
+                await check.SaveChangesAsync(token);
+                var advancing = new SigmaCatalog(contexts, new AdvancingClock(clock.GetUtcNow()));
+                Assert.AreEqual(SigmaAvailability.Stale, (await advancing.GetActiveAsync(token)).Availability);
+                advancing = new SigmaCatalog(contexts, new AdvancingClock(clock.GetUtcNow()));
+                Assert.AreEqual(SigmaAvailability.Stale, (await advancing.ReadPageAsync(selection, null, token)).Availability);
+                advancing = new SigmaCatalog(contexts, new AdvancingClock(clock.GetUtcNow()));
+                var expiredContent = await advancing.ReadRuleAsync(selection, page.Rules[0].Path, token);
+                Assert.AreEqual(SigmaAvailability.Stale, expiredContent.Availability);
+                Assert.IsNull(expiredContent.Content);
+                revision.Revoked = true;
+                await check.SaveChangesAsync(token);
+                Assert.AreEqual(SigmaAvailability.Unavailable, (await catalog.ReadPageAsync(selection, null, token)).Availability);
+                revision.Revoked = false;
+                await check.SaveChangesAsync(token);
             }
             clock.Advance(TimeSpan.FromDays(2));
             Assert.AreEqual(SigmaRefreshResult.Unchanged, await refresh.RunDueAsync(token));
@@ -82,6 +134,36 @@ public sealed class SigmaRefreshTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    public Task Catalog_UsesBoundedPagesAndRejectsSelectionChanges() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var clients = new ClientFactory(request => request.RequestUri!.Host == "api.github.com"
+                ? new(HttpStatusCode.OK) { Content = new StringContent($"{{\"sha\":\"{First}\"}}") }
+                : new(HttpStatusCode.OK) { Content = new ByteArrayContent(Archive(First, false, false, extraRules: 55)) });
+            Assert.AreEqual(SigmaRefreshResult.Staged, await new SigmaRefresh(contexts, clients, clock).RunDueAsync(token));
+            await using var db = contexts.CreateDbContext();
+            var source = await db.IntelligenceSources.SingleAsync(token);
+            var revision = await db.IntelligenceRevisions.SingleAsync(token);
+            Assert.AreEqual(IntelligencePublicationResult.Published,
+                await new IntelligencePublication(contexts, new OperationAuditWriter(), clock).ActivateScheduledAsync(source.Id, revision.Id, null, "", token));
+            var catalog = new SigmaCatalog(contexts, clock);
+            var selection = await catalog.GetActiveAsync(token);
+            var first = await catalog.ReadPageAsync(selection, null, token);
+            Assert.HasCount(50, first.Rules);
+            Assert.IsNotNull(first.NextPath);
+            var second = await catalog.ReadPageAsync(selection, first.NextPath, token);
+            Assert.HasCount(6, second.Rules);
+            Assert.IsNull(second.NextPath);
+            Assert.AreEqual(56, first.Rules.Concat(second.Rules).Select(x => x.Path).Distinct().Count());
+            source.Enabled = false;
+            await db.SaveChangesAsync(token);
+            Assert.AreEqual(SigmaAvailability.Disabled, (await catalog.ReadPageAsync(selection, first.NextPath, token)).Availability);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Migration_RefusesToDiscardRetainedRules() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -95,6 +177,7 @@ public sealed class SigmaRefreshTests(TestContext context)
             db.IntelligenceSources.Add(source);
             db.IntelligenceRevisions.Add(revision);
             db.SigmaRules.Add(new SigmaRule { RevisionId = revision.Id, Path = "rules/example.yml", Title = "Example", Digest = new byte[32], Content = [1] });
+            db.SigmaManifests.Add(new SigmaManifest { RevisionId = revision.Id, PolicyVersion = "test", IncludedCount = 1, Digest = new byte[32] });
             await db.SaveChangesAsync(token);
             var target = db.Database.GetMigrations().Single(x => x.EndsWith("_IntelligenceSourceLimits", StringComparison.Ordinal));
             var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(target, token));
@@ -152,7 +235,7 @@ public sealed class SigmaRefreshTests(TestContext context)
             (_, _, _, _) => Task.CompletedTask, context.CancellationToken));
     }
 
-    private static byte[] Archive(string commit, bool invalid, bool wrongLicense, bool nestedLicense = false)
+    private static byte[] Archive(string commit, bool invalid, bool wrongLicense, bool nestedLicense = false, int extraRules = 0)
     {
         using var output = new MemoryStream();
         using (var gzip = new GZipStream(output, CompressionLevel.Fastest, leaveOpen: true))
@@ -162,6 +245,7 @@ public sealed class SigmaRefreshTests(TestContext context)
             Write($"sigma-{commit}/LICENSE", wrongLicense ? "changed" : "# Licenses\n\nThe content of this repository is released under the following licenses:\n\n- The Sigma specification (https://github.com/SigmaHQ/sigma-specification) and the Sigma logo are public domain\n- The rules contained in the SigmaHQ repository (https://github.com/SigmaHQ) are released under the [Detection Rule License (DRL) 1.1](https://github.com/SigmaHQ/Detection-Rule-License)\n");
             Write($"sigma-{commit}/rules/example.yml", "title: Example\nid: abc\nauthor: Author\nlogsource: {product: windows}\ndetection: {condition: selection}\n");
             Write($"sigma-{commit}/rules-threat-hunting/other.yml", "title: Hunting\nlogsource: {product: linux}\ndetection: {condition: selection}\n");
+            for (var i = 0; i < extraRules; i++) Write($"sigma-{commit}/rules/extra-{i:D3}.yml", "title: Extra\nauthor: Author\nlogsource: {}\ndetection: {}\n");
             if (nestedLicense) Write($"sigma-{commit}/rules/windows/LICENSE", "different terms");
             if (invalid)
             {
@@ -181,6 +265,11 @@ public sealed class SigmaRefreshTests(TestContext context)
     { public SecurityAnalysisDbContext CreateDbContext() => new(options); }
     private sealed class TestClock(DateTimeOffset now) : TimeProvider
     { public override DateTimeOffset GetUtcNow() => now; public void Advance(TimeSpan value) => now += value; }
+    private sealed class AdvancingClock(DateTimeOffset now) : TimeProvider
+    {
+        private int calls;
+        public override DateTimeOffset GetUtcNow() => Interlocked.Increment(ref calls) == 1 ? now : now.AddDays(31);
+    }
     private sealed class ClientFactory(Func<HttpRequestMessage, HttpResponseMessage> response) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(new Handler(response));

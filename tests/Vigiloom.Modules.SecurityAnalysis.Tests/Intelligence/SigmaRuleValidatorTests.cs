@@ -9,6 +9,24 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class SigmaRuleValidatorTests(TestContext context)
 {
     [TestMethod]
+    [DataRow(null, "repository-drl-1.1")]
+    [DataRow("DRL-1.1", "declared-drl-1.1")]
+    [DataRow("CC-BY-NC-4.0", "needs-review")]
+    [DataRow("drl-1.1", "needs-review")]
+    public void License_ClassifiesEvidenceWithoutAssumingUnknownTerms(string? license, string expected) =>
+        Assert.AreEqual(expected, SigmaLicense.Classify(license));
+
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("  ")]
+    [DataRow("null")]
+    [DataRow(" Null ")]
+    [DataRow("~")]
+    public void License_ExcludesMissingAuthor(string? author) =>
+        Assert.AreEqual("missing-author", SigmaLicense.ExclusionReason("rules/example.yml", author, null));
+
+    [TestMethod]
     public void Validate_PreservesMetadataAndDoesNotInterpretDetection()
     {
         var yaml = """

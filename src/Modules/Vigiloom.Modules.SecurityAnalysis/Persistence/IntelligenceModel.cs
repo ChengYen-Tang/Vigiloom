@@ -165,11 +165,21 @@ internal static class IntelligenceModel
         sigma.Property(x => x.Product).HasMaxLength(128);
         sigma.Property(x => x.Category).HasMaxLength(128);
         sigma.Property(x => x.Service).HasMaxLength(128);
+        sigma.Property(x => x.ExclusionReason).HasMaxLength(64).IsUnicode(false);
         sigma.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
         sigma.Property(x => x.Content).IsRequired();
         sigma.HasIndex(x => new { x.RevisionId, x.Path }).IsUnique();
         sigma.HasIndex(x => new { x.RevisionId, x.RuleId }).IsUnique().HasFilter("[RuleId] IS NOT NULL");
         sigma.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var sigmaManifest = model.Entity<SigmaManifest>();
+        sigmaManifest.ToTable("SigmaManifests", t => t.HasCheckConstraint("CK_SigmaManifests_Count", "[IncludedCount] >= 0 AND [ExcludedCount] >= 0"));
+        sigmaManifest.HasKey(x => x.RowId).IsClustered();
+        sigmaManifest.Property(x => x.RowId).UseIdentityColumn();
+        sigmaManifest.Property(x => x.PolicyVersion).HasMaxLength(64).IsUnicode(false).IsRequired();
+        sigmaManifest.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        sigmaManifest.HasIndex(x => x.RevisionId).IsUnique();
+        sigmaManifest.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
 
         var signature = model.Entity<SignatureFile>();
         signature.ToTable("SignatureFiles", t =>

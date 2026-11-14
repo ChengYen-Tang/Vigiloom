@@ -34,7 +34,7 @@ public sealed class IntelligenceBrowserTests(TestContext context)
             RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test",
             LicenseEvidence = "test", RecordCount = 1, Normalized = true };
         var sigmaRevision = new IntelligenceRevision { SourceId = sigmaSource.Id, UpstreamVersion = "sigma-test", RetrievedAt = DateTimeOffset.UtcNow,
-            Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v1",
+            Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v2",
             LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
         var signatureRevision = new IntelligenceRevision { SourceId = signatureSource.Id, UpstreamVersion = "signature-test", RetrievedAt = DateTimeOffset.UtcNow,
             Digest = new byte[32], Artifact = [], SchemaVersion = "signature-base-files-v1", MappingVersion = "signature-base-source-v2",

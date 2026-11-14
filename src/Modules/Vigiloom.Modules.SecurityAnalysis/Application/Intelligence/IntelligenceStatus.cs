@@ -75,6 +75,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var now = clock.GetUtcNow();
         var advisory = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "github-reviewed" && x.ActiveId != null && !x.ActiveUnavailable);
         var advisoryUnavailable = advisory is not null && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, advisory.Source.Id, advisory.ActiveId!.Value, token);
+        var sigma = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == SigmaRefresh.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
+        var sigmaUnavailable = sigma is not null && await SigmaRevisionEligibility.IncludedCountAsync(db, sigma.Source.Id, sigma.ActiveId!.Value, token) is null;
         var kev = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "cisa-kev" && x.ActiveId != null && !x.ActiveUnavailable);
         bool? kevFresh = null;
         if (kev is not null)
@@ -90,7 +92,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable)).ToArray();
+            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 
@@ -105,7 +107,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             "GitHub-reviewed package advisories; excludes unreviewed and malware advisories and does not establish asset applicability.",
             AdvisoryRevisionBuilder.LicenseEvidence, "Open-source package ecosystems reported by each advisory; asset applicability is not determined here."),
         "sigmahq-rules" => new("SigmaHQ 規則", "behavioral-rules", "https://github.com/SigmaHQ/sigma",
-            "Source rules are retained for review; detection and publication remain unsupported until the consumer is verified.", SigmaRefresh.LicenseEvidence,
+            "A source subset may be selected after attribution and license checks; detection and deployment require a verified consumer.", SigmaRefresh.LicenseEvidence,
             "Platform and event-source requirements vary by rule; compatible collection and detection are not yet verified."),
         "signature-base" => new("Signature-Base", "IOC / YARA", "https://github.com/Neo23x0/signature-base",
             "IOC and YARA source files are retained for review; interpretation, detection and publication remain unsupported.", SignatureRefresh.LicenseEvidence,
@@ -143,9 +145,9 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         if (!exists) return null;
         var rows = await db.SigmaRules.AsNoTracking().Where(x => x.RevisionId == revisionId).OrderBy(x => x.Path)
             .Skip((page - 1) * PageSize).Take(PageSize + 1)
-            .Select(x => new { x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service, x.Digest }).ToArrayAsync(token);
+            .Select(x => new { x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service, x.Digest, x.ExclusionReason }).ToArrayAsync(token);
         return new(rows.Take(PageSize).Select(x => new SigmaRuleView(x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service,
-            Convert.ToHexStringLower(x.Digest))).ToArray(), page, rows.Length > PageSize && page < 1000);
+            Convert.ToHexStringLower(x.Digest), SigmaLicense.Classify(x.License), x.ExclusionReason)).ToArray(), page, rows.Length > PageSize && page < 1000);
     }
 
     public async Task<SignatureFilePage?> GetSignatureFilesAsync(Guid sourceId, Guid revisionId, int page, CancellationToken token)
