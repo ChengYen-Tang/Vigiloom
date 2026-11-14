@@ -125,6 +125,37 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         return true;
     }
 
+    internal async Task<AdvisoryImport?> RestartAsync(Guid sourceId, Guid importId, byte[] expectedVersion, CancellationToken token)
+    {
+        if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var source = await LockSourceAsync(db, sourceId, token);
+        if (source is null || !source.Enabled || source.Key != "github-reviewed") return null;
+        var old = await db.AdvisoryImports
+            .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
+            .SingleOrDefaultAsync(token);
+        if (old is null || old.Phase is not (1 or 2) || old.Cursor is null || old.RestartCount >= 3 ||
+            !old.Version.AsSpan().SequenceEqual(expectedVersion) || !old.SourceVersion.AsSpan().SequenceEqual(source.Version)) return null;
+        var active = await db.IntelligenceActivations.AsNoTracking().Where(x => x.SourceId == sourceId)
+            .Select(x => new { x.RevisionId, x.Version }).SingleOrDefaultAsync(token);
+        if (active?.RevisionId != old.BaseRevisionId ||
+            (active is null ? old.BaseActivationVersion is not null : !active.Version.AsSpan().SequenceEqual(old.BaseActivationVersion))) return null;
+        var next = new AdvisoryImport
+        {
+            SourceId = sourceId, BaseRevisionId = old.BaseRevisionId, BaseActivationVersion = old.BaseActivationVersion,
+            SourceVersion = old.SourceVersion, WindowStart = old.WindowStart, WindowEnd = old.WindowEnd,
+            StartedAt = clock.GetUtcNow().ToUniversalTime(), RestartCount = old.RestartCount + 1
+        };
+        old.Phase = 5;
+        old.SuccessorId = next.Id;
+        await db.SaveChangesAsync(token);
+        db.AdvisoryImports.Add(next);
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return next;
+    }
+
     private static Task<IntelligenceSource?> LockSourceAsync(SecurityAnalysisDbContext db, Guid id, CancellationToken token) =>
         db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}")
             .SingleOrDefaultAsync(token);

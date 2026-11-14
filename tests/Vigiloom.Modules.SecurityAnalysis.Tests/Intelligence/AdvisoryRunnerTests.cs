@@ -44,7 +44,7 @@ public sealed class AdvisoryRunnerTests(TestContext context)
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") };
                 });
                 var runner = new AdvisoryImportRunner(contexts, clients, clock);
-                Assert.AreEqual(AdvisoryRunResult.Deferred, await runner.RunSliceAsync(source.Id, import.Id, null, token, TimeSpan.FromSeconds(3)));
+                Assert.AreEqual(AdvisoryRunResult.Deferred, (await runner.RunSliceAsync(source.Id, import.Id, null, token, TimeSpan.FromSeconds(3))).Status);
                 Assert.AreEqual(1, calls);
             }
             finally { await transaction.RollbackAsync(CancellationToken.None); }
@@ -87,7 +87,7 @@ public sealed class AdvisoryRunnerTests(TestContext context)
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") };
             });
             var runner = new AdvisoryImportRunner(contexts, clients, clock);
-            Assert.AreEqual(AdvisoryRunResult.RateLimited, await runner.RunSliceAsync(source.Id, import.Id, null, token));
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
             await using (var db = contexts.CreateDbContext())
             {
                 var saved = await db.AdvisoryImports.SingleAsync(token);
@@ -97,10 +97,10 @@ public sealed class AdvisoryRunnerTests(TestContext context)
                 Assert.IsNotNull(saved.NotBefore);
                 Assert.IsGreaterThanOrEqualTo(clock.GetUtcNow().AddMinutes(2), saved.NotBefore.Value);
             }
-            Assert.AreEqual(AdvisoryRunResult.RateLimited, await runner.RunSliceAsync(source.Id, import.Id, null, token));
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
             Assert.AreEqual(2, calls);
             clock.Advance(TimeSpan.FromMinutes(3));
-            Assert.AreEqual(AdvisoryRunResult.RateLimited, await runner.RunSliceAsync(source.Id, import.Id, null, token));
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
             await using (var db = contexts.CreateDbContext())
             {
                 var saved = await db.AdvisoryImports.SingleAsync(token);
@@ -108,10 +108,10 @@ public sealed class AdvisoryRunnerTests(TestContext context)
                 Assert.IsNotNull(saved.NotBefore);
                 Assert.IsGreaterThanOrEqualTo(clock.GetUtcNow().AddMinutes(2), saved.NotBefore.Value);
             }
-            Assert.AreEqual(AdvisoryRunResult.RateLimited, await runner.RunSliceAsync(source.Id, import.Id, null, token));
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
             Assert.AreEqual(3, calls);
             clock.Advance(TimeSpan.FromMinutes(3));
-            Assert.AreEqual(AdvisoryRunResult.AwaitingReconciliation, await runner.RunSliceAsync(source.Id, import.Id, null, token));
+            Assert.AreEqual(AdvisoryRunResult.AwaitingReconciliation, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
             await using (var db = contexts.CreateDbContext())
             {
                 var saved = await db.AdvisoryImports.SingleAsync(token);
@@ -121,6 +121,81 @@ public sealed class AdvisoryRunnerTests(TestContext context)
                 Assert.IsNull(saved.NotBefore);
                 Assert.AreEqual(0, await db.IntelligenceActivations.CountAsync(token));
             }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task RejectedCursor_RestartsAndReturnsResumableImport() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var import = await new AdvisoryImportStore(contexts, clock).BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var calls = 0;
+            var clients = new ClientFactory(request =>
+            {
+                calls++;
+                if (calls == 2) return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity);
+                if (calls == 3) return new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") };
+                if (calls == 1)
+                    response.Headers.TryAddWithoutValidation("Link", "<https://api.github.com/advisories?type=reviewed&per_page=100&sort=updated&direction=asc&modified=2023-01-01..2023-02-01&after=YQ%3D%3D>; rel=\"next\"");
+                if (calls == 4) Assert.DoesNotContain("after=", request.RequestUri!.Query);
+                return response;
+            });
+            var runner = new AdvisoryImportRunner(contexts, clients, clock);
+            var outcome = await runner.RunSliceAsync(source.Id, import.Id, null, token);
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, outcome.Status);
+            Assert.AreNotEqual(import.Id, outcome.ImportId);
+            await using (var db = contexts.CreateDbContext())
+            {
+                var generations = await db.AdvisoryImports.OrderBy(x => x.RowId).ToListAsync(token);
+                Assert.HasCount(2, generations);
+                Assert.AreEqual(5, generations[0].Phase);
+                Assert.AreEqual(generations[1].Id, generations[0].SuccessorId);
+                Assert.AreEqual(1, generations[0].PageCount);
+                Assert.AreEqual(1, generations[1].RestartCount);
+                Assert.AreEqual(outcome.ImportId, generations[1].Id);
+                Assert.AreEqual(0, await db.IntelligenceActivations.CountAsync(token));
+            }
+            var recovered = await runner.RunSliceAsync(source.Id, import.Id, null, token);
+            Assert.AreEqual(AdvisoryRunResult.RateLimited, recovered.Status);
+            Assert.AreEqual(outcome.ImportId, recovered.ImportId);
+            clock.Advance(TimeSpan.FromMinutes(2));
+            var resumed = await runner.RunSliceAsync(source.Id, import.Id, null, token);
+            Assert.AreEqual(AdvisoryRunResult.AwaitingReconciliation, resumed.Status);
+            Assert.AreEqual(outcome.ImportId, resumed.ImportId);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task RepeatedRejectedCursors_StopAfterThreeRestarts() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var import = await new AdvisoryImportStore(contexts, clock).BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var calls = 0;
+            var clients = new ClientFactory(_ =>
+            {
+                if (++calls % 2 == 0) return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity);
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") };
+                response.Headers.TryAddWithoutValidation("Link", "<https://api.github.com/advisories?type=reviewed&per_page=100&sort=updated&direction=asc&modified=2023-01-01..2023-02-01&after=YQ%3D%3D>; rel=\"next\"");
+                return response;
+            });
+            var result = await new AdvisoryImportRunner(contexts, clients, clock).RunSliceAsync(source.Id, import.Id, null, token);
+            Assert.AreEqual(AdvisoryRunResult.CursorRejected, result.Status);
+            Assert.AreEqual(8, calls);
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(4, await check.AdvisoryImports.CountAsync(token));
+            Assert.AreEqual(3, (await check.AdvisoryImports.SingleAsync(x => x.Id == result.ImportId, token)).RestartCount);
+            Assert.AreEqual(0, await check.IntelligenceActivations.CountAsync(token));
         }, context.CancellationToken);
 
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
