@@ -31,6 +31,9 @@ public sealed class IntelligenceRevocation(IDbContextFactory<SecurityAnalysisDbC
         if (active is not null && (source.Key == "github-reviewed" ||
             await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Id == active.RevisionId && x.Digest == revision.Digest, token)))
             db.Entry(active).Property(x => x.ActivatedAt).IsModified = true;
+        // A withdrawn advisory provenance can invalidate the active base. Schedule a fresh check without
+        // allowing the usual interval to delay rebuilding a usable catalog.
+        if (source.Key == "github-reviewed") source.LastCheckedAt = null;
         revision.Revoked = true;
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
