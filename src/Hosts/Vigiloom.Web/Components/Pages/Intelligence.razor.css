@@ -11,13 +11,21 @@
 .intelligence-details summary { color: var(--vigiloom-primary); cursor: pointer; }
 .intelligence-details summary h2 { display: inline; }
 .intelligence-state { padding: 10px 12px; background: #eff6ff; border-radius: 6px; }
-.intelligence-state.attention { background: #fff4df; }
+.intelligence-state.attention { background: #fff4df; color: #674000; }
+.intelligence-details [role="alert"] { color: #9a1c1c; }
 .intelligence-page ::deep .intelligence-form { display: grid; gap: 10px; max-width: 640px; margin-top: 16px; }
 .intelligence-page ::deep .intelligence-form input:not([type=checkbox]), .intelligence-page ::deep .intelligence-form select { min-height: 44px; }
 .intelligence-page ::deep .intelligence-form input:not([type=checkbox]), .intelligence-page ::deep .intelligence-form select { min-width: 0; max-width: 100%; }
 .intelligence-page thead { background: #f1f6fc; }
 .intelligence-page .device-table-wrap { overflow-x: auto; max-width: 100%; }
+.intelligence-page .intelligence-versions th,
+.intelligence-page .intelligence-versions td { padding: 10px 6px; white-space: nowrap; }
+.intelligence-page .intelligence-versions td:first-child { max-width: 18rem; white-space: normal; overflow-wrap: anywhere; }
+.intelligence-page .intelligence-versions details p { max-width: 20rem; white-space: normal; }
 .intelligence-page .ioc-issues table { min-width: 0; }
+.intelligence-page .signature-files table { min-width: 680px; }
+.intelligence-page .signature-files th:nth-child(3),
+.intelligence-page .signature-files td:nth-child(3) { min-width: 9rem; }
 .intelligence-page .signature-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
 .intelligence-scroll-hint { display: none; }
 .intelligence-page nav { display: flex; gap: 16px; margin-top: 16px; }

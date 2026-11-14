@@ -117,7 +117,7 @@
                         else
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
+                            <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
                                 @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
@@ -171,12 +171,12 @@
                     {
                         <section class="device-panel">
                             <h2>IOC／YARA 來源檔案</h2>
-                            <p>以下是上游原始檔案的摘要；各規則授權與支援狀態尚未核對，不能用於偵測或發布。</p>
+                            <p>以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。</p>
                             @if (signatureFiles.Items.Count == 0) { <p>此頁沒有來源檔案。</p> }
                             else
                             {
                                 <p class="intelligence-scroll-hint">左右滑動可查看完整檔案資訊。</p>
-                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="來源檔案，可左右捲動"><table><thead><tr><th>路徑</th><th>類型</th><th>IOC 分類</th><th>SHA-256</th></tr></thead><tbody>
+                                <div class="device-table-wrap signature-files" role="region" tabindex="0" aria-label="來源檔案，可左右捲動"><table><thead><tr><th>路徑</th><th>類型</th><th>IOC 分類</th><th>SHA-256</th></tr></thead><tbody>
                                     @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path @if (file.Kind is "yara" or "license-evidence") { <a href="@EvidenceUrl(signatureRevision, file.Path, page: 1)">查看授權線索</a> }</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => "授權證據", _ => "未知" })</td><td>@if (file.Entries is { } count) { <span>@count 筆，</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@file.UnsupportedEntries 筆未支援</a> } else { <span>0 筆未支援</span> } } else { <span>不適用</span> }</td><td>@file.Sha256</td></tr> }
                                 </tbody></table></div>
                             }

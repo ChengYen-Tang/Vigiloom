@@ -257,6 +257,13 @@ both query variants must match before staging; matching passes do not guarantee
 that GitHub provided a point-in-time snapshot. Revisions have no invented
 upstream release time when the API does not supply one.
 
+If the active revision or one of its source revisions is revoked, the active
+token is invalidated and a refresh is made due immediately. Recovery imports
+the full window from 1970 rather than copying the untrusted base. The old
+selection remains as a concurrency fence until an administrator selects the
+new candidate; prior revocations and published withdrawal protections remain
+effective. A partial window cannot use this rebuild path.
+
 `IAdvisoryCatalog` provides bounded central lookups by known GHSA identifier
 against a fixed activated revision. It preserves upstream package ecosystem,
 name, version-range text and withdrawal time without interpreting applicability.
