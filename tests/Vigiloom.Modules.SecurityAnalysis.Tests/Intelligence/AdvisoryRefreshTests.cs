@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -15,6 +16,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 [TestCategory("Database")]
 public sealed class AdvisoryRefreshTests(TestContext context)
 {
+    private static readonly IDataProtectionProvider Protection = new EphemeralDataProtectionProvider();
     [TestMethod]
     public Task Progress_WaitsForSourceWriterBeforeReadingImport() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
@@ -22,7 +24,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
             var contexts = new Factory(options);
             var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
-            var refresh = new AdvisoryRefresh(contexts, new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)), clock);
+            var refresh = new AdvisoryRefresh(contexts, new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)), clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             Guid sourceId;
             await using (var db = contexts.CreateDbContext()) sourceId = (await db.IntelligenceSources.SingleAsync(token)).Id;
@@ -90,7 +92,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
                 2 => new HttpResponseMessage(HttpStatusCode.TooManyRequests),
                 _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") }
             });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.Failed, await refresh.RunDueAsync(token));
             Guid sourceId;
             await using (var db = contexts.CreateDbContext()) sourceId = (await db.IntelligenceSources.SingleAsync(token)).Id;
@@ -123,7 +125,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             var clients = new ClientFactory(_ => ++calls == 1
                 ? new HttpResponseMessage(HttpStatusCode.TooManyRequests)
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             Assert.AreEqual(1, calls);
@@ -154,7 +156,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             var contexts = new Factory(options);
             var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
             var clients = new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
             await using (var db = contexts.CreateDbContext())
             {
@@ -180,7 +182,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
             var calls = 0;
             var clients = new ClientFactory(_ => { calls++; return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") }; });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
             await using (var db = contexts.CreateDbContext())
             {
@@ -213,7 +215,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
                 response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromHours(1));
                 return response;
             });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             Assert.AreEqual(AdvisoryRefreshResult.Deferred, await refresh.RunDueAsync(token));
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
@@ -232,7 +234,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
             var calls = 0;
             var clients = new ClientFactory(_ => { calls++; return new HttpResponseMessage(HttpStatusCode.TooManyRequests); });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             var store = new AdvisoryImportStore(contexts, clock);
             AdvisoryImport old;
@@ -261,7 +263,7 @@ public sealed class AdvisoryRefreshTests(TestContext context)
                 response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromHours(1));
                 return response;
             });
-            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
             Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
             await using (var db = contexts.CreateDbContext())
             {

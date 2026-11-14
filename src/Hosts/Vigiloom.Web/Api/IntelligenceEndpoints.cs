@@ -44,6 +44,18 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Abandon a failed advisory import so a later scheduled refresh can start again");
+        admin.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, AdvisoryCredentialUpdate input, AdvisoryCredentials credentials, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            if (sourceId == Guid.Empty || !AdvisoryCredentials.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["credential"] = ["Invalid credential settings."] });
+            return await ApiMutation.ExecuteAsync(context, async actor => (await credentials.UpdateAsync(sourceId, input, actor, token)) switch
+            {
+                AdvisoryCredentialResult.Updated or AdvisoryCredentialResult.Unchanged => Results.NoContent(),
+                AdvisoryCredentialResult.NotFound => Results.NotFound(),
+                _ => Results.Problem(statusCode: 409, title: "Source settings changed; reload and try again.")
+            }, allowApiCredential: false);
+        }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Replace or clear the GitHub advisory source credential");
         admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligencePolicy policy, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";

@@ -541,7 +541,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_AdvisoryImports_Base", "([BaseRevisionId] IS NULL AND [BaseActivationVersion] IS NULL) OR ([BaseRevisionId] IS NOT NULL AND [BaseActivationVersion] IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base')");
+                            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base','credential-unavailable')");
 
                             t.HasCheckConstraint("CK_AdvisoryImports_RateLimitAttempts", "[RateLimitAttempts] BETWEEN 0 AND 20");
 
@@ -901,6 +901,10 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(50000);
+
+                    b.Property<string>("ProtectedCredential")
+                        .HasMaxLength(8192)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()

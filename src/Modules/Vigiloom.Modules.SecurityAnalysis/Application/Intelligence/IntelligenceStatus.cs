@@ -33,7 +33,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             _ when !source.Enabled => "disabled",
             null => "not-started",
             { Phase: 3, ReconciliationPhase: 4 } => "inconsistent",
-            { FailureCode: "invalid-response" or "cursor-rejected" or "limit-exceeded" or "invalid-base" } => "failed",
+            { FailureCode: "invalid-response" or "cursor-rejected" or "limit-exceeded" or "invalid-base" or "credential-unavailable" } => "failed",
             { Phase: < 4 } when retryAt is not null => "rate-limited",
             { FailureCode: not null } => "failed",
             { Phase: 1 or 2 } => "importing",
@@ -72,7 +72,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
             row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
-            row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion))).ToArray();
+            row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 

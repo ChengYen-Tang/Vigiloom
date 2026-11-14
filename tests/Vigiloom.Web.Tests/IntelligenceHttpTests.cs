@@ -117,16 +117,31 @@ public sealed class IntelligenceHttpTests(TestContext context)
             Assert.IsNotNull(advisoryProgress.Version);
             var recovery = new AdvisoryImportRecoveryRequest(advisoryProgress.ImportId.Value, advisoryProgress.Version);
             var recoveryPath = $"{path}{advisorySource.Id:D}/advisory-recovery";
+            var credentialPath = $"{path}{advisorySource.Id:D}/advisory-credential";
+            var credentialUpdate = new AdvisoryCredentialUpdate(Convert.ToBase64String(advisorySource.Version), false, "sensitive-github-token");
             using (var result = await anonymous.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
             using (var result = await reader.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
             using (var result = await api.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            using (var result = await anonymous.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await reader.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
+            using (var result = await api.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await admin.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
             using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
             using (var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token)))
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery with { Version = Convert.ToBase64String(new byte[8]) }, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
+            using (var result = await admin.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
+            using (var result = await admin.PutAsJsonAsync(credentialPath, credentialUpdate, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
+            using (var result = await admin.GetAsync(path, token))
+            {
+                var body = await result.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain("sensitive-github-token", body);
+                var items = JsonSerializer.Deserialize<IntelligenceSourcePage>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                Assert.IsTrue(items?.Items.Single(x => x.Id == advisorySource.Id).HasCredential);
+            }
             using (var result = await admin.PostAsJsonAsync($"{path}{source.Id:D}/activation", request, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync($"{path}{source.Id:D}/activation", request, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             var sourcePage = await admin.GetFromJsonAsync<IntelligenceSourcePage>(path, token);
@@ -148,6 +163,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.IsTrue(events.Items.Any(x => x.IntelligenceRevision is not null));
                 Assert.IsTrue(events.Items.Any(x => x.IntelligencePolicy is not null));
                 Assert.IsTrue(events.Items.Any(x => x.AdvisoryImport?.ImportId == recovery.ImportId));
+                Assert.IsTrue(events.Items.Any(x => x.AdvisoryCredential?.Configured == true));
             }
         }, context.CancellationToken);
 }
