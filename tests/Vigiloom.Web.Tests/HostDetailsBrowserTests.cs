@@ -129,8 +129,16 @@ public sealed class HostDetailsBrowserTests
         }
         await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
         await page.GetByText("已達閾值", new() { Exact = true }).WaitForAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var thresholds = scope.ServiceProvider.GetRequiredService<HostMetricThresholds>();
+            var current = await thresholds.GetAsync(device.Id, agent.Id, AgentMetricKind.CpuTotalPercent, "test.cpu", null, token);
+            Assert.IsNotNull(current?.Threshold);
+            Assert.IsNotNull(await thresholds.UpdateAsync(device.Id, agent.Id, AgentMetricKind.CpuTotalPercent, "test.cpu", null,
+                new(true, HostMetricComparison.AtLeast, 43, 300, current.Threshold.Version), Guid.CreateVersion7(), token));
+        }
         await page.GetByRole(AriaRole.Button, new() { Name = "更新評估", Exact = true }).ClickAsync();
-        await page.GetByText("已達閾值", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("未達觸發條件", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "設定此來源的閾值" }).CountAsync());
         await page.GetByText("以表格查看資料", new() { Exact = true }).ClickAsync();
         await page.Locator(".time-series-chart table").GetByText("42", new() { Exact = true }).WaitForAsync();
@@ -160,7 +168,7 @@ public sealed class HostDetailsBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "查看盤點變更", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
-        await page.GetByText("已達閾值", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("未達觸發條件", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "設定此來源的閾值" }).CountAsync());
         await using (var scope = factory.Services.CreateAsyncScope())
         {

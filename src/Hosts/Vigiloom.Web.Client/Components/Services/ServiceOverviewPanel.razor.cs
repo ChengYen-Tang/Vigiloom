@@ -10,6 +10,9 @@ public partial class ServiceOverviewPanel
     private readonly CancellationTokenSource lifetime = new();
     private ServiceDetails? service;
     private ServiceInstancePage? instances;
+    private DeploymentLinkPage? deployments;
+    private bool deploymentsLoading, deploymentsError;
+    private int deploymentsPage = 1;
     private ServiceHealthStatus? health;
     private ServiceHealthHistory? history;
     private ServiceHttpMetrics? httpMetrics;
@@ -29,6 +32,7 @@ public partial class ServiceOverviewPanel
     {
         ClearEvidence();
         healthEvidence = null; healthEvidencePage = 1;
+        deployments = null; deploymentsPage = 1; deploymentsError = false;
         await LoadAsync();
     }
 
@@ -93,6 +97,18 @@ public partial class ServiceOverviewPanel
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (UnauthorizedAccessException) { throw; }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service instances"); instances = null; instancesError = true; }
+    }
+
+    private async Task LoadDeploymentsAsync(int targetPage)
+    {
+        if (deploymentsLoading) return;
+        deploymentsLoading = true; deploymentsError = false;
+        var id = ServiceId;
+        try { var result = await Client.GetDeploymentsAsync(id, targetPage, lifetime.Token); if (id == ServiceId) { deployments = result; deploymentsPage = targetPage; } }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { deployments = null; error = "登入已失效或沒有權限，請重新登入。"; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Failed to load deployment relationships"); deployments = null; deploymentsError = true; }
+        finally { deploymentsLoading = false; }
     }
 
     private async Task LoadHistoryAsync()

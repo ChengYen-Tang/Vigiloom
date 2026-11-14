@@ -36,6 +36,7 @@ internal static class ReusableWebDatabase
             await using (var db = await services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await services.GetRequiredService<IDbContextFactory<DeploymentLinksDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         }
         await using var initial = new SqlConnection(database.ConnectionString);
@@ -44,7 +45,7 @@ internal static class ReusableWebDatabase
         var respawner = await Respawner.CreateAsync(initial, new RespawnerOptions
         {
             SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota", "security", "publishing"],
-            TablesToIgnore = [new Table("identity", "__EFMigrationsHistory"), new Table("resources", "__EFMigrationsHistory"),
+            TablesToIgnore = [new Table("identity", "__EFMigrationsHistory"), new Table("resources", "__EFMigrationsHistory"), new Table("resources", DeploymentLinksDbContext.MigrationHistory),
                 new Table("network", "__EFMigrationsHistory"), new Table("operations", "__EFMigrationsHistory"),
                 new Table("agent", "__EFMigrationsHistory"), new Table("service", "__EFMigrationsHistory"),
                 new Table("logquota", "__EFMigrationsHistory"), new Table("security", "__EFMigrationsHistory"), new Table("publishing", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),

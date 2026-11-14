@@ -104,7 +104,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 ? ReadAgentPackageCatalogue(x.Details) : null,
             x.Kind == AuditKinds.AgentPackageTrustInitializedV1 ? ReadAgentPackageTrust(x.Details) : null,
             x.Kind == AuditKinds.PublicationChangedV1 ? ReadPublication(x.Details) : null,
-            x.Kind == AuditKinds.PublicationTemplateChangedV1 ? ReadPublicationTemplate(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.PublicationTemplateChangedV1 ? ReadPublicationTemplate(x.Details) : null,
+            x.Kind == AuditKinds.DeploymentLinkChangedV1 ? ReadDeploymentLink(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -294,6 +295,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceInstanceChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static DeploymentLinkChanged? ReadDeploymentLink(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<DeploymentLinkChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

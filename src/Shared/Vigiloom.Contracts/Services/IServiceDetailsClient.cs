@@ -5,6 +5,7 @@ public interface IServiceDetailsClient
 {
     Task<ServiceDetails?> GetServiceAsync(Guid id, CancellationToken token);
     Task<ServiceInstancePage?> GetInstancesAsync(Guid id, int page, CancellationToken token);
+    Task<DeploymentLinkPage?> GetDeploymentsAsync(Guid id, int page, CancellationToken token);
     Task<ServiceHealthStatus?> GetHealthAsync(Guid id, CancellationToken token);
     Task<HealthObservationPage> GetHealthEvidenceAsync(Guid id, int page, CancellationToken token);
     Task<ServiceHealthHistory?> GetHistoryAsync(Guid id, DateTimeOffset from, DateTimeOffset to, CancellationToken token);
