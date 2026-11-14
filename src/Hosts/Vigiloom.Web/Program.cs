@@ -154,6 +154,17 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegrityStatusRe
 builder.Services.AddScoped<AgentIntegritySettings>();
 builder.Services.AddScoped<AgentIntegrityStatus>();
 builder.Services.AddScoped<InventoryConfiguration>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceStatus>();
+builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevCatalog>();
+builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCatalog>();
+builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
+builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePolicy>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryRecovery>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCredentials>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceRevocation>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevOfflineImport>();
 builder.Services.AddScoped<AgentInventorySettings>();
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>();
 builder.Services.AddScoped<AgentInventoryStatus>();
@@ -315,7 +326,8 @@ else
 }
 
 app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs") &&
-    !context.Request.Path.Equals("/settings/agent-packages/trust", StringComparison.OrdinalIgnoreCase), web =>
+    !context.Request.Path.Equals("/settings/agent-packages/trust", StringComparison.OrdinalIgnoreCase) &&
+    !(context.Request.Path.StartsWithSegments("/settings/intelligence") && context.Request.Path.Value?.EndsWith("/offline-import", StringComparison.OrdinalIgnoreCase) == true), web =>
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
@@ -368,6 +380,8 @@ app.MapAgentConfigurationEndpoints();
 app.MapAgentQueueCapacityEndpoints();
 app.MapAgentMetricSettingsEndpoints();
 app.MapInventorySettingsEndpoints();
+app.MapIntelligenceEndpoints();
+app.MapIntelligenceOfflineUiEndpoints();
 app.MapIntegrityScopeEndpoints();
 app.MapHostLogSettingsEndpoints();
 app.MapHostLogEndpoints();

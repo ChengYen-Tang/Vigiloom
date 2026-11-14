@@ -71,14 +71,18 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryHealthNetworkPoliciesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.HealthNetworkPolicyChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryIntelligenceAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.IntelligenceRevisionActivatedV1, cancellationToken);
+
     private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, short kind, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
                 (kind != 0 ? x.Kind == kind || (kind == AuditKinds.PublicationChangedV1 && x.Kind == AuditKinds.PublicationTemplateChangedV1) || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
-                    (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1))
+                    (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) ||
+                    (kind == AuditKinds.IntelligenceRevisionActivatedV1 && (x.Kind == AuditKinds.IntelligencePolicyChangedV1 || x.Kind == AuditKinds.AdvisoryImportAbandonedV1 || x.Kind == AuditKinds.AdvisoryCredentialChangedV1 || x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 || x.Kind == AuditKinds.IntelligenceOfflineImportedV1)) :
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -105,9 +109,71 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.AgentPackageTrustInitializedV1 ? ReadAgentPackageTrust(x.Details) : null,
             x.Kind == AuditKinds.PublicationChangedV1 ? ReadPublication(x.Details) : null,
             x.Kind == AuditKinds.PublicationTemplateChangedV1 ? ReadPublicationTemplate(x.Details) : null,
-            x.Kind == AuditKinds.DeploymentLinkChangedV1 ? ReadDeploymentLink(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.DeploymentLinkChangedV1 ? ReadDeploymentLink(x.Details) : null,
+            x.Kind == AuditKinds.IntelligenceRevisionActivatedV1 ? ReadIntelligenceRevision(x.Details) : null,
+            x.Kind == AuditKinds.IntelligencePolicyChangedV1 ? ReadIntelligencePolicy(x.Details) : null,
+            x.Kind == AuditKinds.AdvisoryImportAbandonedV1 ? ReadAdvisoryImport(x.Details) : null,
+            x.Kind == AuditKinds.AdvisoryCredentialChangedV1 ? ReadAdvisoryCredential(x.Details) : null,
+            x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 ? ReadIntelligenceRevocation(x.Details) : null,
+            x.Kind == AuditKinds.IntelligenceOfflineImportedV1 ? ReadIntelligenceOfflineImport(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
+    }
+
+    private static IntelligenceOfflineImported? ReadIntelligenceOfflineImport(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<IntelligenceOfflineImported>(details, Options);
+            return value?.RevisionId.Version == 7 ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static IntelligenceRevisionRevoked? ReadIntelligenceRevocation(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<IntelligenceRevisionRevoked>(details, Options);
+            return value?.RevisionId.Version == 7 ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static AdvisoryCredentialChanged? ReadAdvisoryCredential(string details)
+    {
+        try { return JsonSerializer.Deserialize<AdvisoryCredentialChanged>(details, Options); }
+        catch (JsonException) { return null; }
+    }
+
+    private static AdvisoryImportAbandoned? ReadAdvisoryImport(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<AdvisoryImportAbandoned>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static IntelligenceRevisionActivated? ReadIntelligenceRevision(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<IntelligenceRevisionActivated>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static IntelligencePolicyChanged? ReadIntelligencePolicy(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<IntelligencePolicyChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     private static SpeedSettingsChanged? ReadSpeedSettings(string details)

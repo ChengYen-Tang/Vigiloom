@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Time.Testing;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Integrity;
@@ -48,9 +49,10 @@ public sealed class IntegrityHostTests
             var scope = new IntegrityScope(Guid.CreateVersion7(), 1, IntegrityScopeKind.Directory, files, true,
                 ImmutableArray<string>.Empty, 60, 100, 1024, 4096, 4);
             var snapshot = IntegritySettingsSnapshot.Create([scope], 1);
-            var handler = new Handler(snapshot);
+            var handler = new Handler(snapshot, send ? 2 : 0);
             using var http = new HttpClient(handler);
             var builder = AgentHost.CreateBuilder([]);
+            var scheduleClock = send ? new FakeTimeProvider(DateTimeOffset.UtcNow) : null;
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Vigiloom:Agent:StateDirectory"] = vault.StateDirectory, ["Vigiloom:Agent:Server"] = server.AbsoluteUri
@@ -67,6 +69,7 @@ public sealed class IntegrityHostTests
             builder.Services.AddSingleton(new IntegrityStatusClient(http, TimeProvider.System));
             builder.Services.AddSingleton(new AgentBatchClient(http, TimeProvider.System));
             builder.Services.AddSingleton<IMetricResourceMonitor>(new Monitor());
+            if (scheduleClock is not null) builder.Services.AddSingleton<TimeProvider>(scheduleClock);
             using var host = builder.Build();
             try
             {
@@ -76,7 +79,16 @@ public sealed class IntegrityHostTests
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(20));
                 IntegrityChunk? parsed;
-                if (send) parsed = await handler.Delivered.Task.WaitAsync(deadline.Token);
+                if (send)
+                {
+                    while (!handler.Delivered.Task.IsCompleted)
+                    {
+                        scheduleClock!.Advance(TimeSpan.FromSeconds(1));
+                        await Task.Delay(50, deadline.Token);
+                    }
+                    parsed = await handler.Delivered.Task.WaitAsync(deadline.Token);
+                    Assert.IsGreaterThanOrEqualTo(3, handler.BatchAttempts);
+                }
                 else
                 {
                     // Avoid contending for the identity lease while settings are still being synchronized.
@@ -119,8 +131,10 @@ public sealed class IntegrityHostTests
         }
     }
 
-    private sealed class Handler(IntegritySettingsSnapshot snapshot) : HttpMessageHandler
+    private sealed class Handler(IntegritySettingsSnapshot snapshot, int failuresBeforeSuccess) : HttpMessageHandler
     {
+        private int batchAttempts;
+        public int BatchAttempts => Volatile.Read(ref batchAttempts);
         public TaskCompletionSource<IntegrityChunk> Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
@@ -139,6 +153,8 @@ public sealed class IntegrityHostTests
             }
             if (request.RequestUri.AbsolutePath == "/api/v1/agent/batches")
             {
+                if (Interlocked.Increment(ref batchAttempts) <= failuresBeforeSuccess)
+                    throw new IOException("Simulated transient transport failure.");
                 var bytes = await request.Content!.ReadAsByteArrayAsync(token);
                 if (request.Content.Headers.ContentEncoding.Contains("gzip"))
                 {

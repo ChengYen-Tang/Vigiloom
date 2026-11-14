@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Intelligence;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;
 
@@ -33,6 +34,12 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             AgentPackageSourceChanged change when IsValid(change) => (AuditKinds.AgentPackageSourceChangedV1, JsonSerializer.Serialize(change)),
             AgentPackageCatalogueRefreshed change when IsValid(change) => (AuditKinds.AgentPackageCatalogueRefreshedV1, JsonSerializer.Serialize(change)),
             AgentPackageTrustInitialized change when IsValid(change) => (AuditKinds.AgentPackageTrustInitializedV1, JsonSerializer.Serialize(change)),
+            IntelligenceRevisionActivated change when IsValid(change) => (AuditKinds.IntelligenceRevisionActivatedV1, JsonSerializer.Serialize(change)),
+            IntelligenceRevisionRevoked change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceRevisionRevokedV1, JsonSerializer.Serialize(change)),
+            IntelligenceOfflineImported change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceOfflineImportedV1, JsonSerializer.Serialize(change)),
+            IntelligencePolicyChanged change when IsValid(change) => (AuditKinds.IntelligencePolicyChangedV1, JsonSerializer.Serialize(change)),
+            AdvisoryImportAbandoned change when IsValid(change) => (AuditKinds.AdvisoryImportAbandonedV1, JsonSerializer.Serialize(change)),
+            AdvisoryCredentialChanged change => (AuditKinds.AdvisoryCredentialChangedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
             ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
@@ -73,6 +80,17 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(AgentPackageCatalogueRefreshed change) => change.PackageCount is >= 0 and <= 2000 && IsVersion(change.SourceVersion);
     internal static bool IsValid(AgentPackageTrustInitialized change) => change.RootVersion > 0 && change.Sha256 is { Length: 64 } &&
         change.Sha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    internal static bool IsValid(IntelligenceRevisionActivated change) => change.RevisionId.Version == 7 &&
+        (change.PreviousRevisionId is null || change.PreviousRevisionId.Value.Version == 7) && change.PreviousRevisionId != change.RevisionId;
+
+    internal static bool IsValid(AdvisoryImportAbandoned change) => change.ImportId.Version == 7;
+
+    internal static bool IsValid(IntelligencePolicyChanged change) => change.Previous is not null && change.Current is not null &&
+        ValidIntelligencePolicy(change.Previous) && ValidIntelligencePolicy(change.Current) && IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    private static bool ValidIntelligencePolicy(IntelligencePolicyValues value) => IntelligencePolicyLimits.Valid(
+        value.UpdateIntervalSeconds, value.StaleAfterSeconds, value.MaximumBytes, value.MaximumRecords);
 
     internal static bool IsValid(SpeedRetentionChanged change) =>
         SpeedRetentionLimits.IsValid(change.PreviousDays) && SpeedRetentionLimits.IsValid(change.CurrentDays) &&

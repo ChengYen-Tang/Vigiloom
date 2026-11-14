@@ -9,6 +9,15 @@ internal static class OperationAuditEndpoints
 {
     public static void MapOperationAuditEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/operations/audit/intelligence", async (DateTimeOffset from, DateTimeOffset to,
+            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            var query = new OperationAuditQuery(from, to, page);
+            return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryIntelligenceAsync(query, token)) : Results.BadRequest();
+        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
+            .Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("Query intelligence management audit events");
         app.MapGet("/api/v1/operations/audit/publications", async (DateTimeOffset from, DateTimeOffset to,
             OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
         {

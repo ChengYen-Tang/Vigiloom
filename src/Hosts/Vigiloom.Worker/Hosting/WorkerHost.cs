@@ -22,6 +22,8 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
 namespace Vigiloom.Worker.Hosting;
 
@@ -66,11 +68,29 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentPackageRefreshJob>();
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
+        builder.Services.AddScoped<IntelligenceRefresh>();
+        builder.Services.AddScoped<AdvisoryRefresh>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaRefresh>();
+        builder.Services.AddScoped<SigmaRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.SignatureRefresh>();
+        builder.Services.AddScoped<SignatureRefreshJob>();
+        builder.Services.AddScoped<AdvisoryRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, KevCatalog>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, AdvisoryCatalog>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
+        builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
         builder.Services.AddScoped<IntegrityExpiryJob>();
         builder.Services.AddScoped<InventoryExpiryJob>();
         builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.KevClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.AdvisoryClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.RepositoryClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
         builder.Services.AddScoped<ISpeedProbe, SpeedtestNetProbe>();
         builder.Services.AddScoped<AutomaticSpeedJob>();
         builder.Services.AddHostedService<SpeedWorker>();
@@ -78,6 +98,10 @@ public static class WorkerHost
         builder.Services.AddHostedService<SpeedRetentionSchedule>();
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         builder.Services.AddHostedService<InventoryExpirySchedule>();
+        builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
+        builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
+        builder.Services.AddHostedService<SigmaRefreshSchedule>();
+        builder.Services.AddHostedService<SignatureRefreshSchedule>();
         builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();

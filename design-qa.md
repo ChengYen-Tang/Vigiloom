@@ -27,6 +27,19 @@
 
 final result: passed
 
+# REQ-32 intelligence source management design QA
+
+- Source: `docs/design/req-32/concept.png`, using the previously selected Vigiloom style; the user delegated page-level design decisions.
+- Evidence: `docs/design/req-32/comparison.png` combines the source and a 1440 × 1024 Chrome capture; `desktop.png` and `mobile.png` are the full captures. The in-app Browser tool was not exposed in this session, so the documented Chrome fallback was used. The isolated test database supplies the displayed sample sources and version; sample dates and version contents differ from the concept.
+- Initial comparison found the expanded settings form displaced version information and the populated mobile table widened the document. Settings now collapse, panel spacing is reduced, and the table scrolls inside its labelled region. The final capture was compared again; the management actions follow the actual application contracts rather than the concept's sample data.
+- Chrome tests exercised desktop and 390px views, real checkbox enable/disable, settings persistence and keyboard scrolling. HTTP tests covered Administrator access, invalid input, version changes and credential replacement/removal. No screen-reader pass was performed.
+- The later Sigma source adds an inspect-only third entry and a paged rule metadata table; `docs/design/req-32/sigma-mobile.png` records the 390px view. The original concept's two sample sources and data are not a fixed feature inventory.
+- Final source-management review: `docs/design/req-32/comparison-final.png` combines the 1487 × 1058 concept and a 1440 × 1024 CSS viewport capture at device scale 1; `focused-final.png` compares their source/status/version panels. The concept and actual test data intentionally differ in source count, dates, navigation, and available actions. `desktop-final.png` and `signature-mobile-final.png` retain the full 1440 px desktop and 390 × 844 CSS viewport captures.
+- The new review found narrow IOC columns breaking short labels into single characters and desktop revision headings and status wrapping vertically. The table now keeps those columns readable within their horizontally scrollable regions. Failure text was darkened and distinguished from the amber attention background; the IOC source copy now separates source eligibility from YARA detection support. The final Chromium test rechecked desktop/mobile, no document overflow, the IOC column width, and the existing actions.
+- Typography, spacing, white/blue visual tokens, table hierarchy, icons and content were checked in the combined full and focused images. The additional coverage summary and controls represent actual functionality; sample data and a missing decorative shield icon are not treated as product defects. Screen-reader testing remains outside this visual pass.
+
+final result: passed
+
 # REQ-19 preliminary design QA
 
 - Source: `docs/design/Vigiloom-UI-Concept-2-Revision-2.png` (1484 × 1060), an overview concept used as a shared style reference rather than a device-detail mockup.

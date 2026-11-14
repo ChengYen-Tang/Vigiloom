@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -19,10 +20,26 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<IntegrityScan> IntegrityScans => Set<IntegrityScan>();
     public DbSet<IntegrityChunkData> IntegrityChunks => Set<IntegrityChunkData>();
     public DbSet<IntegrityChangeRecord> IntegrityChanges => Set<IntegrityChangeRecord>();
+    public DbSet<IntelligenceSource> IntelligenceSources => Set<IntelligenceSource>();
+    public DbSet<IntelligenceRevision> IntelligenceRevisions => Set<IntelligenceRevision>();
+    public DbSet<IntelligenceActivation> IntelligenceActivations => Set<IntelligenceActivation>();
+    public DbSet<IntelligenceCache> IntelligenceCaches => Set<IntelligenceCache>();
+    public DbSet<IntelligenceActivationEvent> IntelligenceActivationEvents => Set<IntelligenceActivationEvent>();
+    public DbSet<KevRecord> KevRecords => Set<KevRecord>();
+    public DbSet<AdvisoryImport> AdvisoryImports => Set<AdvisoryImport>();
+    public DbSet<AdvisoryImportPage> AdvisoryImportPages => Set<AdvisoryImportPage>();
+    public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
+    public DbSet<AdvisoryRevisionEntry> AdvisoryRevisionEntries => Set<AdvisoryRevisionEntry>();
+    public DbSet<SigmaRule> SigmaRules => Set<SigmaRule>();
+    public DbSet<SigmaManifest> SigmaManifests => Set<SigmaManifest>();
+    public DbSet<SignatureFile> SignatureFiles => Set<SignatureFile>();
+    public DbSet<IocEntry> IocEntries => Set<IocEntry>();
+    public DbSet<OfflineImport> OfflineImports => Set<OfflineImport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("security");
+        IntelligenceModel.Configure(modelBuilder);
         var source = modelBuilder.Entity<InventorySourceState>();
         source.ToTable("InventorySources", table =>
         {

@@ -40,6 +40,21 @@ public sealed record AgentPackageCatalogueRefreshed(int PackageCount, string Sou
 /// <summary>Records the fingerprint of an explicitly initialized publisher trust root.</summary>
 public sealed record AgentPackageTrustInitialized(int RootVersion, string Sha256) : OperationAuditDetails;
 
+/// <summary>Records an administrator's revision selection without copying source contents.</summary>
+public sealed record IntelligenceRevisionActivated(Guid? PreviousRevisionId, Guid RevisionId, bool LargeReductionConfirmed, bool OfflineSourceConfirmed = false) : OperationAuditDetails;
+public sealed record IntelligenceRevisionRevoked(Guid RevisionId) : OperationAuditDetails;
+/// <summary>Records a manually supplied source snapshot without asserting its upstream authenticity.</summary>
+public sealed record IntelligenceOfflineImported(Guid RevisionId) : OperationAuditDetails;
+
+public sealed record IntelligencePolicyValues(bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds, int MaximumBytes, int MaximumRecords);
+public sealed record IntelligencePolicyChanged(IntelligencePolicyValues Previous, IntelligencePolicyValues Current, string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
+
+/// <summary>Records only the failed import identity; source data and credentials are excluded.</summary>
+public sealed record AdvisoryImportAbandoned(Guid ImportId) : OperationAuditDetails;
+
+/// <summary>Records only whether the centrally protected source credential is configured.</summary>
+public sealed record AdvisoryCredentialChanged(bool Configured) : OperationAuditDetails;
+
 /// <summary>Approval references only the trusted source; names and credentials are not recorded.</summary>
 public sealed record ServiceApproved(Guid SourceId) : OperationAuditDetails;
 
@@ -94,7 +109,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null, IntelligenceRevisionActivated? IntelligenceRevision = null, IntelligencePolicyChanged? IntelligencePolicy = null, AdvisoryImportAbandoned? AdvisoryImport = null, AdvisoryCredentialChanged? AdvisoryCredential = null, IntelligenceRevisionRevoked? IntelligenceRevocation = null, IntelligenceOfflineImported? IntelligenceOfflineImport = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);

@@ -9,3 +9,4 @@
 *.slnx text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+tests/Vigiloom.Modules.SecurityAnalysis.Tests/Intelligence/Fixtures/SignatureBase/* -text

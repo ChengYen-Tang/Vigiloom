@@ -1,0 +1,33 @@
+.intelligence-layout { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.intelligence-list h2, .intelligence-details h2 { margin-top: 0; }
+.intelligence-source { display: grid; gap: 6px; padding: 14px; border-radius: 6px; color: var(--vigiloom-ink); text-decoration: none; }
+.intelligence-source.selected { background: #e4efff; color: var(--vigiloom-primary); }
+.intelligence-source span { font-size: .9rem; }
+.intelligence-details { display: grid; gap: 16px; min-width: 0; }
+.intelligence-details .device-panel { margin: 0; min-width: 0; }
+.intelligence-details > .device-panel > details { margin-top: 0; }
+.intelligence-details p { line-height: 1.6; overflow-wrap: anywhere; }
+.intelligence-details details { margin-top: 16px; }
+.intelligence-details summary { color: var(--vigiloom-primary); cursor: pointer; }
+.intelligence-details summary h2 { display: inline; }
+.intelligence-state { padding: 10px 12px; background: #eff6ff; border-radius: 6px; }
+.intelligence-state.attention { background: #fff4df; color: #674000; }
+.intelligence-details [role="alert"] { color: #9a1c1c; }
+.intelligence-page ::deep .intelligence-form { display: grid; gap: 10px; max-width: 640px; margin-top: 16px; }
+.intelligence-page ::deep .intelligence-form input:not([type=checkbox]), .intelligence-page ::deep .intelligence-form select { min-height: 44px; }
+.intelligence-page ::deep .intelligence-form input:not([type=checkbox]), .intelligence-page ::deep .intelligence-form select { min-width: 0; max-width: 100%; }
+.intelligence-page thead { background: #f1f6fc; }
+.intelligence-page .device-table-wrap { overflow-x: auto; max-width: 100%; }
+.intelligence-page .intelligence-versions th,
+.intelligence-page .intelligence-versions td { padding: 10px 6px; white-space: nowrap; }
+.intelligence-page .intelligence-versions td:first-child { max-width: 18rem; white-space: normal; overflow-wrap: anywhere; }
+.intelligence-page .intelligence-versions details p { max-width: 20rem; white-space: normal; }
+.intelligence-page .ioc-issues table { min-width: 0; }
+.intelligence-page .signature-files table { min-width: 680px; }
+.intelligence-page .signature-files th:nth-child(3),
+.intelligence-page .signature-files td:nth-child(3) { min-width: 9rem; }
+.intelligence-page .signature-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
+.intelligence-scroll-hint { display: none; }
+.intelligence-page nav { display: flex; gap: 16px; margin-top: 16px; }
+.intelligence-message { padding: 12px; border-radius: 6px; background: #eaf3ff; color: var(--vigiloom-ink); }
+@media (max-width: 760px) { .intelligence-layout { grid-template-columns: minmax(0, 1fr); } .intelligence-scroll-hint { display: block; font-weight: 600; } }
