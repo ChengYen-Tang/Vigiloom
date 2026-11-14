@@ -376,6 +376,15 @@ public sealed class AgentIdentityTlsTests
                                 Assert.DoesNotContain("multiline-start", body);
                                 Assert.DoesNotContain("after-rotation", body);
                                 Assert.DoesNotContain("TLS log", body);
+                                await publicGate.ReleaseAsync();
+                                await AutoRenderGate.WaitForWebAssemblyCachedAsync(publicPage);
+                                await publicPage.ReloadAsync();
+                                await publicPage.Locator(".public-status[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+                                await publicPage.GetByRole(AriaRole.Button, new() { Name = "Public TLS device", Exact = true }).WaitForAsync();
+                                body = await publicPage.Locator("body").InnerTextAsync();
+                                Assert.DoesNotContain("multiline-start", body);
+                                Assert.DoesNotContain("after-rotation", body);
+                                Assert.DoesNotContain("TLS log", body);
                             }
                             await using var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true });
                             var page = await browserContext.NewPageAsync();
