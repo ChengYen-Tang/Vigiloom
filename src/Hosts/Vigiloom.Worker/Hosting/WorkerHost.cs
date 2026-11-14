@@ -68,6 +68,7 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
         builder.Services.AddScoped<IntelligenceRefresh>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, KevCatalog>();
         builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
         builder.Services.AddScoped<IntegrityExpiryJob>();
