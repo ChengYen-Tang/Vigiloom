@@ -174,7 +174,8 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
             CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
-            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal) && Interlocked.Exchange(ref remaining, 0) == 1)
+            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal) &&
+                !command.CommandText.Contains("health-invalidation", StringComparison.Ordinal) && Interlocked.Exchange(ref remaining, 0) == 1)
                 throw new DbUpdateException("Simulated post-commit fence failure.");
             return ValueTask.FromResult(result);
         }
@@ -359,7 +360,8 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
             CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
-            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal))
+            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal) &&
+                !command.CommandText.Contains("health-invalidation", StringComparison.Ordinal))
             {
                 Entered.TrySetResult();
                 await Release.Task.WaitAsync(cancellationToken);
