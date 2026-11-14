@@ -102,11 +102,13 @@ internal static class IntelligenceModel
         import.Property(x => x.RowId).UseIdentityColumn();
         import.HasIndex(x => x.RowId).IsUnique().IsClustered();
         import.Property(x => x.SourceVersion).HasColumnType("binary(8)").IsRequired();
+        import.Property(x => x.ResultSourceVersion).HasColumnType("binary(8)");
         import.Property(x => x.BaseActivationVersion).HasColumnType("binary(8)");
         import.Property(x => x.Cursor).HasMaxLength(1024).IsUnicode(false).UseCollation("Latin1_General_100_BIN2");
         import.Property(x => x.Version).IsRowVersion();
         import.Property(x => x.ReconciliationPhase).HasDefaultValue(1);
         import.HasIndex(x => new { x.SourceId, x.StartedAt });
+        import.HasIndex(x => new { x.SourceId, x.NotBefore }).HasFilter("[NotBefore] IS NOT NULL");
         import.HasIndex(x => x.SourceId).IsUnique().HasFilter("[Phase] < 4");
         import.HasOne<IntelligenceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.NoAction);
         import.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.BaseRevisionId })

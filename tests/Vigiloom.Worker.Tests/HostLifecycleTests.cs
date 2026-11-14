@@ -101,6 +101,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using var command = sql.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-agent-inbox-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         }
         finally { await host.StopAsync(CancellationToken.None); }
     }, testContext.CancellationToken);

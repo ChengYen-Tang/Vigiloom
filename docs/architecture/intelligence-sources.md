@@ -209,6 +209,15 @@ the limits adjustable by an administrator without allowing an unbounded sync.
 The upstream API's defaults exclude malware and unreviewed advisories, so the
 UI and consumer contract must explicitly show that coverage gap.
 
+The central Worker checks for resumable advisory imports every five minutes.
+It starts with an initial window through the previous UTC day; once a revision
+is activated, later windows overlap its last covered date by seven days. A
+bounded job resumes both the original and reconciliation passes and stages a
+candidate without automatically activating it. A fresh eligible candidate is
+left for an administrator; when it becomes stale or source policy changes, a
+later due run can fetch a new candidate. Source-wide rate-limit deadlines
+survive policy changes and abandoned generations.
+
 A staged GHSA revision uses a small, hashed manifest and a materialized index
 of GHSA IDs referring to the retained immutable import entries and original
 pages. The manifest is not the upstream response or an upstream signature.

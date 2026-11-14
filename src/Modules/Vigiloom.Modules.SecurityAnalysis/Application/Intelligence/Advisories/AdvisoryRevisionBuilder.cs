@@ -92,6 +92,8 @@ internal sealed class AdvisoryRevisionBuilder(IDbContextFactory<SecurityAnalysis
         source.LastSuccessfulCheckAt = source.LastCheckedAt;
         source.LastError = null;
         await db.SaveChangesAsync(token);
+        import.ResultSourceVersion = source.Version.ToArray();
+        await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return new(AdvisoryBuildStatus.Staged, revision.Id);
     }

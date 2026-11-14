@@ -68,6 +68,34 @@ public sealed class AdvisoryImportTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    public Task Begin_RejectsWindowCalculatedAgainstChangedBase() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            var a = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "a", RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+            var b = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "b", RetrievedAt = DateTimeOffset.UtcNow, Digest = Enumerable.Repeat((byte)1, 32).ToArray(), Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+            byte[] originalVersion;
+            await using (var db = contexts.CreateDbContext())
+            {
+                db.IntelligenceSources.Add(source);
+                db.IntelligenceRevisions.AddRange(a, b);
+                db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = a.Id, ActivatedAt = DateTimeOffset.UtcNow });
+                await db.SaveChangesAsync(token);
+                var active = await db.IntelligenceActivations.SingleAsync(token);
+                originalVersion = active.Version.ToArray();
+                active.RevisionId = b.Id;
+                await db.SaveChangesAsync(token);
+            }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            Assert.IsNull(await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token,
+                verifyBase: true, expectedBaseId: a.Id, expectedBaseVersion: originalVersion));
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(0, await check.AdvisoryImports.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task SourcePolicyChange_PreventsOldImportFromCommitting() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {

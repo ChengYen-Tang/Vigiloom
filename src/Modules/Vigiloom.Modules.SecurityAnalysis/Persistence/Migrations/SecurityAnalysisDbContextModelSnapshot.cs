@@ -473,6 +473,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<Guid?>("ResultRevisionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("ResultSourceVersion")
+                        .HasColumnType("binary(8)");
+
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -521,6 +524,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasFilter("[Phase] < 4");
 
                     b.HasIndex("SourceId", "BaseRevisionId");
+
+                    b.HasIndex("SourceId", "NotBefore")
+                        .HasFilter("[NotBefore] IS NOT NULL");
 
                     b.HasIndex("SourceId", "ResultRevisionId");
 

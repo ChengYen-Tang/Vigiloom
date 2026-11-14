@@ -24,6 +24,7 @@ public sealed class AdvisoryImport
     public int RestartCount { get; set; }
     public Guid? SuccessorId { get; set; }
     public Guid? ResultRevisionId { get; set; }
+    public byte[]? ResultSourceVersion { get; set; }
     public int ReconciliationPhase { get; set; } = 1;
     public int ReconciliationRecordCount { get; set; }
     public byte[] Version { get; private set; } = [];

@@ -12,7 +12,8 @@ internal enum AdvisoryStageResult { Stored, Conflict, Invalid, LimitExceeded }
 /// <summary>Stores each verified page and its cursor atomically without publishing an incomplete import.</summary>
 internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock)
 {
-    internal async Task<AdvisoryImport?> BeginAsync(Guid sourceId, DateOnly from, DateOnly to, CancellationToken token)
+    internal async Task<AdvisoryImport?> BeginAsync(Guid sourceId, DateOnly from, DateOnly to, CancellationToken token,
+        bool verifyBase = false, Guid? expectedBaseId = null, byte[]? expectedBaseVersion = null)
     {
         if (sourceId == Guid.Empty || to < from) throw new ArgumentException("Invalid advisory source or window.");
         await using var db = await contexts.CreateDbContextAsync(token);
@@ -22,10 +23,17 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         if (await db.AdvisoryImports.AnyAsync(x => x.SourceId == sourceId && x.Phase < 4, token)) return null;
         var active = await db.IntelligenceActivations.AsNoTracking().Where(x => x.SourceId == sourceId)
             .Select(x => new { x.RevisionId, x.Version }).SingleOrDefaultAsync(token);
+        if (verifyBase && (active?.RevisionId != expectedBaseId || (active is null ? expectedBaseVersion is not null :
+            !active.Version.AsSpan().SequenceEqual(expectedBaseVersion)))) return null;
+        var now = clock.GetUtcNow().ToUniversalTime();
+        var deferred = await db.AdvisoryImports.AsNoTracking().Where(x => x.SourceId == sourceId && x.NotBefore > now)
+            .OrderByDescending(x => x.NotBefore).ThenByDescending(x => x.RateLimitAttempts)
+            .Select(x => new { x.NotBefore, x.RateLimitAttempts }).FirstOrDefaultAsync(token);
         var generation = new AdvisoryImport
         {
             SourceId = sourceId, BaseRevisionId = active?.RevisionId, BaseActivationVersion = active?.Version, SourceVersion = source.Version.ToArray(),
-            WindowStart = from, WindowEnd = to, StartedAt = clock.GetUtcNow().ToUniversalTime()
+            WindowStart = from, WindowEnd = to, StartedAt = now, NotBefore = deferred?.NotBefore,
+            RateLimitAttempts = deferred?.RateLimitAttempts ?? 0
         };
         db.AdvisoryImports.Add(generation);
         await db.SaveChangesAsync(token);
@@ -120,21 +128,21 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         return AdvisoryStageResult.Stored;
     }
 
-    internal async Task<bool> DeferAsync(Guid sourceId, Guid importId, byte[] expectedVersion, DateTimeOffset? retryAt, CancellationToken token)
+    internal async Task<bool> DeferAsync(Guid sourceId, Guid importId, DateTimeOffset? retryAt, CancellationToken token)
     {
-        if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8) return false;
+        if (sourceId == Guid.Empty || importId == Guid.Empty) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var source = await LockSourceAsync(db, sourceId, token);
-        if (source is null || !source.Enabled || source.Key != "github-reviewed") return false;
+        if (source is null || source.Key != "github-reviewed") return false;
         var import = await db.AdvisoryImports
             .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
             .SingleOrDefaultAsync(token);
-        if (import is null || import.Phase is not (1 or 2 or 3) || !import.Version.AsSpan().SequenceEqual(expectedVersion) ||
-            !import.SourceVersion.AsSpan().SequenceEqual(source.Version)) return false;
+        if (import is null) return false;
         import.RateLimitAttempts = Math.Min(import.RateLimitAttempts + 1, 20);
         var minimum = clock.GetUtcNow().AddMinutes(1 << Math.Min(import.RateLimitAttempts - 1, 6));
-        import.NotBefore = retryAt is { } limit && limit > minimum ? limit.ToUniversalTime() : minimum;
+        var next = retryAt is { } limit && limit > minimum ? limit.ToUniversalTime() : minimum;
+        import.NotBefore = import.NotBefore is { } existing && existing > next ? existing : next;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return true;
