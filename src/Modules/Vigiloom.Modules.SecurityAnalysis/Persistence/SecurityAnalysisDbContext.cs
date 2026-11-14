@@ -30,6 +30,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<AdvisoryImportPage> AdvisoryImportPages => Set<AdvisoryImportPage>();
     public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
     public DbSet<AdvisoryRevisionEntry> AdvisoryRevisionEntries => Set<AdvisoryRevisionEntry>();
+    public DbSet<SigmaRule> SigmaRules => Set<SigmaRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

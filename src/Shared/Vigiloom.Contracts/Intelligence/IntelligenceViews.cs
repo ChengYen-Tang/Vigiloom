@@ -30,6 +30,11 @@ public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, D
 /// <summary>Bounded page of retained source revisions.</summary>
 public sealed record IntelligenceRevisionPage(IReadOnlyList<IntelligenceRevisionView> Items, int Page, bool HasMore);
 
+/// <summary>Retained Sigma source metadata; a parsed rule is not an enabled detection.</summary>
+public sealed record SigmaRuleView(string Path, string? RuleId, string Title, string? Author, string? Status, string? License,
+    string? Product, string? Category, string? Service, string Sha256);
+public sealed record SigmaRulePage(IReadOnlyList<SigmaRuleView> Items, int Page, bool HasMore);
+
 /// <summary>Expected selection and explicit confirmation for a revision activation.</summary>
 public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? ExpectedActiveRevisionId, string ExpectedVersion, bool ConfirmLargeReduction);
 
@@ -42,7 +47,10 @@ public static class IntelligencePolicyLimits
     public static bool Valid(int interval, int stale, int bytes, int records) => interval is >= 300 and <= 604800 &&
         stale is >= 3600 and <= 2592000 && bytes is >= 1024 and <= 1073741824 && records is >= 1 and <= 1000000;
 
-    public static bool ValidForSource(string key, int bytes, int records) => key == "github-reviewed"
-        ? bytes <= 1073741824 && records <= 100000
-        : bytes <= 67108864;
+    public static bool ValidForSource(string key, int bytes, int records) => key switch
+    {
+        "github-reviewed" => bytes <= 1073741824 && records <= 100000,
+        "sigmahq-rules" => bytes <= 67108864 && records <= 50000,
+        _ => bytes <= 67108864
+    };
 }

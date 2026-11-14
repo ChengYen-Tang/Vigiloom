@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -86,6 +87,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             "https://api.github.com/advisories",
             "GitHub-reviewed package advisories; excludes unreviewed and malware advisories and does not establish asset applicability.",
             AdvisoryRevisionBuilder.LicenseEvidence),
+        "sigmahq-rules" => new("SigmaHQ 規則", "behavioral-rules", "https://github.com/SigmaHQ/sigma",
+            "Source rules are retained for review; detection and publication remain unsupported until the consumer is verified.", SigmaRefresh.LicenseEvidence),
         _ => null
     };
 
@@ -103,5 +106,23 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         return new(rows.Take(PageSize).Select(x => new IntelligenceRevisionView(x.Id, x.UpstreamVersion, x.ReleasedAt, x.RetrievedAt,
             Convert.ToHexStringLower(x.Digest), x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized,
             x.Id == activeId)).ToArray(), page, rows.Length > PageSize && page < 1000);
+    }
+
+    public async Task<SigmaRulePage?> GetSigmaRulesAsync(Guid sourceId, Guid revisionId, int page, CancellationToken token)
+    {
+        if (page is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(page));
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var exists = await (from source in db.IntelligenceSources.AsNoTracking()
+                            join revision in db.IntelligenceRevisions.AsNoTracking() on source.Id equals revision.SourceId
+                            where source.Id == sourceId && source.Key == "sigmahq-rules" && revision.Id == revisionId &&
+                                  revision.MappingVersion == SigmaRefresh.MappingVersion && revision.SchemaVersion == SigmaRefresh.SchemaVersion &&
+                                  revision.LicenseEvidence == SigmaRefresh.LicenseEvidence && revision.Normalized
+                            select revision.Id).AnyAsync(token);
+        if (!exists) return null;
+        var rows = await db.SigmaRules.AsNoTracking().Where(x => x.RevisionId == revisionId).OrderBy(x => x.Path)
+            .Skip((page - 1) * PageSize).Take(PageSize + 1)
+            .Select(x => new { x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service, x.Digest }).ToArrayAsync(token);
+        return new(rows.Take(PageSize).Select(x => new SigmaRuleView(x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service,
+            Convert.ToHexStringLower(x.Digest))).ToArray(), page, rows.Length > PageSize && page < 1000);
     }
 }

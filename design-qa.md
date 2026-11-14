@@ -33,6 +33,7 @@ final result: passed
 - Evidence: `docs/design/req-32/comparison.png` combines the source and a 1440 × 1024 Chrome capture; `desktop.png` and `mobile.png` are the full captures. The in-app Browser tool was not exposed in this session, so the documented Chrome fallback was used. The isolated test database supplies the displayed sample sources and version; sample dates and version contents differ from the concept.
 - Initial comparison found the expanded settings form displaced version information and the populated mobile table widened the document. Settings now collapse, panel spacing is reduced, and the table scrolls inside its labelled region. The final capture was compared again; the management actions follow the actual application contracts rather than the concept's sample data.
 - Chrome tests exercised desktop and 390px views, real checkbox enable/disable, settings persistence and keyboard scrolling. HTTP tests covered Administrator access, invalid input, version changes and credential replacement/removal. No screen-reader pass was performed.
+- The later Sigma source adds an inspect-only third entry and a paged rule metadata table; `docs/design/req-32/sigma-mobile.png` records the 390px view. The original concept's two sample sources and data are not a fixed feature inventory.
 
 final result: passed
 

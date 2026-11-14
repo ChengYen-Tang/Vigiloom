@@ -1013,6 +1013,82 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("KevRecords", "security");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Author")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("License")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Product")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RuleId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Service")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId", "Path")
+                        .IsUnique();
+
+                    b.HasIndex("RevisionId", "RuleId")
+                        .IsUnique()
+                        .HasFilter("[RuleId] IS NOT NULL");
+
+                    b.ToTable("SigmaRules", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SigmaRules_Content", "DATALENGTH([Content]) BETWEEN 1 AND 1048576");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChangeRecord", b =>
                 {
                     b.Property<long>("RowId")
@@ -1541,6 +1617,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.KevRecord", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
                         .WithMany()

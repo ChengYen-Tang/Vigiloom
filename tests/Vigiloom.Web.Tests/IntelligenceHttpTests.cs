@@ -39,16 +39,40 @@ public sealed class IntelligenceHttpTests(TestContext context)
             await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var kev = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
             var gh = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            var sigma = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true };
             var revision = new IntelligenceRevision { SourceId = kev.Id, UpstreamVersion = "v-test", RetrievedAt = DateTimeOffset.UtcNow,
                 Digest = new byte[32], Artifact = [], SchemaVersion = "a795af4c4afc47df12906b4c04e656156cf06493", MappingVersion = "kev-cve-v1",
                 LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493", RecordCount = 1, Normalized = true };
             var secondRevision = new IntelligenceRevision { SourceId = kev.Id, UpstreamVersion = "v-test-2", RetrievedAt = DateTimeOffset.UtcNow,
                 Digest = Enumerable.Repeat((byte)1, 32).ToArray(), Artifact = [], SchemaVersion = revision.SchemaVersion, MappingVersion = revision.MappingVersion,
                 LicenseEvidence = revision.LicenseEvidence, RecordCount = 1, Normalized = true };
+            var sigmaRevision = new IntelligenceRevision { SourceId = sigma.Id, UpstreamVersion = "test-sigma-commit", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v1",
+                LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
+            var rule = new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", RuleId = "sample-rule", Title = "Example behavior",
+                Author = "Example Author", Product = "windows", Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-RULE-CONTENT") };
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
-            { db.IntelligenceSources.AddRange(kev, gh); db.IntelligenceRevisions.AddRange(revision, secondRevision); await db.SaveChangesAsync(token); }
+            { db.IntelligenceSources.AddRange(kev, gh, sigma); db.IntelligenceRevisions.AddRange(revision, secondRevision, sigmaRevision); db.SigmaRules.Add(rule); await db.SaveChangesAsync(token); }
             using var admin = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(admin, "admin", token);
+            using (var sourcePage = await admin.GetAsync($"/settings/intelligence?source={sigma.Id:D}", token))
+            {
+                var body = await sourcePage.Content.ReadAsStringAsync(token);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("Example behavior", doc.Body!.TextContent);
+                Assert.Contains("Example Author", doc.Body.TextContent);
+                Assert.Contains("windows", doc.Body.TextContent);
+                Assert.Contains("尚未啟用偵測", doc.Body.TextContent);
+                Assert.DoesNotContain("SECRET-RULE-CONTENT", body);
+                Assert.IsFalse(doc.QuerySelectorAll("form").Any(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation"));
+            }
+            using (var rulesResponse = await admin.GetAsync($"/api/v1/admin/intelligence/sources/{sigma.Id:D}/revisions/{sigmaRevision.Id:D}/sigma-rules", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, rulesResponse.StatusCode);
+                var body = await rulesResponse.Content.ReadAsStringAsync(token);
+                Assert.Contains("Example behavior", body);
+                Assert.DoesNotContain("SECRET-RULE-CONTENT", body);
+            }
             async Task<Dictionary<string, string>> Form(string url, string name)
             {
                 using var page = await admin.GetAsync(url, token);
