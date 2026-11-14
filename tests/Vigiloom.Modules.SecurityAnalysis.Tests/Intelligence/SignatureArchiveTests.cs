@@ -40,7 +40,7 @@ public sealed class SignatureArchiveTests(TestContext context)
             (_, _, _, _, _) => Task.CompletedTask, context.CancellationToken));
     }
 
-    internal static MemoryStream Archive(bool changed = false, bool missing = false, string commit = Commit, bool lateInvalidEntry = false)
+    internal static MemoryStream Archive(bool changed = false, bool missing = false, string commit = Commit, bool lateInvalidEntry = false, bool includeC2 = false)
     {
         var output = new MemoryStream();
         using (var gzip = new GZipStream(output, CompressionLevel.Fastest, leaveOpen: true))
@@ -50,6 +50,7 @@ public sealed class SignatureArchiveTests(TestContext context)
             Write("LICENSE", changed ? new MemoryStream("changed"u8.ToArray()) : Fixture("LICENSE"));
             if (!missing) Write("README.md", Fixture("README.md"));
             Write("iocs/hash-iocs.txt", new MemoryStream("hash;description"u8.ToArray()));
+            if (includeC2) Write("iocs/c2-iocs.txt", new MemoryStream("example.org"u8.ToArray()));
             Write("yara/example.yar", new MemoryStream("rule example { meta: author = \"Example\" license = \"DRL-1.1\" condition: true }"u8.ToArray()));
             Write("yara/LICENSE", new MemoryStream("other license"u8.ToArray()));
             if (lateInvalidEntry)

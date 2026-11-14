@@ -77,6 +77,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var advisoryUnavailable = advisory is not null && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, advisory.Source.Id, advisory.ActiveId!.Value, token);
         var sigma = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == SigmaRefresh.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
         var sigmaUnavailable = sigma is not null && await SigmaRevisionEligibility.IncludedCountAsync(db, sigma.Source.Id, sigma.ActiveId!.Value, token) is null;
+        var signature = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "signature-base" && x.ActiveId != null && !x.ActiveUnavailable);
+        var iocUnavailable = signature is not null && !await IocSourceEligibility.IsEligibleAsync(db, signature.Source.Id, signature.ActiveId!.Value, token);
         var kev = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "cisa-kev" && x.ActiveId != null && !x.ActiveUnavailable);
         bool? kevFresh = null;
         if (kev is not null)
@@ -92,7 +94,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable)).ToArray();
+            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 
@@ -110,7 +112,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             "A source subset may be selected after attribution and license checks; detection and deployment require a verified consumer.", SigmaRefresh.LicenseEvidence,
             "Platform and event-source requirements vary by rule; compatible collection and detection are not yet verified."),
         "signature-base" => new("Signature-Base", "IOC / YARA", "https://github.com/Neo23x0/signature-base",
-            "IOC and YARA source files are retained for review; interpretation, detection and publication remain unsupported.", SignatureRefresh.LicenseEvidence,
+            "Two reviewed IOC files may be selected as source material. YARA, interpretation and detection require separate verification.", SignatureRefresh.LicenseEvidence,
             "Platform and dependency requirements vary by file and rule; consumer compatibility has not been verified."),
         _ => null
     };

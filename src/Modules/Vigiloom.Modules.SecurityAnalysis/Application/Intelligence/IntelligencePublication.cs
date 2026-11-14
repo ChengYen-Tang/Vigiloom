@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -50,7 +51,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
-        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules")) return IntelligencePublicationResult.Unavailable;
+        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base")) return IntelligencePublicationResult.Unavailable;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (active?.RevisionId != expectedActiveRevisionId || (active is null ? version.Length != 0 : !active.Version.AsSpan().SequenceEqual(version)))
             return IntelligencePublicationResult.Conflict;
@@ -75,6 +76,8 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             return IntelligencePublicationResult.Unavailable;
         int? sigmaCount = null;
         if (source.Key == SigmaRefresh.SourceKey && (sigmaCount = await SigmaRevisionEligibility.IncludedCountAsync(db, sourceId, revisionId, token)) is null)
+            return IntelligencePublicationResult.Unavailable;
+        if (source.Key == "signature-base" && !await IocSourceEligibility.IsEligibleAsync(db, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;

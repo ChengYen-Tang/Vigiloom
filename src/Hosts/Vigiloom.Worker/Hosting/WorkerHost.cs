@@ -78,6 +78,7 @@ public static class WorkerHost
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, KevCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, AdvisoryCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
         builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
         builder.Services.AddScoped<IntegrityExpiryJob>();
