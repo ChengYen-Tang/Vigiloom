@@ -44,6 +44,30 @@ public sealed class AdvisoryImportTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    public Task Migration_RejectsDowngradeAfterReconciliationStarts() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            db.IntelligenceSources.Add(source);
+            await db.SaveChangesAsync(token);
+            db.AdvisoryImports.Add(new AdvisoryImport
+            {
+                SourceId = source.Id, SourceVersion = source.Version, WindowStart = new(2023, 1, 1),
+                WindowEnd = new(2023, 2, 1), StartedAt = DateTimeOffset.UtcNow, Phase = 3, ReconciliationPhase = 2
+            });
+            await db.SaveChangesAsync(token);
+            var previous = db.Database.GetMigrations().Single(x => x.EndsWith("_AdvisoryCursorRestart", StringComparison.Ordinal));
+            var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
+            Assert.AreEqual(51000, error.Number);
+            Assert.AreEqual(2, (await db.AdvisoryImports.AsNoTracking().SingleAsync(token)).ReconciliationPhase);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task SourcePolicyChange_PreventsOldImportFromCommitting() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
