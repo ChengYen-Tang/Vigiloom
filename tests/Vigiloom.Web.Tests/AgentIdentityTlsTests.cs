@@ -165,9 +165,10 @@ public sealed class AgentIdentityTlsTests
                     ["Vigiloom:Agent:Server"] = url.AbsoluteUri
                 });
                 agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
-                agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, agentClock));
-                agentBuilder.Services.AddSingleton(new AgentMetricSettingsClient(http, agentClock));
-                agentBuilder.Services.AddSingleton(new AgentLogSettingsClient(http, agentClock));
+                // Keep real HTTP deadlines independent from the accelerated worker clock.
+                agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, TimeProvider.System));
+                agentBuilder.Services.AddSingleton(new AgentMetricSettingsClient(http, TimeProvider.System));
+                agentBuilder.Services.AddSingleton(new AgentLogSettingsClient(http, TimeProvider.System));
                 agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
                 agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
                 // The in-process Agent shares the Web test host's resource counters.
@@ -185,7 +186,11 @@ public sealed class AgentIdentityTlsTests
                         {
                             try { saved = await store.ReadAsync(deadline.Token); }
                             catch (IOException) { /* The running host may briefly hold the identity lease. */ }
-                            if (saved?.Snapshot != configured.Effective) await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                            if (saved?.Snapshot != configured.Effective)
+                            {
+                                agentClock.Advance(TimeSpan.FromSeconds(2));
+                                await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
+                            }
                         }
                         AgentSettingsStatus? observed = null;
                         while (observed?.State != AgentSettingsApplyState.Applied)
