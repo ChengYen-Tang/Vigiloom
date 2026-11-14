@@ -99,7 +99,7 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await page.Locator(".intelligence-source").Filter(new() { HasText = "SigmaHQ 規則" }).ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "規則來源資料" }).WaitForAsync();
         Assert.Contains("Example rule", await page.Locator("main").InnerTextAsync());
-        Assert.Contains("尚未啟用偵測", await page.Locator("main").InnerTextAsync());
+        Assert.Contains("不會部署規則或啟用偵測", await page.Locator("main").InnerTextAsync());
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "sigma-mobile.png"), FullPage = true });
         await page.Locator(".intelligence-source").Filter(new() { HasText = "Signature-Base" }).ClickAsync();

@@ -4,7 +4,7 @@ namespace Vigiloom.Contracts.Intelligence;
 public enum IocSourceAvailability { Ready, Stale, Disabled, NoActiveRevision, Unavailable, SelectionChanged }
 
 public sealed record IocSourceSnapshot(IocSourceAvailability Availability, Guid? SourceId, Guid? RevisionId,
-    string? ActivationVersion, string? Commit);
+    string? ActivationVersion, string? Commit, string? ManifestSha256, int ValidCount, int UnsupportedCount);
 
 public sealed record IocSourceFile(IocSourceAvailability Availability, string? Path, string? Sha256,
     string? SourceUrl, string? License, string? LicenseUrl, string? LicenseEvidenceUrl, byte[]? Content);

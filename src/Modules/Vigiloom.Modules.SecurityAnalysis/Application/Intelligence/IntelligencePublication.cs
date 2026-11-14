@@ -77,19 +77,31 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         int? sigmaCount = null;
         if (source.Key == SigmaRefresh.SourceKey && (sigmaCount = await SigmaRevisionEligibility.IncludedCountAsync(db, sourceId, revisionId, token)) is null)
             return IntelligencePublicationResult.Unavailable;
-        if (source.Key == "signature-base" && !await IocSourceEligibility.IsEligibleAsync(db, sourceId, revisionId, token))
+        IocAssessment? iocAssessment = null;
+        if (source.Key == "signature-base" && (iocAssessment = await IocSourceEligibility.AssessAsync(db, sourceId, revisionId, token)) is null)
             return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;
         if (active?.RevisionId == candidate.Id) return IntelligencePublicationResult.Unchanged;
         int? previousCount = null;
+        var previousIocUnknown = false;
+        var iocCategoryReduction = false;
         if (active is not null && sigmaCount is not null)
             previousCount = await db.SigmaManifests.Where(x => x.RevisionId == active.RevisionId).Select(x => (int?)x.IncludedCount).SingleOrDefaultAsync(token);
+        else if (active is not null && iocAssessment is not null)
+        {
+            var previousIoc = await IocSourceEligibility.AssessAsync(db, sourceId, active.RevisionId, token);
+            previousCount = previousIoc?.ValidCount;
+            previousIocUnknown = previousIoc is null;
+            if (previousIoc is not null)
+                iocCategoryReduction = previousIoc.HashCount > 0 && (long)iocAssessment.HashCount * 10 < (long)previousIoc.HashCount * 9 ||
+                    previousIoc.C2Count > 0 && (long)iocAssessment.C2Count * 10 < (long)previousIoc.C2Count * 9;
+        }
         else if (active is not null)
             previousCount = await db.IntelligenceRevisions.Where(x => x.SourceId == sourceId && x.Id == active.RevisionId)
                 .Select(x => (int?)x.RecordCount).SingleAsync(token);
-        var candidateCount = sigmaCount ?? candidate.RecordCount;
-        var largeReduction = candidateCount == 0 || previousCount is > 0 && (long)candidateCount * 10 < (long)previousCount * 9;
+        var candidateCount = sigmaCount ?? iocAssessment?.ValidCount ?? candidate.RecordCount;
+        var largeReduction = previousIocUnknown || iocCategoryReduction || candidateCount == 0 || previousCount is > 0 && (long)candidateCount * 10 < (long)previousCount * 9;
         if (largeReduction && !confirmLargeReduction) return IntelligencePublicationResult.ConfirmationRequired;
         var previous = active?.RevisionId;
         if (active is null)
