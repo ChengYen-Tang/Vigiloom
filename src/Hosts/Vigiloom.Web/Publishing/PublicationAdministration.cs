@@ -64,7 +64,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         byte[] requestedTemplateVersion = [];
         if (templateSelection && (change.TemplateId?.Version != 7 || !TryVersion(change.TemplateVersion, out requestedTemplateVersion))) return new(PublicationChangeStatus.Invalid);
         if (!templateSelection && (change.TemplateId is not null || change.TemplateVersion is not null)) return new(PublicationChangeStatus.Invalid);
-        var serviceHistory = kind == PublicationResourceKind.Service && change.PolicyVersion == PublicationPolicy.ServiceHistoryVersion;
+        var serviceHistory = kind == PublicationResourceKind.Service && change.PolicyVersion is PublicationPolicy.ServiceHistoryVersion or PublicationPolicy.ServiceHistoryDetailsVersion;
         if (change.Public && ((!templateSelection && !serviceHistory && change.PolicyVersion != PublicationPolicy.BaselineVersion) || !PublicationPolicy.TryValidateName(change.DisplayName, out name)))
             return new(PublicationChangeStatus.Invalid);
         if (kind == PublicationResourceKind.Service)
