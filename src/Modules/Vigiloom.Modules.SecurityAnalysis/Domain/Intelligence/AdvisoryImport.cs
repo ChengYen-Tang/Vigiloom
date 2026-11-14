@@ -21,5 +21,7 @@ public sealed class AdvisoryImport
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? NotBefore { get; set; }
     public int RateLimitAttempts { get; set; }
+    public int RestartCount { get; set; }
+    public Guid? SuccessorId { get; set; }
     public byte[] Version { get; private set; } = [];
 }
