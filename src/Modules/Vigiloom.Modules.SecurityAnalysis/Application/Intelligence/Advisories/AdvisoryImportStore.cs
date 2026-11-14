@@ -156,6 +156,22 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         return next;
     }
 
+    internal async Task<bool> AbandonAsync(Guid sourceId, Guid importId, byte[] expectedVersion, CancellationToken token)
+    {
+        if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8) return false;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        if (await LockSourceAsync(db, sourceId, token) is null) return false;
+        var import = await db.AdvisoryImports
+            .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
+            .SingleOrDefaultAsync(token);
+        if (import is null || import.Phase is not (1 or 2 or 3) || !import.Version.AsSpan().SequenceEqual(expectedVersion)) return false;
+        import.Phase = 5;
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return true;
+    }
+
     private static Task<IntelligenceSource?> LockSourceAsync(SecurityAnalysisDbContext db, Guid id, CancellationToken token) =>
         db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}")
             .SingleOrDefaultAsync(token);

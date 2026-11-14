@@ -194,8 +194,13 @@ public sealed class AdvisoryRunnerTests(TestContext context)
             Assert.AreEqual(8, calls);
             await using var check = contexts.CreateDbContext();
             Assert.AreEqual(4, await check.AdvisoryImports.CountAsync(token));
-            Assert.AreEqual(3, (await check.AdvisoryImports.SingleAsync(x => x.Id == result.ImportId, token)).RestartCount);
+            var active = await check.AdvisoryImports.SingleAsync(x => x.Id == result.ImportId, token);
+            Assert.AreEqual(3, active.RestartCount);
             Assert.AreEqual(0, await check.IntelligenceActivations.CountAsync(token));
+            var store = new AdvisoryImportStore(contexts, clock);
+            Assert.IsFalse(await store.AbandonAsync(source.Id, active.Id, new byte[8], token));
+            Assert.IsTrue(await store.AbandonAsync(source.Id, active.Id, active.Version, token));
+            Assert.IsNotNull(await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token));
         }, context.CancellationToken);
 
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
