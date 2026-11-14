@@ -24,7 +24,7 @@ public sealed class ServiceHttpMetricsTests(TestContext context)
     [DataRow(2)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ReadsRealIngestedMetricsWithoutScheduledProjection(int scenario) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -34,7 +34,6 @@ public sealed class ServiceHttpMetricsTests(TestContext context)
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), start.AddDays(-1));
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
             }
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
@@ -134,7 +133,7 @@ public sealed class ServiceHttpMetricsTests(TestContext context)
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task SummarizesOnlyCompatibleReceivedHistograms(bool cumulative) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -147,7 +146,6 @@ public sealed class ServiceHttpMetricsTests(TestContext context)
                 ProjectedRevision = 1, ProjectionVersion = MetricRollupMaterializer.ProjectionVersion, ProjectedAt = now, IsComplete = true, RawPruned = true };
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); db.MetricRollupWindows.Add(window);
                 await db.SaveChangesAsync(token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({instance},{service.Id},{source.Id},{"node-a"},{now},{now})", token);

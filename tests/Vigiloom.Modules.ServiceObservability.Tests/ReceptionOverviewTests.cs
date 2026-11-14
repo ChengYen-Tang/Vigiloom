@@ -16,7 +16,7 @@ public sealed class ReceptionOverviewTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task LatestPersistedSignalIsGroupedBySourceAndNotEventTime() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -29,7 +29,6 @@ public sealed class ReceptionOverviewTests(TestContext context)
             var third = new MonitoredService(new ServiceCandidate(sourceB.Id, "three", "prod", "Three", now), now);
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.AddRange(sourceA, sourceB); db.Services.AddRange(first, second, third);
                 static LogContext Shared(Guid service) => new() { ServiceId = service, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
                 db.LogRecords.AddRange(
