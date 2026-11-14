@@ -1,0 +1,9 @@
+.history-strip { display: grid; gap: 2px; min-width: 0; overflow-x: auto; }
+.history-range { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .25rem; color: #536780; font-size: .75rem; margin-top: .25rem; }
+.history-day { min-width: 24px; height: 24px; border: 1px solid transparent; border-radius: 2px; padding: 0; cursor: pointer; }
+.history-day:focus-visible, .history-day[aria-pressed="true"] { outline: 2px solid #125cff; outline-offset: 2px; }
+.good { background: #169861; }
+.degraded { background: #d98b00; }
+.bad { background: #ca3346; }
+.unknown { background: #aab8cc; }
+.history-empty { color: #59677b; margin: 0; }

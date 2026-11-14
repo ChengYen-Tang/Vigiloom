@@ -12,10 +12,12 @@ builder.Services.AddAuthorizationCore(options => options.AddPolicy(WorkspaceAcce
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthenticationStateDeserialization();
 builder.Services.AddMudServices();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<IWorkspaceIdentityClient, BrowserWorkspaceIdentityClient>();
 builder.Services.AddScoped<IWorkspaceOverviewClient, BrowserWorkspaceOverviewClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, BrowserPublicationClient>();
+builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicStatusClient, BrowserPublicStatusClient>();
 builder.Services.AddScoped<ISpeedHistoryClient, BrowserSpeedHistoryClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, BrowserPingHistoryClient>();
 builder.Services.AddScoped<IHostMonitoringClient, BrowserHostMonitoringClient>();

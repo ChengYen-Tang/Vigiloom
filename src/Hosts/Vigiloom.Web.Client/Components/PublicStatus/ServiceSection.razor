@@ -1,0 +1,51 @@
+@using Vigiloom.Contracts.Publishing
+
+<section class="public-section" aria-labelledby="public-services-title">
+    <h2 id="public-services-title">對外應用服務</h2>
+    <p>應用服務的健康狀態獨立於設備連線。</p>
+    @if (Items.Count == 0)
+    {
+        <p>目前沒有可顯示的公開服務。</p>
+    }
+    else
+    {
+        <div class="public-head" aria-hidden="true"><span>服務名稱</span><span>目前狀態</span><span>歷史狀態</span></div>
+        <ul class="public-rows">
+            @foreach (var service in Items)
+            {
+                <li @key="service.Id">
+                    <div class="public-row-heading">
+                        <button class="name" type="button" @onclick="() => OnSelect.InvokeAsync(service.Id)">@service.Name</button>
+                        <StatusLabel State="service.State" />
+                    </div>
+                    <div class="history-content">
+                    @if (HistoryRevisions.TryGetValue(service.Id, out var revision) && revision == CurrentRevision && Histories.TryGetValue(service.Id, out var history))
+                    {
+                        if (history is null) { <p>此服務未提供公開歷史。</p> }
+                        else
+                        {
+                            @if (HistoryRanges.TryGetValue(service.Id, out var range))
+                            { <ServiceHistoryStrip Days="history.Days" From="range.From" To="range.To" OnSelect="day => OnSelectDay.InvokeAsync((service.Id, day))" /> }
+                            @if (HistoryUpdatedAt.TryGetValue(service.Id, out var updated)) { <small>本頁取得時間：@updated.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</small> }
+                        }
+                    }
+                    else if (HistoryRevisions.TryGetValue(service.Id, out revision) && revision == CurrentRevision && FailedHistories.Contains(service.Id)) { <p role="status">歷史資料暫時無法讀取。</p> }
+                    else { <p role="status">正在讀取歷史資料…</p> }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PublicService> Items { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyDictionary<Guid, PublicServiceHistory?> Histories { get; set; } = new Dictionary<Guid, PublicServiceHistory?>();
+    [Parameter, EditorRequired] public IReadOnlySet<Guid> FailedHistories { get; set; } = new HashSet<Guid>();
+    [Parameter, EditorRequired] public IReadOnlyDictionary<Guid, int> HistoryRevisions { get; set; } = new Dictionary<Guid, int>();
+    [Parameter, EditorRequired] public IReadOnlyDictionary<Guid, DateTimeOffset> HistoryUpdatedAt { get; set; } = new Dictionary<Guid, DateTimeOffset>();
+    [Parameter, EditorRequired] public IReadOnlyDictionary<Guid, (DateTimeOffset From, DateTimeOffset To)> HistoryRanges { get; set; } = new Dictionary<Guid, (DateTimeOffset, DateTimeOffset)>();
+    [Parameter] public int CurrentRevision { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
+    [Parameter] public EventCallback<(Guid ServiceId, PublicHealthDay Day)> OnSelectDay { get; set; }
+}

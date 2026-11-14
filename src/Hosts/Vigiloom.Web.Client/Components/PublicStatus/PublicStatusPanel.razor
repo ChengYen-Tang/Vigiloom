@@ -1,0 +1,92 @@
+@using Vigiloom.Contracts.Publishing
+@using Vigiloom.Web.Client.Components
+
+<main class="public-status" data-runtime="@RendererInfo.Name">
+    <h1>公開監測狀態</h1>
+    <p>僅顯示管理員公開的設備與應用服務；狀態依目前可用資料顯示。</p>
+    @if (subscriptionWarning) { <p role="status">即時連線暫時中斷，頁面會重新確認公開狀態。</p> }
+    <section class="public-groups" aria-labelledby="groups-title">
+        <h2 id="groups-title">公開群組</h2>
+        <div class="group-list">
+            <button type="button" disabled="@(initialLoading || loading || changingRange)" class="@(selectedGroup is null ? "selected" : "")" @onclick="() => SelectGroupAsync(null)">全部公開項目</button>
+            @if (groups is not null)
+            {
+                @foreach (var group in groups.Items)
+                {
+                    <button type="button" disabled="@(initialLoading || loading || changingRange)" class="@(selectedGroup == group.Id ? "selected" : "")" @key="group.Id" @onclick="() => SelectGroupAsync(group.Id)">
+                        <strong>@group.Name</strong><span>@group.DeviceCount 個公開設備・@group.ServiceCount 個公開服務</span>
+                    </button>
+                }
+            }
+        </div>
+        @if (groups is { } groupPage && (groupPage.Page > 1 || groupPage.HasMore))
+        { <div class="paging"><button type="button" disabled="@(groupPage.Page <= 1 || loading)" @onclick="() => ChangeGroupPageAsync(-1)">上一頁</button><span>第 @groupPage.Page 頁</span><button type="button" disabled="@(!groupPage.HasMore || loading)" @onclick="() => ChangeGroupPageAsync(1)">下一頁</button></div> }
+    </section>
+    <section class="public-filters" aria-label="查詢條件">
+        <label for="public-search">搜尋公開名稱</label>
+        <input id="public-search" disabled="@initialLoading" @bind="searchInput" @bind:event="oninput" maxlength="256" />
+        <button type="button" disabled="@(initialLoading || loading || changingRange)" @onclick="SearchAsync">搜尋</button>
+        <label for="public-history-range">服務歷史</label>
+        <select id="public-history-range" disabled="@(initialLoading || loading || changingRange)" value="@rangeChoice" @onchange="ChangeHistoryRangeAsync">
+            <option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="90">最近 90 天</option><option value="custom">自訂範圍</option>
+        </select>
+        <span>時間以 UTC 顯示</span>
+        @if (rangeChoice == "custom")
+        {
+            <label for="public-from">開始時間（UTC）</label><input id="public-from" type="datetime-local" value="@customStart" @oninput="e => customStart = e.Value?.ToString() ?? string.Empty" />
+            <label for="public-to">結束時間（UTC）</label><input id="public-to" type="datetime-local" value="@customEnd" @oninput="e => customEnd = e.Value?.ToString() ?? string.Empty" />
+            <button type="button" disabled="@(loading || changingRange)" @onclick="ApplyCustomRangeAsync">套用時間範圍</button>
+            @if (rangeError is not null) { <span role="alert">@rangeError</span> }
+        }
+    </section>
+    <p class="public-legend">狀態圖例：<StatusLabel State="Healthy" />・<StatusLabel State="Degraded" />・<StatusLabel State="Unhealthy" />・<StatusLabel State="Unknown" /></p>
+    @if ((initialLoading || loading) && devices is null && services is null) { <p role="status">正在載入公開狀態…</p> }
+    else if (loadError)
+    {
+        <section class="public-error" role="alert"><h2>暫時無法讀取公開狀態</h2><p>請確認網路連線後重試。</p><button type="button" @onclick="RefreshAsync">重新嘗試</button></section>
+    }
+    else if (devices is not null && services is not null)
+    {
+        <DeviceSection Items="devices.Items" SelectedId="selectedDevice?.Id" OnSelect="SelectDeviceAsync">
+            @if (selectedDevice is not null)
+            {
+                <section class="public-detail" aria-labelledby="device-detail-title">
+                    <h2 id="device-detail-title">@selectedDevice.Name</h2><StatusLabel State="selectedDevice.State" />
+                    @if (detailLoading) { <p role="status">正在讀取延遲歷史…</p> }
+                    else if (detailError) { <p role="alert">延遲歷史暫時無法讀取，請稍後重試。</p> }
+                    else if (deviceHistory is null) { <p>此設備未提供公開延遲歷史。</p> }
+                    else { <TimeSeriesChart Title="公開延遲歷史" Unit="ms" Points="devicePoints" /><p>設備最多顯示所選區間最後 7 天；資料為已結束的五分鐘平均延遲，沒有資料不代表正常或中斷。</p> }
+                    <a href="@($"/devices/{selectedDevice.Id:D}")">登入後查看設備詳情</a>
+                </section>
+            }
+        </DeviceSection>
+        @if (devices.Page > 1 || devices.HasMore) { <div class="paging"><button type="button" disabled="@(devices.Page <= 1 || loading)" @onclick="() => ChangeDevicePageAsync(-1)">上一頁</button><span>設備第 @devices.Page 頁</span><button type="button" disabled="@(!devices.HasMore || loading)" @onclick="() => ChangeDevicePageAsync(1)">下一頁</button></div> }
+        <ServiceSection Items="services.Items" Histories="histories" FailedHistories="failedHistories" HistoryRevisions="historyRevisions" HistoryUpdatedAt="historyUpdatedAt" HistoryRanges="historyRanges" CurrentRevision="historyRevision" OnSelect="SelectServiceAsync" OnSelectDay="SelectServiceDayAsync" />
+        @if (services.Page > 1 || services.HasMore) { <div class="paging"><button type="button" disabled="@(services.Page <= 1 || loading)" @onclick="() => ChangeServicePageAsync(-1)">上一頁</button><span>服務第 @services.Page 頁</span><button type="button" disabled="@(!services.HasMore || loading)" @onclick="() => ChangeServicePageAsync(1)">下一頁</button></div> }
+    }
+    @if (selectedService is not null)
+    {
+        <section class="public-detail" aria-labelledby="service-detail-title">
+            <h2 id="service-detail-title">@selectedService.Name</h2><StatusLabel State="selectedService.State" />
+            @if (selectedDay is { } day)
+            {
+                <p>@day.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") 至 @day.To.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC・<StatusLabel State="day.State" /></p>
+                <p>資料涵蓋率 @day.Coverage.ToString("P1")；可用率 @(day.Availability is { } availability ? availability.ToString("P2") : "無資料")。</p>
+                @if (detailLoading) { <p role="status">正在讀取允許公開的狀態時間…</p> }
+                else if (detailError) { <p role="alert">狀態時間暫時無法讀取，請稍後重試。</p> }
+                else if (servicePeriods is null) { <p>此服務只提供每日狀態摘要。</p> }
+                else if (servicePeriods.Periods.Count == 0) { <p>此時段沒有可公開的狀態時間。</p> }
+                else
+                {
+                    <ul>@foreach (var period in servicePeriods.Periods) { <li>@(period.IsStateChange ? "狀態變更" : "區間起點") @period.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC：<StatusLabel State="period.State" /></li> }</ul>
+                }
+            }
+            else if (detailLoading) { <p role="status">正在確認可公開的歷史…</p> }
+            else if (detailError) { <p role="alert">歷史資料暫時無法讀取，請稍後重試。</p> }
+            else if (detailHistoryUnavailable) { <p>此服務目前未提供該時段的公開歷史。</p> }
+            else { <p>選擇上方歷史色條可查看日期摘要。</p> }
+            <a href="@($"/services/{selectedService.Id:D}")">登入後查看服務詳情</a>
+        </section>
+    }
+    <p class="public-note">未知代表資料不足或無法確認，並非正常運作。公開狀態不包含內部診斷資訊。</p>
+</main>

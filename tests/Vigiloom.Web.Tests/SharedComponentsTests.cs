@@ -5,12 +5,42 @@ using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using MudBlazor.Services;
 using Vigiloom.Web.Client.Components;
+using Vigiloom.Web.Client.Components.PublicStatus;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class SharedComponentsTests
 {
+    [TestMethod]
+    [DataRow("2026-11-01T00:00:00+00:00", 24, "2026-11-01T00:00:00+00:00", 1, 1)]
+    [DataRow("2026-11-01T23:00:00+00:00", 2, "2026-11-02T00:00:00+00:00", 2, 2)]
+    [DataRow("2026-01-01T12:00:00+00:00", 2160, "2026-04-01T00:00:00+00:00", 91, 91)]
+    public async Task ServiceHistory_AlignsPublishedDaysToTheUtcQueryWindow(string startText, int hours, string dayText, int columns, int position)
+    {
+        var start = DateTimeOffset.Parse(startText, System.Globalization.CultureInfo.InvariantCulture);
+        var day = DateTimeOffset.Parse(dayText, System.Globalization.CultureInfo.InvariantCulture);
+        var services = new ServiceCollection();
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var rendered = await renderer.RenderComponentAsync<ServiceHistoryStrip>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(ServiceHistoryStrip.From)] = start,
+                [nameof(ServiceHistoryStrip.To)] = start.AddHours(hours),
+                [nameof(ServiceHistoryStrip.Days)] = new[] { new PublicHealthDay(day, day.AddMinutes(30), "Unknown", null, 0) }
+            }));
+            var html = System.Net.WebUtility.HtmlDecode(rendered.ToHtmlString());
+            Assert.Contains($"grid-template-columns: repeat({columns}, minmax(24px, 1fr))", html);
+            Assert.Contains($"grid-column: {position}", html);
+            Assert.Contains("未知或無資料", html);
+            Assert.Contains("資料涵蓋率", html);
+        });
+    }
+
     [TestMethod]
     public void TimeSeries_UsesActualUnevenTimestampsAndDoesNotConnectMissingSamples()
     {

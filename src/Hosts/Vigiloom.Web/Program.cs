@@ -193,6 +193,8 @@ builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicHistoryAdmission>();
 builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicStreamAdmission>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();
+builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicStatusClient, Vigiloom.Web.Publishing.ServerPublicStatusClient>();
+builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicStatusAdmission>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -262,6 +264,14 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
+
+// Anonymous status HTML may contain published information and must not survive revocation in caches.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/" || context.Request.Path == "/status" || context.Request.Path == "/status/")
+        context.Response.Headers.CacheControl = "no-store";
+    await next();
+});
 
 // API errors must not be rewritten as a Blazor HTML page.
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), api =>

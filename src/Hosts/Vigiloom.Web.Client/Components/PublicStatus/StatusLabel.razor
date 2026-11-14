@@ -1,0 +1,19 @@
+<span class="public-state @Css">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string State { get; set; } = "Unknown";
+    private string Text => State switch
+    {
+        "Healthy" or "Operational" => "正常",
+        "Degraded" => "部分影響",
+        "Unhealthy" or "Unavailable" => "異常",
+        _ => "未知或無資料"
+    };
+    private string Css => State switch
+    {
+        "Healthy" or "Operational" => "good",
+        "Degraded" => "degraded",
+        "Unhealthy" or "Unavailable" => "bad",
+        _ => "unknown"
+    };
+}

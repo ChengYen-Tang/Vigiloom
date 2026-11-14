@@ -11,6 +11,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vigiloom.Modules.Resources.Persistence;
 
 namespace Vigiloom.Web.Tests;
 
@@ -98,16 +101,23 @@ public sealed class WebHostTests(TestContext testContext)
     [TestMethod]
     public async Task Home_AutoComponent_IsPrerendered()
     {
-        using var factory = CreateFactory("Development");
+        var denied = new NoPrerenderDatabaseFactory();
+        using var original = CreateFactory("Development");
+        using var factory = original.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IDbContextFactory<ResourcesDbContext>>();
+            services.AddSingleton<IDbContextFactory<ResourcesDbContext>>(denied);
+        }));
         using var client = CreateClient(factory);
 
         using var response = await client.GetAsync("/", testContext.CancellationToken);
         var html = await response.Content.ReadAsStringAsync(testContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("<h1>Vigiloom</h1>", html);
+        Assert.Contains("公開監測狀態", html);
         Assert.Contains("<!--Blazor:", html);
         Assert.Contains("\"type\":\"auto\"", html);
+        Assert.AreEqual(0, denied.Calls, "Prerendering must not read the development database.");
     }
 
     [TestMethod]
@@ -360,5 +370,14 @@ public sealed class WebHostTests(TestContext testContext)
             Interlocked.Increment(ref count);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class NoPrerenderDatabaseFactory : IDbContextFactory<ResourcesDbContext>
+    {
+        private int calls;
+        public int Calls => Volatile.Read(ref calls);
+        public ResourcesDbContext CreateDbContext() { Interlocked.Increment(ref calls); throw new InvalidOperationException("Unexpected prerender database access."); }
+        public Task<ResourcesDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
+        { Interlocked.Increment(ref calls); return Task.FromException<ResourcesDbContext>(new InvalidOperationException("Unexpected prerender database access.")); }
     }
 }
