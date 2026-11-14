@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $web = 'tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj'
 $temporary = Join-Path $root ('.vigiloom-ci-' + [guid]::NewGuid().ToString('N') + '.slnx')
+$failure = $null
+$cleanupFailure = $null
 try {
     [xml]$solution = Get-Content -LiteralPath (Join-Path $root 'Vigiloom.slnx') -Raw
     $projects = @($solution.SelectNodes('//Project[@Path]'))
@@ -20,6 +22,13 @@ try {
     $solution.Save($temporary)
     & dotnet test $temporary --configuration Release --no-build --no-restore -m:2
     if ($LASTEXITCODE -ne 0) { throw "Remaining solution tests failed with exit code $LASTEXITCODE." }
+} catch {
+    $failure = $_.Exception
 } finally {
-    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -ErrorAction Stop }
+    try {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -ErrorAction Stop }
+    } catch { $cleanupFailure = $_.Exception }
 }
+if ($failure -and $cleanupFailure) { throw [AggregateException]::new('Tests and temporary solution cleanup failed.', @($failure, $cleanupFailure)) }
+if ($failure) { throw $failure }
+if ($cleanupFailure) { throw $cleanupFailure }
