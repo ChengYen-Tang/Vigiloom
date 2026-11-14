@@ -296,6 +296,25 @@ public sealed class AgentIdentityTlsTests
                             Assert.IsNull(gap.GapAffectedCount);
                             Assert.IsLessThan(resumed.RowId, gap.RowId);
                         }
+                        // Truncate the same file below the stored offset, then resume from its beginning.
+                        await File.WriteAllTextAsync(logPath, "x\n", deadline.Token);
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
+                            if (await entries.CountAsync(x => x.GapReason == AgentLogGapReason.CursorLost, deadline.Token) == 2 &&
+                                await entries.AnyAsync(x => x.Content == "x\n", deadline.Token)) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
+                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
+                        {
+                            var gap = await logDb.HostLogs.Where(x => x.AgentId == id && x.GapReason == AgentLogGapReason.CursorLost)
+                                .OrderByDescending(x => x.RowId).FirstAsync(deadline.Token);
+                            var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "x\n", deadline.Token);
+                            Assert.IsNull(gap.GapAffectedCount);
+                            Assert.IsLessThan(resumed.RowId, gap.RowId);
+                        }
                         using (var playwright = await Playwright.CreateAsync())
                         await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
                         await using (var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
@@ -312,7 +331,8 @@ public sealed class AgentIdentityTlsTests
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
-                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
+                            await table.GetByText("x", new() { Exact = true }).WaitForAsync();
+                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
                             await wasmGate.ReleaseAsync();
                             await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
                             await page.ReloadAsync();
@@ -320,7 +340,8 @@ public sealed class AgentIdentityTlsTests
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
-                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
+                            await table.GetByText("x", new() { Exact = true }).WaitForAsync();
+                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
