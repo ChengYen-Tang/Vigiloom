@@ -1,0 +1,58 @@
+@page "/settings/service-deployments"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.ServiceObservability.Application
+@using Vigiloom.Web.ServiceDetails
+@inject DeploymentLinks Links
+@inject DeviceManagement Devices
+@inject ServiceInstanceAdministration Instances
+@inject ILogger<ServiceDeployments> Logger
+
+<PageTitle>部署關聯 - Vigiloom</PageTitle>
+<main class="device-page">
+    <header class="device-heading"><div><h1>部署關聯</h1><p>依已核實的部署資料，為應用執行個體建立選配的主機導覽。</p></div></header>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (selected is not null)
+    {
+        <p><a href="@($"/services/{selected.Id:D}")">返回 @selected.Name</a></p>
+        <section class="device-panel">
+            <h2>目前關聯</h2>
+            <p>關聯不代表即時部署狀態，也不改變服務或設備的公開設定。請勿在確認依據中輸入密碼或憑證。</p>
+            @if (links is null) { <p>無法載入關聯。</p> }
+            else if (links.Items.Count == 0) { <p>此頁沒有尚未解除的關聯。</p> }
+            else
+            {
+                <p class="scroll-hint">左右滑動查看完整關聯資訊。</p>
+                <div class="table-scroll" tabindex="0" role="region" aria-label="部署關聯，可左右捲動"><table><thead><tr><th>主機</th><th>服務執行個體</th><th>確認依據</th><th>狀態</th></tr></thead><tbody>
+                    @foreach (var item in links.Items)
+                    {
+                        <tr @key="item.Id"><td>@item.DeviceName</td><td>@item.InstanceName</td><td>@item.Evidence</td><td>@(item.DeviceArchived || item.InstanceRetired || item.SourceRevoked || item.ServiceStopped ? "來源或資源已停用，請檢查" : "未解除")</td></tr>
+                    }
+                </tbody></table></div>
+                <EditForm Model="EndForm" FormName="deployment-end" OnSubmit="EndAsync">
+                    <label for="end-link">要結束的關聯</label>
+                    <InputSelect id="end-link" @bind-Value="EndForm.Selection"><option value="">請選擇</option>@foreach (var item in links.Items) { <option value="@($"{item.Id:D}|{item.Version}")">@item.DeviceName · @item.InstanceName</option> }</InputSelect>
+                    <button type="submit">結束關聯</button>
+                </EditForm>
+            }
+            <nav aria-label="關聯分頁">@if (linkPage > 1) { <a href="@PageUrl(linkPage - 1, devicePage, instancePage)">上一頁</a> } <span>第 @linkPage 頁</span> @if (links?.HasMore == true) { <a href="@PageUrl(linkPage + 1, devicePage, instancePage)">下一頁</a> }</nav>
+        </section>
+        <section class="device-panel">
+            <h2>建立關聯</h2>
+            <EditForm Model="CreateForm" FormName="deployment-create" OnSubmit="CreateAsync">
+                <label for="deployment-device">主機設備</label>
+                <InputSelect id="deployment-device" @bind-Value="CreateForm.DeviceId"><option value="">請選擇</option>@foreach (var device in devices) { <option value="@device.Id">@device.Name</option> }</InputSelect>
+                <label for="deployment-instance">服務執行個體</label>
+                <InputSelect id="deployment-instance" @bind-Value="CreateForm.InstanceId"><option value="">請選擇</option>@foreach (var instance in instances.Where(x => x.RetiredAt is null)) { <option value="@instance.Id">@instance.ExternalInstanceId</option> }</InputSelect>
+                <label for="deployment-evidence">確認依據</label>
+                <InputText id="deployment-evidence" @bind-Value="CreateForm.Evidence" maxlength="512" />
+                <button type="submit">建立關聯</button>
+            </EditForm>
+            <nav aria-label="主機設備分頁">設備：@if (devicePage > 1) { <a href="@PageUrl(linkPage, devicePage - 1, instancePage)">上一頁</a> } <span>第 @devicePage 頁</span> @if (moreDevices) { <a href="@PageUrl(linkPage, devicePage + 1, instancePage)">下一頁</a> }</nav>
+            <nav aria-label="服務執行個體分頁">執行個體：@if (instancePage > 1) { <a href="@PageUrl(linkPage, devicePage, instancePage - 1)">上一頁</a> } <span>第 @instancePage 頁</span> @if (instances.Count == 50 && instancePage < 1000) { <a href="@PageUrl(linkPage, devicePage, instancePage + 1)">下一頁</a> }</nav>
+        </section>
+    }
+</main>

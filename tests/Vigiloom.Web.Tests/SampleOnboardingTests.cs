@@ -8,20 +8,25 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Web.Publishing;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[TestCategory("Browser")]
+[DoNotParallelize]
 public sealed class SampleOnboardingTests(TestContext context)
 {
     [TestMethod]
@@ -43,7 +48,12 @@ public sealed class SampleOnboardingTests(TestContext context)
         await File.WriteAllTextAsync(certificateFile, certificate.ExportCertificatePem(), token);
         try
         {
-            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            using var original = PingTestSite.CreateFactory(database.ConnectionString);
+            using var factory = original.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<PublicStreamAdmission>();
+                services.AddSingleton(new PublicStreamAdmission(64, TimeSpan.FromMilliseconds(200), TimeSpan.FromMinutes(5), TimeProvider.System));
+            }));
             factory.UseKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
             factory.StartServer();
             await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
@@ -124,13 +134,32 @@ public sealed class SampleOnboardingTests(TestContext context)
                 var policy = await services.GetRequiredService<HealthNetworkPolicyAdministration>().UpdateAsync(new(["127.0.0.0/8"], ""), actor, token);
                 Assert.IsNotNull(policy);
                 var target = await services.GetRequiredService<HealthTargetAdministration>().CreateAsync(new(serviceId, null,
-                    new($"http://127.0.0.1:{samplePort}/health", 30, 5, 1, 1, true, "")), actor, token);
+                    new($"http://127.0.0.1:{samplePort}/health", 5, 5, 1, 1, true, "")), actor, token);
                 Assert.AreEqual(HealthTargetStatus.Saved, target.Status);
+                Assert.IsNotNull(target.Target);
                 using var runner = new HealthRunner(dbFactory, TimeProvider.System);
                 await runner.RunOnceAsync(token);
                 var health = await services.GetRequiredService<HealthStatusReader>().ReadAsync(serviceId, token);
                 Assert.IsNotNull(health);
                 Assert.AreEqual(ServiceHealthState.Healthy, health.State);
+                using var publicOriginal = PingTestSite.CreateFactory(database.ConnectionString);
+                using var publicHost = publicOriginal.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<PublicStreamAdmission>();
+                    services.AddSingleton(new PublicStreamAdmission(64, TimeSpan.FromMilliseconds(200), TimeSpan.FromMinutes(5), TimeProvider.System));
+                }));
+                publicHost.UseKestrel(0); publicHost.StartServer();
+                async Task RecheckHealthAsync(CancellationToken cancellationToken)
+                {
+                    await WaitAsync(async () =>
+                    {
+                        await runner.RunOnceAsync(cancellationToken);
+                        var current = await services.GetRequiredService<HealthStatusReader>().ReadAsync(serviceId, cancellationToken);
+                        return current?.State == ServiceHealthState.Healthy;
+                    }, cancellationToken);
+                }
+                await SamplePublicationAcceptance.VerifyAsync(address, publicHost.ClientOptions.BaseAddress, certificate, serviceId,
+                    source.SourceId, source.Secret, samplePort, ct => services.GetRequiredService<HealthStatusReader>().ReadAsync(serviceId, ct), RecheckHealthAsync, token);
             }
             catch (Exception error) { failure = error; }
             finally

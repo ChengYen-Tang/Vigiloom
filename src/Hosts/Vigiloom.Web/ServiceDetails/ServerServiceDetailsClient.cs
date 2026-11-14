@@ -10,12 +10,14 @@ namespace Vigiloom.Web.ServiceDetails;
 
 internal sealed class ServerServiceDetailsClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     ServiceDetailsReader details, HealthStatusReader health, HealthHistoryReader history, HealthObservationReader observations, ServiceEvidenceReader evidence,
-    ServiceHttpMetricsReader metrics) : IServiceDetailsClient
+    ServiceHttpMetricsReader metrics, DeploymentLinks deployments) : IServiceDetailsClient
 {
     public async Task<ServiceDetailsDto?> GetServiceAsync(Guid id, CancellationToken token)
     { await AuthorizeAsync(token); return await details.ReadAsync(id, token); }
     public async Task<ServiceInstancePage?> GetInstancesAsync(Guid id, int page, CancellationToken token)
     { await AuthorizeAsync(token); return await details.InstancesAsync(id, page, token); }
+    public async Task<DeploymentLinkPage?> GetDeploymentsAsync(Guid id, int page, CancellationToken token)
+    { await AuthorizeAsync(token); return await deployments.ListAsync(id, page, token); }
     public async Task<ServiceHealthStatus?> GetHealthAsync(Guid id, CancellationToken token)
     { await AuthorizeAsync(token); return await health.ReadAsync(id, token); }
     public async Task<HealthObservationPage> GetHealthEvidenceAsync(Guid id, int page, CancellationToken token)

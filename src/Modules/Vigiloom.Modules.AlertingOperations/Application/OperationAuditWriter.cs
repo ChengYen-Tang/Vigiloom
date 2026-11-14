@@ -40,6 +40,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             PublicationTemplateChanged change when IsValid(change) => (AuditKinds.PublicationTemplateChangedV1, JsonSerializer.Serialize(change)),
             InstancePolicyChanged change when IsValid(change) => (AuditKinds.InstancePolicyChangedV1, JsonSerializer.Serialize(change)),
             ServiceInstanceChanged change when IsValid(change) => (AuditKinds.ServiceInstanceChangedV1, JsonSerializer.Serialize(change)),
+            DeploymentLinkChanged change when IsValid(change) => (AuditKinds.DeploymentLinkChangedV1, JsonSerializer.Serialize(change)),
             ServiceCollectionChanged change when IsValid(change) => (AuditKinds.ServiceCollectionChangedV1, JsonSerializer.Serialize(change)),
             LogQuotaChanged change when IsValid(change) => (AuditKinds.LogQuotaChangedV1, JsonSerializer.Serialize(change)),
             TraceQuotaChanged change when IsValid(change) => (AuditKinds.TraceQuotaChangedV1, JsonSerializer.Serialize(change)),
@@ -93,6 +94,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
 
     internal static bool IsValid(ServiceInstanceChanged change) => change.ServiceId.Version == 7 &&
         change.Action is ServiceInstanceAction.Retired or ServiceInstanceAction.Restored;
+    internal static bool IsValid(DeploymentLinkChanged change) => change.DeviceId.Version == 7 && change.ServiceInstanceId.Version == 7 &&
+        change.Action is DeploymentLinkAction.Created or DeploymentLinkAction.Ended;
     internal static bool IsValid(ServiceCollectionChanged change) => change.Action is ServiceCollectionAction.Stopped or ServiceCollectionAction.Resumed;
     internal static bool IsValid(HealthTargetChanged change) => change.ServiceId.Version == 7 && ValidHealthTarget(change.Current) &&
         IsVersion(change.CurrentVersion) && (change.Action == HealthTargetAction.Created

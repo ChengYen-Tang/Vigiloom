@@ -54,6 +54,7 @@ builder.Services.AddRazorComponents()
     .AddAuthenticationStateSerialization();
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "identity");
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
+builder.Services.AddModuleSqlServer<DeploymentLinksDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources", pooled: true, migrationHistory: DeploymentLinksDbContext.MigrationHistory);
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service");
 builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "security", pooled: true);
@@ -81,6 +82,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<ServiceMembership>();
+builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
