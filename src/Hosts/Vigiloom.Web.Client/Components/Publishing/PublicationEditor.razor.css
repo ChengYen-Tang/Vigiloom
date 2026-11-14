@@ -8,6 +8,13 @@
 .publication-choices { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
 .publication-choices label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--vigiloom-border); padding: 12px; border-radius: 6px; font-weight: 400; }
 .publication-choices label:has(input:checked) { border-color: #7aaeff; background: #eef5ff; }
+.publication-layout .publication-history { margin-top: 20px; }
+.publication-history label { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--vigiloom-border); border-radius: 6px; padding: 12px; margin-top: 8px; }
+.publication-history label:has(input:checked) { border-color: #7aaeff; background: #eef5ff; }
+.publication-history small { display: block; color: #52657d; font-weight: 400; margin-top: 3px; }
+.publication-layout .publication-history-note { padding: 12px; border-radius: 6px; background: #f0f5fd; }
+.publication-history-preview { border: 1px solid var(--vigiloom-border); border-top: 0; border-radius: 0 0 6px 6px; padding: 14px 18px; color: #52657d; }
+.publication-history-preview span { display: block; margin-top: 6px; }
 .publication-layout > div > label { display: block; margin-top: 16px; }
 .publication-layout ::deep #public-name, .publication-layout ::deep select { display: block; width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid #afbfda; border-radius: 6px; margin: 8px 0 12px; font: inherit; }
 .publication-layout p { color: #52657d; line-height: 1.5; }

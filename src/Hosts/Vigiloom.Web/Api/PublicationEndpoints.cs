@@ -2,6 +2,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Publishing;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
 
 namespace Vigiloom.Web.Api;
 
@@ -177,6 +178,27 @@ internal static class PublicationEndpoints
         publicApi.MapGet("/services/{id:guid}", async (Guid id, PublicReader reader, CancellationToken token) =>
             await reader.ServiceAsync(id, token) is { } result ? Results.Ok(result) : Results.NotFound())
             .Produces<PublicService>().ProducesProblem(404).WithSummary("Get a published service health state");
+        publicApi.MapGet("/services/{id:guid}/history", async (Guid id, DateTimeOffset from, DateTimeOffset to,
+            PublicServiceHistoryReader reader, PublicHistoryAdmission admission, HttpContext context, CancellationToken token) =>
+        {
+            if (!PublicServiceHistoryReader.Valid(from, to)) return Results.BadRequest();
+            if (!await admission.Gate.WaitAsync(0, token))
+            {
+                context.Response.Headers.RetryAfter = "5";
+                return Results.Problem(statusCode: 503, title: "Public history is busy; please retry.");
+            }
+            using var timeout = new CancellationTokenSource(admission.Timeout, admission.Clock);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+            try
+            {
+                return await reader.ReadAsync(id, from, to, deadline.Token) is { } result ? Results.Ok(result) : Results.NotFound();
+            }
+            catch (HealthHistoryTooLargeException) { return Results.Problem(statusCode: 422, title: "The requested history is too large; choose a shorter range."); }
+            catch (HealthHistoryBusyException) { context.Response.Headers.RetryAfter = "5"; return Results.Problem(statusCode: 503, title: "The service history changed; please retry."); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested) { context.Response.Headers.RetryAfter = "5"; return Results.Problem(statusCode: 503, title: "The public history request timed out; please retry."); }
+            finally { admission.Gate.Release(); }
+        }).Produces<PublicServiceHistory>().ProducesProblem(400).ProducesProblem(404).ProducesProblem(422).ProducesProblem(503)
+            .WithSummary("Get explicitly published daily service health history");
         publicApi.MapGet("/groups", async (string? search, int? page, PublicReader reader, CancellationToken token) =>
             Valid(search, page) ? Results.Ok(await reader.GroupsAsync(search?.Trim(), page ?? 1, token)) : Results.BadRequest())
             .Produces<PublicPage<PublicGroup>>().ProducesProblem(400).WithSummary("List published groups and visible counts");

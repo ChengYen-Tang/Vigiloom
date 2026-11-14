@@ -56,9 +56,9 @@ public sealed class MonitoredService
 
     public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
     {
-        if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
+        if (isPublic && (policyVersion is not (PublicationPolicy.BaselineVersion or PublicationPolicy.ServiceHistoryVersion) || !PublicationPolicy.TryValidateName(displayName, out _)))
             throw new ArgumentException("An approved publication policy and public name are required.");
-        if (isPublic && !IsPublic) PublicSince = PendingPublicSince;
+        if (isPublic && (!IsPublic || policyVersion != PublicPolicyVersion)) PublicSince = PendingPublicSince;
         if (!isPublic) PublicSince = null;
         IsPublic = isPublic;
         if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }

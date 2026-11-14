@@ -164,7 +164,7 @@
                                     @if (health.EndpointChanged) { <div>檢查網址已變更。</div> }
                                     <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(health.PreviousVersion) ? "初始設定" : health.PreviousVersion) → @health.CurrentVersion</span></details>
                                 }
-                                else if (entry.Publication is { } publication) { <div>類型：@publication.ResourceKind</div><div>公開：@Enabled(publication.PreviousPublic) → @Enabled(publication.CurrentPublic)</div>@if (publication.NameChanged) { <div>公開名稱已變更。</div> } @if (publication.TemplateChanged) { <div>公開範本已變更。</div> } }
+                                else if (entry.Publication is { } publication) { <div>類型：@publication.ResourceKind</div><div>公開：@Enabled(publication.PreviousPublic) → @Enabled(publication.CurrentPublic)</div>@if (publication.NameChanged) { <div>公開名稱已變更。</div> } @if (publication.TemplateChanged) { <div>公開範本已變更。</div> } @if (publication.PolicyChanged) { <div>公開歷史設定已變更。</div> } }
                                 else if (entry.PublicationTemplate is { } template) { <div>範本識別碼：@entry.ResourceId</div><div>受影響設備：@template.AffectedDevices</div> }
                                 else if (entry.HealthNetworkPolicy is { } networks) { <div>網段政策版本：@networks.PreviousGeneration → @networks.CurrentGeneration</div> }
                                 else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>來源識別碼：@sourceId</div> } }
