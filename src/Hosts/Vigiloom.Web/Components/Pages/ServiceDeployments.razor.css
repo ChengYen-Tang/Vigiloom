@@ -1,0 +1,9 @@
+.device-panel { margin-block: 1rem; }
+.device-heading h1, .device-panel td, .device-panel p { overflow-wrap: anywhere; }
+.table-scroll { max-width: 100%; overflow-x: auto; }
+.scroll-hint { display: none; }
+.device-panel ::deep form { display: grid; gap: .6rem; max-width: 42rem; margin-block: 1rem; }
+.device-panel ::deep input, .device-panel ::deep select { min-width: 0; width: 100%; max-width: 100%; }
+.device-panel ::deep button { justify-self: start; }
+.device-panel nav { display: flex; flex-wrap: wrap; gap: .6rem; margin-block: .6rem; }
+@media (max-width: 700px) { .device-panel .scroll-hint { display: block; color: #294c79; font-weight: 600; } }

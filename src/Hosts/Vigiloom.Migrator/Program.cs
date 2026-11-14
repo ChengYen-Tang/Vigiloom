@@ -51,6 +51,7 @@ if (await install.PrepareAsync(freshInstall))
 var services = new ServiceCollection();
 services.AddModuleSqlServer<IdentityAccessDbContext>(connectionString, "identity");
 services.AddModuleSqlServer<ResourcesDbContext>(connectionString, "resources");
+services.AddModuleSqlServer<DeploymentLinksDbContext>(connectionString, "resources", migrationHistory: DeploymentLinksDbContext.MigrationHistory);
 services.AddModuleSqlServer<AgentManagementDbContext>(connectionString, "agent");
 services.AddModuleSqlServer<ServiceObservabilityDbContext>(connectionString, "service");
 services.AddModuleSqlServer<SecurityAnalysisDbContext>(connectionString, "security");
@@ -67,6 +68,8 @@ await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>());
 await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>());
+await install.VerifyAsync();
+await ApplyAsync(provider.GetRequiredService<IDbContextFactory<DeploymentLinksDbContext>>());
 await install.VerifyAsync();
 await ApplyAsync(provider.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>());
 await install.VerifyAsync();

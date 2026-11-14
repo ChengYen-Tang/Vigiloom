@@ -2,6 +2,8 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Web.Authentication;
+using Vigiloom.Web.ServiceDetails;
 using ServiceDetailsDto = Vigiloom.Contracts.Services.ServiceDetails;
 
 namespace Vigiloom.Web.Api;
@@ -28,6 +30,27 @@ internal static class ServiceDetailsEndpoints
             return instances is null ? Results.NotFound() : Results.Ok(instances);
         }).Produces<ServiceInstancePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List registered application service instances");
+        group.MapGet("/deployments", async (Guid serviceId, DeploymentLinks reader, HttpContext context, CancellationToken token, int page = 1) =>
+        {
+            if (serviceId.Version != 7 || page is < 1 or > 1000) return Results.BadRequest();
+            context.Response.Headers.CacheControl = "no-store";
+            var result = await reader.ListAsync(serviceId, page, token);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }).Produces<DeploymentLinkPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("List attested deployment relationships");
+        group.MapPost("/deployments", async (Guid serviceId, CreateDeploymentLink input, DeploymentLinks manager, HttpContext context, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await manager.CreateAsync(serviceId, input, actor, token);
+                return result.Status == DeploymentLinkStatus.Saved
+                    ? Results.Created($"/api/v1/service-details/{serviceId:D}/deployments", new { result.Id })
+                    : DeploymentResponse(result.Status);
+            }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(4096)).Produces(201).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Attest a service deployment relationship");
+        group.MapPost("/deployments/{linkId:guid}/end", async (Guid serviceId, Guid linkId, EndDeploymentLink input, DeploymentLinks manager, HttpContext context, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async actor => DeploymentResponse(await manager.EndAsync(serviceId, linkId, input, actor, token)), allowApiCredential: false))
+            .RequireAuthorization(AccessPolicies.Administrator).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024)).Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("End an attested deployment relationship");
         group.MapGet("/logs", async (Guid serviceId, DateTimeOffset from, DateTimeOffset to, ServiceEvidenceReader reader,
             HttpContext context, CancellationToken token, int page = 1, string? traceId = null) =>
         {
@@ -59,4 +82,12 @@ internal static class ServiceDetailsEndpoints
         }).Produces<HealthObservationPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Read latest health check observations");
     }
+
+    private static IResult DeploymentResponse(DeploymentLinkStatus status) => status switch
+    {
+        DeploymentLinkStatus.Saved => Results.NoContent(),
+        DeploymentLinkStatus.Invalid => Results.BadRequest(),
+        DeploymentLinkStatus.NotFound => Results.NotFound(),
+        _ => Results.Conflict()
+    };
 }

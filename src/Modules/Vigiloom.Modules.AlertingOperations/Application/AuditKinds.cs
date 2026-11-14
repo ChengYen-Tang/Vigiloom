@@ -25,4 +25,5 @@ internal static class AuditKinds
     public const short AgentPackageTrustInitializedV1 = 20;
     public const short PublicationChangedV1 = 21;
     public const short PublicationTemplateChangedV1 = 22;
+    public const short DeploymentLinkChangedV1 = 23;
 }

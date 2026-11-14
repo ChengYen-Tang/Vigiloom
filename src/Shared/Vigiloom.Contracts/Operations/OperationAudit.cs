@@ -57,6 +57,9 @@ public sealed record TraceQuotaChanged(LogQuotaAuditValues Previous, LogQuotaAud
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 public enum ServiceInstanceAction { Retired = 1, Restored = 2 }
 public sealed record ServiceInstanceChanged(ServiceInstanceAction Action, Guid ServiceId) : OperationAuditDetails;
+public enum DeploymentLinkAction { Created = 1, Ended = 2 }
+/// <summary>Only resource identifiers are audited; the administrator's evidence text is excluded.</summary>
+public sealed record DeploymentLinkChanged(DeploymentLinkAction Action, Guid DeviceId, Guid ServiceInstanceId) : OperationAuditDetails;
 public enum ServiceCollectionAction { Stopped = 1, Resumed = 2 }
 public sealed record ServiceCollectionChanged(ServiceCollectionAction Action) : OperationAuditDetails;
 public enum CollectorAction { Registered = 1, RouteAdded = 2, RouteRemoved = 3 }
@@ -91,7 +94,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);
