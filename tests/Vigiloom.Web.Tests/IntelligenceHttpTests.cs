@@ -42,8 +42,8 @@ public sealed class IntelligenceHttpTests(TestContext context)
             {
                 SourceId = source.Id, UpstreamVersion = "v1", ReleasedAt = DateTimeOffset.UtcNow, RetrievedAt = DateTimeOffset.UtcNow,
                 Digest = new byte[32], Artifact = System.Text.Encoding.UTF8.GetBytes(secret),
-                SchemaVersion = "a795af4c4afc47df12906b4c04e656156cf06493", MappingVersion = "kev-raw-v1",
-                LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493", RecordCount = 1
+                SchemaVersion = "a795af4c4afc47df12906b4c04e656156cf06493", MappingVersion = "kev-cve-v1",
+                LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493", RecordCount = 1, Normalized = true
             };
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
             {

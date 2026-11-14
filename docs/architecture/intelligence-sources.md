@@ -78,6 +78,15 @@ negative result. Consumers identify records by source and CVE, and query an
 explicit activated version. Vendor/product strings are source descriptions,
 not a verified mapping to a Vigiloom inventory asset.
 
+The `kev-cve-v1` mapping stores one typed entry per CVE and revision, including
+optional ransomware, forensic, notes and CWE values when present. The original
+artifact remains the authority for unknown fields. Revision identity includes
+the mapping version as well as source and content digest: an older mapping does
+not establish that a newer mapping has been completed. A revoked content digest
+cannot become eligible again merely by importing the same bytes with a different
+mapping. All normalized entries, the revision and its cache marker commit in one
+transaction; an interrupted batch cannot be activated.
+
 The importer validates UTF-8, JSON and the pinned schema, declared `count`,
 unique CVE IDs, required fields and timestamps before a version is eligible for
 activation. It rejects content above the configured compressed and decompressed

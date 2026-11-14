@@ -1,10 +1,15 @@
 using System.Net;
 using System.Text;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Tests.Fixtures;
+using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.AlertingOperations.Application;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 
@@ -18,6 +23,39 @@ public sealed class KevUpdateTests(TestContext context)
         {"cveID":"CVE-2026-1234","vendorProject":"Vendor","product":"Product","vulnerabilityName":"Example",
          "dateAdded":"2026-11-01","shortDescription":"Description","requiredAction":"Update","dueDate":"2026-12-01"}]}
         """;
+
+    [TestMethod]
+    public Task NormalizationFailure_RollsBackRevisionCacheAndSuccessfulCheck() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var contexts = new ContextFactory(options);
+            var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true };
+            await using (var db = contexts.CreateDbContext())
+            {
+                await db.Database.MigrateAsync(token);
+                db.IntelligenceSources.Add(source);
+                await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE [security].[KevRecords] ADD CONSTRAINT [CK_RejectSecondBatchTest] CHECK ([CveId] <> 'CVE-2026-2256');", token);
+            }
+            using var template = JsonDocument.Parse(Catalog);
+            var entry = template.RootElement.GetProperty("vulnerabilities")[0].GetRawText();
+            var entries = Enumerable.Range(0, 257).Select(i => entry.Replace("CVE-2026-1234", $"CVE-2026-{2000 + i}", StringComparison.Ordinal));
+            var largeCatalog = "{\"catalogVersion\":\"2026.1\",\"dateReleased\":\"2026-11-01T12:30:00Z\",\"count\":257,\"vulnerabilities\":[" + string.Join(',', entries) + "]}";
+            var clients = new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new StringContent(largeCatalog, Encoding.UTF8, "application/json") });
+            var failure = await Assert.ThrowsAsync<DbUpdateException>(() => new KevUpdate(contexts, clients, TimeProvider.System).RunAsync(source.Id, token));
+            Assert.IsInstanceOfType<SqlException>(failure.InnerException);
+            Assert.AreEqual(547, ((SqlException)failure.InnerException).Number);
+            Assert.Contains("CK_RejectSecondBatchTest", failure.InnerException.Message);
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(0, await check.IntelligenceRevisions.CountAsync(token));
+            Assert.AreEqual(0, await check.IntelligenceCaches.CountAsync(token));
+            Assert.AreEqual(0, await check.KevRecords.CountAsync(token));
+            Assert.IsNull((await check.IntelligenceSources.SingleAsync(token)).LastSuccessfulCheckAt);
+        }, context.CancellationToken);
 
     [TestMethod]
     public Task Update_StagesValidDataAndPreservesActiveRevisionOnInvalidData() =>
@@ -52,6 +90,11 @@ public sealed class KevUpdateTests(TestContext context)
             {
                 var revision = await db.IntelligenceRevisions.SingleAsync(token);
                 revisionId = revision.Id;
+                var record = await db.KevRecords.SingleAsync(token);
+                Assert.AreEqual(revision.Id, record.RevisionId);
+                Assert.AreEqual("CVE-2026-1234", record.CveId);
+                Assert.AreEqual("Vendor", record.VendorProject);
+                Assert.AreEqual(new DateOnly(2026, 12, 1), record.DueDate);
                 db.IntelligenceActivations.Add(new IntelligenceActivation
                     { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
                 await db.SaveChangesAsync(token);
@@ -220,6 +263,50 @@ public sealed class KevUpdateTests(TestContext context)
             Assert.AreEqual(cachedRevision, cache.RevisionId);
             Assert.AreEqual("\"version-1\"", cache.ETag);
             Assert.AreEqual(1, await check.IntelligenceRevisions.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task Update_NewMapping_ReimportsIdenticalBytesWithoutUsingOldValidators() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var contexts = new ContextFactory(options);
+            var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true };
+            var bytes = Encoding.UTF8.GetBytes(Catalog);
+            var oldRevision = new IntelligenceRevision
+            {
+                SourceId = source.Id, UpstreamVersion = "2026.1", ReleasedAt = DateTimeOffset.UtcNow,
+                RetrievedAt = DateTimeOffset.UtcNow, Digest = SHA256.HashData(bytes), Artifact = bytes,
+                SchemaVersion = KevCatalogValidator.SchemaRevision, MappingVersion = "kev-raw-v1",
+                LicenseEvidence = KevUpdate.LicenseEvidence, RecordCount = 1
+            };
+            await using (var db = contexts.CreateDbContext())
+            {
+                db.IntelligenceSources.Add(source);
+                db.IntelligenceRevisions.Add(oldRevision);
+                db.IntelligenceCaches.Add(new IntelligenceCache { SourceId = source.Id, RevisionId = oldRevision.Id, ETag = "\"old\"" });
+                await db.SaveChangesAsync(token);
+            }
+            var clients = new ClientFactory(request =>
+            {
+                Assert.IsFalse(request.Headers.IfNoneMatch.Any());
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+            });
+            Assert.AreEqual(KevUpdateResult.Staged, await new KevUpdate(contexts, clients, TimeProvider.System).RunAsync(source.Id, token));
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(2, await check.IntelligenceRevisions.CountAsync(token));
+            var revision = await check.IntelligenceRevisions.SingleAsync(x => x.MappingVersion == KevUpdate.MappingVersion, token);
+            Assert.IsTrue(revision.Normalized);
+            Assert.AreEqual(1, await check.KevRecords.CountAsync(x => x.RevisionId == revision.Id, token));
+            var original = await check.IntelligenceRevisions.SingleAsync(x => x.Id == oldRevision.Id, token);
+            original.Revoked = true;
+            await check.SaveChangesAsync(token);
+            Assert.AreEqual(KevUpdateResult.Failed, await new KevUpdate(contexts, clients, TimeProvider.System).RunAsync(source.Id, token));
+            var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable,
+                await publication.ActivateAsync(source.Id, revision.Id, null, "", false, Guid.CreateVersion7(), token));
         }, context.CancellationToken);
 
     private sealed class ClientFactory(Func<HttpRequestMessage, HttpResponseMessage> response) : IHttpClientFactory

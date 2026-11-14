@@ -545,6 +545,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<bool>("Normalized")
+                        .HasColumnType("bit");
+
                     b.Property<int>("RecordCount")
                         .HasColumnType("int");
 
@@ -589,7 +592,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
 
-                    b.HasIndex("SourceId", "Digest")
+                    b.HasIndex("SourceId", "Digest", "MappingVersion")
                         .IsUnique();
 
                     b.ToTable("IntelligenceRevisions", "security", t =>
@@ -673,6 +676,71 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 67108864 AND [MaximumRecords] BETWEEN 1 AND 1000000");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.KevRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("CveId")
+                        .IsRequired()
+                        .HasMaxLength(28)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(28)");
+
+                    b.Property<string>("CwesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("DateAdded")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ForensicTriage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Product")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RansomwareUse")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequiredAction")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("VendorProject")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VulnerabilityName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId", "CveId")
+                        .IsUnique();
+
+                    b.ToTable("KevRecords", "security");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChangeRecord", b =>
@@ -1142,6 +1210,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource", null)
                         .WithMany()
                         .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.KevRecord", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

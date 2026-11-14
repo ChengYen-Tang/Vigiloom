@@ -121,7 +121,7 @@ public sealed class IntelligencePublicationTests(TestContext context)
         SourceId = sourceId, UpstreamVersion = $"v{digest}", ReleasedAt = DateTimeOffset.UtcNow,
         RetrievedAt = DateTimeOffset.UtcNow, Digest = Enumerable.Repeat(digest, 32).ToArray(), Artifact = [digest],
         SchemaVersion = KevCatalogValidator.SchemaRevision, MappingVersion = KevUpdate.MappingVersion,
-        LicenseEvidence = KevUpdate.LicenseEvidence, RecordCount = count
+        LicenseEvidence = KevUpdate.LicenseEvidence, RecordCount = count, Normalized = true
     };
 
     private static async Task<string> VersionAsync(Factory<SecurityAnalysisDbContext> contexts, CancellationToken token)

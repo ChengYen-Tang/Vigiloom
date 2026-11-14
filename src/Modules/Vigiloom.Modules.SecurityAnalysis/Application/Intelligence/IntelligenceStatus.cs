@@ -39,9 +39,9 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var rows = await db.IntelligenceRevisions.AsNoTracking().Where(x => x.SourceId == sourceId)
             .OrderByDescending(x => x.RetrievedAt).ThenByDescending(x => x.RowId).Skip((page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.Id, x.UpstreamVersion, x.ReleasedAt, x.RetrievedAt, x.Digest, x.SchemaVersion,
-                x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked }).ToArrayAsync(token);
+                x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized }).ToArrayAsync(token);
         return new(rows.Take(PageSize).Select(x => new IntelligenceRevisionView(x.Id, x.UpstreamVersion, x.ReleasedAt, x.RetrievedAt,
-            Convert.ToHexStringLower(x.Digest), x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked,
+            Convert.ToHexStringLower(x.Digest), x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized,
             x.Id == activeId)).ToArray(), page, rows.Length > PageSize && page < 1000);
     }
 }
