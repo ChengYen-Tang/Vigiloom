@@ -20,6 +20,30 @@ namespace Vigiloom.Web.Tests;
 public sealed class TemplateAdministrationTests(TestContext context)
 {
     [TestMethod]
+    public Task Create_HistoryRequiresValidDaysAndStartsAfterCommit() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var host = PingTestSite.CreateFactory(database.ConnectionString);
+            var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            var templates = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+            var service = new TemplateAdministration(resources, new OperationAuditWriter(), TimeProvider.System);
+            var actor = Guid.CreateVersion7();
+            Assert.AreEqual(TemplateChangeStatus.Invalid, (await service.CreateAsync(new("Invalid", true, true, 8), actor, token)).Status);
+            var before = DateTimeOffset.UtcNow.AddSeconds(-2);
+            var result = await service.CreateAsync(new("History", true, true, 7), actor, token);
+            Assert.AreEqual(TemplateChangeStatus.Created, result.Status);
+            Assert.IsNotNull(result.Template);
+            Assert.AreEqual(7, result.Template.HistoryDays);
+            Assert.IsTrue(result.Template.HistoryReady);
+            await using var db = await templates.CreateDbContextAsync(token);
+            var row = await db.Templates.AsNoTracking().SingleAsync(x => x.Id == result.Template.Id, token);
+            Assert.IsNotNull(row.HistorySince);
+            Assert.IsGreaterThanOrEqualTo(before, row.HistorySince.Value);
+            Assert.IsLessThan(DateTimeOffset.UtcNow.AddSeconds(2), row.HistorySince.Value);
+            Assert.AreEqual(result.Template.Version, Convert.ToBase64String(row.Version));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Create_EnforcesUniqueNameAndAuditsAtomically() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
