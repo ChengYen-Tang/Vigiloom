@@ -26,6 +26,9 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<IntelligenceCache> IntelligenceCaches => Set<IntelligenceCache>();
     public DbSet<IntelligenceActivationEvent> IntelligenceActivationEvents => Set<IntelligenceActivationEvent>();
     public DbSet<KevRecord> KevRecords => Set<KevRecord>();
+    public DbSet<AdvisoryImport> AdvisoryImports => Set<AdvisoryImport>();
+    public DbSet<AdvisoryImportPage> AdvisoryImportPages => Set<AdvisoryImportPage>();
+    public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

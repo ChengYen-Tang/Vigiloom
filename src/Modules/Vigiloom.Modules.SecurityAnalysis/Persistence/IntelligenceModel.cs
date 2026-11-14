@@ -87,5 +87,47 @@ internal static class IntelligenceModel
         kev.Property(x => x.RequiredAction).IsRequired();
         kev.HasIndex(x => new { x.RevisionId, x.CveId }).IsUnique();
         kev.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var import = model.Entity<AdvisoryImport>();
+        import.ToTable("AdvisoryImports", t =>
+        {
+            t.HasCheckConstraint("CK_AdvisoryImports_Values", "[Id] <> '00000000-0000-0000-0000-000000000000' AND [WindowStart] <= [WindowEnd] AND [Phase] BETWEEN 1 AND 5 AND [PageCount] BETWEEN 0 AND 100000 AND [RecordCount] BETWEEN 0 AND 100000 AND [TotalBytes] BETWEEN 0 AND 1073741824");
+            t.HasCheckConstraint("CK_AdvisoryImports_Base", "([BaseRevisionId] IS NULL AND [BaseActivationVersion] IS NULL) OR ([BaseRevisionId] IS NOT NULL AND [BaseActivationVersion] IS NOT NULL)");
+        });
+        import.HasKey(x => x.Id).IsClustered(false);
+        import.Property(x => x.Id).ValueGeneratedNever();
+        import.Property(x => x.RowId).UseIdentityColumn();
+        import.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        import.Property(x => x.SourceVersion).HasColumnType("binary(8)").IsRequired();
+        import.Property(x => x.BaseActivationVersion).HasColumnType("binary(8)");
+        import.Property(x => x.Cursor).HasMaxLength(1024).IsUnicode(false).UseCollation("Latin1_General_100_BIN2");
+        import.Property(x => x.Version).IsRowVersion();
+        import.HasIndex(x => new { x.SourceId, x.StartedAt });
+        import.HasIndex(x => x.SourceId).IsUnique().HasFilter("[Phase] < 4");
+        import.HasOne<IntelligenceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.NoAction);
+        import.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.BaseRevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+
+        var page = model.Entity<AdvisoryImportPage>();
+        page.ToTable("AdvisoryImportPages", t => t.HasCheckConstraint("CK_AdvisoryImportPages_Values", "[Number] > 0 AND [Phase] BETWEEN 1 AND 2 AND DATALENGTH([Payload]) BETWEEN 1 AND 2097152"));
+        page.HasKey(x => x.RowId).IsClustered();
+        page.Property(x => x.RowId).UseIdentityColumn();
+        page.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        page.Property(x => x.Payload).IsRequired();
+        page.Property(x => x.NextCursor).HasMaxLength(1024).IsUnicode(false).UseCollation("Latin1_General_100_BIN2");
+        page.HasAlternateKey(x => new { x.ImportId, x.RowId }).IsClustered(false);
+        page.HasIndex(x => new { x.ImportId, x.Number }).IsUnique();
+        page.HasIndex(x => new { x.ImportId, x.Phase, x.NextCursor });
+        page.HasOne<AdvisoryImport>().WithMany().HasForeignKey(x => x.ImportId).OnDelete(DeleteBehavior.NoAction);
+
+        var entry = model.Entity<AdvisoryImportEntry>();
+        entry.ToTable("AdvisoryImportEntries", t => t.HasCheckConstraint("CK_AdvisoryImportEntries_Ordinal", "[Ordinal] BETWEEN 0 AND 99"));
+        entry.HasKey(x => x.RowId).IsClustered();
+        entry.Property(x => x.RowId).UseIdentityColumn();
+        entry.Property(x => x.AdvisoryId).HasMaxLength(19).IsUnicode(false).IsRequired();
+        entry.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        entry.HasIndex(x => new { x.ImportId, x.AdvisoryId }).IsUnique();
+        entry.HasOne<AdvisoryImportPage>().WithMany().HasForeignKey(x => new { x.ImportId, x.PageRowId })
+            .HasPrincipalKey(x => new { x.ImportId, x.RowId }).OnDelete(DeleteBehavior.NoAction);
     }
 }
