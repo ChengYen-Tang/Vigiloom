@@ -187,6 +187,7 @@ builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateUpdateWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateRetirementWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
 builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicHistoryAdmission>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();
