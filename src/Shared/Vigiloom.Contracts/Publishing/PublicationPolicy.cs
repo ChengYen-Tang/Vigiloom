@@ -9,6 +9,7 @@ public static partial class PublicationPolicy
     public const string BaselineVersion = "baseline-v1";
     public const string TemplateVersion = "template-v1";
     public const string ServiceHistoryVersion = "service-history-v1";
+    public const string ServiceHistoryDetailsVersion = "service-history-v2";
     public const int MaximumNameLength = 256;
     private const int MaximumAddressChecks = 2048;
 
@@ -100,5 +101,14 @@ public sealed record PublicHealthDay(DateTimeOffset From, DateTimeOffset To, str
 /// <summary>A bounded view of a service's explicitly authorized public health history.</summary>
 public sealed record PublicServiceHistory(IReadOnlyList<PublicHealthDay> Days);
 
+/// <summary>A public health period; later periods identify a derived health state change, not an incident time.</summary>
+public sealed record PublicHealthPeriod(DateTimeOffset From, DateTimeOffset To, string State, bool IsStateChange);
+
+/// <summary>Bounded public health periods evaluated at the indicated UTC time.</summary>
+public sealed record PublicServiceHealthPeriods(IReadOnlyList<PublicHealthPeriod> Periods, DateTimeOffset AsOf);
+
 /// <summary>Public-only group counts, never including private members.</summary>
 public sealed record PublicGroup(Guid Id, string Name, int DeviceCount, int ServiceCount);
+
+/// <summary>One currently published resource; unavailable events contain no resource data.</summary>
+public sealed record PublicStatusUpdate(PublicDevice? Device, PublicService? Service, PublicGroup? Group);

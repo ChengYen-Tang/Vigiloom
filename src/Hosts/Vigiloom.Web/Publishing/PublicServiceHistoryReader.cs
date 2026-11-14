@@ -7,18 +7,29 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Web.Publishing;
 
-/// <summary>Reads daily summaries only for a service with explicit, current history authorization.</summary>
+/// <summary>Reads public history only within the service's explicitly authorized policy.</summary>
 internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObservabilityDbContext> contexts, HealthHistoryReader history)
 {
     public static bool Valid(DateTimeOffset from, DateTimeOffset to) => from.Offset == TimeSpan.Zero && to.Offset == TimeSpan.Zero &&
         from < to && to - from <= TimeSpan.FromDays(90);
+    public static bool ValidPeriods(DateTimeOffset from, DateTimeOffset to) => Valid(from, to) && to - from <= TimeSpan.FromDays(1);
 
-    public async Task<PublicServiceHistory?> ReadAsync(Guid id, DateTimeOffset from, DateTimeOffset to, CancellationToken token)
+    public Task<PublicServiceHistory?> ReadAsync(Guid id, DateTimeOffset from, DateTimeOffset to, CancellationToken token) =>
+        ReadCoreAsync(id, from, to, false, static (first, last, _, intervals) => new PublicServiceHistory(ToDays(first, last, intervals)), token);
+
+    public Task<PublicServiceHealthPeriods?> ReadPeriodsAsync(Guid id, DateTimeOffset from, DateTimeOffset to, CancellationToken token)
+    {
+        if (!ValidPeriods(from, to)) throw new ArgumentException("A UTC history window of at most one day is required.");
+        return ReadCoreAsync(id, from, to, true, static (_, _, now, intervals) => new PublicServiceHealthPeriods(ToPeriods(intervals), now), token);
+    }
+
+    private async Task<T?> ReadCoreAsync<T>(Guid id, DateTimeOffset from, DateTimeOffset to, bool requireDetails,
+        Func<DateTimeOffset, DateTimeOffset, DateTimeOffset, IReadOnlyList<ServiceHealthInterval>, T> project, CancellationToken token) where T : class
     {
         if (id.Version != 7) return null;
         if (!Valid(from, to)) throw new ArgumentException("A UTC history window of at most 90 days is required.");
         await using var db = await contexts.CreateDbContextAsync(token);
-        var before = await ReadAuthorizationAsync(db, id, token);
+        var before = await ReadAuthorizationAsync(db, id, requireDetails, token);
         if (before is null || before.PublicSince == MonitoredService.PendingPublicSince ||
             !PublicationPolicy.TryValidateName(before.Name, out _)) return null;
         var now = await db.Database.SqlQueryRaw<DateTimeOffset>(
@@ -27,25 +38,51 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
         var oldest = now.AddDays(-90);
         if (first < oldest) first = oldest;
         var last = to < now ? to : now;
-        PublicServiceHistory result;
-        if (first >= last) result = new([]);
+        T result;
+        if (first >= last) result = project(last, last, now, []);
         else
         {
             var rows = await history.ReadAsync(id, first, last, token);
             if (rows is null) return null;
-            result = new(ToDays(first, last, rows.Intervals));
+            result = project(first, last, now, rows.Intervals);
         }
-        var after = await ReadAuthorizationAsync(db, id, token);
+        var after = await ReadAuthorizationAsync(db, id, requireDetails, token);
         return after is not null && before.PublicSince == after.PublicSince && before.Version.AsSpan().SequenceEqual(after.Version) &&
             before.SourceVersion.AsSpan().SequenceEqual(after.SourceVersion) ? result : null;
     }
 
-    private static async Task<Authorization?> ReadAuthorizationAsync(ServiceObservabilityDbContext db, Guid id, CancellationToken token) =>
+    internal static IReadOnlyList<PublicHealthPeriod> ToPeriods(IReadOnlyList<ServiceHealthInterval> intervals)
+    {
+        const int maximumPeriods = 512;
+        var result = new List<PublicHealthPeriod>();
+        foreach (var interval in intervals)
+        {
+            var state = interval.State switch
+            {
+                ServiceHealthState.Healthy => "Healthy",
+                ServiceHealthState.Degraded => "Degraded",
+                ServiceHealthState.Unhealthy => "Unhealthy",
+                _ => "Unknown"
+            };
+            if (result.Count > 0 && result[^1].To == interval.Start && result[^1].State == state)
+            {
+                result[^1] = result[^1] with { To = interval.End };
+                continue;
+            }
+            if (result.Count == maximumPeriods) throw new HealthHistoryTooLargeException();
+            result.Add(new(interval.Start, interval.End, state, result.Count > 0));
+        }
+        return result;
+    }
+
+    private static async Task<Authorization?> ReadAuthorizationAsync(ServiceObservabilityDbContext db, Guid id, bool requireDetails, CancellationToken token) =>
         await (from service in db.Services.AsNoTracking()
                join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
                where service.Id == id && service.IsPublic && service.PublicSince != null && service.PublicDisplayName != null &&
-                   EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&
-                   EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryVersion.Length * 2
+                   ((EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryDetailsVersion &&
+                     EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryDetailsVersion.Length * 2) ||
+                    (!requireDetails && EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&
+                     EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryVersion.Length * 2))
                select new Authorization(service.PublicDisplayName!, service.PublicSince!.Value, service.Version, source.Version))
             .SingleOrDefaultAsync(token);
 
