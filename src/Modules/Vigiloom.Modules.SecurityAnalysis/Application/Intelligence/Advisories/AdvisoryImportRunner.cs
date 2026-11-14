@@ -56,6 +56,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
             if (import.Phase == 3 && import.ReconciliationPhase == 4) return new(AdvisoryRunResult.Inconsistent, importId);
             if (import.Phase == 3 && !reconcile) return new(AdvisoryRunResult.AwaitingReconciliation, importId);
             if (import.Phase is not (1 or 2 or 3)) return new(AdvisoryRunResult.Conflict, importId);
+            if (import.FailureCode is "invalid-response" or "cursor-rejected" or "limit-exceeded") return new(AdvisoryRunResult.Failed, importId);
             if (sourceLimited) return new(AdvisoryRunResult.RateLimited, importId);
             var withdrawn = (import.Phase == 3 ? import.ReconciliationPhase : import.Phase) == 2;
             AdvisoryPage page;
@@ -87,7 +88,12 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                 try
                 {
                     var restarted = await store.RestartAsync(sourceId, importId, import.Version, budget.Token);
-                    if (restarted is null) return new(AdvisoryRunResult.CursorRejected, importId);
+                    if (restarted is null)
+                    {
+                        if (import.RestartCount < 3) return new(AdvisoryRunResult.Conflict, importId);
+                        await RecordFailureAsync(store, sourceId, import, "cursor-rejected", token);
+                        return new(AdvisoryRunResult.CursorRejected, importId);
+                    }
                     importId = restarted.Id;
                     continue;
                 }
@@ -98,6 +104,13 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
             }
             catch (Exception error) when (error is HttpRequestException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
             {
+                var code = error switch
+                {
+                    InvalidDataException => "invalid-response",
+                    OperationCanceledException => "request-timeout",
+                    _ => "fetch-failed"
+                };
+                await RecordFailureAsync(store, sourceId, import, code, token);
                 return new(AdvisoryRunResult.Failed, importId);
             }
             AdvisoryStageResult result;
@@ -107,8 +120,20 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                 return new(AdvisoryRunResult.Deferred, importId);
             }
             if (result == AdvisoryStageResult.Conflict) return new(AdvisoryRunResult.Conflict, importId);
-            if (result is AdvisoryStageResult.Invalid or AdvisoryStageResult.LimitExceeded) return new(AdvisoryRunResult.Invalid, importId);
+            if (result is AdvisoryStageResult.Invalid or AdvisoryStageResult.LimitExceeded)
+            {
+                await RecordFailureAsync(store, sourceId, import, result == AdvisoryStageResult.Invalid ? "invalid-response" : "limit-exceeded", token);
+                return new(AdvisoryRunResult.Invalid, importId);
+            }
         }
         return new(AdvisoryRunResult.Deferred, importId);
+    }
+
+    private static async Task RecordFailureAsync(AdvisoryImportStore store, Guid sourceId, AdvisoryImport import, string code, CancellationToken token)
+    {
+        using var persistenceBudget = CancellationTokenSource.CreateLinkedTokenSource(token);
+        persistenceBudget.CancelAfter(TimeSpan.FromSeconds(10));
+        try { await store.RecordFailureAsync(sourceId, import.Id, import.Version, code, persistenceBudget.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && persistenceBudget.IsCancellationRequested) { }
     }
 }

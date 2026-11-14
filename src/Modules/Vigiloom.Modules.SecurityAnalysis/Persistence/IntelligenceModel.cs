@@ -96,6 +96,7 @@ internal static class IntelligenceModel
             t.HasCheckConstraint("CK_AdvisoryImports_RateLimitAttempts", "[RateLimitAttempts] BETWEEN 0 AND 20");
             t.HasCheckConstraint("CK_AdvisoryImports_RestartCount", "[RestartCount] BETWEEN 0 AND 3");
             t.HasCheckConstraint("CK_AdvisoryImports_Reconciliation", "[ReconciliationPhase] BETWEEN 1 AND 4 AND [ReconciliationRecordCount] BETWEEN 0 AND 100000");
+            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base')");
         });
         import.HasKey(x => x.Id).IsClustered(false);
         import.Property(x => x.Id).ValueGeneratedNever();
@@ -105,6 +106,7 @@ internal static class IntelligenceModel
         import.Property(x => x.ResultSourceVersion).HasColumnType("binary(8)");
         import.Property(x => x.BaseActivationVersion).HasColumnType("binary(8)");
         import.Property(x => x.Cursor).HasMaxLength(1024).IsUnicode(false).UseCollation("Latin1_General_100_BIN2");
+        import.Property(x => x.FailureCode).HasMaxLength(32).IsUnicode(false);
         import.Property(x => x.Version).IsRowVersion();
         import.Property(x => x.ReconciliationPhase).HasDefaultValue(1);
         import.HasIndex(x => new { x.SourceId, x.StartedAt });

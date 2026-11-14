@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Tests.Fixtures;
@@ -13,6 +15,103 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 [TestCategory("Database")]
 public sealed class AdvisoryRefreshTests(TestContext context)
 {
+    [TestMethod]
+    public Task Progress_WaitsForSourceWriterBeforeReadingImport() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
+            var refresh = new AdvisoryRefresh(contexts, new ClientFactory(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)), clock);
+            Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
+            Guid sourceId;
+            await using (var db = contexts.CreateDbContext()) sourceId = (await db.IntelligenceSources.SingleAsync(token)).Id;
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+            await using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = @id";
+                command.Parameters.AddWithValue("@id", sourceId);
+                await command.ExecuteScalarAsync(token);
+                command.CommandText = "UPDATE [security].[AdvisoryImports] SET [PageCount] = [PageCount] WHERE [SourceId] = @id";
+                await command.ExecuteNonQueryAsync(token);
+            }
+            var status = new IntelligenceStatus(contexts, clock);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            var read = status.GetAdvisoryProgressAsync(sourceId, deadline.Token);
+            try
+            {
+                await using (var observer = new SqlConnection(database.ConnectionString))
+                {
+                    await observer.OpenAsync(deadline.Token);
+                    await using var command = observer.CreateCommand();
+                    command.CommandText = "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE [blocking_session_id] = @blocker";
+                    command.Parameters.AddWithValue("@blocker", connection.ServerProcessId);
+                    while ((int)(await command.ExecuteScalarAsync(deadline.Token))! == 0)
+                        await Task.Delay(50, deadline.Token);
+                }
+                await using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = "UPDATE [security].[IntelligenceSources] SET [LastError] = 'test' WHERE [Id] = @id";
+                    command.Parameters.AddWithValue("@id", sourceId);
+                    await command.ExecuteNonQueryAsync(deadline.Token);
+                }
+                await transaction.CommitAsync(deadline.Token);
+                Assert.AreEqual("rate-limited", (await read.WaitAsync(deadline.Token))?.State);
+            }
+            finally
+            {
+                await deadline.CancelAsync();
+                if (transaction.Connection is not null)
+                {
+                    try { await transaction.RollbackAsync(CancellationToken.None); }
+                    catch (Exception error) when (error is InvalidOperationException or SqlException) { }
+                }
+                try { await read; }
+                catch (Exception) { }
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task RunDue_ReportsSanitizedFailureAndClearsItAfterRecovery() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
+            var calls = 0;
+            var clients = new ClientFactory(_ => ++calls switch
+            {
+                1 => new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("sensitive upstream data") },
+                2 => new HttpResponseMessage(HttpStatusCode.TooManyRequests),
+                _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") }
+            });
+            var refresh = new AdvisoryRefresh(contexts, clients, clock);
+            Assert.AreEqual(AdvisoryRefreshResult.Failed, await refresh.RunDueAsync(token));
+            Guid sourceId;
+            await using (var db = contexts.CreateDbContext()) sourceId = (await db.IntelligenceSources.SingleAsync(token)).Id;
+            var status = new IntelligenceStatus(contexts, clock);
+            var failed = await status.GetAdvisoryProgressAsync(sourceId, token);
+            Assert.IsNotNull(failed);
+            Assert.AreEqual("failed", failed.State);
+            Assert.AreEqual("fetch-failed", failed.FailureCode);
+            Assert.AreEqual(AdvisoryRefreshResult.RateLimited, await refresh.RunDueAsync(token));
+            var limited = await status.GetAdvisoryProgressAsync(sourceId, token);
+            Assert.IsNotNull(limited);
+            Assert.AreEqual("rate-limited", limited.State);
+            Assert.IsNotNull(limited.RetryAt);
+            clock.Advance(TimeSpan.FromMinutes(2));
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+            var recovered = await status.GetAdvisoryProgressAsync(sourceId, token);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual("awaiting-activation", recovered.State);
+            Assert.IsNull(recovered.FailureCode);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task RunDue_ResumesRateLimitedImportAndWaitsForActivation() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>

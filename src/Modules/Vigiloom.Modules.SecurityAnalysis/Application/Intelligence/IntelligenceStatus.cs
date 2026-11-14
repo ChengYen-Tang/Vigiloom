@@ -1,5 +1,7 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -8,6 +10,50 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock)
 {
     private const int PageSize = 50;
+
+    public async Task<AdvisoryImportProgressView?> GetAdvisoryProgressAsync(Guid sourceId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var source = await db.IntelligenceSources
+            .FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
+            .AsNoTracking().SingleOrDefaultAsync(token);
+        if (source is null || source.Key != "github-reviewed") return null;
+        var import = await db.AdvisoryImports.AsNoTracking().Where(x => x.SourceId == sourceId)
+            .OrderBy(x => x.Phase < 4 ? 0 : 1).ThenByDescending(x => x.StartedAt).ThenByDescending(x => x.RowId).FirstOrDefaultAsync(token);
+        var active = await db.IntelligenceActivations.AsNoTracking().Where(x => x.SourceId == sourceId)
+            .Select(x => new { x.RevisionId, x.Version }).SingleOrDefaultAsync(token);
+        var now = clock.GetUtcNow();
+        var retryAt = await db.AdvisoryImports.AsNoTracking().Where(x => x.SourceId == sourceId && x.NotBefore > now)
+            .MaxAsync(x => x.NotBefore, token);
+        var eligible = import?.ResultRevisionId is { } revisionId &&
+            await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, revisionId, token);
+        var state = import switch
+        {
+            _ when !source.Enabled => "disabled",
+            null => "not-started",
+            { Phase: 3, ReconciliationPhase: 4 } => "inconsistent",
+            { FailureCode: "invalid-response" or "cursor-rejected" or "limit-exceeded" or "invalid-base" } => "failed",
+            { Phase: < 4 } when retryAt is not null => "rate-limited",
+            { FailureCode: not null } => "failed",
+            { Phase: 1 or 2 } => "importing",
+            { Phase: 3 } => "reconciling",
+            { Phase: 4, ResultRevisionId: { } id } when id == active?.RevisionId && !eligible => "active-unavailable",
+            { Phase: 4, ResultRevisionId: { } id } when id == active?.RevisionId => "active",
+            { Phase: 4 } when !eligible => "candidate-unavailable",
+            { Phase: 4 } when import.ResultSourceVersion is null || !import.ResultSourceVersion.AsSpan().SequenceEqual(source.Version) ||
+                source.LastSuccessfulCheckAt is null || source.LastSuccessfulCheckAt > now ||
+                source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds) || import.BaseRevisionId != active?.RevisionId ||
+                (active is null ? import.BaseActivationVersion is not null : !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion)) => "candidate-stale",
+            { Phase: 4 } => "awaiting-activation",
+            _ => "stopped"
+        };
+        var result = new AdvisoryImportProgressView(sourceId, import?.Id, state, import?.WindowStart, import?.WindowEnd, import?.StartedAt,
+            import?.PageCount ?? 0, import?.RecordCount ?? 0, import?.TotalBytes ?? 0, retryAt, import?.FailureCode,
+            import?.ResultRevisionId, "github-reviewed-only; not a point-in-time snapshot; other sources and applicability unsupported");
+        await transaction.CommitAsync(token);
+        return result;
+    }
 
     public async Task<IntelligenceSourcePage> GetSourcesAsync(int page, CancellationToken token)
     {

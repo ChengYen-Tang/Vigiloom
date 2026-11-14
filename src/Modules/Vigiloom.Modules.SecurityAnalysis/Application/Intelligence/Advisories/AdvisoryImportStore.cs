@@ -114,6 +114,7 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         }
         import.NotBefore = null;
         import.RateLimitAttempts = 0;
+        import.FailureCode = null;
         await db.SaveChangesAsync(token);
         if (reconciliation && import.ReconciliationPhase == 3)
         {
@@ -190,6 +191,23 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
             .SingleOrDefaultAsync(token);
         if (import is null || import.Phase is not (1 or 2 or 3) || !import.Version.AsSpan().SequenceEqual(expectedVersion)) return false;
         import.Phase = 5;
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return true;
+    }
+
+    internal async Task<bool> RecordFailureAsync(Guid sourceId, Guid importId, byte[] expectedVersion, string code, CancellationToken token)
+    {
+        if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8 ||
+            code is not ("fetch-failed" or "invalid-response" or "request-timeout" or "cursor-rejected" or "limit-exceeded" or "invalid-base")) return false;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        if (await LockSourceAsync(db, sourceId, token) is null) return false;
+        var import = await db.AdvisoryImports
+            .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
+            .SingleOrDefaultAsync(token);
+        if (import is null || import.Phase is not (1 or 2 or 3) || !import.Version.AsSpan().SequenceEqual(expectedVersion)) return false;
+        import.FailureCode = code;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return true;

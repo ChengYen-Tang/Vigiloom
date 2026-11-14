@@ -44,6 +44,18 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             var second = await StageWindow(store, contexts, source.Id, token, ("GHSA-bcde-2345-fghi", "2023-01-04T00:00:00Z", false));
             var secondResult = await builder.StageAsync(source.Id, second.Id, second.Version, token);
             Assert.IsNotNull(secondResult.RevisionId);
+            var progressStatus = new IntelligenceStatus(contexts, TimeProvider.System);
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == firstResult.RevisionId, token)).Revoked = true;
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual("candidate-unavailable", (await progressStatus.GetAdvisoryProgressAsync(source.Id, token))?.State);
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == firstResult.RevisionId, token)).Revoked = false;
+                await db.SaveChangesAsync(token);
+            }
             string version;
             await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, firstResult.RevisionId, version, false, actor, token));
@@ -53,6 +65,7 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
                 await db.SaveChangesAsync(token);
                 version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             }
+            Assert.AreEqual("active-unavailable", (await progressStatus.GetAdvisoryProgressAsync(source.Id, token))?.State);
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             await using (var db = contexts.CreateDbContext()) Assert.AreEqual(2, await db.IntelligenceActivationEvents.CountAsync(token));
