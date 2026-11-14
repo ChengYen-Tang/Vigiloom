@@ -5,6 +5,7 @@ namespace Vigiloom.Modules.Resources.Domain;
 
 public sealed class Device
 {
+    public static readonly DateTimeOffset PendingPublicSince = DateTimeOffset.MaxValue;
     private Device() { }
 
     public Device(string name, string address, bool deepMonitoring, DateTimeOffset now)
@@ -72,7 +73,7 @@ public sealed class Device
         if (IsArchived) throw new InvalidOperationException("Archived devices cannot be published.");
         if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
             throw new ArgumentException("An approved publication policy and public name are required.");
-        if (isPublic && (!IsPublic || restartPublicPeriod)) PublicSince = now.ToUniversalTime();
+        if (isPublic && (!IsPublic || restartPublicPeriod)) PublicSince = PendingPublicSince;
         if (!isPublic) PublicSince = null;
         IsPublic = isPublic;
         if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; PublicTemplateId = null; }
@@ -85,12 +86,19 @@ public sealed class Device
         if (IsArchived) throw new InvalidOperationException("Archived devices cannot be published.");
         if (templateId.Version != 7 || !PublicationPolicy.TryValidateName(displayName, out var name))
             throw new ArgumentException("A valid template and public name are required.");
-        if (!IsPublic || restartPublicPeriod) PublicSince = now.ToUniversalTime();
+        if (!IsPublic || restartPublicPeriod) PublicSince = PendingPublicSince;
         IsPublic = true;
         PublicDisplayName = name;
         PublicPolicyVersion = PublicationPolicy.TemplateVersion;
         PublicTemplateId = templateId;
         UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void ConfirmPublicSince(DateTimeOffset committedAfter)
+    {
+        if (!IsPublic || IsArchived || PublicSince != PendingPublicSince || committedAfter.Offset != TimeSpan.Zero || committedAfter >= PendingPublicSince)
+            throw new InvalidOperationException("The publication period is not pending.");
+        PublicSince = committedAfter;
     }
 
     public void Restore(DateTimeOffset now)

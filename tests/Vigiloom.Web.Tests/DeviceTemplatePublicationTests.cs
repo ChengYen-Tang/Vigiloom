@@ -43,12 +43,16 @@ public sealed class DeviceTemplatePublicationTests(TestContext context)
             Assert.AreEqual(PublicationChangeStatus.Updated, a.Status);
             Assert.IsNotNull(a.Settings);
             var start = clock.GetUtcNow();
+            DateTimeOffset? publicSince;
+            await using (var db = await resources.CreateDbContextAsync(token)) publicSince = (await db.Devices.SingleAsync(token)).PublicSince;
+            Assert.IsNotNull(publicSince);
+            Assert.AreNotEqual(Device.PendingPublicSince, publicSince);
             clock.Now = start.AddMinutes(2);
             var b = await admin.SetAsync(PublicationResourceKind.Device, device.Id,
                 new(true, "Public device", PublicationPolicy.TemplateVersion, a.Settings.Version, second.Id, Convert.ToBase64String(second.Version)), actor, token);
             Assert.AreEqual(PublicationChangeStatus.Updated, b.Status);
             Assert.IsNotNull(b.Settings);
-            await using (var db = await resources.CreateDbContextAsync(token)) Assert.AreEqual(start, (await db.Devices.SingleAsync(token)).PublicSince);
+            await using (var db = await resources.CreateDbContextAsync(token)) Assert.AreEqual(publicSince, (await db.Devices.SingleAsync(token)).PublicSince);
             await using (var db = await publishing.CreateDbContextAsync(token))
             {
                 var row = await db.Templates.SingleAsync(x => x.Id == second.Id, token);
@@ -60,7 +64,13 @@ public sealed class DeviceTemplatePublicationTests(TestContext context)
                 new(true, "Public device", PublicationPolicy.BaselineVersion, b.Settings.Version), actor, token);
             Assert.AreEqual(PublicationChangeStatus.Updated, restored.Status);
             Assert.IsNotNull(restored.Settings);
-            await using (var db = await resources.CreateDbContextAsync(token)) Assert.AreEqual(clock.Now, (await db.Devices.SingleAsync(token)).PublicSince);
+            await using (var db = await resources.CreateDbContextAsync(token))
+            {
+                var restarted = (await db.Devices.SingleAsync(token)).PublicSince;
+                Assert.IsNotNull(restarted);
+                Assert.AreNotEqual(Device.PendingPublicSince, restarted);
+                Assert.IsTrue(restarted >= publicSince);
+            }
             var stale = await admin.SetAsync(PublicationResourceKind.Device, device.Id,
                 new(true, "Public device", PublicationPolicy.TemplateVersion, restored.Settings.Version, second.Id, Convert.ToBase64String(second.Version)), actor, token);
             Assert.AreEqual(PublicationChangeStatus.Conflict, stale.Status);

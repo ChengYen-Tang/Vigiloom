@@ -82,7 +82,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         (change.Action is GroupAction.DevicesChanged or GroupAction.ServicesChanged || (change.Added == 0 && change.Removed == 0));
 
     internal static bool IsValid(PublicationChanged change) => change.ResourceKind is >= PublicationResourceKind.Device and <= PublicationResourceKind.Group &&
-        (change.PreviousPublic != change.CurrentPublic || change.NameChanged || change.TemplateChanged && change.ResourceKind == PublicationResourceKind.Device);
+        (change.PreviousPublic != change.CurrentPublic || change.NameChanged || change.TemplateChanged && change.ResourceKind == PublicationResourceKind.Device ||
+         change.PolicyChanged && change.ResourceKind == PublicationResourceKind.Service);
     internal static bool IsValid(PublicationTemplateChanged change) => change.Action is >= PublicationTemplateAction.Created and <= PublicationTemplateAction.DefaultCleared &&
         change.AffectedDevices is >= 0 and <= 10000;
 

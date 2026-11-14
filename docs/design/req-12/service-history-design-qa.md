@@ -1,0 +1,9 @@
+# Service publication history design QA
+
+Final result: passed for the service publication settings extension.
+
+- Reference: `../req-12-service-history-concept.png`. The paired desktop evidence is `service-history-comparison.png`; both captures are 1487 × 1058. `service-history-focus.png` compares the option controls and disclosure text at native pixel density. Both show a public service with daily history selected. The implementation additionally shows its real save confirmation; its existing application shell and test name differ from the illustration.
+- The initial comparison showed the history-start explanation had insufficient emphasis and the preview did not identify the additional history content. The revision adds a tinted explanation and a separate history summary. The final paired capture shows both changes. The mock's example history strip is intentionally replaced by text explaining that the public page uses real post-enable data; it does not invent historical status.
+- Typography, spacing, color and borders follow the existing Vigiloom publication editor. Labels and explanatory copy distinguish the two options, the 90-day limit, the start time and private telemetry. The source's sample icons and application-wide sidebar are not required by this settings extension.
+- `service-history-mobile.png` is a full-page 390 × 844 viewport capture; the form, disclosure, preview and actions remain in a single readable column. No mobile mock was supplied, so this is a responsive inspection rather than a source comparison.
+- The SQL-backed browser test exercises Administrator sign-in, explicit history selection, save, reload into WebAssembly, and switching back to status-only. The Product Design browser also opened the real local test page for visual inspection. This review does not claim full screen-reader certification or completion of REQ-12/REQ-14.

@@ -9,6 +9,8 @@
     else
     {
         <section class="publication-info"><strong>目前狀態：@CurrentStatus</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
+        @if (Kind == "services" && settings.Public && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion && settings.HistoryReady == false)
+        { <p class="publication-message" role="status">公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。</p> }
         @if (message is not null) { <p class="publication-message" role="@(success ? "status" : "alert")">@message</p> }
         <EditForm Model="model" OnSubmit="SaveAsync" FormName="publication-editor">
             <section class="publication-card publication-layout">
@@ -24,13 +26,26 @@
                         <label for="public-name">公開顯示名稱</label>
                         <InputText id="public-name" @bind-Value="model.Name" maxlength="256" disabled="@Disabled" />
                         <p>名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。</p>
-                        <label for="public-policy">公開範本</label>
-                        <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled">
-                            @if (Kind == "devices") { <option value="">請選擇公開範本</option> }
-                            <option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option>
-                            @foreach (var template in templates) { <option value="@template.Id.ToString()">@template.Name@(template.IsDefault ? "（預設）" : "")</option> }
-                            @if (MissingSelection) { <option value="@model.Policy" disabled>原範本已無法使用，請重新選擇</option> }
-                        </InputSelect>
+                        @if (Kind == "services")
+                        {
+                            <fieldset class="publication-history"><legend>公開顯示內容</legend>
+                                <InputRadioGroup @bind-Value="model.Policy">
+                                    <label><InputRadio Value="@PublicationPolicy.BaselineVersion" disabled="@Disabled" /><span><strong>僅顯示簡易狀態</strong><small>訪客可查看目前的服務狀態。</small></span></label>
+                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryVersion" disabled="@Disabled" /><span><strong>包含簡易每日狀態歷史</strong><small>顯示啟用後最多 90 天的狀態與可用率。</small></span></label>
+                                </InputRadioGroup>
+                            </fieldset>
+                            <p class="publication-history-note">歷史從啟用後開始；IP、日誌與追蹤等進階資訊不會公開。</p>
+                        }
+                        else
+                        {
+                            <label for="public-policy">公開範本</label>
+                            <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled">
+                                @if (Kind == "devices") { <option value="">請選擇公開範本</option> }
+                                <option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option>
+                                @foreach (var template in templates) { <option value="@template.Id.ToString()">@template.Name@(template.IsDefault ? "（預設）" : "")</option> }
+                                @if (MissingSelection) { <option value="@model.Policy" disabled>原範本已無法使用，請重新選擇</option> }
+                            </InputSelect>
+                        }
                         @if (Kind == "devices" && moreTemplates) { <button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">載入更多範本</button> }
                         @if (templateError is not null) { <p role="alert">@templateError</p><button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">重試載入</button> }
                     }
@@ -47,8 +62,10 @@
                             @if (Kind == "devices" && ShowLatency && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
                             @if (Kind == "devices" && ShowObservedAt && preview?.ObservedAt is { } observed) { <span>@observed.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }
                         </div>
+                        @if (Kind == "services" && model.Policy == PublicationPolicy.ServiceHistoryVersion)
+                        { <div class="publication-history-preview"><strong>每日狀態歷史（最多 90 天）</strong><span>公開頁顯示啟用後的實際狀態。</span></div> }
                         @if (Kind == "devices") { <p>名稱與狀態會公開@(ShowLatency ? "，包含延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；目前不公開歷史。IP 和主機進階資料不會公開。</p> }
-                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；目前不公開歷史及進階遙測。</p> }
+                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；@(model.Policy == PublicationPolicy.ServiceHistoryVersion ? "啟用後的每日狀態歷史也會公開，最多 90 天。" : "不公開狀態歷史。") IP、日誌與追蹤等進階資訊不會公開。</p> }
                         else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
                     }
                 </aside>
@@ -83,7 +100,7 @@
     private string CurrentStatus => settings is null || !settings.Public ? "不公開" :
         Kind == "devices" && settings.PolicyVersion == PublicationPolicy.TemplateVersion
             ? !currentTemplateChecked ? "已設定公開，範本狀態暫時無法確認" : currentTemplate is null ? "已設定公開，但範本失效，目前訪客不可見" : "公開中"
-            : settings.PolicyVersion == PublicationPolicy.BaselineVersion ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
+            : settings.PolicyVersion == PublicationPolicy.BaselineVersion || Kind == "services" && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,7 +146,8 @@
         if (settings is null || saving) return;
         success = false; message = null;
         var selected = SelectedTemplate;
-        if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || model.Policy != PublicationPolicy.BaselineVersion && (Kind != "devices" || selected is null)))
+        var validPolicy = model.Policy == PublicationPolicy.BaselineVersion || Kind == "services" && model.Policy == PublicationPolicy.ServiceHistoryVersion || Kind == "devices" && selected is not null;
+        if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || !validPolicy))
         { message = "請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"; return; }
         saving = true;
         try
@@ -140,7 +158,9 @@
             if (result.Status == PublicationSaveStatus.Updated && result.Settings is not null)
             {
                 settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; currentTemplate = model.Public ? selected : null;
-                currentTemplateChecked = true; success = true; message = "公開設定已儲存。";
+                currentTemplateChecked = true; success = true;
+                message = Kind == "services" && settings.Public && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion && settings.HistoryReady == false
+                    ? "公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。" : "公開設定已儲存。";
                 try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
             }

@@ -1169,6 +1169,26 @@ public sealed class AgentIdentityHttpTests
             using (var oneTimeNotMachine = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oneTimeNotMachine.StatusCode);
             var machineSecret = Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
+            byte[] publicationVersion;
+            await using (var db = await resources.CreateDbContextAsync(token))
+                publicationVersion = (await db.Devices.AsNoTracking().SingleAsync(x => x.Id == device.Id, token)).Version;
+            int publicationAuditCount;
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+                publicationAuditCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [Kind] IN (21, 22)").SingleAsync(token);
+            var publicationUrl = $"/api/v1/admin/publications/devices/{device.Id:D}";
+            using (var denied = await agent.GetAsync(publicationUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await agent.PutAsJsonAsync(publicationUrl, new { Public = true, DisplayName = "Public", PolicyVersion = "baseline-v1", Version = Convert.ToBase64String(publicationVersion) }, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await agent.PostAsJsonAsync("/api/v1/admin/publications/templates", new { Name = "Unauthorized", ShowLatency = true, ShowObservedAt = true }, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            await using (var db = await resources.CreateDbContextAsync(token))
+            {
+                var unchanged = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == device.Id, token);
+                Assert.IsFalse(unchanged.IsPublic);
+                CollectionAssert.AreEqual(publicationVersion, unchanged.Version);
+            }
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+                Assert.AreEqual(publicationAuditCount, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [Kind] IN (21, 22)").SingleAsync(token));
             using (var aggregate = await api.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={result.AgentId:D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=300", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, aggregate.StatusCode);

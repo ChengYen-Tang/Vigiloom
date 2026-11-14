@@ -5,6 +5,9 @@ namespace Vigiloom.Modules.ServiceObservability.Domain;
 /// <summary>A centrally approved application service, independent of host devices.</summary>
 public sealed class MonitoredService
 {
+    // A publication transaction has committed only after its caller returns from CommitAsync.
+    // Until a post-commit fence is persisted, public history must remain unavailable.
+    public static readonly DateTimeOffset PendingPublicSince = DateTimeOffset.MaxValue;
     private MonitoredService() { }
 
     public MonitoredService(ServiceCandidate candidate, DateTimeOffset approvedAt)
@@ -34,6 +37,7 @@ public sealed class MonitoredService
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public bool IsPublic { get; private set; }
+    public DateTimeOffset? PublicSince { get; private set; }
     public string? PublicDisplayName { get; private set; }
     public string? PublicPolicyVersion { get; private set; }
     public byte[] Version { get; private set; } = [];
@@ -52,10 +56,19 @@ public sealed class MonitoredService
 
     public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
     {
-        if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
+        if (isPublic && (policyVersion is not (PublicationPolicy.BaselineVersion or PublicationPolicy.ServiceHistoryVersion) || !PublicationPolicy.TryValidateName(displayName, out _)))
             throw new ArgumentException("An approved publication policy and public name are required.");
+        if (isPublic && (!IsPublic || policyVersion != PublicPolicyVersion)) PublicSince = PendingPublicSince;
+        if (!isPublic) PublicSince = null;
         IsPublic = isPublic;
         if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
         UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void ConfirmPublicSince(DateTimeOffset committedAfter)
+    {
+        if (!IsPublic || PublicSince != PendingPublicSince || committedAfter.Offset != TimeSpan.Zero || committedAfter >= PendingPublicSince)
+            throw new InvalidOperationException("The publication period is not pending.");
+        PublicSince = committedAfter;
     }
 }
