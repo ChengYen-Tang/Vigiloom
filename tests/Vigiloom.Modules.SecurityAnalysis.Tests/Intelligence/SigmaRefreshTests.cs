@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -131,6 +132,57 @@ public sealed class SigmaRefreshTests(TestContext context)
             await using var licenseCheck = contexts.CreateDbContext();
             Assert.AreEqual(1, await licenseCheck.IntelligenceRevisions.CountAsync(token));
             Assert.AreEqual("Sigma license unavailable or changed.", (await licenseCheck.IntelligenceSources.SingleAsync(token)).LastError);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task SourceSelection_CanSwitchRollbackAndRejectRevokedVersion() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory(options);
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var commit = First;
+            var clients = new ClientFactory(request => request.RequestUri!.Host == "api.github.com"
+                ? new(HttpStatusCode.OK) { Content = new StringContent($"{{\"sha\":\"{commit}\"}}") }
+                : new(HttpStatusCode.OK) { Content = new ByteArrayContent(Archive(commit, false, false)) });
+            var refresh = new SigmaRefresh(contexts, clients, clock);
+            Assert.AreEqual(SigmaRefreshResult.Staged, await refresh.RunDueAsync(token));
+            Guid sourceId;
+            Guid firstId;
+            await using (var db = contexts.CreateDbContext())
+            {
+                sourceId = (await db.IntelligenceSources.SingleAsync(token)).Id;
+                firstId = (await db.IntelligenceRevisions.SingleAsync(token)).Id;
+            }
+            var actor = Guid.CreateVersion7();
+            var publisher = new IntelligencePublication(contexts, new OperationAuditWriter(), clock);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, firstId, null, "", false, actor, token));
+            clock.Advance(TimeSpan.FromDays(2));
+            commit = Second;
+            Assert.AreEqual(SigmaRefreshResult.Staged, await refresh.RunDueAsync(token));
+            Guid secondId;
+            string version;
+            await using (var db = contexts.CreateDbContext())
+            {
+                secondId = (await db.IntelligenceRevisions.SingleAsync(x => x.UpstreamVersion == Second, token)).Id;
+                version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            }
+            var catalog = new SigmaCatalog(contexts, clock);
+            var firstSelection = await catalog.GetActiveAsync(token);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, secondId, firstId, version, false, actor, token));
+            Assert.AreEqual(SigmaAvailability.SelectionChanged, (await catalog.ReadPageAsync(firstSelection, null, token)).Availability);
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, firstId, secondId, version, false, actor, token));
+            Assert.AreEqual(IntelligenceRevocationResult.Revoked, await new IntelligenceRevocation(contexts, new OperationAuditWriter(), clock)
+                .RevokeAsync(sourceId, secondId, actor, token));
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publisher.ActivateAsync(sourceId, secondId, firstId, version, false, actor, token));
+            Assert.AreEqual(SigmaAvailability.Ready, (await catalog.GetActiveAsync(token)).Availability);
         }, context.CancellationToken);
 
     [TestMethod]
