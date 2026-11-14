@@ -9,6 +9,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
 
 namespace Vigiloom.Web.Publishing;
 
@@ -71,7 +72,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         {
             await using var db = await services.CreateDbContextAsync(token);
             await using var tx = await db.Database.BeginTransactionAsync(token);
-            var row = await db.Services.FromSqlInterpolated($"SELECT * FROM [service].[Services] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
+            var row = await HealthPublicationCoordinator.LockServiceAsync(db, id, token);
             if (row is null) return new(PublicationChangeStatus.NotFound);
             if (!row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
@@ -85,6 +86,8 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
                     historyReady: row.IsPublic && (confirmed is not null || row.PublicSince != MonitoredService.PendingPublicSince)));
             }
             var now = clock.GetUtcNow().ToUniversalTime();
+            var healthBoundary = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value] /* health-invalidation */").SingleAsync(token);
+            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token);
             row.SetPublication(change.Public, name, change.PolicyVersion, now);
             try { await db.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
@@ -168,15 +171,21 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         try
         {
             await using var db = await services.CreateDbContextAsync(token);
-            var row = await db.Services.SingleOrDefaultAsync(x => x.Id == id, token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            // The timestamp must be obtained after the publication transaction committed.
+            var afterCommit = await db.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var row = await HealthPublicationCoordinator.LockServiceAsync(db, id, token);
             if (row is null || !row.IsPublic || row.PublicSince != MonitoredService.PendingPublicSince ||
                 !row.Version.AsSpan().SequenceEqual(publishedVersion)) return null;
             // This time is obtained after the publication transaction committed. The rowversion
             // ensures a delayed confirmation cannot authorize history for a later publication.
-            var afterCommit = await db.Database.SqlQueryRaw<DateTimeOffset>(
-                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var healthBoundary = await db.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value] /* health-invalidation */").SingleAsync(token);
+            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token);
             row.ConfirmPublicSince(afterCommit);
             await db.SaveChangesAsync(token);
+            await tx.CommitAsync(token);
             return row.Version;
         }
         catch (DbUpdateConcurrencyException) { /* A newer publication owns the period. */ }
