@@ -17,6 +17,36 @@ public sealed class TemplateSchemaTests(TestContext context)
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
 
     [TestMethod]
+    public Task HistoryMigration_LegacyDefaultsOffAndPreventsDataLoss() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<PublishingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "publishing")).Options;
+            await using var db = new PublishingDbContext(options);
+            var migrator = db.GetService<IMigrator>();
+            const string previous = "20261113220108_PublicationTemplates";
+            await migrator.MigrateAsync(previous, token);
+            var id = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [publishing].[Templates] ([Id], [Name], [ShowLatency], [ShowObservedAt], [IsDefault], [IsRetired], [CreatedAt], [UpdatedAt])
+                VALUES ({id}, {"Legacy"}, 1, 1, 0, 0, {now}, {now})
+                """, token);
+            await db.Database.MigrateAsync(token);
+            var row = await db.Templates.SingleAsync(x => x.Id == id, token);
+            Assert.AreEqual(0, row.HistoryDays);
+            Assert.IsNull(row.HistorySince);
+            var invalid = await Assert.ThrowsExactlyAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE [publishing].[Templates] SET [HistoryDays] = 1 WHERE [Id] = {id}", token));
+            Assert.AreEqual(547, invalid.Number);
+            row.Update(row.Name, true, true, now, historyDays: 7);
+            Assert.AreEqual(PublicationTemplate.PendingHistorySince, row.HistorySince);
+            await db.SaveChangesAsync(token);
+            var downgrade = await Assert.ThrowsExactlyAsync<SqlException>(() => migrator.MigrateAsync(previous, token));
+            Assert.AreEqual(51008, downgrade.Number);
+        }, context.CancellationToken);
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public Task Migration_PreservesActiveAndRetiredTemplates(bool retired) =>

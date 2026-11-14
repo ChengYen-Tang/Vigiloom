@@ -11,7 +11,11 @@ public sealed class PublishingDbContext(DbContextOptions<PublishingDbContext> op
     {
         modelBuilder.HasDefaultSchema("publishing");
         var template = modelBuilder.Entity<PublicationTemplate>();
-        template.ToTable("Templates", table => table.HasCheckConstraint("CK_Templates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0"));
+        template.ToTable("Templates", table =>
+        {
+            table.HasCheckConstraint("CK_Templates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0");
+            table.HasCheckConstraint("CK_Templates_HistoryPeriod", "([HistoryDays] = 0 AND [HistorySince] IS NULL) OR ([HistoryDays] BETWEEN 1 AND 7 AND [HistorySince] IS NOT NULL)");
+        });
         template.HasKey(x => x.Id).IsClustered(false);
         template.Property(x => x.Id).ValueGeneratedNever();
         template.Property(x => x.RowId).UseIdentityColumn();
