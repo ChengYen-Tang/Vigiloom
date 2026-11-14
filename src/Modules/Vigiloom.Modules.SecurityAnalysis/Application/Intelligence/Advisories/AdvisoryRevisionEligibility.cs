@@ -6,6 +6,21 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 /// <summary>Rechecks retained advisory revision provenance whenever it becomes a base or is activated.</summary>
 internal static class AdvisoryRevisionEligibility
 {
+    /// <summary>A rollback cannot make an already published withdrawal appear active again.</summary>
+    internal static async Task<bool> PreservesPublishedWithdrawalsAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token)
+    {
+        return !await (from candidate in db.AdvisoryRevisionEntries
+            join current in db.AdvisoryImportEntries on candidate.EntryRowId equals current.RowId
+            where candidate.RevisionId == revisionId && current.WithdrawnAt == null &&
+                (from historical in db.AdvisoryRevisionEntries
+                 join entry in db.AdvisoryImportEntries on historical.EntryRowId equals entry.RowId
+                 where historical.AdvisoryId == candidate.AdvisoryId && entry.WithdrawnAt != null &&
+                    (entry.UpdatedAt >= current.UpdatedAt || entry.WithdrawnAt >= current.UpdatedAt) &&
+                    db.IntelligenceActivationEvents.Any(e => e.SourceId == sourceId && e.RevisionId == historical.RevisionId)
+                 select historical.RowId).Any()
+            select candidate.RowId).AnyAsync(token);
+    }
+
     internal static async Task<bool> IsEligibleAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token)
     {
         var revision = await db.IntelligenceRevisions.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId && x.Id == revisionId, token);
