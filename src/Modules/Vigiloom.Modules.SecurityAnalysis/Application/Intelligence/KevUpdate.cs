@@ -1,16 +1,22 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Data.SqlClient;
 using System.Data;
+using System.Security.Cryptography;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 /// <summary>Stages a verified KEV revision without changing the active revision.</summary>
-internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients, TimeProvider clock)
+internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory? clients, TimeProvider clock)
 {
     internal const string LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493";
     internal const string MappingVersion = "kev-cve-v1";
+    internal const string OfflineMappingVersion = "kev-cve-offline-v1";
+    internal const string OfflineLicenseEvidence = "Administrator-provided KEV-format snapshot; upstream provenance and license are not verified.";
     internal async Task<KevUpdateResult> RunAsync(Guid sourceId, CancellationToken token, bool onlyWhenDue = false)
     {
         await using var lease = await IntelligenceRefreshLease.TryAcquireAsync(contexts, sourceId, token);
@@ -35,7 +41,7 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
         KevCatalogMetadata? metadata = null;
         try
         {
-            using var client = clients.CreateClient(IntelligenceHttp.KevClientName);
+            using var client = (clients ?? throw new InvalidOperationException("HTTP client factory is required for online updates.")).CreateClient(IntelligenceHttp.KevClientName);
             download = await new KevCatalogClient(client).FetchAsync(etag, modified, source.MaximumBytes, token);
             if (download.ETag is { Length: > 512 }) throw new InvalidDataException("KEV response ETag is too long.");
             if (download.Content is not null)
@@ -53,6 +59,14 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
             return KevUpdateResult.Failed;
         }
 
+        return await PersistAsync(source, download, metadata, cached, null, null, token);
+    }
+
+    private async Task<KevUpdateResult> PersistAsync(IntelligenceSource source, KevDownload download, KevCatalogMetadata? metadata,
+        IntelligenceCache? cached, Guid? offlineActor, IOperationAuditWriter<OperationAudit>? audit, CancellationToken token)
+    {
+        var sourceId = source.Id;
+        var mappingVersion = offlineActor is null ? MappingVersion : OfflineMappingVersion;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var current = await db.IntelligenceSources
@@ -66,12 +80,13 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
                 !db.IntelligenceRevisions.Any(other => other.SourceId == x.SourceId && other.Digest == x.Digest && other.Revoked), token)))
             return KevUpdateResult.Conflict;
         var existing = download.Digest is null ? null : await db.IntelligenceRevisions.AsNoTracking()
-            .Where(x => x.SourceId == sourceId && x.Digest == download.Digest && x.MappingVersion == MappingVersion)
+            .Where(x => x.SourceId == sourceId && x.Digest == download.Digest && x.MappingVersion == mappingVersion)
             .Select(x => new { x.Id, x.Revoked, x.Normalized }).SingleOrDefaultAsync(token);
         var contentRevoked = download.Digest is not null && await db.IntelligenceRevisions.AsNoTracking()
             .AnyAsync(x => x.SourceId == sourceId && x.Digest == download.Digest && x.Revoked, token);
         if (contentRevoked || existing is { Normalized: false })
         {
+            if (offlineActor is not null) return KevUpdateResult.Failed;
             current.LastCheckedAt = clock.GetUtcNow();
             current.LastError = "The retrieved KEV revision is revoked or incomplete.";
             db.Entry(current).Property(x => x.LastCheckedAt).IsModified = true;
@@ -88,14 +103,14 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
                 SourceId = sourceId, UpstreamVersion = metadata.Version, ReleasedAt = metadata.ReleasedAt,
                 RetrievedAt = clock.GetUtcNow(), Digest = download.Digest!, Artifact = download.Content,
                 SchemaVersion = KevCatalogValidator.SchemaRevision,
-                MappingVersion = MappingVersion,
-                LicenseEvidence = LicenseEvidence,
+                MappingVersion = mappingVersion,
+                LicenseEvidence = offlineActor is null ? LicenseEvidence : OfflineLicenseEvidence,
                 RecordCount = metadata.RecordCount, Normalized = true
             };
             db.IntelligenceRevisions.Add(revision);
             existingId = revision.Id;
         }
-        if (download.Content is not null)
+        if (download.Content is not null && offlineActor is null)
         {
             if (currentCache is null)
             {
@@ -104,15 +119,18 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
             }
             currentCache.RevisionId = existingId!.Value;
         }
-        if (currentCache is not null)
+        if (currentCache is not null && offlineActor is null)
         {
             currentCache.ETag = download.ETag;
             currentCache.LastModified = download.LastModified;
         }
-        current.LastCheckedAt = clock.GetUtcNow();
-        current.LastSuccessfulCheckAt = current.LastCheckedAt;
-        current.LastError = null;
-        db.Entry(current).Property(x => x.LastCheckedAt).IsModified = true;
+        if (offlineActor is null)
+        {
+            current.LastCheckedAt = clock.GetUtcNow();
+            current.LastSuccessfulCheckAt = current.LastCheckedAt;
+            current.LastError = null;
+            db.Entry(current).Property(x => x.LastCheckedAt).IsModified = true;
+        }
         try
         {
             await db.SaveChangesAsync(token);
@@ -133,11 +151,31 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
                 if (pending != 0) await db.SaveChangesAsync(token);
                 if (written != metadata!.RecordCount) throw new InvalidDataException("Normalized KEV count does not match the validated catalog.");
             }
+            if (offlineActor is { } actor)
+            {
+                var importedAt = clock.GetUtcNow();
+                db.OfflineImports.Add(new OfflineImport { SourceId = sourceId, RevisionId = existingId!.Value, ActorId = actor, ImportedAt = importedAt });
+                await db.SaveChangesAsync(token);
+                await audit!.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                    new OperationAudit(actor, sourceId, importedAt, new IntelligenceOfflineImported(existingId.Value)), token);
+            }
             await transaction.CommitAsync(token);
         }
         catch (DbUpdateConcurrencyException) { return KevUpdateResult.Conflict; }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { return KevUpdateResult.Conflict; }
         return download.Content is null || revisionExists ? KevUpdateResult.Unchanged : KevUpdateResult.Staged;
+    }
+
+    internal async Task<KevUpdateResult> ImportAsync(Guid sourceId, byte[] content, Guid actor,
+        IOperationAuditWriter<OperationAudit> audit, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var source = await db.IntelligenceSources.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId, token);
+        if (source is null || !source.Enabled || source.Key != "cisa-kev") return KevUpdateResult.Unavailable;
+        KevCatalogMetadata metadata;
+        try { metadata = KevCatalogValidator.Validate(content, source.MaximumBytes, source.MaximumRecords); }
+        catch (InvalidDataException) { return KevUpdateResult.Failed; }
+        return await PersistAsync(source, new KevDownload(content, SHA256.HashData(content), null, null), metadata, null, actor, audit, token);
     }
 
     private async Task RecordFailureAsync(IntelligenceSource source, string reason, CancellationToken token)

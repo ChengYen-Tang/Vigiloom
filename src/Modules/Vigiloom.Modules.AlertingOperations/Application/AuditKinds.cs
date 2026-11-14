@@ -31,4 +31,5 @@ internal static class AuditKinds
     public const short AdvisoryImportAbandonedV1 = 26;
     public const short AdvisoryCredentialChangedV1 = 27;
     public const short IntelligenceRevisionRevokedV1 = 28;
+    public const short IntelligenceOfflineImportedV1 = 29;
 }

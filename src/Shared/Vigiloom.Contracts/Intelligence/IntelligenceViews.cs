@@ -25,7 +25,8 @@ public sealed record AdvisoryCredentialUpdate(string Version, bool Clear, string
 
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
 public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,
-    string Sha256, string SchemaVersion, string MappingVersion, string LicenseEvidence, int RecordCount, bool Revoked, bool Normalized, bool Active);
+    string Sha256, string SchemaVersion, string MappingVersion, string LicenseEvidence, int RecordCount, bool Revoked, bool Normalized, bool Active,
+    DateTimeOffset? LastOfflineImportAt = null);
 
 /// <summary>Bounded page of retained source revisions.</summary>
 public sealed record IntelligenceRevisionPage(IReadOnlyList<IntelligenceRevisionView> Items, int Page, bool HasMore);
@@ -46,7 +47,7 @@ public sealed record IocIssueView(int LineNumber, string Reason);
 public sealed record IocIssuePage(IReadOnlyList<IocIssueView> Items, int Page, bool HasMore);
 
 /// <summary>Expected selection and explicit confirmation for a revision activation.</summary>
-public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? ExpectedActiveRevisionId, string ExpectedVersion, bool ConfirmLargeReduction);
+public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? ExpectedActiveRevisionId, string ExpectedVersion, bool ConfirmLargeReduction, bool ConfirmOfflineSource = false);
 
 /// <summary>Administrator-controlled source policy and optimistic concurrency version.</summary>
 public sealed record IntelligencePolicyUpdate(bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,

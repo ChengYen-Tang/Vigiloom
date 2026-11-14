@@ -97,6 +97,20 @@
                         }
                         </details>
                     </section>
+                    @if (selected.Key == "cisa-kev")
+                    {
+                        <section class="device-panel">
+                            <details><summary><h2>離線匯入</h2></summary>
+                                <p>選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。</p>
+                                <form method="post" action="@($"/settings/intelligence/{selected.Id:D}/offline-import")" enctype="multipart/form-data" class="intelligence-form">
+                                    <AntiforgeryToken />
+                                    <label for="kev-file">KEV JSON 檔案</label><input id="kev-file" type="file" name="file" accept=".json,application/json" required />
+                                    <div><button type="submit">匯入檔案</button></div>
+                                </form>
+                            </details>
+                            @if (ImportMessage is not null) { <p role="status">@ImportMessage</p> }
+                        </section>
+                    }
                     <section class="device-panel">
                         <h2>來源版本</h2>
                         @if (revisions is null || revisions.Items.Count == 0) { <p>尚無已驗證的版本。</p> }
@@ -104,7 +118,7 @@
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
                             <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p></details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
                             @if (selected.Key is not ("cisa-kev" or "github-reviewed"))
@@ -115,6 +129,7 @@
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
                                 <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
                                 <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> 確認接受紀錄數大幅減少</label>
+                                @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> 若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。</label> }
                                 <div><button type="submit">啟用選擇的版本</button></div>
                             </EditForm>
                             }

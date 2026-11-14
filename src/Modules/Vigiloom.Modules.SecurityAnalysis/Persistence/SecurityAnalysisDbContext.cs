@@ -33,6 +33,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<SigmaRule> SigmaRules => Set<SigmaRule>();
     public DbSet<SignatureFile> SignatureFiles => Set<SignatureFile>();
     public DbSet<IocEntry> IocEntries => Set<IocEntry>();
+    public DbSet<OfflineImport> OfflineImports => Set<OfflineImport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

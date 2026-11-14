@@ -99,11 +99,12 @@ internal static class IntelligenceEndpoints
             if (sourceId == Guid.Empty || input.RevisionId == Guid.Empty || input.ExpectedActiveRevisionId == Guid.Empty)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["revision"] = ["Invalid source or revision identity."] });
             return await ApiMutation.ExecuteAsync(context, async actor => (await publication.ActivateAsync(sourceId, input.RevisionId,
-                input.ExpectedActiveRevisionId, input.ExpectedVersion, input.ConfirmLargeReduction, actor, token)) switch
+                input.ExpectedActiveRevisionId, input.ExpectedVersion, input.ConfirmLargeReduction, input.ConfirmOfflineSource, actor, token)) switch
             {
                 IntelligencePublicationResult.Published or IntelligencePublicationResult.Unchanged => Results.NoContent(),
                 IntelligencePublicationResult.NotFound => Results.NotFound(),
                 IntelligencePublicationResult.ConfirmationRequired => Results.Problem(statusCode: 409, title: "A large reduction requires explicit confirmation.", type: "urn:vigiloom:intelligence:confirmation-required"),
+                IntelligencePublicationResult.OfflineConfirmationRequired => Results.Problem(statusCode: 409, title: "An offline source requires explicit provenance confirmation.", type: "urn:vigiloom:intelligence:offline-confirmation-required"),
                 IntelligencePublicationResult.Unavailable => Results.Problem(statusCode: 409, title: "The source or revision is unavailable.", type: "urn:vigiloom:intelligence:unavailable"),
                 _ => Results.Problem(statusCode: 409, title: "The active revision changed; reload and try again.", type: "urn:vigiloom:intelligence:conflict")
             }, allowApiCredential: false);

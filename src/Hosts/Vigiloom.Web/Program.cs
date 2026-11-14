@@ -162,6 +162,7 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelli
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryRecovery>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCredentials>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceRevocation>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevOfflineImport>();
 builder.Services.AddScoped<AgentInventorySettings>();
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>();
 builder.Services.AddScoped<AgentInventoryStatus>();
@@ -323,7 +324,8 @@ else
 }
 
 app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin/jobs") &&
-    !context.Request.Path.Equals("/settings/agent-packages/trust", StringComparison.OrdinalIgnoreCase), web =>
+    !context.Request.Path.Equals("/settings/agent-packages/trust", StringComparison.OrdinalIgnoreCase) &&
+    !(context.Request.Path.StartsWithSegments("/settings/intelligence") && context.Request.Path.Value?.EndsWith("/offline-import", StringComparison.OrdinalIgnoreCase) == true), web =>
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
@@ -377,6 +379,7 @@ app.MapAgentQueueCapacityEndpoints();
 app.MapAgentMetricSettingsEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapIntelligenceEndpoints();
+app.MapIntelligenceOfflineUiEndpoints();
 app.MapIntegrityScopeEndpoints();
 app.MapHostLogSettingsEndpoints();
 app.MapHostLogEndpoints();

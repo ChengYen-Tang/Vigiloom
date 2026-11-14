@@ -194,5 +194,13 @@ internal static class IntelligenceModel
         ioc.Property(x => x.Reason).HasMaxLength(128).IsUnicode(false);
         ioc.HasIndex(x => new { x.SignatureFileRowId, x.LineNumber }).IsUnique();
         ioc.HasOne<SignatureFile>().WithMany().HasForeignKey(x => x.SignatureFileRowId).OnDelete(DeleteBehavior.NoAction);
+
+        var offline = model.Entity<OfflineImport>();
+        offline.ToTable("OfflineImports", t => t.HasCheckConstraint("CK_OfflineImports_Actor", "[ActorId] <> '00000000-0000-0000-0000-000000000000'"));
+        offline.HasKey(x => x.RowId).IsClustered();
+        offline.Property(x => x.RowId).UseIdentityColumn();
+        offline.HasIndex(x => new { x.SourceId, x.RevisionId, x.ImportedAt });
+        offline.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.RevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
     }
 }

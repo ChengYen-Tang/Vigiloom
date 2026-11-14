@@ -25,7 +25,8 @@ public sealed class KevCatalog(IDbContextFactory<SecurityAnalysisDbContext> cont
         var revision = await HeaderAsync(db, source.Id, active.RevisionId, cancellationToken);
         if (revision is null || !await EligibleAsync(db, source.Id, revision, cancellationToken))
             return new(KevAvailability.Unavailable, source.Id, active.RevisionId, null, null, null, source.LastSuccessfulCheckAt);
-        return new(Freshness(source), source.Id, revision.Id, Convert.ToBase64String(active.Version), revision.UpstreamVersion, revision.ReleasedAt, source.LastSuccessfulCheckAt);
+        return new(await FreshnessAsync(db, source, revision, cancellationToken), source.Id, revision.Id, Convert.ToBase64String(active.Version), revision.UpstreamVersion, revision.ReleasedAt, source.LastSuccessfulCheckAt,
+            Origin(revision), revision.MappingVersion, revision.LicenseEvidence);
     }
 
     public Task<KevLookupResult> FindCurrentAsync(Guid sourceId, Guid revisionId, string activationVersion,
@@ -52,36 +53,35 @@ public sealed class KevCatalog(IDbContextFactory<SecurityAnalysisDbContext> cont
         var source = await db.IntelligenceSources.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId && x.Key == "cisa-kev", cancellationToken);
         if (source is null) return new(KevAvailability.Unavailable, sourceId, revisionId, historical, []);
         if (!source.Enabled) return new(KevAvailability.Disabled, sourceId, revisionId, historical, []);
-        var availability = Freshness(source);
         if (!historical)
         {
             var active = await db.IntelligenceActivations.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId, cancellationToken);
             if (active is null || active.RevisionId != revisionId || version.Length != 8 || !active.Version.AsSpan().SequenceEqual(version))
                 return new(KevAvailability.SelectionChanged, sourceId, revisionId, false, []);
-            if (availability != KevAvailability.Ready) return new(availability, sourceId, revisionId, false, []);
         }
         var revision = await HeaderAsync(db, sourceId, revisionId, cancellationToken);
         if (revision is null || !await EligibleAsync(db, sourceId, revision, cancellationToken) ||
             !await db.IntelligenceActivationEvents.AsNoTracking().AnyAsync(x => x.SourceId == sourceId && x.RevisionId == revisionId, cancellationToken))
             return new(KevAvailability.Unavailable, sourceId, revisionId, historical, []);
+        var availability = await FreshnessAsync(db, source, revision, cancellationToken);
+        if (!historical && availability != KevAvailability.Ready) return new(availability, sourceId, revisionId, false, [], Origin(revision), revision.MappingVersion, revision.LicenseEvidence);
         var rows = await db.KevRecords.AsNoTracking().Where(x => x.RevisionId == revisionId && ids.Contains(x.CveId))
             .OrderBy(x => x.CveId).Select(x => new { x.CveId, x.VendorProject, x.Product, x.VulnerabilityName,
                 x.DateAdded, x.Description, x.RequiredAction, x.DueDate, x.RansomwareUse, x.ForensicTriage, x.Notes, x.CwesJson })
             .ToArrayAsync(cancellationToken);
-        availability = Freshness(source);
-        if (!historical && availability != KevAvailability.Ready) return new(availability, sourceId, revisionId, false, []);
+        availability = await FreshnessAsync(db, source, revision, cancellationToken);
+        if (!historical && availability != KevAvailability.Ready) return new(availability, sourceId, revisionId, false, [], Origin(revision), revision.MappingVersion, revision.LicenseEvidence);
         var entries = rows.Select(x => new KevEntry(x.CveId, x.VendorProject, x.Product, x.VulnerabilityName,
             x.DateAdded, x.Description, x.RequiredAction, x.DueDate, x.RansomwareUse, x.ForensicTriage, x.Notes,
             x.CwesJson is null ? null : JsonSerializer.Deserialize<string[]>(x.CwesJson))).ToArray();
-        return new(availability, sourceId, revisionId, historical, entries);
+        return new(availability, sourceId, revisionId, historical, entries, Origin(revision), revision.MappingVersion, revision.LicenseEvidence);
     }
 
-    private KevAvailability Freshness(IntelligenceSource source)
-    {
-        var now = clock.GetUtcNow();
-        return source.LastSuccessfulCheckAt is null || source.LastSuccessfulCheckAt > now ||
-            source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds) ? KevAvailability.Stale : KevAvailability.Ready;
-    }
+    private static string Origin(RevisionHeader revision) => revision.MappingVersion == KevUpdate.OfflineMappingVersion ? "administrator-import-unverified" : "official-https";
+
+    private async Task<KevAvailability> FreshnessAsync(SecurityAnalysisDbContext db, IntelligenceSource source, RevisionHeader revision, CancellationToken token) =>
+        await KevFreshness.IsFreshAsync(db, source, revision.Id, revision.MappingVersion, revision.ReleasedAt, clock.GetUtcNow(), token)
+            ? KevAvailability.Ready : KevAvailability.Stale;
 
     private static Task<RevisionHeader?> HeaderAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token) =>
         db.IntelligenceRevisions.AsNoTracking().Where(x => x.SourceId == sourceId && x.Id == revisionId)
@@ -90,7 +90,9 @@ public sealed class KevCatalog(IDbContextFactory<SecurityAnalysisDbContext> cont
 
     private static async Task<bool> EligibleAsync(SecurityAnalysisDbContext db, Guid sourceId, RevisionHeader revision, CancellationToken token) =>
         !revision.Revoked && revision.Normalized && revision.SchemaVersion == KevCatalogValidator.SchemaRevision &&
-        revision.MappingVersion == KevUpdate.MappingVersion && revision.LicenseEvidence == KevUpdate.LicenseEvidence &&
+        (revision.MappingVersion == KevUpdate.MappingVersion && revision.LicenseEvidence == KevUpdate.LicenseEvidence ||
+         revision.MappingVersion == KevUpdate.OfflineMappingVersion && revision.LicenseEvidence == KevUpdate.OfflineLicenseEvidence &&
+         await db.OfflineImports.AsNoTracking().AnyAsync(x => x.SourceId == sourceId && x.RevisionId == revision.Id, token)) &&
         !await db.IntelligenceRevisions.AsNoTracking().AnyAsync(x => x.SourceId == sourceId && x.Digest == revision.Digest && x.Revoked, token);
 
     private static bool ValidCve(string? id)

@@ -9,7 +9,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
-public enum IntelligencePublicationResult { Published, Unchanged, NotFound, Conflict, Unavailable, ConfirmationRequired }
+public enum IntelligencePublicationResult { Published, Unchanged, NotFound, Conflict, Unavailable, ConfirmationRequired, OfflineConfirmationRequired }
 
 /// <summary>Atomically selects a retained validated revision and records the decision.</summary>
 public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDbContext> contexts,
@@ -19,14 +19,21 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         string expectedVersion, bool confirmLargeReduction, Guid actorId, CancellationToken token)
     {
         if (actorId == Guid.Empty) throw new ArgumentException("An administrator is required.", nameof(actorId));
-        return ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, actorId, token);
+        return ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, false, actorId, token);
+    }
+
+    public Task<IntelligencePublicationResult> ActivateAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
+        string expectedVersion, bool confirmLargeReduction, bool confirmOfflineSource, Guid actorId, CancellationToken token)
+    {
+        if (actorId == Guid.Empty) throw new ArgumentException("An administrator is required.", nameof(actorId));
+        return ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, confirmOfflineSource, actorId, token);
     }
 
     internal Task<IntelligencePublicationResult> ActivateScheduledAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
-        string expectedVersion, CancellationToken token) => ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, false, null, token);
+        string expectedVersion, CancellationToken token) => ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, false, false, null, token);
 
     private async Task<IntelligencePublicationResult> ActivateCoreAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
-        string expectedVersion, bool confirmLargeReduction, Guid? actorId, CancellationToken token)
+        string expectedVersion, bool confirmLargeReduction, bool confirmOfflineSource, Guid? actorId, CancellationToken token)
     {
         if (sourceId == Guid.Empty || revisionId == Guid.Empty || expectedActiveRevisionId == Guid.Empty)
             throw new ArgumentException("Invalid source or revision identity.");
@@ -42,19 +49,27 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
-        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed") || source.LastSuccessfulCheckAt is null ||
-            source.LastSuccessfulCheckAt > now || source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
+        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed")) return IntelligencePublicationResult.Unavailable;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (active?.RevisionId != expectedActiveRevisionId || (active is null ? version.Length != 0 : !active.Version.AsSpan().SequenceEqual(version)))
             return IntelligencePublicationResult.Conflict;
         var candidate = await db.IntelligenceRevisions
             .FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceRevisions] WITH (UPDLOCK, HOLDLOCK) WHERE [SourceId] = {sourceId} AND [Id] = {revisionId}")
-            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.Normalized, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.Digest }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.Normalized, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.Digest, x.ReleasedAt }).SingleOrDefaultAsync(token);
         if (candidate is null) return IntelligencePublicationResult.NotFound;
         if (candidate.Revoked || !candidate.Normalized) return IntelligencePublicationResult.Unavailable;
-        if (source.Key == "cisa-kev" && (candidate.SchemaVersion != KevCatalogValidator.SchemaRevision ||
-            candidate.MappingVersion != KevUpdate.MappingVersion || candidate.LicenseEvidence != KevUpdate.LicenseEvidence))
-            return IntelligencePublicationResult.Unavailable;
+        var offline = source.Key == "cisa-kev" && candidate.MappingVersion == KevUpdate.OfflineMappingVersion;
+        if (source.Key == "cisa-kev")
+        {
+            if (candidate.SchemaVersion != KevCatalogValidator.SchemaRevision ||
+                (offline ? candidate.LicenseEvidence != KevUpdate.OfflineLicenseEvidence :
+                    candidate.MappingVersion != KevUpdate.MappingVersion || candidate.LicenseEvidence != KevUpdate.LicenseEvidence) ||
+                !await KevFreshness.IsFreshAsync(db, source, candidate.Id, candidate.MappingVersion, candidate.ReleasedAt, now, token))
+                return IntelligencePublicationResult.Unavailable;
+            if (offline && (!confirmOfflineSource || actorId is null)) return IntelligencePublicationResult.OfflineConfirmationRequired;
+        }
+        else if (source.LastSuccessfulCheckAt is null || source.LastSuccessfulCheckAt > now ||
+                 source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
         if (source.Key == "github-reviewed" && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
@@ -82,7 +97,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         await db.SaveChangesAsync(token);
         if (actorId is { } actor)
             await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
-                new OperationAudit(actor, sourceId, now, new IntelligenceRevisionActivated(previous, candidate.Id, largeReduction)), token);
+                new OperationAudit(actor, sourceId, now, new IntelligenceRevisionActivated(previous, candidate.Id, largeReduction, offline)), token);
         await transaction.CommitAsync(token);
         return IntelligencePublicationResult.Published;
     }

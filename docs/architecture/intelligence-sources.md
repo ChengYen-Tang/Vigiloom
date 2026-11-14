@@ -122,6 +122,28 @@ rollback and concurrent update behavior. REQ-34 is responsible for applying
 KEV to an independently established asset/CVE relationship; its acceptance and
 the signed publication path are not established by this source contract alone.
 
+### Administrator-provided offline KEV snapshot
+
+An Administrator may import a KEV-format JSON file when online retrieval is not
+available. The same bounded schema, record-count, normalization, revocation and
+transaction checks apply. A separate mapping and license-evidence value identify
+the bytes as administrator-provided; importing and locally hashing a file do not
+authenticate CISA, establish its license or imply an upstream signature. The
+operator, timestamp and selected revision are retained with an atomic audit
+event. Import does not update HTTP validators, record a successful remote check,
+or activate the snapshot automatically.
+
+Activation requires an explicit Administrator acknowledgement of the file's
+origin and use conditions. Automatic activation cannot provide this confirmation.
+Offline freshness uses the earlier of the source's declared release time and
+the last import time, under the same configurable staleness limit; re-importing
+old data cannot make it current. Consumer snapshot and lookup results identify
+`administrator-import-unverified`, mapping and license evidence, so downstream
+views cannot silently label it as verified CISA data. An online snapshot with
+identical bytes remains a distinct mapping; revoking a digest still applies
+across mappings. This mechanism covers the KEV-format source only; other
+providers do not silently inherit its format or offline-import support.
+
 ## OSV and rule-consumer interoperability
 
 The [OSV 1.9.2 format](https://ossf.github.io/osv-schema/) and its
