@@ -126,7 +126,7 @@
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
                             @if (selected.Key == "sigmahq-rules") { <p>僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。</p> }
-                            @if (selected.Key == "signature-base") { <p>僅可選用已核對授權的兩份 IOC 原始檔；內容變更需要重新核對。YARA 規則與偵測尚未啟用。</p> }
+                            @if (selected.Key == "signature-base") { <p>僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。</p> }
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
                                 <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>

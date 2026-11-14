@@ -326,15 +326,16 @@ An administrator can inspect a limited number of surrounding source lines for
 each candidate; these remain raw context, not a rule-boundary determination.
 
 The independently reviewed IOC source subset contains only the original
-`iocs/hash-iocs.txt` and `iocs/c2-iocs.txt` files. The reviewed policy pins the
-SHA-256 of each entire file as well as the repository LICENSE and README;
-additional license evidence under `iocs/` excludes the revision. Both files
-must be present. The platform retains their comments and returns the original
-file, commit, digest, source and license links to the consumer. File changes
-are still downloaded and retained, but cannot be selected until the new content
-and its terms have been reviewed and the policy updated. This conservative
-boundary does not yet provide unattended acceptance of changed IOC data. It
-does not approve YARA or imply that any IOC has been evaluated on a host.
+`iocs/hash-iocs.txt` and `iocs/c2-iocs.txt` files. The policy verifies the
+repository LICENSE and README, excludes revisions containing additional license
+files under `iocs/` or explicit licensing notices in IOC comments, and requires
+both files. Each version binds their individual SHA-256 digests, source commit,
+policy, unique valid indicator count and unsupported line count in a deterministic manifest. Changed IOC
+data can be selected after these checks; a zero-valid set is unavailable and a
+large reduction requires confirmation. The original comments, source and license
+links are preserved. Comment scanning is a conservative indicator, not a complete
+legal interpretation or guarantee of third-party rights. This does not approve
+YARA or imply that any IOC has been evaluated on a host.
 REQ-36 owns supported interpretation, per-match attribution, and a final
 selection check coordinated with publication of results.
 
