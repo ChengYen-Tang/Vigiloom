@@ -92,6 +92,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.Contains("iocs/hash-iocs.txt", doc.Body!.TextContent);
                 Assert.Contains("1 筆未支援", doc.Body.TextContent);
                 Assert.Contains("必須重新確認授權", doc.Body.TextContent);
+                Assert.Contains("消費端相容性尚未驗證", doc.Body.TextContent);
                 Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
             }
             using (var response = await admin.GetAsync($"/api/v1/admin/intelligence/sources/{signature.Id:D}/revisions/{signatureRevision.Id:D}/signature-files", token))
@@ -142,7 +143,28 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 var nextDocument = await new HtmlParser().ParseDocumentAsync(await nextResponse.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("版本已啟用", nextDocument.Body!.TextContent);
             }
+            var revoke = await Form(kevUrl, "intelligence-revocation");
+            revoke["RevocationInput.RevisionId"] = secondRevision.Id.ToString("D");
+            revoke["RevocationInput.Confirm"] = "true";
+            using (var response = await admin.PostAsync(kevUrl, new FormUrlEncodedContent(revoke), token))
+            {
+                var doc = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("版本已撤銷", doc.Body!.TextContent);
+                Assert.Contains("目前版本不可使用", doc.Body.TextContent);
+                var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation");
+                var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+                fields["ActivationInput.RevisionId"] = revision.Id.ToString("D");
+                using var restore = await admin.PostAsync(kevUrl, new FormUrlEncodedContent(fields), token);
+                var restored = await new HtmlParser().ParseDocumentAsync(await restore.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("版本已啟用", restored.Body!.TextContent);
+            }
             var ghUrl = $"/settings/intelligence?source={gh.Id:D}";
+            using (var auditPage = await admin.GetAsync("/settings/audit?source=intelligence", token))
+            {
+                var doc = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("撤銷情報版本", doc.Body!.TextContent);
+                Assert.Contains(secondRevision.Id.ToString("D"), doc.Body.TextContent);
+            }
             var credentials = await Form(ghUrl, "intelligence-credential");
             credentials["CredentialInput.Clear"] = "false";
             credentials["CredentialInput.Value"] = "sensitive-test-token";
@@ -159,8 +181,17 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 var clearedDocument = await new HtmlParser().ParseDocumentAsync(await cleared.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("憑證設定已儲存", clearedDocument.Body!.TextContent);
             }
+            using (var auditPage = await admin.GetAsync("/settings/audit?source=intelligence", token))
+            {
+                var body = await auditPage.Content.ReadAsStringAsync(token);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("更新來源憑證", doc.Body!.TextContent);
+                Assert.Contains(gh.Id.ToString("D"), doc.Body.TextContent);
+                Assert.DoesNotContain("sensitive-test-token", body);
+            }
             await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
-            Assert.AreEqual(secondRevision.Id, (await check.IntelligenceActivations.SingleAsync(x => x.SourceId == kev.Id, token)).RevisionId);
+            Assert.AreEqual(revision.Id, (await check.IntelligenceActivations.SingleAsync(x => x.SourceId == kev.Id, token)).RevisionId);
+            Assert.IsTrue((await check.IntelligenceRevisions.SingleAsync(x => x.Id == secondRevision.Id, token)).Revoked);
             Assert.IsNull((await check.IntelligenceSources.SingleAsync(x => x.Id == gh.Id, token)).ProtectedCredential);
         }, context.CancellationToken);
 
@@ -234,6 +265,16 @@ public sealed class IntelligenceHttpTests(TestContext context)
             Assert.Contains("設定已儲存", exactDocument.Body!.TextContent);
             await check.Entry(persisted).ReloadAsync(token);
             Assert.AreEqual(1024, persisted.MaximumBytes);
+            var toggleForm = exactDocument.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-policy");
+            var toggle = toggleForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            toggle["PolicyInput.Enabled"] = "false"; toggle["PolicyInput.Interval"] = "43200"; toggle["PolicyInput.Stale"] = "259200";
+            toggle["PolicyInput.MiB"] = "0.0009765625"; toggle["PolicyInput.Records"] = "50000";
+            using var toggled = await admin.PostAsync(url, new FormUrlEncodedContent(toggle), token);
+            Assert.Contains("設定已儲存", (await new HtmlParser().ParseDocumentAsync(await toggled.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
+            using var audit = await admin.GetAsync("/settings/audit?source=intelligence", token);
+            var auditBody = (await new HtmlParser().ParseDocumentAsync(await audit.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("啟用：啟用 → 停用", auditBody);
+            Assert.Contains(source.Id.ToString("D"), auditBody);
         }, context.CancellationToken);
 
     [TestMethod]

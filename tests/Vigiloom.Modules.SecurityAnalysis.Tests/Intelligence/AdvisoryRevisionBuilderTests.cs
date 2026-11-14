@@ -179,23 +179,28 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             string version;
             await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, firstResult.RevisionId, version, false, actor, token));
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            var beforeRevocation = version;
+            Assert.AreEqual(IntelligenceRevocationResult.Revoked, await new IntelligenceRevocation(contexts, new OperationAuditWriter(), TimeProvider.System)
+                .RevokeAsync(source.Id, firstResult.RevisionId.Value, actor, token));
             await using (var db = contexts.CreateDbContext())
             {
-                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == firstResult.RevisionId, token)).Revoked = true;
-                await db.SaveChangesAsync(token);
                 version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             }
+            Assert.AreNotEqual(beforeRevocation, version);
             Assert.AreEqual("active-unavailable", (await progressStatus.GetAdvisoryProgressAsync(source.Id, token))?.State);
+            Assert.IsTrue((await progressStatus.GetSourcesAsync(1, token)).Items.Single().ActiveUnavailable);
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             await using (var db = contexts.CreateDbContext()) Assert.AreEqual(2, await db.IntelligenceActivationEvents.CountAsync(token));
             var now = DateTimeOffset.UtcNow;
             var audit = await new OperationAuditQueryService(new OperationsFactory(operationsOptions))
                 .QueryIntelligenceAsync(new OperationAuditQuery(now.AddMinutes(-10), now.AddMinutes(1)), token);
-            Assert.HasCount(2, audit.Items);
-            Assert.IsTrue(audit.Items.All(x => x.ActorId == actor && x.ResourceId == source.Id && x.IntelligenceRevision is not null));
+            Assert.HasCount(3, audit.Items);
+            Assert.IsTrue(audit.Items.All(x => x.ActorId == actor && x.ResourceId == source.Id));
+            Assert.AreEqual(1, audit.Items.Count(x => x.IntelligenceRevocation?.RevisionId == firstResult.RevisionId));
             CollectionAssert.AreEquivalent(new[] { firstResult.RevisionId.Value, secondResult.RevisionId.Value },
-                audit.Items.Select(x => x.IntelligenceRevision!.RevisionId).ToArray());
+                audit.Items.Where(x => x.IntelligenceRevision is not null).Select(x => x.IntelligenceRevision!.RevisionId).ToArray());
         }, context.CancellationToken);
 
     [TestMethod]

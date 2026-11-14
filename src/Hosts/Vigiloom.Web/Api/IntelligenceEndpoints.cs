@@ -109,5 +109,17 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Activate or restore a retained intelligence revision");
+        admin.MapPost("/{sourceId:guid}/revisions/{revisionId:guid}/revoke", async (Guid sourceId, Guid revisionId, IntelligenceRevocation revocation, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            if (sourceId == Guid.Empty || revisionId.Version != 7)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["revision"] = ["Invalid source or revision identity."] });
+            return await ApiMutation.ExecuteAsync(context, async actor => (await revocation.RevokeAsync(sourceId, revisionId, actor, token)) switch
+            {
+                IntelligenceRevocationResult.Revoked or IntelligenceRevocationResult.AlreadyRevoked => Results.NoContent(),
+                _ => Results.NotFound()
+            }, allowApiCredential: false);
+        }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Revoke a retained intelligence revision");
     }
 }

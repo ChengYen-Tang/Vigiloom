@@ -21,6 +21,40 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class IntelligencePublicationTests(TestContext context)
 {
     [TestMethod]
+    public Task Revocation_IsAuditedAtomicallyAndInvalidatesActiveSelection() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var securityOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory<SecurityAnalysisDbContext>(() => new(securityOptions));
+            var operations = new Factory<OperationsDbContext>(() => new(operationOptions));
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = operations.CreateDbContext()) await db.Database.MigrateAsync(token);
+            var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
+            var revision = Revision(source.Id, 1, 1);
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision); await db.SaveChangesAsync(token); }
+            var actor = Guid.CreateVersion7();
+            var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, revision.Id, null, "", false, actor, token));
+            var oldVersion = await VersionAsync(contexts, token);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => new IntelligenceRevocation(contexts, new FailingAudit(), TimeProvider.System)
+                .RevokeAsync(source.Id, revision.Id, actor, token));
+            await using (var db = contexts.CreateDbContext()) Assert.IsFalse((await db.IntelligenceRevisions.SingleAsync(token)).Revoked);
+            var revocation = new IntelligenceRevocation(contexts, new OperationAuditWriter(), TimeProvider.System);
+            Assert.AreEqual(IntelligenceRevocationResult.Revoked, await revocation.RevokeAsync(source.Id, revision.Id, actor, token));
+            Assert.AreEqual(IntelligenceRevocationResult.AlreadyRevoked, await revocation.RevokeAsync(source.Id, revision.Id, actor, token));
+            Assert.AreNotEqual(oldVersion, await VersionAsync(contexts, token));
+            Assert.IsTrue((await new IntelligenceStatus(contexts, TimeProvider.System).GetSourcesAsync(1, token)).Items.Single().ActiveUnavailable);
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, revision.Id, revision.Id,
+                await VersionAsync(contexts, token), false, actor, token));
+            var now = DateTimeOffset.UtcNow;
+            var audit = await new OperationAuditQueryService(operations).QueryIntelligenceAsync(new OperationAuditQuery(now.AddMinutes(-5), now.AddMinutes(1)), token);
+            Assert.AreEqual(1, audit.Items.Count(x => x.IntelligenceRevocation?.RevisionId == revision.Id));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Selection_AndAuditAreAtomic_AndReductionNeedsConfirmation() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

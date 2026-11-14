@@ -4,10 +4,10 @@ namespace Vigiloom.Contracts.Intelligence;
 public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,
     int MaximumBytes, int MaximumRecords, string Version, DateTimeOffset? LastCheckedAt, DateTimeOffset? LastSuccessfulCheckAt,
     string? LastError, bool IsStale, Guid? ActiveRevisionId, string ActivationVersion, bool HasCredential,
-    IntelligenceSourceDescription? Description);
+    IntelligenceSourceDescription? Description, bool ActiveUnavailable = false);
 
 /// <summary>Verified source identity and scope; a missing description means the source is unrecognized.</summary>
-public sealed record IntelligenceSourceDescription(string Name, string Category, string SourceUrl, string Coverage, string LicenseEvidence);
+public sealed record IntelligenceSourceDescription(string Name, string Category, string SourceUrl, string Coverage, string LicenseEvidence, string PlatformCoverage);
 
 /// <summary>Bounded page of intelligence source status.</summary>
 public sealed record IntelligenceSourcePage(IReadOnlyList<IntelligenceSourceView> Items, int Page, bool HasMore);

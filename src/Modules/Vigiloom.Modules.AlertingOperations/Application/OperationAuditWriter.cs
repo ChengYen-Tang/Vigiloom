@@ -35,6 +35,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             AgentPackageCatalogueRefreshed change when IsValid(change) => (AuditKinds.AgentPackageCatalogueRefreshedV1, JsonSerializer.Serialize(change)),
             AgentPackageTrustInitialized change when IsValid(change) => (AuditKinds.AgentPackageTrustInitializedV1, JsonSerializer.Serialize(change)),
             IntelligenceRevisionActivated change when IsValid(change) => (AuditKinds.IntelligenceRevisionActivatedV1, JsonSerializer.Serialize(change)),
+            IntelligenceRevisionRevoked change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceRevisionRevokedV1, JsonSerializer.Serialize(change)),
             IntelligencePolicyChanged change when IsValid(change) => (AuditKinds.IntelligencePolicyChangedV1, JsonSerializer.Serialize(change)),
             AdvisoryImportAbandoned change when IsValid(change) => (AuditKinds.AdvisoryImportAbandonedV1, JsonSerializer.Serialize(change)),
             AdvisoryCredentialChanged change => (AuditKinds.AdvisoryCredentialChangedV1, JsonSerializer.Serialize(change)),

@@ -66,16 +66,20 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
                           join activation in db.IntelligenceActivations.AsNoTracking() on source.Id equals activation.SourceId into activations
                           from active in activations.DefaultIfEmpty()
                           orderby source.Key
-                          select new { Source = source, ActiveId = (Guid?)active.RevisionId, ActiveVersion = active.Version })
+                          select new { Source = source, ActiveId = (Guid?)active.RevisionId, ActiveVersion = active.Version,
+                              ActiveUnavailable = active != null && !db.IntelligenceRevisions.Any(revision => revision.SourceId == source.Id && revision.Id == active.RevisionId &&
+                                  !revision.Revoked && revision.Normalized && !db.IntelligenceRevisions.Any(other => other.SourceId == source.Id && other.Digest == revision.Digest && other.Revoked)) })
             .Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
         var now = clock.GetUtcNow();
+        var advisory = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "github-reviewed" && x.ActiveId != null && !x.ActiveUnavailable);
+        var advisoryUnavailable = advisory is not null && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, advisory.Source.Id, advisory.ActiveId!.Value, token);
         var items = rows.Take(PageSize).Select(row => new IntelligenceSourceView(row.Source.Id, row.Source.Key, row.Source.Enabled,
             row.Source.UpdateIntervalSeconds, row.Source.StaleAfterSeconds, row.Source.MaximumBytes, row.Source.MaximumRecords,
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
             row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key))).ToArray();
+            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 
@@ -83,15 +87,18 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
     {
         "cisa-kev" => new("CISA Known Exploited Vulnerabilities", "known-exploited-vulnerabilities",
             "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
-            "Known exploited CVEs across products; not a complete vulnerability catalog or proof of asset applicability.", KevUpdate.LicenseEvidence),
+            "Known exploited CVEs across products; not a complete vulnerability catalog or proof of asset applicability.", KevUpdate.LicenseEvidence,
+            "Multiple platforms and products; applicability depends on the affected product and version."),
         "github-reviewed" => new("GitHub Reviewed Advisories", "open-source-package-advisories",
             "https://api.github.com/advisories",
             "GitHub-reviewed package advisories; excludes unreviewed and malware advisories and does not establish asset applicability.",
-            AdvisoryRevisionBuilder.LicenseEvidence),
+            AdvisoryRevisionBuilder.LicenseEvidence, "Open-source package ecosystems reported by each advisory; asset applicability is not determined here."),
         "sigmahq-rules" => new("SigmaHQ 規則", "behavioral-rules", "https://github.com/SigmaHQ/sigma",
-            "Source rules are retained for review; detection and publication remain unsupported until the consumer is verified.", SigmaRefresh.LicenseEvidence),
+            "Source rules are retained for review; detection and publication remain unsupported until the consumer is verified.", SigmaRefresh.LicenseEvidence,
+            "Platform and event-source requirements vary by rule; compatible collection and detection are not yet verified."),
         "signature-base" => new("Signature-Base", "IOC / YARA", "https://github.com/Neo23x0/signature-base",
-            "IOC and YARA source files are retained for review; interpretation, detection and publication remain unsupported.", SignatureRefresh.LicenseEvidence),
+            "IOC and YARA source files are retained for review; interpretation, detection and publication remain unsupported.", SignatureRefresh.LicenseEvidence,
+            "Platform and dependency requirements vary by file and rule; consumer compatibility has not been verified."),
         _ => null
     };
 
