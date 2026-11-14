@@ -123,13 +123,16 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Author = "Example Author", Product = "windows", Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-RULE-CONTENT") };
             var signatureRevision = new IntelligenceRevision { SourceId = signature.Id, UpstreamVersion = "signature-test", RetrievedAt = DateTimeOffset.UtcNow,
                 Digest = new byte[32], Artifact = [], SchemaVersion = "signature-base-files-v1", MappingVersion = "signature-base-source-v2",
-                LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 1, Normalized = true };
+                LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 2, Normalized = true };
             var signatureFile = new SignatureFile { RevisionId = signatureRevision.Id, Path = "iocs/hash-iocs.txt", Kind = 0,
                 Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-IOC-CONTENT") };
+            var yaraBytes = System.Text.Encoding.UTF8.GetBytes("rule example {\n meta:\n author = \"<script>alert(1)</script>\"\n license = \"Example\"\n condition: true\n}");
+            var yaraFile = new SignatureFile { RevisionId = signatureRevision.Id, Path = "yara/example.yar", Kind = 1,
+                Digest = SHA256.HashData(yaraBytes), Content = yaraBytes };
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
             {
                 db.IntelligenceSources.AddRange(kev, gh, sigma, signature); db.IntelligenceRevisions.AddRange(revision, secondRevision, sigmaRevision, signatureRevision);
-                db.SigmaRules.Add(rule); db.SignatureFiles.Add(signatureFile); await db.SaveChangesAsync(token);
+                db.SigmaRules.Add(rule); db.SignatureFiles.AddRange(signatureFile, yaraFile); await db.SaveChangesAsync(token);
                 db.IocEntries.Add(new IocEntry { SignatureFileRowId = signatureFile.RowId, LineNumber = 1, Kind = "unsupported", Reason = "invalid-hash" });
                 await db.SaveChangesAsync(token);
             }
@@ -170,6 +173,31 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.Contains("iocs/hash-iocs.txt", body);
                 Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
             }
+            using (var evidencePage = await admin.GetAsync($"/settings/intelligence?source={signature.Id:D}&rulesRevision={signatureRevision.Id:D}&evidencePath=yara%2Fexample.yar", token))
+            {
+                var body = await evidencePage.Content.ReadAsStringAsync(token);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("來源授權線索", doc.Body!.TextContent);
+                Assert.Contains("規則邊界與授權尚未解析或確認", doc.Body.TextContent);
+                Assert.Contains("<script>alert(1)</script>", doc.Body.TextContent);
+                Assert.DoesNotContain("<script>alert(1)</script>", body);
+            }
+            var evidenceUrl = $"/api/v1/admin/intelligence/sources/{signature.Id:D}/revisions/{signatureRevision.Id:D}/signature-evidence?path=yara%2Fexample.yar";
+            using (var response = await admin.GetAsync(evidenceUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
+                var evidence = await response.Content.ReadFromJsonAsync<SignatureEvidenceView>(cancellationToken: token);
+                Assert.IsNotNull(evidence); Assert.IsTrue(evidence.IntegrityValid); Assert.HasCount(2, evidence.Lines);
+            }
+            using (var response = await admin.GetAsync(evidenceUrl + "&line=3", token))
+            {
+                var evidence = await response.Content.ReadFromJsonAsync<SignatureEvidenceView>(cancellationToken: token);
+                Assert.IsNotNull(evidence); Assert.AreEqual(3, evidence.ContextLine); Assert.IsNotNull(evidence.Context);
+                Assert.IsTrue(evidence.Context.Any(x => x.Text.Contains("rule example", StringComparison.Ordinal)));
+            }
+            using (var anon = PingTestSite.Client(factory))
+            using (var forbidden = await anon.GetAsync(evidenceUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, forbidden.StatusCode);
             var issuesUrl = $"/api/v1/admin/intelligence/sources/{signature.Id:D}/revisions/{signatureRevision.Id:D}/ioc-issues?path=iocs%2Fhash-iocs.txt";
             using (var response = await admin.GetAsync(issuesUrl, token))
             {

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -36,7 +38,7 @@ public sealed class IntelligenceBrowserTests(TestContext context)
             LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
         var signatureRevision = new IntelligenceRevision { SourceId = signatureSource.Id, UpstreamVersion = "signature-test", RetrievedAt = DateTimeOffset.UtcNow,
             Digest = new byte[32], Artifact = [], SchemaVersion = "signature-base-files-v1", MappingVersion = "signature-base-source-v2",
-            LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 1, Normalized = true };
+            LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 2, Normalized = true };
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
         {
             await db.Database.MigrateAsync(token);
@@ -46,6 +48,8 @@ public sealed class IntelligenceBrowserTests(TestContext context)
                 Author = "Example author", Product = "windows", Digest = new byte[32], Content = [1] });
             var file = new SignatureFile { RevisionId = signatureRevision.Id, Path = "iocs/hash-iocs.txt", Kind = 0, Digest = new byte[32], Content = [1] };
             db.SignatureFiles.Add(file);
+            var yara = Encoding.UTF8.GetBytes("rule sample {\n meta:\n author = \"Example author\"\n condition: true\n}");
+            db.SignatureFiles.Add(new SignatureFile { RevisionId = signatureRevision.Id, Path = "yara/example.yar", Kind = 1, Digest = SHA256.HashData(yara), Content = yara });
             db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync(token);
             db.IocEntries.Add(new IocEntry { SignatureFileRowId = file.RowId, LineNumber = 5, Kind = "unsupported", Reason = "invalid-hash" });
@@ -105,6 +109,14 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Link, new() { Name = "1 筆未支援" }).ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "未支援的 IOC 項目" }).WaitForAsync();
         Assert.Contains("雜湊格式無效", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.GetByRole(AriaRole.Link, new() { Name = "查看授權線索" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "來源授權線索" }).WaitForAsync();
+        Assert.Contains("Example author", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.GetByRole(AriaRole.Link, new() { Name = "查看前後內容" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "第 3 行的前後內容" }).WaitForAsync();
+        Assert.Contains("rule sample", await page.Locator("main").InnerTextAsync());
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "signature-mobile.png"), FullPage = true });
         Assert.IsEmpty(errors);

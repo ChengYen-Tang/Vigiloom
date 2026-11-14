@@ -1,4 +1,6 @@
 using System.Data;
+using System.Text;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
@@ -184,5 +186,51 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             .Select(x => new { x.LineNumber, x.Reason }).ToArrayAsync(token);
         return new(rows.Take(PageSize).Select(x => new IocIssueView(x.LineNumber, x.Reason ?? "unknown")).ToArray(),
             page, rows.Length > PageSize && page < 2000);
+    }
+
+    public async Task<SignatureEvidenceView?> GetSignatureEvidenceAsync(Guid sourceId, Guid revisionId, string path, CancellationToken token, int? contextLine = null, int page = 1)
+    {
+        if (path.Length is < 1 or > 512 || contextLine is < 1 or > 1048576 || page is < 1 or > 2000) throw new ArgumentOutOfRangeException(nameof(path));
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var file = await (from source in db.IntelligenceSources.AsNoTracking()
+                          join revision in db.IntelligenceRevisions.AsNoTracking() on source.Id equals revision.SourceId
+                          join candidate in db.SignatureFiles.AsNoTracking() on revision.Id equals candidate.RevisionId
+                          where source.Id == sourceId && source.Key == "signature-base" && revision.Id == revisionId &&
+                                revision.MappingVersion == SignatureRefresh.MappingVersion && revision.SchemaVersion == SignatureRefresh.SchemaVersion &&
+                                revision.LicenseEvidence == SignatureRefresh.LicenseEvidence && revision.Normalized &&
+                                candidate.Kind != 0 && candidate.Path == path
+                          select new { candidate.Path, candidate.Digest, candidate.Content }).SingleOrDefaultAsync(token);
+        if (file is null) return null;
+        if (!SHA256.HashData(file.Content).AsSpan().SequenceEqual(file.Digest))
+            return new(file.Path, Convert.ToHexStringLower(file.Digest), [], false, false, false);
+        string text;
+        try { text = new UTF8Encoding(false, true).GetString(file.Content); }
+        catch (DecoderFallbackException) { return new(file.Path, Convert.ToHexStringLower(file.Digest), [], false, true, true); }
+        using var reader = new StringReader(text);
+        var lines = new List<SignatureEvidenceLine>();
+        var number = 0;
+        var matches = 0;
+        var truncated = false;
+        while (reader.ReadLine() is { } line)
+        {
+            number++;
+            if (!line.Contains("license", StringComparison.OrdinalIgnoreCase) && !line.Contains("licence", StringComparison.OrdinalIgnoreCase) &&
+                !line.Contains("author", StringComparison.OrdinalIgnoreCase) && !line.Contains("copyright", StringComparison.OrdinalIgnoreCase)) continue;
+            if (++matches <= (page - 1) * 100) continue;
+            if (lines.Count == 100) { truncated = true; break; }
+            lines.Add(new(number, line.Length > 512 ? line[..512] : line, line.Length > 512));
+        }
+        List<SignatureEvidenceLine>? surrounding = null;
+        var contextHasMore = false;
+        if (contextLine is { } center)
+        {
+            surrounding = [];
+            using var contextReader = new StringReader(text);
+            var current = 0;
+            while (contextReader.ReadLine() is { } line && ++current <= center + 10)
+                if (current >= Math.Max(1, center - 10)) surrounding.Add(new(current, line.Length > 512 ? line[..512] : line, line.Length > 512));
+            contextHasMore = current > center + 10;
+        }
+        return new(file.Path, Convert.ToHexStringLower(file.Digest), lines, truncated, false, true, contextLine, surrounding, page, contextHasMore);
     }
 }

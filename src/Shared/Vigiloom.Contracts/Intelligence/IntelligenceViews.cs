@@ -46,6 +46,12 @@ public sealed record IocIssueView(int LineNumber, string Reason);
 /// <summary>A bounded page of unsupported or invalid IOC lines.</summary>
 public sealed record IocIssuePage(IReadOnlyList<IocIssueView> Items, int Page, bool HasMore);
 
+/// <summary>A source line that may mention an author or license; it is not a parsed rule or authorization decision.</summary>
+public sealed record SignatureEvidenceLine(int Number, string Text, bool Truncated);
+/// <summary>Bounded candidate lines from one retained source file.</summary>
+public sealed record SignatureEvidenceView(string Path, string Sha256, IReadOnlyList<SignatureEvidenceLine> Lines, bool Truncated,
+    bool InvalidEncoding, bool IntegrityValid, int? ContextLine = null, IReadOnlyList<SignatureEvidenceLine>? Context = null, int Page = 1, bool ContextHasMore = false);
+
 /// <summary>Expected selection and explicit confirmation for a revision activation.</summary>
 public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? ExpectedActiveRevisionId, string ExpectedVersion, bool ConfirmLargeReduction, bool ConfirmOfflineSource = false);
 

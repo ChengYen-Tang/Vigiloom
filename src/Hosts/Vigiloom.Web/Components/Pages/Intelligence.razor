@@ -175,10 +175,36 @@
                             {
                                 <p class="intelligence-scroll-hint">左右滑動可查看完整檔案資訊。</p>
                                 <div class="device-table-wrap" role="region" tabindex="0" aria-label="來源檔案，可左右捲動"><table><thead><tr><th>路徑</th><th>類型</th><th>IOC 分類</th><th>SHA-256</th></tr></thead><tbody>
-                                    @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => "授權證據", _ => "未知" })</td><td>@if (file.Entries is { } count) { <span>@count 筆，</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@file.UnsupportedEntries 筆未支援</a> } else { <span>0 筆未支援</span> } } else { <span>不適用</span> }</td><td>@file.Sha256</td></tr> }
+                                    @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path @if (file.Kind is "yara" or "license-evidence") { <a href="@EvidenceUrl(signatureRevision, file.Path, page: 1)">查看授權線索</a> }</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => "授權證據", _ => "未知" })</td><td>@if (file.Entries is { } count) { <span>@count 筆，</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@file.UnsupportedEntries 筆未支援</a> } else { <span>0 筆未支援</span> } } else { <span>不適用</span> }</td><td>@file.Sha256</td></tr> }
                                 </tbody></table></div>
                             }
                             <nav aria-label="來源檔案分頁">@if (signatureFiles.Page > 1) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page - 1)">上一頁</a> } <span>第 @signatureFiles.Page 頁</span> @if (signatureFiles.HasMore) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page + 1)">下一頁</a> }</nav>
+                        </section>
+                    }
+                    @if (signatureEvidence is not null)
+                    {
+                        <section class="device-panel">
+                            <h2>來源授權線索</h2>
+                            <p>檔案：@signatureEvidence.Path</p><p>SHA-256：@signatureEvidence.Sha256</p>
+                            <p>以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。</p>
+                            @if (!signatureEvidence.IntegrityValid) { <p role="alert">檔案與保存的摘要不一致，無法顯示內容。</p> }
+                            else if (signatureEvidence.InvalidEncoding) { <p role="alert">檔案不是有效的 UTF-8，無法顯示內容。</p> }
+                            else if (signatureEvidence.Lines.Count == 0) { <p>沒有找到包含這些字樣的行。</p> }
+                            else { <ol>@foreach (var line in signatureEvidence.Lines) { <li @key="line.Number">第 @line.Number 行：<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>（此行已截斷）</span> } @if (shownRulesRevision is { } revision) { <a href="@EvidenceUrl(revision, signatureEvidence.Path, line.Number)">查看前後內容</a> }</li> }</ol> }
+                            @if (shownRulesRevision is { } evidenceRevision && (signatureEvidence.Page > 1 || signatureEvidence.Truncated))
+                            {
+                                <nav aria-label="授權線索分頁">@if (signatureEvidence.Page > 1) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page - 1)">上一頁</a> } <span>第 @signatureEvidence.Page 頁</span> @if (signatureEvidence.Truncated) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page + 1)">下一頁</a> }</nav>
+                            }
+                            @if (signatureEvidence.ContextLine is { } center && signatureEvidence.Context is { } surrounding)
+                            {
+                                <h3>第 @center 行的前後內容</h3>
+                                @if (surrounding.Count == 0) { <p>找不到此行。</p> }
+                                else { <ol>@foreach (var line in surrounding) { <li @key="line.Number">第 @line.Number 行：<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>（此行已截斷）</span> }</li> }</ol> }
+                                @if (shownRulesRevision is { } contextRevision && surrounding.Count > 0)
+                                {
+                                    <nav aria-label="原文上下文分頁">@if (surrounding[0].Number > 1) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Max(1, center - 21))">較前內容</a> } @if (signatureEvidence.ContextHasMore) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Min(1048576, center + 21))">較後內容</a> }</nav>
+                                }
+                            }
                         </section>
                     }
                     @if (iocIssues is not null && IocPath is { } iocPath && shownRulesRevision is { } iocRevision)
