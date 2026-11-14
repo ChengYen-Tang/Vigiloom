@@ -1154,7 +1154,7 @@ public sealed class AgentIdentitySqlTests
     public TestContext TestContext { get; set; } = null!;
     [AssemblyCleanup] public static async Task Cleanup()
     {
-        await ReusableIdentityDatabase.DisposeAsync();
+        await Task.WhenAll(ReusableIdentityDatabase.DisposeAsync().AsTask(), ReusablePackageDatabase.DisposeAsync().AsTask());
         SqlTestDatabase.CompleteRun();
     }
 

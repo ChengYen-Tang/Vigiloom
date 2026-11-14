@@ -22,10 +22,10 @@ public sealed class HealthTargetHttpTests(TestContext context)
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task TargetSettings_RequireAdministratorAndAntiforgery_AndAuditChanges() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-            await PingTestSite.InitializeAsync(factory, token);
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var now = DateTimeOffset.UtcNow;
             var source = new ServiceSource("source", new byte[32], now);
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
@@ -34,7 +34,6 @@ public sealed class HealthTargetHttpTests(TestContext context)
             var instanceId = Guid.CreateVersion7();
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             {
-                await db.Database.MigrateAsync(token);
                 db.Sources.AddRange(source, otherSource); db.Services.AddRange(service, otherService); await db.SaveChangesAsync(token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({instanceId},{service.Id},{source.Id},{"orders-instance-1"},{now},{now})", token);
             }

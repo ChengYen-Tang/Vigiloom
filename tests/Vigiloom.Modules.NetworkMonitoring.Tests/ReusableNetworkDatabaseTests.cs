@@ -48,6 +48,33 @@ public sealed class ReusableNetworkDatabaseTests(TestContext context)
     }
 
     [TestMethod]
+    public async Task SnapshotDatabase_IsReusedAndIsolatedFromOrdinaryReads()
+    {
+        string? snapshotName = null;
+        for (var attempt = 0; attempt < 2; attempt++)
+            await ReusableNetworkDatabase.ExecuteSnapshotAsync(async (database, token) =>
+            {
+                snapshotName ??= database.DatabaseName;
+                Assert.AreEqual(snapshotName, database.DatabaseName);
+                await using var connection = new SqlConnection(database.ConnectionString);
+                await connection.OpenAsync(token);
+                await Vigiloom.Testing.SqlServer.ReadCommittedSnapshot.EnsureAsync(connection, true, token);
+                await using var db = new NetworkDbContext(Options(database.ConnectionString));
+                Assert.AreEqual(0, await db.SpeedRuns.CountAsync(token));
+                db.SpeedRuns.Add(new SpeedRun { RequestId = Guid.CreateVersion7(), RequestedAt = DateTimeOffset.UtcNow, State = SpeedTestState.Queued });
+                await db.SaveChangesAsync(token);
+            }, context.CancellationToken);
+
+        await ReusableNetworkDatabase.ExecuteAsync(async (database, token) =>
+        {
+            Assert.AreNotEqual(snapshotName, database.DatabaseName);
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await Vigiloom.Testing.SqlServer.ReadCommittedSnapshot.EnsureAsync(connection, false, token);
+        }, context.CancellationToken);
+    }
+
+    [TestMethod]
     public async Task ChangedPreservedSeed_DiscardsDatabase()
     {
         string? previous = null;

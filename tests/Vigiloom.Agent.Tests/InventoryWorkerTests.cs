@@ -140,6 +140,7 @@ public sealed class InventoryWorkerTests
                     await Task.Delay(50, deadline.Token);
                 }
                 Assert.AreEqual(1, Volatile.Read(ref collected));
+                await monitor.FourthCpuRead.WaitAsync(deadline.Token);
                 Assert.IsGreaterThanOrEqualTo(4, monitor.CpuReads);
             }
             finally
@@ -174,9 +175,16 @@ public sealed class InventoryWorkerTests
     private sealed class ExhaustedMonitor : IMetricResourceMonitor
     {
         private int cpuReads;
+        private readonly TaskCompletionSource fourthCpuRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int CpuReads => Volatile.Read(ref cpuReads);
+        public Task FourthCpuRead => fourthCpuRead.Task;
         public long ReadWorkingSetBytes() => 1024;
-        public TimeSpan ReadCpuTime() => TimeSpan.FromMilliseconds(Interlocked.Increment(ref cpuReads) * 200);
+        public TimeSpan ReadCpuTime()
+        {
+            var reads = Interlocked.Increment(ref cpuReads);
+            if (reads == 4) fourthCpuRead.TrySetResult();
+            return TimeSpan.FromMilliseconds(reads * 200);
+        }
         public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token) => ValueTask.FromResult(new ProcessIoSnapshot(0, 0));
         public void Dispose() { }
     }
