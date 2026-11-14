@@ -5,7 +5,11 @@
     <ProjectReference Include="../../Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
     <InternalsVisibleTo Include="Vigiloom.Modules.SecurityAnalysis.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Application/Intelligence/Schemas/cisa-kev.json" />
   </ItemGroup>
 </Project>
