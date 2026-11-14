@@ -534,6 +534,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<DateTimeOffset?>("PublicSince")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -593,7 +596,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
                         .IsUnique();
 
-                    b.ToTable("Services", "service");
+                    b.ToTable("Services", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_Services_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.ReceptionRejectionSummary", b =>
