@@ -15,6 +15,30 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class IntelligenceSchemaTests(TestContext context)
 {
     [TestMethod]
+    public Task SourcePolicyMigration_UpgradesExistingSourcesAndProtectsSettings() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            var target = db.Database.GetMigrations().Single(x => x.EndsWith("_IntelligenceActivationHistory", StringComparison.Ordinal));
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync(target, token);
+            var id = Guid.CreateVersion7();
+            var key = "cisa-kev";
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [security].[IntelligenceSources] ([Id], [Key], [Enabled]) VALUES ({id}, {key}, {true})", token);
+            await migrator.MigrateAsync(null, token);
+            var source = await db.IntelligenceSources.SingleAsync(token);
+            Assert.AreEqual(86_400, source.UpdateIntervalSeconds);
+            Assert.AreEqual(259_200, source.StaleAfterSeconds);
+            Assert.AreEqual(16 * 1024 * 1024, source.MaximumBytes);
+            Assert.AreEqual(50_000, source.MaximumRecords);
+            var error = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(target, token));
+            Assert.AreEqual(51000, error.Number);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Migration_EmptyDowngradeWorks_AndRetainedSourcesPreventDowngrade() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

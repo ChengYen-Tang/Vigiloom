@@ -41,7 +41,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
         if (!source.Enabled || source.Key != "cisa-kev" || source.LastSuccessfulCheckAt is null ||
-            source.LastSuccessfulCheckAt > now || source.LastSuccessfulCheckAt < now.AddHours(-72)) return IntelligencePublicationResult.Unavailable;
+            source.LastSuccessfulCheckAt > now || source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (active?.RevisionId != expectedActiveRevisionId || (active is null ? version.Length != 0 : !active.Version.AsSpan().SequenceEqual(version)))
             return IntelligencePublicationResult.Conflict;

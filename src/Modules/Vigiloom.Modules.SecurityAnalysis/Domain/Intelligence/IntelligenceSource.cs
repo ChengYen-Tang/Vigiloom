@@ -9,6 +9,10 @@ public sealed class IntelligenceSource
     public long RowId { get; private set; }
     public required string Key { get; set; }
     public bool Enabled { get; set; }
+    public int UpdateIntervalSeconds { get; set; } = 86_400;
+    public int StaleAfterSeconds { get; set; } = 259_200;
+    public int MaximumBytes { get; set; } = 16 * 1024 * 1024;
+    public int MaximumRecords { get; set; } = 50_000;
     public DateTimeOffset? LastCheckedAt { get; set; }
     public DateTimeOffset? LastSuccessfulCheckAt { get; set; }
     public string? LastError { get; set; }
