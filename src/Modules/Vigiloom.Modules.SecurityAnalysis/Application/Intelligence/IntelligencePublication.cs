@@ -55,8 +55,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         if (source.Key == "cisa-kev" && (candidate.SchemaVersion != KevCatalogValidator.SchemaRevision ||
             candidate.MappingVersion != KevUpdate.MappingVersion || candidate.LicenseEvidence != KevUpdate.LicenseEvidence))
             return IntelligencePublicationResult.Unavailable;
-        if (source.Key == "github-reviewed" && (!await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, revisionId, token) ||
-            !await AdvisoryRevisionEligibility.PreservesPublishedWithdrawalsAsync(db, sourceId, revisionId, token)))
+        if (source.Key == "github-reviewed" && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;

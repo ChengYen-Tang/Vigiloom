@@ -6,6 +6,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 /// <summary>Rechecks retained advisory revision provenance whenever it becomes a base or is activated.</summary>
 internal static class AdvisoryRevisionEligibility
 {
+    internal static async Task<bool> IsPublishableAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token) =>
+        await IsEligibleAsync(db, sourceId, revisionId, token) && await PreservesPublishedWithdrawalsAsync(db, sourceId, revisionId, token);
+
     /// <summary>A rollback cannot make an already published withdrawal appear active again.</summary>
     internal static async Task<bool> PreservesPublishedWithdrawalsAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token)
     {

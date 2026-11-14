@@ -27,7 +27,7 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var retryAt = await db.AdvisoryImports.AsNoTracking().Where(x => x.SourceId == sourceId && x.NotBefore > now)
             .MaxAsync(x => x.NotBefore, token);
         var eligible = import?.ResultRevisionId is { } revisionId &&
-            await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, revisionId, token);
+            await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token);
         var state = import switch
         {
             _ when !source.Enabled => "disabled",
