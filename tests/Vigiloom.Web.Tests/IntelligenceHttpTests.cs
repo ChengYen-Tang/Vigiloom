@@ -117,7 +117,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Digest = Enumerable.Repeat((byte)1, 32).ToArray(), Artifact = [], SchemaVersion = revision.SchemaVersion, MappingVersion = revision.MappingVersion,
                 LicenseEvidence = revision.LicenseEvidence, RecordCount = 1, Normalized = true };
             var sigmaRevision = new IntelligenceRevision { SourceId = sigma.Id, UpstreamVersion = "test-sigma-commit", RetrievedAt = DateTimeOffset.UtcNow,
-                Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v1",
+                Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v2",
                 LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
             var rule = new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", RuleId = "sample-rule", Title = "Example behavior",
                 Author = "Example Author", Product = "windows", Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-RULE-CONTENT") };
@@ -145,9 +145,9 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.Contains("Example behavior", doc.Body!.TextContent);
                 Assert.Contains("Example Author", doc.Body.TextContent);
                 Assert.Contains("windows", doc.Body.TextContent);
-                Assert.Contains("尚未啟用偵測", doc.Body.TextContent);
+                Assert.Contains("不會部署規則或啟用偵測", doc.Body.TextContent);
                 Assert.DoesNotContain("SECRET-RULE-CONTENT", body);
-                Assert.IsFalse(doc.QuerySelectorAll("form").Any(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation"));
+                Assert.IsTrue(doc.QuerySelectorAll("form").Any(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation"));
             }
             using (var rulesResponse = await admin.GetAsync($"/api/v1/admin/intelligence/sources/{sigma.Id:D}/revisions/{sigmaRevision.Id:D}/sigma-rules", token))
             {

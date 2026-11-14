@@ -1087,6 +1087,46 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaManifest", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<int>("ExcludedCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IncludedCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId")
+                        .IsUnique();
+
+                    b.ToTable("SigmaManifests", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SigmaManifests_Count", "[IncludedCount] >= 0 AND [ExcludedCount] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule", b =>
                 {
                     b.Property<long>("RowId")
@@ -1110,6 +1150,11 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<byte[]>("Digest")
                         .IsRequired()
                         .HasColumnType("binary(32)");
+
+                    b.Property<string>("ExclusionReason")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("License")
                         .HasMaxLength(256)
@@ -1757,6 +1802,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("SourceId", "RevisionId")
                         .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaManifest", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

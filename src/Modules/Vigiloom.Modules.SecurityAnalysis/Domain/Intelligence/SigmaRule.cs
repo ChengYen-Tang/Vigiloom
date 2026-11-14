@@ -14,6 +14,8 @@ public sealed class SigmaRule
     public string? Product { get; set; }
     public string? Category { get; set; }
     public string? Service { get; set; }
+    /// <summary>Null only for rules accepted by the source authorization policy.</summary>
+    public string? ExclusionReason { get; set; }
     public required byte[] Digest { get; set; }
     public required byte[] Content { get; set; }
 }

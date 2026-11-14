@@ -121,16 +121,17 @@
                                 @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
-                            @if (selected.Key is not ("cisa-kev" or "github-reviewed"))
+                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules"))
                             { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
+                            @if (selected.Key == "sigmahq-rules") { <p>僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。</p> }
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
                                 <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
                                 <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> 確認接受紀錄數大幅減少</label>
                                 @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> 若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。</label> }
-                                <div><button type="submit">啟用選擇的版本</button></div>
+                                <div><button type="submit">@(selected.Key == "sigmahq-rules" ? "選用來源版本" : "啟用選擇的版本")</button></div>
                             </EditForm>
                             }
                             else { <p>此頁沒有其他可選的版本。</p> }
@@ -153,13 +154,13 @@
                     {
                         <section class="device-panel">
                             <h2>規則來源資料</h2>
-                            <p>以下是已保存的上游規則與作者資料；尚未啟用偵測，個別授權仍須在發布前核對。</p>
+                            <p>以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。</p>
                             @if (sigmaRules.Items.Count == 0) { <p>此頁沒有規則。</p> }
                             else
                             {
                                 <p class="intelligence-scroll-hint">左右滑動可查看完整規則資訊。</p>
-                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="規則來源資料，可左右捲動"><table><thead><tr><th>規則</th><th>上游適用來源</th><th>作者</th><th>來源狀態</th><th>授權聲明</th></tr></thead><tbody>
-                                    @foreach (var rule in sigmaRules.Items) { <tr @key="rule.Path"><td><strong>@rule.Title</strong><br /><small>@rule.Path</small></td><td>@(rule.Product ?? "未指定")<br /><small>@string.Join(" / ", new[] { rule.Category, rule.Service }.Where(x => !string.IsNullOrEmpty(x)))</small></td><td>@(rule.Author ?? "未提供")</td><td>@(rule.Status ?? "未提供")</td><td>@(rule.License ?? "採用來源規則授權")</td></tr> }
+                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="規則來源資料，可左右捲動"><table><thead><tr><th>規則</th><th>上游適用來源</th><th>作者</th><th>來源狀態</th><th>授權聲明</th><th>來源選用條件</th></tr></thead><tbody>
+                                    @foreach (var rule in sigmaRules.Items) { <tr @key="rule.Path"><td><strong>@rule.Title</strong><br /><small>@rule.Path</small></td><td>@(rule.Product ?? "未指定")<br /><small>@string.Join(" / ", new[] { rule.Category, rule.Service }.Where(x => !string.IsNullOrEmpty(x)))</small></td><td>@(rule.Author ?? "未提供")</td><td>@(rule.Status ?? "未提供")</td><td>@(rule.LicenseStatus switch { "repository-drl-1.1" => "來源聲明 DRL-1.1", "declared-drl-1.1" => "規則聲明 DRL-1.1", _ => $"待核對：{rule.License}" })</td><td>@(rule.ExclusionReason switch { null => "符合", "outside-core-rules" => "不在核心規則範圍", "missing-author" => "缺少作者", "unreviewed-license" => "授權待核對", _ => "尚未核對" })</td></tr> }
                                 </tbody></table></div>
                             }
                             <nav aria-label="規則資料分頁">@if (sigmaRules.Page > 1) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page - 1)">上一頁</a> } <span>第 @sigmaRules.Page 頁</span> @if (sigmaRules.HasMore) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page + 1)">下一頁</a> }</nav>

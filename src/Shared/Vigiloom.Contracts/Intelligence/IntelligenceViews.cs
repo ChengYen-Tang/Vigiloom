@@ -33,7 +33,7 @@ public sealed record IntelligenceRevisionPage(IReadOnlyList<IntelligenceRevision
 
 /// <summary>Retained Sigma source metadata; a parsed rule is not an enabled detection.</summary>
 public sealed record SigmaRuleView(string Path, string? RuleId, string Title, string? Author, string? Status, string? License,
-    string? Product, string? Category, string? Service, string Sha256);
+    string? Product, string? Category, string? Service, string Sha256, string LicenseStatus, string? ExclusionReason);
 public sealed record SigmaRulePage(IReadOnlyList<SigmaRuleView> Items, int Page, bool HasMore);
 
 /// <summary>Metadata of retained IOC, YARA or license evidence, without distributing its source bytes.</summary>

@@ -31,6 +31,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
     public DbSet<AdvisoryRevisionEntry> AdvisoryRevisionEntries => Set<AdvisoryRevisionEntry>();
     public DbSet<SigmaRule> SigmaRules => Set<SigmaRule>();
+    public DbSet<SigmaManifest> SigmaManifests => Set<SigmaManifest>();
     public DbSet<SignatureFile> SignatureFiles => Set<SignatureFile>();
     public DbSet<IocEntry> IocEntries => Set<IocEntry>();
     public DbSet<OfflineImport> OfflineImports => Set<OfflineImport>();

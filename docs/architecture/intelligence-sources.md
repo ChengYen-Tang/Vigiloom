@@ -276,9 +276,9 @@ not silently weaken it or declare that it found no threat. Upstream separates
 core, emerging-threat and threat-hunting rules, and explicitly states that
 [threat-hunting rules are not for alerting](https://github.com/SigmaHQ/sigma/blob/master/Releases.md).
 REQ-33 must decide supported semantics and preserve author attribution in
-match messages; REQ-32 must carry the source metadata and avoid activating a
-candidate until that contract has been verified end to end. Previous revisions
-remain subject to the authorization and withdrawal checks above.
+match messages. REQ-32 may select an attributed source subset for the consumer;
+that selection does not deploy a rule or establish detection support. Previous
+revisions remain subject to the authorization and withdrawal checks above.
 
 ### Signature-Base IOC and YARA source
 
@@ -334,8 +334,13 @@ administrator view exposes metadata without distributing the source files.
 The repository `LICENSE` must match the reviewed SHA-256
 `4213ed7e21d9435b0aa0aa7d11016e6ab3e4664fa71738ff507306fadce79597`;
 a changed or absent license fails the import and is shown as a source error.
-The source can be inspected, but it cannot be activated or used for detection
-until consumer compatibility and each applicable rule's terms are verified.
+An administrator may select a source revision containing an attributed subset
+of core rules. Rules outside `rules/`, with missing authors or unreviewed license
+declarations are excluded; selection is not deployment or proof of detection.
+The `ISigmaCatalog` contract exposes bounded pages and individual verified source
+files with the upstream commit, author, rule link and license link. Consumers
+must preserve attribution and coordinate a final selection check with publishing
+their results; independent consumer compatibility remains REQ-33 work.
 The staging validator does not claim to fully validate Sigma semantics or
 dependency closure. Unsupported semantics must still be handled by REQ-33.
 

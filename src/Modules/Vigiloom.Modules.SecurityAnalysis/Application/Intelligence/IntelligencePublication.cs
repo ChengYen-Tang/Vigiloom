@@ -5,6 +5,7 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -49,7 +50,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
-        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed")) return IntelligencePublicationResult.Unavailable;
+        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules")) return IntelligencePublicationResult.Unavailable;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (active?.RevisionId != expectedActiveRevisionId || (active is null ? version.Length != 0 : !active.Version.AsSpan().SequenceEqual(version)))
             return IntelligencePublicationResult.Conflict;
@@ -72,14 +73,20 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
                  source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
         if (source.Key == "github-reviewed" && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
+        int? sigmaCount = null;
+        if (source.Key == SigmaRefresh.SourceKey && (sigmaCount = await SigmaRevisionEligibility.IncludedCountAsync(db, sourceId, revisionId, token)) is null)
+            return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;
         if (active?.RevisionId == candidate.Id) return IntelligencePublicationResult.Unchanged;
         int? previousCount = null;
-        if (active is not null)
+        if (active is not null && sigmaCount is not null)
+            previousCount = await db.SigmaManifests.Where(x => x.RevisionId == active.RevisionId).Select(x => (int?)x.IncludedCount).SingleOrDefaultAsync(token);
+        else if (active is not null)
             previousCount = await db.IntelligenceRevisions.Where(x => x.SourceId == sourceId && x.Id == active.RevisionId)
                 .Select(x => (int?)x.RecordCount).SingleAsync(token);
-        var largeReduction = candidate.RecordCount == 0 || previousCount is > 0 && (long)candidate.RecordCount * 10 < (long)previousCount * 9;
+        var candidateCount = sigmaCount ?? candidate.RecordCount;
+        var largeReduction = candidateCount == 0 || previousCount is > 0 && (long)candidateCount * 10 < (long)previousCount * 9;
         if (largeReduction && !confirmLargeReduction) return IntelligencePublicationResult.ConfirmationRequired;
         var previous = active?.RevisionId;
         if (active is null)
