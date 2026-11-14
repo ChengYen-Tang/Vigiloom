@@ -263,6 +263,26 @@ public sealed class ModuleMigrationTests
     });
 
     [TestMethod]
+    public Task Migrator_UpgradesExistingDatabaseWithDeploymentLinks() => WithDatabase(async (connectionString, token) =>
+    {
+        var initial = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, initial.ExitCode, initial.Error);
+        await using (var links = new DeploymentLinksDbContext(new DbContextOptionsBuilder<DeploymentLinksDbContext>()
+            .UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable(DeploymentLinksDbContext.MigrationHistory, "resources")).Options))
+            await links.GetService<IMigrator>().MigrateAsync("0", token);
+        var existing = new Device("upgrade sentinel", "127.0.0.1", false, DateTimeOffset.UtcNow);
+        await using (var db = Resources(connectionString)) { db.Devices.Add(existing); await db.SaveChangesAsync(token); }
+        var upgrade = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, upgrade.ExitCode, upgrade.Error);
+        var repeat = await RunMigratorAsync(connectionString, null, token);
+        Assert.AreEqual(0, repeat.ExitCode, repeat.Error);
+        await using var verify = Resources(connectionString);
+        Assert.AreEqual("upgrade sentinel", (await verify.Devices.SingleAsync(x => x.Id == existing.Id, token)).Name);
+        Assert.AreEqual(2, await verify.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(N'resources.DeploymentLinks')").SingleAsync(token));
+        Assert.AreEqual(1, await verify.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM resources.__DeploymentMigrationsHistory").SingleAsync(token));
+    });
+
+    [TestMethod]
     public Task Migrator_FreshInstallEnforcesDefaultAndRefusesExistingDatabase() => WithDatabase(async (connectionString, token) =>
     {
         var fresh = await RunMigratorAsync(connectionString, "fresh-install", token);

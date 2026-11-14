@@ -9,6 +9,7 @@ internal sealed class BrowserServiceDetailsClient(HttpClient client) : IServiceD
 {
     public Task<ServiceDetails?> GetServiceAsync(Guid id, CancellationToken token) => ReadAsync<ServiceDetails>($"api/v1/service-details/{id:D}/", token);
     public Task<ServiceInstancePage?> GetInstancesAsync(Guid id, int page, CancellationToken token) => ReadAsync<ServiceInstancePage>($"api/v1/service-details/{id:D}/instances?page={page}", token);
+    public Task<DeploymentLinkPage?> GetDeploymentsAsync(Guid id, int page, CancellationToken token) => ReadAsync<DeploymentLinkPage>($"api/v1/service-details/{id:D}/deployments?page={page}", token);
     public Task<ServiceHealthStatus?> GetHealthAsync(Guid id, CancellationToken token) => ReadAsync<ServiceHealthStatus>($"api/v1/service-health/{id:D}/status", token);
     public async Task<HealthObservationPage> GetHealthEvidenceAsync(Guid id, int page, CancellationToken token) =>
         await ReadAsync<HealthObservationPage>($"api/v1/service-details/{id:D}/health-observations?page={page}", token) ?? throw new HttpRequestException("Missing health observations.");

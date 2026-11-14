@@ -62,6 +62,29 @@ else
             }
         }
     </section>
+    <section class="service-card" aria-labelledby="deployments-heading">
+        <h2 id="deployments-heading">部署關聯</h2>
+        <p>關聯由管理員依據部署資料確認，僅供導覽；不代表目前服務健康，也不會公開主機資訊。</p>
+        <AuthorizeView Roles="Administrator"><Authorized><p><a href="@($"/settings/service-deployments?service={ServiceId:D}")">管理部署關聯</a></p></Authorized></AuthorizeView>
+        <button type="button" class="health-evidence-button" disabled="@(!interactive || deploymentsLoading)" @onclick="() => LoadDeploymentsAsync(1)">查看關聯主機</button>
+        @if (deploymentsLoading) { <p role="status">正在載入部署關聯…</p> }
+        @if (deploymentsError) { <p role="alert">無法讀取部署關聯，請稍後再試。</p> }
+        @if (deployments is not null)
+        {
+            @if (deployments.Items.Count == 0) { <p>目前沒有管理員確認的關聯。</p> }
+            else
+            {
+                <p class="scroll-hint">表格可左右滑動查看完整內容。</p>
+                <div class="service-table" tabindex="0" role="region" aria-label="部署關聯表格，可左右滑動"><table><thead><tr><th>主機</th><th>執行個體</th><th>確認依據</th><th>目前狀態</th></tr></thead><tbody>
+                    @foreach (var item in deployments.Items)
+                    {
+                        <tr @key="item.Id"><td><a href="@($"/devices/{item.DeviceId:D}")">@item.DeviceName</a></td><td>@item.InstanceName</td><td>@item.Evidence</td><td>@(item.DeviceArchived ? "設備已封存；" : "")@(item.InstanceRetired ? "執行個體已退役；" : "")@(item.SourceRevoked ? "來源已撤銷；" : "")@(item.ServiceStopped ? "服務已停收；" : "")@(!item.DeviceArchived && !item.InstanceRetired && !item.SourceRevoked && !item.ServiceStopped ? "未解除" : "請檢查關聯")</td></tr>
+                    }
+                </tbody></table></div>
+            }
+            @if (deploymentsPage > 1 || deployments.HasMore) { <div class="service-actions"><button type="button" disabled="@(deploymentsLoading || deploymentsPage == 1)" @onclick="() => LoadDeploymentsAsync(deploymentsPage - 1)">上一頁</button><span>第 @deploymentsPage 頁</span><button type="button" disabled="@(deploymentsLoading || !deployments.HasMore)" @onclick="() => LoadDeploymentsAsync(deploymentsPage + 1)">下一頁</button></div> }
+        }
+    </section>
     <section class="service-card" aria-labelledby="http-metrics-heading">
         <h2 id="http-metrics-heading">HTTP 服務指標</h2>
         @if (metricsError) { <p role="alert">無法讀取 HTTP 指標，請重新載入。</p> }
