@@ -133,6 +133,7 @@ public sealed class AgentIdentityTlsTests
                 var logPath = Path.Combine(statePath, "integration.log");
                 var multilinePath = Path.Combine(statePath, "multiline.log");
                 await File.WriteAllTextAsync(logPath, "tls-log-one\ntls-log-two\n", token);
+                await File.WriteAllTextAsync(multilinePath, "", token);
                 AgentSettingsView configured;
                 AgentMetricSettingsView configuredMetrics;
                 await using (var scope = factory.Services.CreateAsyncScope())
@@ -343,6 +344,9 @@ public sealed class AgentIdentityTlsTests
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
+                            var multilineRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = "multiline-start" });
+                            await Assertions.Expect(multilineRow).ToContainTextAsync("continuation");
+                            await Assertions.Expect(multilineRow).ToContainTextAsync("Multiline log");
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
                             await table.GetByText("x", new() { Exact = true }).WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
@@ -354,6 +358,8 @@ public sealed class AgentIdentityTlsTests
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
+                            await Assertions.Expect(multilineRow).ToContainTextAsync("continuation");
+                            await Assertions.Expect(multilineRow).ToContainTextAsync("Multiline log");
                             await table.GetByText("x", new() { Exact = true }).WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
                         }
