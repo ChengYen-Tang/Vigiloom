@@ -1,12 +1,7 @@
 @page "/"
+@page "/status"
 @rendermode InteractiveAuto
-@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Web.Client.Components.PublicStatus
 
-<PageTitle>Vigiloom</PageTitle>
-
-<h1>Vigiloom</h1>
-<p>集中查看設備、服務與監控狀態。</p>
-<AuthorizeView>
-    <Authorized><p><a href="/workspace">前往監控工作區</a></p></Authorized>
-    <NotAuthorized><p><a href="/account/login">登入</a></p></NotAuthorized>
-</AuthorizeView>
+<PageTitle>公開監測狀態 - Vigiloom</PageTitle>
+<PublicStatusPanel />
