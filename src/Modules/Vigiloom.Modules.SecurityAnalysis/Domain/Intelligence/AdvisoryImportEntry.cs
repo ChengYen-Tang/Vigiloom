@@ -5,6 +5,7 @@ public sealed class AdvisoryImportEntry
 {
     public long RowId { get; private set; }
     public Guid ImportId { get; set; }
+    public bool Reconciliation { get; set; }
     public long PageRowId { get; set; }
     public required string AdvisoryId { get; set; }
     public required byte[] Digest { get; set; }

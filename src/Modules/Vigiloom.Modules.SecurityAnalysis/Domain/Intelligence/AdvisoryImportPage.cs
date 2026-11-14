@@ -7,6 +7,7 @@ public sealed class AdvisoryImportPage
     public Guid ImportId { get; set; }
     public int Number { get; set; }
     public int Phase { get; set; }
+    public bool Reconciliation { get; set; }
     public required byte[] Digest { get; set; }
     public required byte[] Payload { get; set; }
     public string? NextCursor { get; set; }

@@ -124,6 +124,45 @@ public sealed class AdvisoryImportTests(TestContext context)
             }
         }, context.CancellationToken);
 
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    public Task Reconciliation_RequiresMatchingIndependentPass(int variant) =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var state = await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(state);
+            var original = Page("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", null, "original", null);
+            var emptyBytes = Encoding.UTF8.GetBytes("[]");
+            var emptyWithdrawn = new AdvisoryPage([], null, emptyBytes, new(2023, 1, 1), new(2023, 2, 1), true, null);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, state.Id, state.Version, null, false, original, token));
+            state = await ReadAsync(contexts, token);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, state.Id, state.Version, null, true, emptyWithdrawn, token));
+            state = await ReadAsync(contexts, token);
+            Assert.AreEqual(3, state.Phase);
+            var check = variant switch
+            {
+                1 => Page("GHSA-abcd-1234-efgh", "2023-01-04T00:00:00Z", null, "changed", null),
+                2 => Page("GHSA-efgh-2345-ijkl", "2023-01-03T00:00:00Z", null, "original", null),
+                _ => original
+            };
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, state.Id, state.Version, null, false, check, token));
+            state = await ReadAsync(contexts, token);
+            Assert.AreEqual(2, state.ReconciliationPhase);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, state.Id, state.Version, null, true, emptyWithdrawn, token));
+            state = await ReadAsync(contexts, token);
+            Assert.AreEqual(variant == 0 ? 3 : 4, state.ReconciliationPhase);
+            Assert.AreEqual(3, state.Phase);
+            await using var dbCheck = contexts.CreateDbContext();
+            Assert.AreEqual(0, await dbCheck.IntelligenceActivations.CountAsync(token));
+        }, context.CancellationToken);
+
     private static AdvisoryPage Page(string id, string updated, string? withdrawn, string summary, string? next,
         bool withdrawnFilter = false, string? requested = null)
     {
