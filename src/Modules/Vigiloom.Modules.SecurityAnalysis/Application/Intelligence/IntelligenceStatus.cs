@@ -50,7 +50,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         };
         var result = new AdvisoryImportProgressView(sourceId, import?.Id, state, import?.WindowStart, import?.WindowEnd, import?.StartedAt,
             import?.PageCount ?? 0, import?.RecordCount ?? 0, import?.TotalBytes ?? 0, retryAt, import?.FailureCode,
-            import?.ResultRevisionId, "github-reviewed-only; not a point-in-time snapshot; other sources and applicability unsupported");
+            import?.ResultRevisionId, "github-reviewed-only; not a point-in-time snapshot; other sources and applicability unsupported",
+            import is null ? null : Convert.ToBase64String(import.Version));
         await transaction.CommitAsync(token);
         return result;
     }

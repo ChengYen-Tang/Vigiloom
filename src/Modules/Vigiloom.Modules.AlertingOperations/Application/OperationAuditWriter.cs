@@ -36,6 +36,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             AgentPackageTrustInitialized change when IsValid(change) => (AuditKinds.AgentPackageTrustInitializedV1, JsonSerializer.Serialize(change)),
             IntelligenceRevisionActivated change when IsValid(change) => (AuditKinds.IntelligenceRevisionActivatedV1, JsonSerializer.Serialize(change)),
             IntelligencePolicyChanged change when IsValid(change) => (AuditKinds.IntelligencePolicyChangedV1, JsonSerializer.Serialize(change)),
+            AdvisoryImportAbandoned change when IsValid(change) => (AuditKinds.AdvisoryImportAbandonedV1, JsonSerializer.Serialize(change)),
             ServiceApproved change when change.SourceId.Version == 7 => (AuditKinds.ServiceApprovedV1, JsonSerializer.Serialize(change)),
             ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
@@ -79,6 +80,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
 
     internal static bool IsValid(IntelligenceRevisionActivated change) => change.RevisionId.Version == 7 &&
         (change.PreviousRevisionId is null || change.PreviousRevisionId.Value.Version == 7) && change.PreviousRevisionId != change.RevisionId;
+
+    internal static bool IsValid(AdvisoryImportAbandoned change) => change.ImportId.Version == 7;
 
     internal static bool IsValid(IntelligencePolicyChanged change) => change.Previous is not null && change.Current is not null &&
         ValidIntelligencePolicy(change.Previous) && ValidIntelligencePolicy(change.Current) && IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
