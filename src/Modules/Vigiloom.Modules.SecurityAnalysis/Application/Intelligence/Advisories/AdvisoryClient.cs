@@ -5,7 +5,8 @@ using System.Text.Json;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
-internal sealed record AdvisoryPage(IReadOnlyList<AdvisoryRecord> Records, string? NextCursor, byte[] RawBytes);
+internal sealed record AdvisoryPage(IReadOnlyList<AdvisoryRecord> Records, string? NextCursor, byte[] RawBytes,
+    DateOnly From, DateOnly To, bool Withdrawn, string? RequestedCursor);
 
 internal sealed class AdvisoryRateLimitException(DateTimeOffset? retryAt) : Exception("GitHub advisory rate limit reached.")
 {
@@ -45,7 +46,7 @@ internal sealed class AdvisoryClient(HttpClient client, TimeProvider clock)
         if (withdrawn && records.Any(x => x.WithdrawnAt is null)) throw new InvalidDataException("Withdrawn advisory query returned an active record.");
         var next = response.Headers.TryGetValues("Link", out var links) ? AdvisoryLinks.Next(links, modified, withdrawn) : null;
         if (next == cursor && next is not null) throw new InvalidDataException("Advisory cursor did not advance.");
-        return new(records, next, bytes);
+        return new(records, next, bytes, from, to, withdrawn, cursor);
     }
 
     private static async Task<bool> IsSecondaryLimitAsync(HttpContent content, CancellationToken token)
