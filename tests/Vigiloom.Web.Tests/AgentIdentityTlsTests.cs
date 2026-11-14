@@ -292,6 +292,13 @@ public sealed class AgentIdentityTlsTests
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
                             await table.GetByText("採集缺口：", new() { Exact = true }).WaitForAsync();
+                            await wasmGate.ReleaseAsync();
+                            await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+                            await page.ReloadAsync();
+                            await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+                            await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
+                            await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("採集缺口：", new() { Exact = true }).WaitForAsync();
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
