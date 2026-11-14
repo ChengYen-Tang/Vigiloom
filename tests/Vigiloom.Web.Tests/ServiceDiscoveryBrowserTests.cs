@@ -17,14 +17,12 @@ public sealed class ServiceDiscoveryBrowserTests(TestContext context)
 {
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
-    public Task CandidatePage_DesktopAndMobile() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task CandidatePage_DesktopAndMobile() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         factory.UseKestrel(0);
         factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
-            await db.Database.MigrateAsync(token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         await using var scope = factory.Services.CreateAsyncScope();
         var names = new[] { ("demo-collector", "訂單處理服務"), ("dc-west", "商品目錄 API"), ("test-agent-01", "會員驗證服務"), ("dc-analytics", "報表處理服務"), ("dev-collector", "通知轉送器") };
         foreach (var (name, service) in names)

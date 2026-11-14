@@ -12,6 +12,7 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
 
@@ -21,7 +22,7 @@ namespace Vigiloom.Web.Tests;
 public sealed class AgentPackageUiTests(TestContext context)
 {
     [TestMethod]
-    public Task Administrator_CanInitializeIndependentlyVerifiedRoot() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task Administrator_CanInitializeIndependentlyVerifiedRoot() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -32,10 +33,6 @@ public sealed class AgentPackageUiTests(TestContext context)
         });
         var services = factory.Services;
         var identities = services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-        await using (var db = await identities.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await RoleInitializer.InitializeAsync(identities, token);
         await using (var scope = services.CreateAsyncScope())
             Assert.AreEqual(InitialAdministratorStatus.Created, (await scope.ServiceProvider.GetRequiredService<InitialAdministrator>()

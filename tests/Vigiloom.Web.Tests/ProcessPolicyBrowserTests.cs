@@ -17,14 +17,12 @@ public sealed class ProcessPolicyBrowserTests(TestContext context)
 {
     [TestMethod]
     [Timeout(180000, CooperativeCancellation = true)]
-    public Task ProcessPolicy_DesktopAndMobileSupportSafeOverride() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task ProcessPolicy_DesktopAndMobileSupportSafeOverride() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         factory.UseKestrel(0);
         factory.StartServer();
-        await PingTestSite.InitializeAsync(factory, token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
