@@ -52,7 +52,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
           (SELECT COUNT(*) FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
             WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
               AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
-                OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
+                OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))
+                OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryDetailsVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryDetailsVersion}))) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
         FROM [resources].[Groups] AS g
         WHERE g.[IsPublic] = CAST(1 AS bit) AND g.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(g.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND g.[PublicDisplayName] IS NOT NULL
           AND (EXISTS (SELECT 1 FROM [resources].[DeviceGroups] AS m JOIN [resources].[Devices] AS d ON d.[Id] = m.[DeviceId]
@@ -62,7 +63,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
             OR EXISTS (SELECT 1 FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
                 WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
                   AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
-                    OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))) AND s.[PublicDisplayName] IS NOT NULL))
+                    OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))
+                    OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryDetailsVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryDetailsVersion}))) AND s.[PublicDisplayName] IS NOT NULL))
         """);
 
     private static IQueryable<DeviceRow> VisibleDevices(ResourcesDbContext db) => db.Database.SqlQuery<DeviceRow>($"""
@@ -113,7 +115,9 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         ((EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion &&
           EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2) ||
          (EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&
-          EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryVersion.Length * 2)));
+          EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryVersion.Length * 2) ||
+         (EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryDetailsVersion &&
+          EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryDetailsVersion.Length * 2)));
 
     public async Task<PublicPage<PublicService>> ServicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
     {

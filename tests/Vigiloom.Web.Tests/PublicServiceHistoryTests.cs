@@ -105,8 +105,10 @@ public sealed class PublicServiceHistoryTests(TestContext context)
     }, context.CancellationToken);
 
     [TestMethod]
+    [DataRow(PublicationPolicy.ServiceHistoryVersion)]
+    [DataRow(PublicationPolicy.ServiceHistoryDetailsVersion)]
     [Timeout(120000, CooperativeCancellation = true)]
-    public Task HistoryPolicy_RequiresAdministratorAndStartsNewPeriod() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    public Task HistoryPolicy_RequiresAdministratorAndStartsNewPeriod(string requestedPolicy) => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var host = PingTestSite.CreateFactory(database.ConnectionString);
         await PingTestSite.InitializeAsync(host, token, schemaInitialized: true);
@@ -114,7 +116,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         var source = new ServiceSource("source", new byte[32], old);
         var candidate = new ServiceCandidate(source.Id, "orders", "prod", "Orders", old);
         var service = new MonitoredService(candidate, old);
-        service.SetPublication(true, "Orders", PublicationPolicy.BaselineVersion, old);
+        service.SetPublication(true, "Orders", requestedPolicy == PublicationPolicy.ServiceHistoryVersion ? PublicationPolicy.BaselineVersion : PublicationPolicy.ServiceHistoryVersion, old);
         service.ConfirmPublicSince(old);
         await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
         {
@@ -130,7 +132,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         var url = $"/api/v1/admin/publications/services/{service.Id:D}";
         var settings = await admin.GetFromJsonAsync<PublicationSettings>(url, token);
         Assert.IsNotNull(settings);
-        var requested = new PublicationChange(true, "Orders", PublicationPolicy.ServiceHistoryVersion, settings.Version);
+        var requested = new PublicationChange(true, "Orders", requestedPolicy, settings.Version);
         using (var denied = await reader.PutAsJsonAsync(url, requested, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         var before = DateTimeOffset.UtcNow.AddMinutes(-1);
         using var updated = await admin.PutAsJsonAsync(url, requested, token);
@@ -140,7 +142,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
         {
             var persisted = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
-            Assert.AreEqual(PublicationPolicy.ServiceHistoryVersion, persisted.PublicPolicyVersion);
+            Assert.AreEqual(requestedPolicy, persisted.PublicPolicyVersion);
             Assert.IsNotNull(persisted.PublicSince);
             Assert.IsGreaterThan(before, persisted.PublicSince.Value);
             Assert.AreEqual(Convert.ToBase64String(persisted.Version), result.Version);
@@ -189,12 +191,44 @@ public sealed class PublicServiceHistoryTests(TestContext context)
     }
 
     [TestMethod]
-    [DataRow(false, false)]
-    [DataRow(true, false)]
-    [DataRow(false, true)]
-    [DataRow(true, true)]
+    public void Periods_MergeEquivalentPublicStatesAndDoNotInventBoundaryChanges()
+    {
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        ServiceHealthInterval[] input =
+        [
+            new(start, start.AddMinutes(1), ServiceHealthState.Healthy, 0),
+            new(start.AddMinutes(1), start.AddMinutes(2), ServiceHealthState.Healthy, 1),
+            new(start.AddMinutes(2), start.AddMinutes(3), ServiceHealthState.Degraded, 0),
+            new(start.AddMinutes(3), start.AddMinutes(4), ServiceHealthState.Unknown, 2)
+        ];
+        var result = PublicServiceHistoryReader.ToPeriods(input);
+        Assert.HasCount(3, result);
+        Assert.AreEqual(new PublicHealthPeriod(start, start.AddMinutes(2), "Healthy", false), result[0]);
+        Assert.AreEqual(new PublicHealthPeriod(start.AddMinutes(2), start.AddMinutes(3), "Degraded", true), result[1]);
+        Assert.AreEqual(new PublicHealthPeriod(start.AddMinutes(3), start.AddMinutes(4), "Unknown", true), result[2]);
+        var tooMany = Enumerable.Range(0, 513).Select(i => new ServiceHealthInterval(start.AddSeconds(i), start.AddSeconds(i + 1),
+            i % 2 == 0 ? ServiceHealthState.Healthy : ServiceHealthState.Unhealthy, 0)).ToArray();
+        Assert.HasCount(512, PublicServiceHistoryReader.ToPeriods(tooMany[..512]));
+        Assert.ThrowsExactly<HealthHistoryTooLargeException>(() => PublicServiceHistoryReader.ToPeriods(tooMany));
+        tooMany[^1] = tooMany[^1] with { State = tooMany[^2].State };
+        Assert.HasCount(512, PublicServiceHistoryReader.ToPeriods(tooMany));
+        Assert.IsTrue(PublicServiceHistoryReader.ValidPeriods(start, start.AddDays(1)));
+        Assert.IsFalse(PublicServiceHistoryReader.ValidPeriods(start, start.AddDays(1).AddTicks(1)));
+    }
+
+    [TestMethod]
+    [DataRow(0, false, false)]
+    [DataRow(1, false, false)]
+    [DataRow(0, true, false)]
+    [DataRow(1, true, false)]
+    [DataRow(0, false, true)]
+    [DataRow(1, false, true)]
+    [DataRow(2, false, true)]
+    [DataRow(0, true, true)]
+    [DataRow(1, true, true)]
+    [DataRow(2, true, true)]
     [Timeout(120000, CooperativeCancellation = true)]
-    public Task History_RechecksPublicationAndSourceAfterReading(bool revokeSource, bool snapshotReads) => WithHistoryReadMode(snapshotReads, async (database, token) =>
+    public Task History_RechecksPublicationAndSourceAfterReading(int mutation, bool snapshotReads, bool periods) => WithHistoryReadMode(snapshotReads, async (database, token) =>
     {
         using var host = PingTestSite.CreateFactory(database.ConnectionString);
         var normal = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
@@ -203,7 +237,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         var source = new ServiceSource("source", new byte[32], start);
         var candidate = new ServiceCandidate(source.Id, "orders", "prod", "Orders", start);
         var service = new MonitoredService(candidate, start);
-        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, start);
+        service.SetPublication(true, "Orders", periods ? PublicationPolicy.ServiceHistoryDetailsVersion : PublicationPolicy.ServiceHistoryVersion, start);
         service.ConfirmPublicSince(start);
         var target = new HealthTarget(service.Id, null, "http://127.0.0.1/health", 30, 5, 3, 2, start);
         var interval = new HealthStateInterval(target.Id, 1, 1, start);
@@ -219,19 +253,23 @@ public sealed class PublicServiceHistoryTests(TestContext context)
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).AddInterceptors(gate).Options;
         var contexts = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
         var reader = new PublicServiceHistoryReader(contexts, new HealthHistoryReader(contexts));
-        var read = reader.ReadAsync(service.Id, start, now.AddMinutes(-1), token);
+        async Task<bool> ReadAsync() => periods
+            ? await reader.ReadPeriodsAsync(service.Id, start, now.AddMinutes(-1), token) is not null
+            : await reader.ReadAsync(service.Id, start, now.AddMinutes(-1), token) is not null;
+        var read = ReadAsync();
         Exception? failure = null;
         try
         {
             await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
             await using (var db = await normal.CreateDbContextAsync(token))
             {
-                if (revokeSource) (await db.Sources.SingleAsync(x => x.Id == source.Id, token)).Revoke(now);
+                if (mutation == 1) (await db.Sources.SingleAsync(x => x.Id == source.Id, token)).Revoke(now);
+                else if (mutation == 2) (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, now);
                 else (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(false, null, null, now);
                 await db.SaveChangesAsync(token);
             }
             gate.Release.TrySetResult();
-            Assert.IsNull(await read);
+            Assert.IsFalse(await read);
         }
         catch (Exception exception) { failure = exception; throw; }
         finally
@@ -272,6 +310,40 @@ public sealed class PublicServiceHistoryTests(TestContext context)
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task Periods_RejectOversizedResultWithoutPartialDisclosure() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var start = DateTimeOffset.UtcNow.AddMinutes(-15);
+        var source = new ServiceSource("source", new byte[32], start);
+        var candidate = new ServiceCandidate(source.Id, "orders", "prod", "Orders", start);
+        var service = new MonitoredService(candidate, start);
+        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryDetailsVersion, start);
+        service.ConfirmPublicSince(start);
+        var target = new HealthTarget(service.Id, null, "http://127.0.0.1/health", 30, 5, 3, 2, start);
+        var intervals = Enumerable.Range(0, 513).Select(i =>
+        {
+            var interval = new HealthStateInterval(target.Id, (byte)(i % 2 == 0 ? 1 : 2), 1, start.AddSeconds(i));
+            interval.Close(start.AddSeconds(i + 1));
+            return interval;
+        }).ToArray();
+        await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            db.HealthTargets.Add(target); db.HealthStateIntervals.AddRange(intervals);
+            await db.SaveChangesAsync(token);
+        }
+        using var client = PingTestSite.Client(host);
+        var range = $"?from={Uri.EscapeDataString(start.ToString("O"))}&to={Uri.EscapeDataString(start.AddSeconds(513).ToString("O"))}";
+        using var response = await client.GetAsync($"/api/v1/public/services/{service.Id:D}/history/periods{range}", token);
+        Assert.AreEqual(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+        var body = await response.Content.ReadAsStringAsync(token);
+        Assert.DoesNotContain("127.0.0.1", body);
+        Assert.DoesNotContain("periods", body, StringComparison.OrdinalIgnoreCase);
+    }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task History_RequiresExplicitPolicyAndClipsPublicationPeriod() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var host = PingTestSite.CreateFactory(database.ConnectionString);
@@ -282,7 +354,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         var source = new ServiceSource("private-source", new byte[32], start);
         var candidate = new ServiceCandidate(source.Id, "orders", "private-environment", "Orders", start);
         var service = new MonitoredService(candidate, start);
-        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, start);
+        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryDetailsVersion, start);
         service.ConfirmPublicSince(published);
         var baselineCandidate = new ServiceCandidate(source.Id, "baseline", "private-environment", "Baseline", start);
         var baseline = new MonitoredService(baselineCandidate, start);
@@ -295,6 +367,10 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         var old = new MonitoredService(oldCandidate, start.AddDays(-120));
         old.SetPublication(true, "Old", PublicationPolicy.ServiceHistoryVersion, start.AddDays(-120));
         old.ConfirmPublicSince(start.AddDays(-120));
+        var dailyCandidate = new ServiceCandidate(source.Id, "daily", "private-environment", "Daily", start);
+        var daily = new MonitoredService(dailyCandidate, start);
+        daily.SetPublication(true, "Daily", PublicationPolicy.ServiceHistoryVersion, start);
+        daily.ConfirmPublicSince(published);
         var target = new HealthTarget(service.Id, null, "http://127.0.0.1/private-health", 30, 5, 3, 2, start);
         var healthy = new HealthStateInterval(target.Id, 1, 1, start);
         healthy.Close(published.AddSeconds(30));
@@ -302,8 +378,8 @@ public sealed class PublicServiceHistoryTests(TestContext context)
         degraded.Close(end);
         await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
         {
-            db.Sources.Add(source); db.Candidates.AddRange(candidate, baselineCandidate, pendingCandidate, oldCandidate);
-            db.Services.AddRange(service, baseline, pending, old);
+            db.Sources.Add(source); db.Candidates.AddRange(candidate, baselineCandidate, pendingCandidate, oldCandidate, dailyCandidate);
+            db.Services.AddRange(service, baseline, pending, old, daily);
             db.HealthTargets.Add(target); db.HealthStateIntervals.AddRange(healthy, degraded);
             await db.SaveChangesAsync(token);
         }
@@ -326,6 +402,31 @@ public sealed class PublicServiceHistoryTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
         using (var denied = await anonymous.GetAsync($"/api/v1/public/services/{pending.Id:D}/history{range}", token))
             Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync($"/api/v1/public/services/{baseline.Id:D}/history/periods{range}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
+        using (var denied = await anonymous.GetAsync($"/api/v1/public/services/{pending.Id:D}/history/periods{range}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
+        using (var dailyResponse = await anonymous.GetAsync($"/api/v1/public/services/{daily.Id:D}/history{range}", token))
+            Assert.AreEqual(HttpStatusCode.OK, dailyResponse.StatusCode);
+        using (var denied = await anonymous.GetAsync($"/api/v1/public/services/{daily.Id:D}/history/periods{range}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
+        using (var tooWide = await anonymous.GetAsync($"/api/v1/public/services/{service.Id:D}/history/periods?from={Uri.EscapeDataString(start.ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(2).ToString("O"))}", token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, tooWide.StatusCode);
+        using (var periodsResponse = await anonymous.GetAsync($"/api/v1/public/services/{service.Id:D}/history/periods{range}", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, periodsResponse.StatusCode);
+            Assert.IsTrue(periodsResponse.Headers.CacheControl?.NoStore);
+            var json = await periodsResponse.Content.ReadAsStringAsync(token);
+            Assert.DoesNotContain("127.0.0.1", json);
+            Assert.DoesNotContain("private-source", json);
+            Assert.DoesNotContain("private-environment", json);
+            Assert.DoesNotContain("unknownParticipants", json);
+            var periods = System.Text.Json.JsonSerializer.Deserialize<PublicServiceHealthPeriods>(json, System.Text.Json.JsonSerializerOptions.Web);
+            Assert.IsNotNull(periods);
+            Assert.HasCount(2, periods.Periods);
+            Assert.AreEqual(new PublicHealthPeriod(published, published.AddSeconds(30), "Healthy", false), periods.Periods[0]);
+            Assert.AreEqual(new PublicHealthPeriod(published.AddSeconds(30), end, "Degraded", true), periods.Periods[1]);
+        }
         using var response = await anonymous.GetAsync($"/api/v1/public/services/{service.Id:D}/history{range}", token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.IsTrue(response.Headers.CacheControl?.NoStore);
