@@ -64,7 +64,7 @@ public sealed class AdvisoryImportTests(TestContext context)
             var previous = db.Database.GetMigrations().Single(x => x.EndsWith("_AdvisoryCursorRestart", StringComparison.Ordinal));
             var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
             Assert.AreEqual(51000, error.Number);
-            Assert.AreEqual(2, (await db.AdvisoryImports.AsNoTracking().SingleAsync(token)).ReconciliationPhase);
+            Assert.AreEqual(2, await db.AdvisoryImports.AsNoTracking().Select(x => x.ReconciliationPhase).SingleAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

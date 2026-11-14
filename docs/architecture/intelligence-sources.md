@@ -209,6 +209,17 @@ the limits adjustable by an administrator without allowing an unbounded sync.
 The upstream API's defaults exclude malware and unreviewed advisories, so the
 UI and consumer contract must explicitly show that coverage gap.
 
+A staged GHSA revision uses a small, hashed manifest and a materialized index
+of GHSA IDs referring to the retained immutable import entries and original
+pages. The manifest is not the upstream response or an upstream signature.
+Incremental windows retain base entries absent from the response and never
+replace a newer entry with an older one; an equal upstream timestamp with
+different content requires reconciliation rather than guessing. The index
+includes withdrawn records and their provenance. A second independent read of
+both query variants must match before staging; matching passes do not guarantee
+that GitHub provided a point-in-time snapshot. Revisions have no invented
+upstream release time when the API does not supply one.
+
 For Sigma, pin a concrete release or commit and preserve rule ID, author,
 license, source, status, log source, detection expression and the conversion
 version in each staged revision. Validate each rule and its dependency closure

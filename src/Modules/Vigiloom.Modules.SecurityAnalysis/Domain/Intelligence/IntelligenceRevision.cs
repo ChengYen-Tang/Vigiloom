@@ -9,7 +9,7 @@ public sealed class IntelligenceRevision
     public long RowId { get; private set; }
     public Guid SourceId { get; set; }
     public required string UpstreamVersion { get; set; }
-    public DateTimeOffset ReleasedAt { get; set; }
+    public DateTimeOffset? ReleasedAt { get; set; }
     public DateTimeOffset RetrievedAt { get; set; }
     public required byte[] Digest { get; set; }
     public required byte[] Artifact { get; set; }

@@ -111,6 +111,8 @@ internal static class IntelligenceModel
         import.HasOne<IntelligenceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.NoAction);
         import.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.BaseRevisionId })
             .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+        import.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.ResultRevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
 
         var page = model.Entity<AdvisoryImportPage>();
         page.ToTable("AdvisoryImportPages", t => t.HasCheckConstraint("CK_AdvisoryImportPages_Values", "[Number] > 0 AND [Phase] BETWEEN 1 AND 2 AND DATALENGTH([Payload]) BETWEEN 1 AND 2097152"));
@@ -130,8 +132,19 @@ internal static class IntelligenceModel
         entry.Property(x => x.RowId).UseIdentityColumn();
         entry.Property(x => x.AdvisoryId).HasMaxLength(19).IsUnicode(false).IsRequired();
         entry.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        entry.HasAlternateKey(x => new { x.RowId, x.AdvisoryId }).IsClustered(false);
         entry.HasIndex(x => new { x.ImportId, x.Reconciliation, x.AdvisoryId }).IsUnique();
         entry.HasOne<AdvisoryImportPage>().WithMany().HasForeignKey(x => new { x.ImportId, x.PageRowId })
             .HasPrincipalKey(x => new { x.ImportId, x.RowId }).OnDelete(DeleteBehavior.NoAction);
+
+        var advisoryRevision = model.Entity<AdvisoryRevisionEntry>();
+        advisoryRevision.ToTable("AdvisoryRevisionEntries");
+        advisoryRevision.HasKey(x => x.RowId).IsClustered();
+        advisoryRevision.Property(x => x.RowId).UseIdentityColumn();
+        advisoryRevision.Property(x => x.AdvisoryId).HasMaxLength(19).IsUnicode(false).IsRequired();
+        advisoryRevision.HasIndex(x => new { x.RevisionId, x.AdvisoryId }).IsUnique();
+        advisoryRevision.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+        advisoryRevision.HasOne<AdvisoryImportEntry>().WithMany().HasForeignKey(x => new { x.EntryRowId, x.AdvisoryId })
+            .HasPrincipalKey(x => new { x.RowId, x.AdvisoryId }).OnDelete(DeleteBehavior.NoAction);
     }
 }

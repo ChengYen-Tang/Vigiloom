@@ -470,6 +470,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<int>("RestartCount")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("ResultRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -518,6 +521,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasFilter("[Phase] < 4");
 
                     b.HasIndex("SourceId", "BaseRevisionId");
+
+                    b.HasIndex("SourceId", "ResultRevisionId");
 
                     b.HasIndex("SourceId", "StartedAt");
 
@@ -574,6 +579,10 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasAlternateKey("RowId", "AdvisoryId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("RowId", "AdvisoryId"), false);
 
                     b.HasIndex("ImportId", "PageRowId");
 
@@ -637,6 +646,38 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_AdvisoryImportPages_Values", "[Number] > 0 AND [Phase] BETWEEN 1 AND 2 AND DATALENGTH([Payload]) BETWEEN 1 AND 2097152");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.AdvisoryRevisionEntry", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("AdvisoryId")
+                        .IsRequired()
+                        .HasMaxLength(19)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(19)");
+
+                    b.Property<long>("EntryRowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("EntryRowId", "AdvisoryId");
+
+                    b.HasIndex("RevisionId", "AdvisoryId")
+                        .IsUnique();
+
+                    b.ToTable("AdvisoryRevisionEntries", "security");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceActivation", b =>
@@ -763,7 +804,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<int>("RecordCount")
                         .HasColumnType("int");
 
-                    b.Property<DateTimeOffset>("ReleasedAt")
+                    b.Property<DateTimeOffset?>("ReleasedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<DateTimeOffset>("RetrievedAt")
@@ -1382,6 +1423,12 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasForeignKey("SourceId", "BaseRevisionId")
                         .HasPrincipalKey("SourceId", "Id")
                         .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "ResultRevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.AdvisoryImportEntry", b =>
@@ -1399,6 +1446,22 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.AdvisoryImport", null)
                         .WithMany()
                         .HasForeignKey("ImportId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.AdvisoryRevisionEntry", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.AdvisoryImportEntry", null)
+                        .WithMany()
+                        .HasForeignKey("EntryRowId", "AdvisoryId")
+                        .HasPrincipalKey("RowId", "AdvisoryId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

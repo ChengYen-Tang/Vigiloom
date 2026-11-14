@@ -9,7 +9,7 @@ public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, i
 public sealed record IntelligenceSourcePage(IReadOnlyList<IntelligenceSourceView> Items, int Page, bool HasMore);
 
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
-public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset ReleasedAt, DateTimeOffset RetrievedAt,
+public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,
     string Sha256, string SchemaVersion, string MappingVersion, string LicenseEvidence, int RecordCount, bool Revoked, bool Normalized, bool Active);
 
 /// <summary>Bounded page of retained source revisions.</summary>
