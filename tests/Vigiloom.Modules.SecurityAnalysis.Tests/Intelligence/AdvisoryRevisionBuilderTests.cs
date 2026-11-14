@@ -21,6 +21,50 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class AdvisoryRevisionBuilderTests(TestContext context)
 {
     [TestMethod]
+    public Task Activation_DoesNotUndoPreviouslyPublishedWithdrawal() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operationsOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory(options);
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operationsOptions)) await db.Database.MigrateAsync(token);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var builder = new AdvisoryRevisionBuilder(contexts, TimeProvider.System);
+            var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
+            var actor = Guid.CreateVersion7();
+            var first = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", false));
+            var firstResult = await builder.StageAsync(source.Id, first.Id, first.Version, token);
+            Assert.IsNotNull(firstResult.RevisionId);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, null, "", false, actor, token));
+            var second = await StageWindowCore(store, contexts, source.Id, token, "2023-01-10T00:00:00Z", ("GHSA-abcd-1234-efgh", "2023-01-04T00:00:00Z", true));
+            var secondResult = await builder.StageAsync(source.Id, second.Id, second.Version, token);
+            Assert.IsNotNull(secondResult.RevisionId);
+            string version;
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, firstResult.RevisionId, version, false, actor, token));
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+            await using (var check = contexts.CreateDbContext())
+            {
+                Assert.AreEqual(secondResult.RevisionId, (await check.IntelligenceActivations.SingleAsync(token)).RevisionId);
+                Assert.AreEqual(2, await check.IntelligenceActivationEvents.CountAsync(token));
+            }
+            var third = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-05T00:00:00Z", false));
+            var thirdResult = await builder.StageAsync(source.Id, third.Id, third.Version, token);
+            Assert.IsNotNull(thirdResult.RevisionId);
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, thirdResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+            var fourth = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-11T00:00:00Z", false));
+            var fourthResult = await builder.StageAsync(source.Id, fourth.Id, fourth.Version, token);
+            Assert.IsNotNull(fourthResult.RevisionId);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, fourthResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Activation_RechecksProvenanceAndRecordsAudit() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -212,7 +256,11 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
         }, context.CancellationToken);
 
     private static async Task<AdvisoryImport> StageWindow(AdvisoryImportStore store, Factory contexts, Guid sourceId,
-        CancellationToken token, params (string Id, string Updated, bool Withdrawn)[] records)
+        CancellationToken token, params (string Id, string Updated, bool Withdrawn)[] records) =>
+        await StageWindowCore(store, contexts, sourceId, token, null, records);
+
+    private static async Task<AdvisoryImport> StageWindowCore(AdvisoryImportStore store, Factory contexts, Guid sourceId,
+        CancellationToken token, string? withdrawalTime, params (string Id, string Updated, bool Withdrawn)[] records)
     {
         var import = await store.BeginAsync(sourceId, new(2023, 1, 1), new(2023, 2, 1), token);
         Assert.IsNotNull(import);
@@ -221,7 +269,7 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             foreach (var withdrawn in new[] { false, true })
             {
                 var selected = records.Where(x => x.Withdrawn == withdrawn).Select(x =>
-                    $$"""{"ghsa_id":"{{x.Id}}","type":"reviewed","published_at":"2023-01-01T00:00:00Z","updated_at":"{{x.Updated}}","withdrawn_at":{{(x.Withdrawn ? $"\"{x.Updated}\"" : "null")}},"vulnerabilities":[]}""");
+                    $$"""{"ghsa_id":"{{x.Id}}","type":"reviewed","published_at":"2023-01-01T00:00:00Z","updated_at":"{{x.Updated}}","withdrawn_at":{{(x.Withdrawn ? $"\"{withdrawalTime ?? x.Updated}\"" : "null")}},"vulnerabilities":[]}""");
                 var bytes = Encoding.UTF8.GetBytes($"[{string.Join(',', selected)}]");
                 var page = new AdvisoryPage(AdvisoryPageValidator.Validate(bytes), null, bytes,
                     new(2023, 1, 1), new(2023, 2, 1), withdrawn, null);
