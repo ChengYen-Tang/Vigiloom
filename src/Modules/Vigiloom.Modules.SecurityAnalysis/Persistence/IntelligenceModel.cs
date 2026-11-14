@@ -24,6 +24,7 @@ internal static class IntelligenceModel
         source.Property(x => x.MaximumRecords).HasDefaultValue(50_000);
         source.HasIndex(x => x.Key).IsUnique();
         source.Property(x => x.LastError).HasMaxLength(1024);
+        source.Property(x => x.ProtectedCredential).HasMaxLength(8192);
         source.Property(x => x.Version).IsRowVersion();
 
         var revision = model.Entity<IntelligenceRevision>();
@@ -96,7 +97,7 @@ internal static class IntelligenceModel
             t.HasCheckConstraint("CK_AdvisoryImports_RateLimitAttempts", "[RateLimitAttempts] BETWEEN 0 AND 20");
             t.HasCheckConstraint("CK_AdvisoryImports_RestartCount", "[RestartCount] BETWEEN 0 AND 3");
             t.HasCheckConstraint("CK_AdvisoryImports_Reconciliation", "[ReconciliationPhase] BETWEEN 1 AND 4 AND [ReconciliationRecordCount] BETWEEN 0 AND 100000");
-            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base')");
+            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base','credential-unavailable')");
         });
         import.HasKey(x => x.Id).IsClustered(false);
         import.Property(x => x.Id).ValueGeneratedNever();

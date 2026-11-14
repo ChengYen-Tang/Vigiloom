@@ -199,7 +199,7 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
     internal async Task<bool> RecordFailureAsync(Guid sourceId, Guid importId, byte[] expectedVersion, string code, CancellationToken token)
     {
         if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8 ||
-            code is not ("fetch-failed" or "invalid-response" or "request-timeout" or "cursor-rejected" or "limit-exceeded" or "invalid-base")) return false;
+            code is not ("fetch-failed" or "invalid-response" or "request-timeout" or "cursor-rejected" or "limit-exceeded" or "invalid-base" or "credential-unavailable")) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         if (await LockSourceAsync(db, sourceId, token) is null) return false;

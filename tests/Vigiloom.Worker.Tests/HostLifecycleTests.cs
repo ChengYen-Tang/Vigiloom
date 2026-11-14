@@ -77,6 +77,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         try
         {
             using var scope = services.CreateScope();
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<AdvisoryRefreshJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();

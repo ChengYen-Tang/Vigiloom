@@ -1,4 +1,6 @@
 using System.Data;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -8,7 +10,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 public enum AdvisoryRefreshResult { Disabled, NotDue, Busy, Deferred, RateLimited, Staged, AwaitingActivation, Failed, Conflict }
 
 /// <summary>Starts or resumes centrally scheduled GitHub-reviewed advisory imports.</summary>
-public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients, TimeProvider clock)
+public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients,
+    TimeProvider clock, IDataProtectionProvider protection)
 {
     private static readonly DateOnly FirstWindow = new(1970, 1, 1);
 
@@ -31,7 +34,7 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
             return await store.AbandonAsync(source.Id, import.Id, import.Version, token)
                 ? AdvisoryRefreshResult.Deferred : AdvisoryRefreshResult.Conflict;
         }
-        if (import?.FailureCode is "invalid-response" or "cursor-rejected" or "limit-exceeded" or "invalid-base") return AdvisoryRefreshResult.Failed;
+        if (import?.FailureCode is "invalid-response" or "cursor-rejected" or "limit-exceeded" or "invalid-base" or "credential-unavailable") return AdvisoryRefreshResult.Failed;
         if (import is null)
         {
             await using var db = await contexts.CreateDbContextAsync(token);
@@ -62,7 +65,23 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
                 expectedBaseId: active?.RevisionId, expectedBaseVersion: active?.Version);
             if (import is null) return AdvisoryRefreshResult.Conflict;
         }
-        var result = await new AdvisoryImportRunner(contexts, clients, clock).RunSliceAsync(source.Id, import.Id, null, token, reconcile: true);
+        await using (var db = await contexts.CreateDbContextAsync(token))
+        {
+            var current = await db.IntelligenceSources.AsNoTracking().SingleOrDefaultAsync(x => x.Id == source.Id, token);
+            if (current is null || !current.Enabled || !current.Version.AsSpan().SequenceEqual(import.SourceVersion)) return AdvisoryRefreshResult.Conflict;
+            source = current;
+        }
+        string? credential = null;
+        if (source.ProtectedCredential is not null)
+        {
+            try { credential = protection.CreateProtector(AdvisoryCredentials.ProtectionPurpose).Unprotect(source.ProtectedCredential); }
+            catch (Exception error) when (error is CryptographicException or FormatException)
+            {
+                await store.RecordFailureAsync(source.Id, import.Id, import.Version, "credential-unavailable", token);
+                return AdvisoryRefreshResult.Failed;
+            }
+        }
+        var result = await new AdvisoryImportRunner(contexts, clients, clock).RunSliceAsync(source.Id, import.Id, credential, token, reconcile: true);
         if (result.Status != AdvisoryRunResult.Reconciled)
             return result.Status switch
             {

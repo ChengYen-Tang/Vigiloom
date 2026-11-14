@@ -3,7 +3,7 @@ namespace Vigiloom.Contracts.Intelligence;
 /// <summary>Non-secret status and policy for an intelligence source.</summary>
 public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,
     int MaximumBytes, int MaximumRecords, string Version, DateTimeOffset? LastCheckedAt, DateTimeOffset? LastSuccessfulCheckAt,
-    string? LastError, bool IsStale, Guid? ActiveRevisionId, string ActivationVersion);
+    string? LastError, bool IsStale, Guid? ActiveRevisionId, string ActivationVersion, bool HasCredential);
 
 /// <summary>Bounded page of intelligence source status.</summary>
 public sealed record IntelligenceSourcePage(IReadOnlyList<IntelligenceSourceView> Items, int Page, bool HasMore);
@@ -15,6 +15,9 @@ public sealed record AdvisoryImportProgressView(Guid SourceId, Guid? ImportId, s
 
 /// <summary>Identifies the failed import and version the administrator reviewed.</summary>
 public sealed record AdvisoryImportRecoveryRequest(Guid ImportId, string Version);
+
+/// <summary>Replaces or removes the centrally protected GitHub token without returning its value.</summary>
+public sealed record AdvisoryCredentialUpdate(string Version, bool Clear, string? Credential);
 
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
 public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,
