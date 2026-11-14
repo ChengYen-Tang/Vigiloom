@@ -17,7 +17,7 @@ subset before publication; leave unresolved sources unavailable for publication.
 | [Microsoft Security Updates API](https://github.com/microsoft/MSRC-Microsoft-Security-Updates-API) and [OpenAPI](https://github.com/microsoft/MSRC-Microsoft-Security-Updates-API/blob/main/docs/swagger.yaml) | Microsoft vendor advisories, product applicability and security updates in CVRF. Platform version, product identifiers and installed update evidence are still required for a finding. | List update summaries and retain source document ID, dates and the received document/version. | Candidate. The sample repository's software license must not be assumed to license the advisory data. Verify data terms, rate limits and redistribution before publication. |
 | [Red Hat Security Data API](https://docs.redhat.com/en/documentation/red_hat_security_data_api/1.0/epub/red_hat_security_data_api/csaf) | Vendor CSAF, CVE and OVAL data; relevant for supported Red Hat products, not every Linux distribution. The provider documents CVRF and OVAL v1 as deprecated. | Preserve advisory IDs, version, source time and format; use vendor-supported formats and handle revisions. | Candidate. Verify the particular data and redistribution terms and applicable platform/version before publication. |
 | [SigmaHQ rules at reviewed commit](https://github.com/SigmaHQ/sigma/tree/54967d64e6dda2b4daa81f47f7a8bf1f591b68a0), [DRL-1.1](https://github.com/SigmaHQ/Detection-Rule-License/blob/bcbdc605172d00390572cd774ba395ec9e975dfc/LICENSE.Detection.Rules.md) | Behavioral detection rules in Sigma format; the Sigma specification and conversion engine are not the rule data. Rules require compatible event sources and field mappings. | Pin the upstream commit or release and individual rule identity, content hash, source and metadata. A revised or removed rule is a version change, not evidence of a clean host. | Candidate per rule and subset. Sharing rules requires the specified attribution, rule link and license text or link where reasonably practicable; messages based on matches require the specified author attribution. Verify any rule-specific license and support the attribution in the downstream detection and evidence UI before publishing. |
-| [Signature-Base at reviewed commit](https://github.com/Neo23x0/signature-base/tree/eb8c53cb08ed103d031fe9c98d1d23e94904839d) | Candidate YARA rule files and separate IOC CSV files. YARA is a rule format and engine; it does not itself supply this dataset. Source metadata warns that some rules use scanner-specific external variables. | A commit identifies the source snapshot; retain individual file/rule IDs, author, license metadata and content digest. A changed commit requires revalidation rather than automatic trust. | Candidate only. Upstream states DRL-1.1 applies to its signatures and IOC files except YARA rules with a different explicit license. Resolve each rule/subset, attribution and external-variable compatibility before selecting or publishing it. |
+| [Signature-Base at reviewed commit](https://github.com/Neo23x0/signature-base/tree/eb8c53cb08ed103d031fe9c98d1d23e94904839d) | Candidate YARA rule files and separate IOC files with source-specific formats. YARA is a rule format and engine; it does not itself supply this dataset. Source metadata warns that some rules use scanner-specific external variables. | A commit identifies the source snapshot; retain individual file/rule IDs, author, license metadata and content digest. A changed commit requires revalidation rather than automatic trust. | Candidate only. Upstream states DRL-1.1 applies to its signatures and IOC files except YARA rules with a different explicit license. Resolve each rule/subset, attribution and external-variable compatibility before selecting or publishing it. |
 
 IOC feeds, YARA rules and security configuration baselines each need their own
 provider, license and capability record. Their names do not designate a single
@@ -140,7 +140,64 @@ and upstream-provided notices for any selected GitHub subset, and indicate
 changes when transforming it.
 Pin the upstream snapshot and schema revision used by an implemented importer.
 The first authorized subset, index consistency strategy and resource limits
-still need to be finalized before that importer can be enabled.
+are specified below for one provider; other sources and subsets remain separate
+delivery obligations and must not inherit that provider's license.
+
+### GitHub Advisory Database adapter
+
+The first open-source advisory subset is GitHub-reviewed advisories, including
+withdrawn reviewed advisories. This is an initial adapter, not a claim that
+unreviewed or malware advisories, Linux vendor advisories, NVD, or all OSV
+ecosystems have been covered. Its source is the
+[global advisory API](https://docs.github.com/en/rest/security-advisories/global-advisories),
+not an assertion that every record in an OSV ecosystem dump originated at
+GitHub. The upstream repository license is CC-BY-4.0 at reviewed commit
+`09ff71573b6748a21637a08ffd9047b8a7da00cc`; GitHub's
+[Advisory Database terms](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features#advisory-database)
+also describe its CC-BY-4.0 license and attribution. Preserve the attribution,
+license, notice and transformation information described above. Treat the API response as
+its own GitHub format; map only fields with defined equivalents to OSV and
+retain the original response and mapping version for audit.
+In particular, keep `vulnerable_version_range` as an upstream expression;
+only a tested, ecosystem-specific conversion may produce OSV range events.
+If conversion is unavailable, mark applicability unsupported rather than
+guessing an equivalent range.
+
+Perform a paged initial import and periodic updates centrally, with a unique
+GHSA ID per record, upstream update/withdrawal time, complete page links and
+the immutable import generation. Re-read a bounded overlap in modification time
+on subsequent passes, deduplicate by ID and upstream version/content, and keep
+the old active revision until a full pass through the chosen high-water mark
+has been durably validated. Pagination can change while upstream data changes;
+overlap is not proof of a point-in-time snapshot. A reconciliation pass and
+explicit incomplete/unknown state are required when consistency cannot be
+established. A withdrawn record remains distinguishable in retained history.
+Do not mark a missing record fixed or unaffected solely because it disappeared
+from an API page, filter or partial synchronization.
+
+Pin `X-GitHub-Api-Version: 2026-03-10` and request `type=reviewed`,
+`sort=updated`, `direction=asc`, `per_page=100` with bounded `modified`
+windows. Do not use the default published ordering as an update checkpoint.
+Explicitly run and reconcile the `is_withdrawn=true` query as well as the
+normal reviewed query; verify against known withdrawn and non-withdrawn records
+in integration tests instead of relying on undocumented filter defaults.
+Persist the window, page cursor and staged progress with a generation ID. If a
+cursor expires or validation fails, restart the affected window; never advance
+the published high-water mark past missing pages. A job processes at most 200
+pages or 15 minutes before yielding and resumes later. Rate-limit backoff can
+span jobs, and a complete initial import can take multiple quota windows; the
+UI must show its progress rather than imply it completed in one cycle.
+
+Use an optional centrally protected GitHub token, not one token per Agent. Honor
+`Retry-After`, rate-limit reset and secondary limits; unauthenticated access is
+shared by source IP. Bound each response to 2 MiB, each page to the API's
+documented maximum, each synchronization to 100,000 records and 1 GiB of
+decoded response data, and each HTTP request to 60 seconds. These are initial
+platform safeguards, not GitHub service guarantees; exceeding them fails the
+staged generation with a visible reason and preserves the last valid one. Make
+the limits adjustable by an administrator without allowing an unbounded sync.
+The upstream API's defaults exclude malware and unreviewed advisories, so the
+UI and consumer contract must explicitly show that coverage gap.
 
 For Sigma, pin a concrete release or commit and preserve rule ID, author,
 license, source, status, log source, detection expression and the conversion
@@ -154,3 +211,75 @@ REQ-33 must decide supported semantics and preserve author attribution in
 match messages; REQ-32 must carry the source metadata and avoid activating a
 candidate until that contract has been verified end to end. Previous revisions
 remain subject to the authorization and withdrawal checks above.
+
+### Signature-Base IOC and YARA source
+
+Signature-Base is an initial IOC and YARA source candidate with its own
+versioned license and files; it does not replace the independent requirements
+for vulnerability, behavioral and baseline data. The reviewed commit is
+`eb8c53cb08ed103d031fe9c98d1d23e94904839d`. The upstream README says its
+signatures and IOC files use DRL-1.1, except YARA rules that declare a different
+license. Apply repository terms where applicable, inspect per-rule metadata,
+preserve authors and notices, and exclude unresolved or conflicting licenses.
+
+The reviewed `iocs` directory is not one uniform CSV schema: `hash-iocs.txt`
+documents hash and description fields separated by semicolons; `c2-iocs.txt`
+contains domain or IP entries; `filename-iocs.txt` describes case-sensitive
+regular expressions, scores and optional exclusions. Parse each source format
+under its own versioned mapping. Hash algorithm and length must match, IPs and
+domains must be validated without resolving them, and unrecognized lines must
+be visible as unsupported or invalid rather than silently discarded. A filename
+expression is not an exact file-name indicator; do not claim support unless the
+consumer has a bounded, compatible regex implementation and exclusion semantics.
+Do not assume upstream Python regex and .NET regex are equivalent or ignore an
+unsupported exclusion; the entire affected indicator is unsupported. Domain
+normalization and exact-versus-subdomain matching require an explicit consumer
+contract: do not automatically resolve DNS, apply suffix matching or block an
+entire domain. A missing YARA external variable cannot be replaced with an empty
+or zero value; consult the pinned upstream external-variable list and either
+provide its verified semantics or mark the affected rule unsupported.
+An indicator's presence is not itself proof of compromise or of current malicious
+activity, and absence is not a clean verdict.
+
+Fetch immutable commit snapshots centrally, retain source paths, bytes/digests,
+available provenance and mapping version, and stage updates before activation.
+Apply the same bounded archive, YAML/file and path controls as the Sigma source;
+the YARA compiler and supported external variables are owned by REQ-36. IOC and
+YARA detection, alerting and author attribution in match output require the
+actual consumer integration before the source can be declared end-to-end usable.
+
+### SigmaHQ rule-source adapter
+
+SigmaHQ's versioned rule repository is the first behavioral-rule provider to
+support. Fetch a release or immutable commit from its fixed official source;
+record the exact resolved commit, file paths, per-file digests, retrieval time,
+rule IDs, author and license notices. Build a complete immutable source
+revision before activation. A moving branch name, release label or HTTP success
+alone is not an immutable version or integrity proof. The repository's
+DRL-1.1 applies subject to any rule-specific metadata. A rule may inherit the
+verified repository license when it does not declare its own; absent applicable
+terms, ambiguity or conflicting terms exclude it from a distributable revision.
+
+Parse bounded YAML without arbitrary object construction or external entity
+resolution. Disable aliases or enforce explicit expansion, nesting-depth and
+node-count limits. Reject archive path traversal, symlinks, hardlinks, special
+files, duplicate normalized paths, duplicate rule IDs, oversized files,
+unsupported encodings and unresolved dependencies. Initial safeguards
+are 64 MiB compressed, 512 MiB decompressed, 50,000 files and 1 MiB per file,
+with a 60-second per-request timeout; configure limits centrally and surface an
+incomplete revision instead of silently dropping rules. These limits are
+Vigiloom safeguards, not upstream size guarantees. Stream files into bounded
+staging storage and validate one rule or bounded batch at a time; the total
+archive limit is not an instruction to buffer the archive in memory. Poll centrally once per day
+with jitter, conditional requests and bounded retries; changes are staged and
+never overwrite the active valid version on failure.
+
+The source loader may preserve rules whose detection syntax cannot be executed,
+but must label their support status and must not publish them as active
+detections. In particular, threat-hunting rules are not automatically treated
+as alerting rules. REQ-33 owns the exact supported log sources, fields,
+operators, correlation semantics, execution tests and author attribution in
+match messages. Until that consumer explicitly accepts a version, publication
+to it remains unverified; a source import alone does not create a rule match or
+claim that the full rule set works. Reconciliation, withdrawal and rollback
+follow the version and license gates above.
