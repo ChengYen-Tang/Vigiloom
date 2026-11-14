@@ -137,6 +137,9 @@ public sealed class AdvisoryRefreshTests(TestContext context)
             await using (var check = contexts.CreateDbContext())
             {
                 var import = await check.AdvisoryImports.SingleAsync(token);
+                var source = await check.IntelligenceSources.SingleAsync(token);
+                Assert.AreEqual(1_073_741_824, source.MaximumBytes);
+                Assert.AreEqual(100_000, source.MaximumRecords);
                 Assert.AreEqual(new DateOnly(1970, 1, 1), import.WindowStart);
                 Assert.AreEqual(new DateOnly(2023, 2, 28), import.WindowEnd);
                 Assert.IsNotNull(import.ResultRevisionId);

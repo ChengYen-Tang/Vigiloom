@@ -64,6 +64,7 @@ internal static class IntelligenceEndpoints
             {
                 IntelligencePolicyResult.Updated or IntelligencePolicyResult.Unchanged => Results.NoContent(),
                 IntelligencePolicyResult.NotFound => Results.NotFound(),
+                IntelligencePolicyResult.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["The limits exceed those supported by this source."] }),
                 _ => Results.Problem(statusCode: 409, title: "Source settings changed; reload and try again.")
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)

@@ -36,5 +36,9 @@ public sealed record IntelligencePolicyUpdate(bool Enabled, int UpdateIntervalSe
 public static class IntelligencePolicyLimits
 {
     public static bool Valid(int interval, int stale, int bytes, int records) => interval is >= 300 and <= 604800 &&
-        stale is >= 3600 and <= 2592000 && bytes is >= 1024 and <= 67108864 && records is >= 1 and <= 1000000;
+        stale is >= 3600 and <= 2592000 && bytes is >= 1024 and <= 1073741824 && records is >= 1 and <= 1000000;
+
+    public static bool ValidForSource(string key, int bytes, int records) => key == "github-reviewed"
+        ? bytes <= 1073741824 && records <= 100000
+        : bytes <= 67108864;
 }

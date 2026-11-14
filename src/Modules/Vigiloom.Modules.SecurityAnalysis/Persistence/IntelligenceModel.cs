@@ -11,7 +11,7 @@ internal static class IntelligenceModel
         source.ToTable("IntelligenceSources", t =>
         {
             t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
-            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 67108864 AND [MaximumRecords] BETWEEN 1 AND 1000000");
+            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 1073741824 AND [MaximumRecords] BETWEEN 1 AND 1000000 AND ([Key] = 'github-reviewed' OR [MaximumBytes] <= 67108864)");
         });
         source.HasKey(x => x.Id).IsClustered(false);
         source.Property(x => x.Id).ValueGeneratedNever();

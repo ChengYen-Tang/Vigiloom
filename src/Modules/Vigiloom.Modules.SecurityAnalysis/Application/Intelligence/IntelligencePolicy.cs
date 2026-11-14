@@ -9,7 +9,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
-public enum IntelligencePolicyResult { Updated, Unchanged, NotFound, Conflict }
+public enum IntelligencePolicyResult { Updated, Unchanged, NotFound, Conflict, Invalid }
 
 /// <summary>Applies source settings with a version check and transactional audit.</summary>
 public sealed class IntelligencePolicy(IDbContextFactory<SecurityAnalysisDbContext> contexts,
@@ -33,6 +33,7 @@ public sealed class IntelligencePolicy(IDbContextFactory<SecurityAnalysisDbConte
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePolicyResult.NotFound;
         if (!source.Version.AsSpan().SequenceEqual(version)) return IntelligencePolicyResult.Conflict;
+        if (!IntelligencePolicyLimits.ValidForSource(source.Key, input.MaximumBytes, input.MaximumRecords)) return IntelligencePolicyResult.Invalid;
         var before = Values(source);
         var after = new IntelligencePolicyValues(input.Enabled, input.UpdateIntervalSeconds, input.StaleAfterSeconds, input.MaximumBytes, input.MaximumRecords);
         if (before == after) return IntelligencePolicyResult.Unchanged;

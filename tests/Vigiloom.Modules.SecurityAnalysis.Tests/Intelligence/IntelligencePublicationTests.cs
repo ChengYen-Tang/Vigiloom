@@ -81,6 +81,8 @@ public sealed class IntelligencePublicationTests(TestContext context)
             Assert.AreEqual(IntelligencePolicyResult.Conflict, await policy.UpdateAsync(source.Id, change, actor, token));
             var afterPolicy = (await status.GetSourcesAsync(1, token)).Items.Single();
             Assert.AreEqual(43_200, afterPolicy.UpdateIntervalSeconds);
+            Assert.AreEqual(IntelligencePolicyResult.Invalid, await policy.UpdateAsync(source.Id,
+                change with { Version = afterPolicy.Version, MaximumBytes = 67_108_865 }, actor, token));
             var invalidAudit = new IntelligencePolicy(contexts, new FailingAudit(), TimeProvider.System);
             await Assert.ThrowsAsync<InvalidOperationException>(() => invalidAudit.UpdateAsync(source.Id, change with { Version = afterPolicy.Version, Enabled = false }, actor, token));
             Assert.IsTrue((await status.GetSourcesAsync(1, token)).Items.Single().Enabled);
@@ -107,6 +109,15 @@ public sealed class IntelligencePublicationTests(TestContext context)
             }
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, reduced.Id, first.Id,
                 await VersionAsync(contexts, token), true, actor, token));
+            var advisory = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(advisory); await db.SaveChangesAsync(token); }
+            var advisoryPolicy = new IntelligencePolicyUpdate(true, 86_400, 259_200, 1_073_741_824, 100_000, Convert.ToBase64String(advisory.Version));
+            Assert.AreEqual(IntelligencePolicyResult.Updated, await policy.UpdateAsync(advisory.Id, advisoryPolicy, actor, token));
+            var advisoryCurrent = (await status.GetSourcesAsync(1, token)).Items.Single(x => x.Id == advisory.Id);
+            Assert.AreEqual(IntelligencePolicyResult.Invalid, await policy.UpdateAsync(advisory.Id,
+                advisoryPolicy with { Version = advisoryCurrent.Version, MaximumRecords = 100_001 }, actor, token));
+            Assert.AreEqual(IntelligencePolicyResult.Updated, await policy.UpdateAsync(advisory.Id,
+                advisoryPolicy with { Version = advisoryCurrent.Version, MaximumBytes = 67_108_864 }, actor, token));
             await using (var db = contexts.CreateDbContext())
             {
                 var target = db.Database.GetMigrations().Single(x => x.EndsWith("_IntelligenceSources", StringComparison.Ordinal));

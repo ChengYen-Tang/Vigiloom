@@ -116,7 +116,7 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
         var source = await db.IntelligenceSources.FromSqlRaw("SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Key] = N'github-reviewed'").SingleOrDefaultAsync(token);
         if (source is null)
         {
-            source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            source = new IntelligenceSource { Key = "github-reviewed", Enabled = true, MaximumBytes = 1_073_741_824, MaximumRecords = 100_000 };
             db.IntelligenceSources.Add(source);
             await db.SaveChangesAsync(token);
         }
