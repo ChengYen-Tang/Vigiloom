@@ -62,6 +62,12 @@ public sealed class PublicationBrowserTests(TestContext context)
         await page.ReloadAsync();
         await page.Locator(".publication-editor[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
         Assert.IsTrue(await page.GetByRole(AriaRole.Radio, new() { Name = "包含簡易每日狀態歷史", Exact = false }).IsCheckedAsync());
+        await page.GetByRole(AriaRole.Radio, new() { Name = "包含狀態變更時間", Exact = false }).CheckAsync();
+        await page.GetByText("也公開簡易狀態的變更時間。", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            Assert.AreEqual(PublicationPolicy.ServiceHistoryDetailsVersion, (await db.Services.SingleAsync(x => x.Id == service.Id, token)).PublicPolicyVersion);
         await page.GetByRole(AriaRole.Radio, new() { Name = "僅顯示簡易狀態", Exact = false }).CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
         await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();

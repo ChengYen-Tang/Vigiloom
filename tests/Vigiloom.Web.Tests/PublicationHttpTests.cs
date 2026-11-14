@@ -4,9 +4,11 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Devices;
@@ -26,6 +28,39 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class PublicationHttpTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task PublicProjection_InternalFailureDoesNotExposeExceptionDetails() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var original = PingTestSite.CreateFactory(database.ConnectionString);
+        var failure = new FailingResourcesFactory();
+        using var host = original.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IDbContextFactory<ResourcesDbContext>>();
+            services.AddSingleton<IDbContextFactory<ResourcesDbContext>>(failure);
+        }));
+        using var anonymous = PingTestSite.Client(host);
+        using var response = await anonymous.GetAsync("/api/v1/public/devices", token);
+        Assert.AreEqual(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.IsGreaterThan(0, failure.Calls);
+        Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+        var body = await response.Content.ReadAsStringAsync(token);
+        var output = body + string.Join('\n', response.Headers.Concat(response.Content.Headers).Select(x => $"{x.Key}: {string.Join(", ", x.Value)}"));
+        Assert.DoesNotContain(FailingResourcesFactory.PrivateSentinel, output);
+        Assert.DoesNotContain("10.49.12.33", output);
+        Assert.DoesNotContain("SELECT secret", output);
+        Assert.DoesNotContain("FailingResourcesFactory", output);
+    }, context.CancellationToken);
+
+    private sealed class FailingResourcesFactory : IDbContextFactory<ResourcesDbContext>
+    {
+        public const string PrivateSentinel = "private-internal-server";
+        private int calls;
+        public int Calls => Volatile.Read(ref calls);
+        public ResourcesDbContext CreateDbContext() { Interlocked.Increment(ref calls); throw new InvalidOperationException($"{PrivateSentinel} 10.49.12.33 SELECT secret"); }
+        public Task<ResourcesDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) { Interlocked.Increment(ref calls); return Task.FromException<ResourcesDbContext>(new InvalidOperationException($"{PrivateSentinel} 10.49.12.33 SELECT secret")); }
+    }
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task PublicProjection_FiltersPrivateResourcesAndRevokesImmediately() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>

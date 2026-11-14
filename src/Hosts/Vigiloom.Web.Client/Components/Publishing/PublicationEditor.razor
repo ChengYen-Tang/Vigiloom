@@ -9,7 +9,7 @@
     else
     {
         <section class="publication-info"><strong>目前狀態：@CurrentStatus</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
-        @if (Kind == "services" && settings.Public && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion && settings.HistoryReady == false)
+        @if (Kind == "services" && settings.Public && IsServiceHistory(settings.PolicyVersion) && settings.HistoryReady == false)
         { <p class="publication-message" role="status">公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。</p> }
         @if (message is not null) { <p class="publication-message" role="@(success ? "status" : "alert")">@message</p> }
         <EditForm Model="model" OnSubmit="SaveAsync" FormName="publication-editor">
@@ -32,9 +32,10 @@
                                 <InputRadioGroup @bind-Value="model.Policy">
                                     <label><InputRadio Value="@PublicationPolicy.BaselineVersion" disabled="@Disabled" /><span><strong>僅顯示簡易狀態</strong><small>訪客可查看目前的服務狀態。</small></span></label>
                                     <label><InputRadio Value="@PublicationPolicy.ServiceHistoryVersion" disabled="@Disabled" /><span><strong>包含簡易每日狀態歷史</strong><small>顯示啟用後最多 90 天的狀態與可用率。</small></span></label>
+                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryDetailsVersion" disabled="@Disabled" /><span><strong>包含狀態變更時間</strong><small>除每日摘要外，也公開簡易狀態變更的時間。</small></span></label>
                                 </InputRadioGroup>
                             </fieldset>
-                            <p class="publication-history-note">歷史從啟用後開始；IP、日誌與追蹤等進階資訊不會公開。</p>
+                            <p class="publication-history-note">切換公開歷史選項後，從設定生效時重新累積，不公開之前的歷史；IP、日誌與追蹤等進階資訊不會公開。</p>
                         }
                         else
                         {
@@ -62,8 +63,8 @@
                             @if (Kind == "devices" && ShowLatency && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
                             @if (Kind == "devices" && ShowObservedAt && preview?.ObservedAt is { } observed) { <span>@observed.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }
                         </div>
-                        @if (Kind == "services" && model.Policy == PublicationPolicy.ServiceHistoryVersion)
-                        { <div class="publication-history-preview"><strong>每日狀態歷史（最多 90 天）</strong><span>公開頁顯示啟用後的實際狀態。</span></div> }
+                        @if (Kind == "services" && IsServiceHistory(model.Policy))
+                        { <div class="publication-history-preview"><strong>每日狀態歷史（最多 90 天）</strong><span>@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? "也公開簡易狀態的變更時間。" : "公開頁顯示啟用後的每日摘要。")</span></div> }
                         @if (Kind == "devices")
                         {
                             <p>名稱與狀態會公開@(ShowLatency ? "，包含目前延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；@(SelectedTemplate?.HistoryDays > 0 ? $"歷史平均延遲最多公開 {SelectedTemplate.HistoryDays} 天。" : "不公開歷史。") IP 和主機進階資料不會公開。</p>
@@ -82,7 +83,7 @@
                                 <p>歷史為已結束的五分鐘平均延遲，資料可能持續彙整。</p>
                             }
                         }
-                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；@(model.Policy == PublicationPolicy.ServiceHistoryVersion ? "啟用後的每日狀態歷史也會公開，最多 90 天。" : "不公開狀態歷史。") IP、日誌與追蹤等進階資訊不會公開。</p> }
+                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? "啟用後的每日歷史及狀態變更時間也會公開，最多 90 天。" : model.Policy == PublicationPolicy.ServiceHistoryVersion ? "啟用後的每日狀態歷史也會公開，最多 90 天。" : "不公開狀態歷史。") IP、日誌與追蹤等進階資訊不會公開。</p> }
                         else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
                     }
                 </aside>
@@ -119,7 +120,9 @@
     private string CurrentStatus => settings is null || !settings.Public ? "不公開" :
         Kind == "devices" && settings.PolicyVersion == PublicationPolicy.TemplateVersion
             ? !currentTemplateChecked ? "已設定公開，範本狀態暫時無法確認" : currentTemplate is null ? "已設定公開，但範本失效，目前訪客不可見" : "公開中"
-            : settings.PolicyVersion == PublicationPolicy.BaselineVersion || Kind == "services" && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
+            : settings.PolicyVersion == PublicationPolicy.BaselineVersion || Kind == "services" && IsServiceHistory(settings.PolicyVersion) ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
+
+    private static bool IsServiceHistory(string? policy) => policy is PublicationPolicy.ServiceHistoryVersion or PublicationPolicy.ServiceHistoryDetailsVersion;
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,7 +169,7 @@
         if (settings is null || saving) return;
         success = false; message = null;
         var selected = SelectedTemplate;
-        var validPolicy = model.Policy == PublicationPolicy.BaselineVersion || Kind == "services" && model.Policy == PublicationPolicy.ServiceHistoryVersion || Kind == "devices" && selected is not null;
+        var validPolicy = model.Policy == PublicationPolicy.BaselineVersion || Kind == "services" && IsServiceHistory(model.Policy) || Kind == "devices" && selected is not null;
         if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || !validPolicy))
         { message = "請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"; return; }
         saving = true;
@@ -179,7 +182,7 @@
             {
                 settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; currentTemplate = model.Public ? selected : null;
                 currentTemplateChecked = true; success = true;
-                message = Kind == "services" && settings.Public && settings.PolicyVersion == PublicationPolicy.ServiceHistoryVersion && settings.HistoryReady == false
+                message = Kind == "services" && settings.Public && IsServiceHistory(settings.PolicyVersion) && settings.HistoryReady == false
                     ? "公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。" : "公開設定已儲存。";
                 try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
