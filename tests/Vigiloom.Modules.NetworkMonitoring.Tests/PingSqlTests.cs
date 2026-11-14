@@ -618,17 +618,23 @@ public sealed class PingSqlTests
     });
 
     private Task WithOptionalSnapshotDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads) =>
-        snapshotReads ? WithDatabase(test, true) : WithReusableDatabase(test);
+        WithReusableDatabase(test, snapshotReads);
 
-    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test) =>
-        ReusableNetworkDatabase.ExecuteAsync(async (database, token) =>
+    private Task WithReusableDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads = false)
+    {
+        return snapshotReads
+            ? ReusableNetworkDatabase.ExecuteSnapshotAsync(RunAsync, TestContext.CancellationToken)
+            : ReusableNetworkDatabase.ExecuteAsync(RunAsync, TestContext.CancellationToken);
+
+        async Task RunAsync(SqlTestDatabase database, CancellationToken token)
         {
             var resources = new Factory<ResourcesDbContext>(() => new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options));
             var network = new Factory<NetworkDbContext>(() => new NetworkDbContext(new DbContextOptionsBuilder<NetworkDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options));
             await test(resources, network, token);
-        }, TestContext.CancellationToken);
+        }
+    }
 
     private Task WithDatabase(Func<Factory<ResourcesDbContext>, Factory<NetworkDbContext>, CancellationToken, Task> test, bool snapshotReads = false) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

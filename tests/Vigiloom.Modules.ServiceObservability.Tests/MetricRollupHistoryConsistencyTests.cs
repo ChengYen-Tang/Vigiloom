@@ -25,7 +25,7 @@ public sealed class MetricRollupHistoryConsistencyTests(TestContext context)
     [DataRow(true, true, true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ConcurrentChangeOrRecreationInvalidatesSeriesPage(bool snapshot, bool recreate, bool payload) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
@@ -37,8 +37,6 @@ public sealed class MetricRollupHistoryConsistencyTests(TestContext context)
                 ProjectedRevision = 1, ProjectionVersion = 1, ProjectedAt = now, IsComplete = true };
             await using (var setup = new ServiceObservabilityDbContext(options))
             {
-                if (snapshot) await setup.Database.ExecuteSqlRawAsync("ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON", token);
-                await setup.Database.MigrateAsync(token);
                 setup.Sources.Add(source); setup.Services.Add(service); setup.MetricRollupWindows.Add(window);
                 await setup.SaveChangesAsync(token);
                 setup.MetricRollupSeries.Add(new MetricRollupSeries { WindowRowId = window.RowId, ServiceId = service.Id,
@@ -93,7 +91,7 @@ public sealed class MetricRollupHistoryConsistencyTests(TestContext context)
                 barrier.Release.TrySetResult(); cancellation.Cancel();
                 try { await read; } catch (OperationCanceledException) { }
             }
-        }, context.CancellationToken);
+        }, snapshot, context.CancellationToken);
 
     private sealed class SeriesReadBarrier : DbCommandInterceptor
     {

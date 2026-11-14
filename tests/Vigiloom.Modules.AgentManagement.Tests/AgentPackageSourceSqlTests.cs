@@ -7,6 +7,7 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
@@ -267,8 +268,12 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
         Assert.AreEqual(0, await check.Packages.CountAsync(token));
     });
 
-    private Task WithDatabase(bool audit, Func<IDbContextFactory<AgentManagementDbContext>, CancellationToken, Task> test) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    private Task WithDatabase(bool audit, Func<IDbContextFactory<AgentManagementDbContext>, CancellationToken, Task> test)
+    {
+        if (audit)
+            return ReusablePackageDatabase.ExecuteAsync((database, token) => RunAsync(database, token), testContext.CancellationToken);
+
+        return SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             await using (var resources = new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options))
@@ -276,14 +281,16 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
             var factory = new Factory(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
             await using (var context = factory.CreateDbContext()) await context.Database.MigrateAsync(token);
-            if (audit)
-            {
-                await using var operations = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
-                    .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options);
-                await operations.Database.MigrateAsync(token);
-            }
             await test(factory, token);
         }, testContext.CancellationToken);
+
+        Task RunAsync(SqlTestDatabase database, CancellationToken token)
+        {
+            var factory = new Factory(() => new AgentManagementDbContext(new DbContextOptionsBuilder<AgentManagementDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options));
+            return test(factory, token);
+        }
+    }
 
     private sealed class Factory(Func<AgentManagementDbContext> create) : IDbContextFactory<AgentManagementDbContext>
     {

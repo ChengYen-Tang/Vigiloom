@@ -94,7 +94,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 var payload = AgentBatchCodec.Serialize(batch);
                 var queue = new DurableBatchQueue(vault, agentId);
                 Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, messages.Length, payload, token));
-                await RunAgentAsync("unavailable", "Agent batch transport: Retry", server, stateRoot, caPath, token);
+                await RunAgentAsync("unavailable", "Agent batch transport: Retry", server, stateRoot, caPath, token, replayOnly: true);
                 CollectionAssert.AreEqual(payload, (await queue.PeekAsync(token))!.Payload);
                 using (var wrongKey = RSA.Create(2048))
                 {
@@ -104,20 +104,19 @@ public sealed class AgentProcessReplayTests(TestContext context)
                     using var wrongRoot = wrongRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
                     var wrongPath = Path.Combine(testRoot, "wrong-root.cer");
                     await File.WriteAllBytesAsync(wrongPath, wrongRoot.Export(X509ContentType.Cert), token);
-                    await RunAgentAsync("normal", "Agent batch transport: Retry", server, stateRoot, wrongPath, token);
+                    await RunAgentAsync("normal", "Agent batch transport: Retry", server, stateRoot, wrongPath, token, replayOnly: true);
                 }
                 CollectionAssert.AreEqual(payload, (await queue.PeekAsync(token))!.Payload);
                 await using (var db = await agents.CreateDbContextAsync(token)) Assert.AreEqual(0, await db.ReceivedBatches.CountAsync(token));
-                await RunAgentAsync("drop-ack", "TEST_ACK_DROPPED", server, stateRoot, caPath, token);
+                await RunAgentAsync("drop-ack", "TEST_ACK_DROPPED", server, stateRoot, caPath, token, replayOnly: true);
                 CollectionAssert.AreEqual(payload, (await queue.PeekAsync(token))!.Payload);
                 await using (var db = await agents.CreateDbContextAsync(token))
                 {
                     Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
                     Assert.AreEqual(3, await db.RuntimeObservations.CountAsync(token));
                 }
-                await RunAgentAsync("normal", "Agent batch transport: Delivered", server, stateRoot, caPath, token);
-                // The metrics worker may concurrently enqueue new batches; the replayed
-                // batch was at the head, so a different head proves it was removed.
+                await RunAgentAsync("normal", "Agent batch transport: Delivered", server, stateRoot, caPath, token, replayOnly: true);
+                // The replayed batch was at the head, so a different head proves it was removed.
                 Assert.AreNotEqual(batch.BatchId, (await queue.PeekAsync(token))?.BatchId);
                 Assert.AreEqual(0L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
                 await using (var db = await agents.CreateDbContextAsync(token))
@@ -202,7 +201,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
             }
         }, context.CancellationToken);
 
-    private static async Task RunAgentAsync(string mode, string signal, Uri server, string stateRoot, string caPath, CancellationToken token)
+    private static async Task RunAgentAsync(string mode, string signal, Uri server, string stateRoot, string caPath, CancellationToken token, bool replayOnly = false)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         start.ArgumentList.Add(typeof(AgentHarness::AgentHostHarnessMarker).Assembly.Location);
@@ -210,6 +209,9 @@ public sealed class AgentProcessReplayTests(TestContext context)
         start.Environment["Vigiloom__Agent__Server"] = server.AbsoluteUri;
         start.Environment["VIGILOOM_TEST_CA"] = caPath;
         start.Environment["VIGILOOM_TEST_MODE"] = mode;
+        start.Environment.Remove("VIGILOOM_TEST_INVENTORY");
+        start.Environment.Remove("VIGILOOM_TEST_REPLAY_ONLY");
+        if (replayOnly) start.Environment["VIGILOOM_TEST_REPLAY_ONLY"] = "enabled";
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the test Agent host.");
         var errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
         Exception? primaryFailure = null;
@@ -246,6 +248,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
         start.Environment["Vigiloom__Agent__Server"] = server.AbsoluteUri;
         start.Environment["VIGILOOM_TEST_CA"] = caPath;
         start.Environment["VIGILOOM_TEST_MODE"] = "normal";
+        start.Environment.Remove("VIGILOOM_TEST_REPLAY_ONLY");
         start.Environment["VIGILOOM_TEST_INVENTORY"] = "enabled";
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the test Agent host.");
         var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);

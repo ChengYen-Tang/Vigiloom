@@ -11,51 +11,44 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    name: Windows build and test
+  windows_web:
+    name: Windows Web tests
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Restore solution
-        run: dotnet restore Vigiloom.slnx
-      - name: Build solution
-        run: dotnet build Vigiloom.slnx --configuration Release --no-restore
-      - name: Start LocalDB
-        shell: pwsh
-        run: |
-          sqllocaldb info MSSQLLocalDB
-          if ($LASTEXITCODE -ne 0) {
-            sqllocaldb create MSSQLLocalDB
-            if ($LASTEXITCODE -ne 0) { throw 'Could not create the CI LocalDB instance.' }
-          }
-          sqllocaldb start MSSQLLocalDB
-          if ($LASTEXITCODE -ne 0) { throw 'Could not start the CI LocalDB instance.' }
+      - uses: ./.github/actions/windows-test-setup
       - name: Install Chromium
         shell: pwsh
         run: ./tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install chromium
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Agent release test dependencies
+      - name: Test Web project
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore -m:1
+
+  windows_remaining:
+    name: Windows remaining tests
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/windows-test-setup
+      - name: Test remaining solution
         shell: pwsh
-        run: |
-          $pythonRoot = Join-Path $env:RUNNER_TEMP 'vigiloom-agent-python'
-          python -m venv $pythonRoot
-          if ($LASTEXITCODE -ne 0) { throw 'Could not create Python test environment.' }
-          $python = if ($IsWindows) { Join-Path $pythonRoot 'Scripts/python.exe' } else { Join-Path $pythonRoot 'bin/python' }
-          & $python -m pip install --require-hashes -r tools/agent-release/requirements.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
-          "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
-      - name: Test solution
-        # Bound concurrent project hosts while allowing independent test databases to overlap.
-        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore -m:3
+        run: ./tools/ci/test-without-web.ps1
       - name: Test Agent release publisher
         shell: pwsh
         run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
+
+  windows:
+    name: Windows build and test
+    if: always()
+    needs: [windows_web, windows_remaining]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both Windows test jobs
+        shell: bash
+        run: |
+          test '${{ needs.windows_web.result }}' = 'success'
+          test '${{ needs.windows_remaining.result }}' = 'success'
 
   ubuntu:
     name: Ubuntu build and test

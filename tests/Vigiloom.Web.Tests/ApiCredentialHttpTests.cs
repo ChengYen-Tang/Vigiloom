@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
 
@@ -26,7 +27,7 @@ public sealed class ApiCredentialHttpTests
 
     [TestMethod]
     public Task CredentialLifecycle_IsAuthorizedAuditedAndImmediatelyRevoked() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
             using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -40,7 +41,6 @@ public sealed class ApiCredentialHttpTests
                 }));
             });
             var contexts = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
-            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             var settings = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
             using var admin = factory.CreateClient(settings);
