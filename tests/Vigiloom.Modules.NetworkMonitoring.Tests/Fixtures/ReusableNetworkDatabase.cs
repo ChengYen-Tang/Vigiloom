@@ -12,15 +12,32 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 /// <summary>Exclusive run-owned database for network tests that leave schema and migration seeds unchanged.</summary>
 internal static class ReusableNetworkDatabase
 {
-    private static readonly ReusableSqlTestDatabase Pool = new(InitializeAsync);
+    private static readonly ReusableSqlTestDatabase Pool = new((database, token) => InitializeAsync(database, false, token));
+    private static readonly ReusableSqlTestDatabase SnapshotPool = new((database, token) => InitializeAsync(database, true, token));
 
     internal static Task ExecuteAsync(Func<SqlTestDatabase, CancellationToken, Task> action, CancellationToken token) =>
-        Pool.ExecuteAsync(action, token);
+        ExecuteAsync(Pool, false, action, token);
 
-    internal static ValueTask DisposeAsync() => Pool.DisposeAsync();
+    internal static Task ExecuteSnapshotAsync(Func<SqlTestDatabase, CancellationToken, Task> action, CancellationToken token) =>
+        ExecuteAsync(SnapshotPool, true, action, token);
 
-    private static async Task<Func<SqlConnection, CancellationToken, Task>> InitializeAsync(SqlTestDatabase database, CancellationToken token)
+    private static Task ExecuteAsync(ReusableSqlTestDatabase pool, bool snapshotReads,
+        Func<SqlTestDatabase, CancellationToken, Task> action, CancellationToken token) =>
+        pool.ExecuteAsync(async (database, ct) =>
+        {
+            await using (var connection = new SqlConnection(database.ConnectionString))
+            {
+                await connection.OpenAsync(ct);
+                await ReadCommittedSnapshot.EnsureAsync(connection, snapshotReads, ct);
+            }
+            await action(database, ct);
+        }, token);
+
+    internal static async ValueTask DisposeAsync() => await Task.WhenAll(Pool.DisposeAsync().AsTask(), SnapshotPool.DisposeAsync().AsTask());
+
+    private static async Task<Func<SqlConnection, CancellationToken, Task>> InitializeAsync(SqlTestDatabase database, bool snapshotReads, CancellationToken token)
     {
+        await ReadCommittedSnapshot.ConfigureAsync(database, snapshotReads, token);
         var resources = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
         var network = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(database.ConnectionString,
@@ -42,6 +59,7 @@ internal static class ReusableNetworkDatabase
         });
         return async (connection, ct) =>
         {
+            await ReadCommittedSnapshot.EnsureAsync(connection, snapshotReads, ct);
             if (await ReadSeedAsync(connection, ct) != seed)
                 throw new InvalidOperationException("A reusable network test changed its preserved seed.");
             await respawner.ResetAsync(connection);
