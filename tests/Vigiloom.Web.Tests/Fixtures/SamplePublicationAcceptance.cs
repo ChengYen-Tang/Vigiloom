@@ -178,6 +178,31 @@ internal static class SamplePublicationAcceptance
         Assert.IsNotEmpty(captured);
         foreach (var body in captured) AssertPublic(body);
 
+        // Inspect the same sample's real probe evidence through the authenticated UI.
+        await using (var readerContext = await browser.NewContextAsync())
+        {
+            var readerPage = await readerContext.NewPageAsync();
+            await using var readerRender = await AutoRenderGate.HoldAsync(readerPage);
+            await readerPage.GotoAsync(new Uri(publicAddress, $"/services/{serviceId:D}").ToString());
+            await readerPage.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+            await readerPage.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+            await readerPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+            await readerPage.Locator(".service-overview[data-runtime='Server'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+            var rangeStart = DateTimeOffset.UtcNow.AddMinutes(-9).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            var rangeEnd = DateTimeOffset.UtcNow.AddSeconds(-1).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            await readerPage.GetByLabel("開始時間（UTC）").FillAsync(rangeStart);
+            await readerPage.GetByLabel("結束時間（UTC）").FillAsync(rangeEnd);
+            await readerPage.GetByRole(AriaRole.Button, new() { Name = "查詢", Exact = true }).ClickAsync();
+            var historyTable = readerPage.Locator("[aria-label='健康歷史表格，可左右滑動']");
+            await Assertions.Expect(historyTable).ToContainTextAsync(rangeStart.Replace('T', ' '));
+            await readerPage.GetByText("以表格查看健康歷史", new() { Exact = false }).ClickAsync();
+            await Assertions.Expect(historyTable).ToBeVisibleAsync();
+            await Assertions.Expect(historyTable).ToContainTextAsync("正常");
+            await readerPage.GetByRole(AriaRole.Button, new() { Name = "查看健康檢查依據" }).ClickAsync();
+            var observations = readerPage.GetByRole(AriaRole.Region, new() { Name = "健康檢查依據表格，可左右滑動" });
+            await Assertions.Expect(observations).ToContainTextAsync("正常");
+        }
+
         await page.GetByRole(AriaRole.Button, new() { Name = "Public sample", Exact = true }).ClickAsync();
         await browserStreamOpened.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
         settings = await SetPublicAsync(false, settings.Version);
