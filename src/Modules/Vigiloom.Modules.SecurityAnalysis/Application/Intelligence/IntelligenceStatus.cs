@@ -73,10 +73,19 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var now = clock.GetUtcNow();
         var advisory = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "github-reviewed" && x.ActiveId != null && !x.ActiveUnavailable);
         var advisoryUnavailable = advisory is not null && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, advisory.Source.Id, advisory.ActiveId!.Value, token);
+        var kev = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "cisa-kev" && x.ActiveId != null && !x.ActiveUnavailable);
+        bool? kevFresh = null;
+        if (kev is not null)
+        {
+            var activeRevision = await db.IntelligenceRevisions.AsNoTracking().Where(x => x.SourceId == kev.Source.Id && x.Id == kev.ActiveId)
+                .Select(x => new { x.Id, x.MappingVersion, x.ReleasedAt }).SingleOrDefaultAsync(token);
+            if (activeRevision is not null)
+                kevFresh = await KevFreshness.IsFreshAsync(db, kev.Source, activeRevision.Id, activeRevision.MappingVersion, activeRevision.ReleasedAt, now, token);
+        }
         var items = rows.Take(PageSize).Select(row => new IntelligenceSourceView(row.Source.Id, row.Source.Key, row.Source.Enabled,
             row.Source.UpdateIntervalSeconds, row.Source.StaleAfterSeconds, row.Source.MaximumBytes, row.Source.MaximumRecords,
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
-            row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
+            row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
             Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable)).ToArray();
@@ -112,10 +121,11 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var rows = await db.IntelligenceRevisions.AsNoTracking().Where(x => x.SourceId == sourceId)
             .OrderByDescending(x => x.RetrievedAt).ThenByDescending(x => x.RowId).Skip((page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.Id, x.UpstreamVersion, x.ReleasedAt, x.RetrievedAt, x.Digest, x.SchemaVersion,
-                x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized }).ToArrayAsync(token);
+                x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized,
+                OfflineImportAt = db.OfflineImports.Where(i => i.SourceId == sourceId && i.RevisionId == x.Id).Max(i => (DateTimeOffset?)i.ImportedAt) }).ToArrayAsync(token);
         return new(rows.Take(PageSize).Select(x => new IntelligenceRevisionView(x.Id, x.UpstreamVersion, x.ReleasedAt, x.RetrievedAt,
             Convert.ToHexStringLower(x.Digest), x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Revoked, x.Normalized,
-            x.Id == activeId)).ToArray(), page, rows.Length > PageSize && page < 1000);
+            x.Id == activeId, x.OfflineImportAt)).ToArray(), page, rows.Length > PageSize && page < 1000);
     }
 
     public async Task<SigmaRulePage?> GetSigmaRulesAsync(Guid sourceId, Guid revisionId, int page, CancellationToken token)

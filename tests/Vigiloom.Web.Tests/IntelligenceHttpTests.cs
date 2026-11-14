@@ -27,6 +27,74 @@ namespace Vigiloom.Web.Tests;
 public sealed class IntelligenceHttpTests(TestContext context)
 {
     [TestMethod]
+    public Task OfflineImport_RequiresAdministratorAndAntiforgery_AndShowsProvenance() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true };
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            using var admin = PingTestSite.Client(factory);
+            using var reader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            var pageUrl = $"/settings/intelligence?source={source.Id:D}";
+            var uploadUrl = $"/settings/intelligence/{source.Id:D}/offline-import";
+            using var page = await admin.GetAsync(pageUrl, token);
+            var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+            var form = document.QuerySelector($"form[action='{uploadUrl}']");
+            Assert.IsNotNull(form);
+            var csrf = form.QuerySelector("input[name='__RequestVerificationToken']")?.GetAttribute("value");
+            Assert.IsFalse(string.IsNullOrEmpty(csrf));
+            var payload = System.Text.Encoding.UTF8.GetBytes($"{{\"catalogVersion\":\"offline-test\",\"dateReleased\":\"{DateTimeOffset.UtcNow:O}\",\"count\":0,\"vulnerabilities\":[]}}");
+            MultipartFormDataContent Upload(string? tokenValue, bool includeFile = true)
+            {
+                var content = new MultipartFormDataContent();
+                if (tokenValue is not null) content.Add(new StringContent(tokenValue), "__RequestVerificationToken");
+                if (includeFile) content.Add(new ByteArrayContent(payload), "file", "catalog.json");
+                return content;
+            }
+            using (var content = Upload(null)) using (var response = await admin.PostAsync(uploadUrl, content, token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            using (var content = Upload(csrf, false)) using (var response = await admin.PostAsync(uploadUrl, content, token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            using (var content = Upload(csrf)) using (var response = await reader.PostAsync(uploadUrl, content, token))
+                Assert.IsFalse(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location?.ToString().Contains("import=saved", StringComparison.Ordinal) == true);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+                Assert.AreEqual(0, await db.OfflineImports.CountAsync(token));
+            using (var content = Upload(csrf)) using (var response = await admin.PostAsync(uploadUrl, content, token))
+            {
+                Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+                Assert.Contains("import=saved", response.Headers.Location!.ToString());
+            }
+            using var imported = await admin.GetAsync(pageUrl, token);
+            var importedDoc = await new HtmlParser().ParseDocumentAsync(await imported.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("offline-test", importedDoc.Body!.TextContent);
+            Assert.Contains("管理員離線匯入", importedDoc.Body.TextContent);
+            Assert.Contains("未驗證上游身分", importedDoc.Body.TextContent);
+            Guid revisionId;
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+                revisionId = (await db.IntelligenceRevisions.SingleAsync(token)).Id;
+            var activateForm = importedDoc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation");
+            var activate = activateForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            activate["ActivationInput.RevisionId"] = revisionId.ToString("D");
+            activate["ActivationInput.ConfirmReduction"] = "true";
+            using (var noConfirmation = await admin.PostAsync(pageUrl, new FormUrlEncodedContent(activate), token))
+                Assert.Contains("請確認離線檔案來源", (await new HtmlParser().ParseDocumentAsync(await noConfirmation.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
+            activate["ActivationInput.ConfirmOffline"] = "true";
+            using (var confirmed = await admin.PostAsync(pageUrl, new FormUrlEncodedContent(activate), token))
+                Assert.Contains("版本已啟用", (await new HtmlParser().ParseDocumentAsync(await confirmed.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
+            using var audit = await admin.GetAsync("/settings/audit?source=intelligence", token);
+            var auditText = (await new HtmlParser().ParseDocumentAsync(await audit.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("離線匯入情報", auditText);
+            Assert.Contains("管理員已確認離線來源與使用條件", auditText);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task ManagementPage_ActivatesVersionAndProtectsCredential() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {

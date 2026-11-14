@@ -48,8 +48,10 @@ public sealed class KevCatalogTests(TestContext context)
             }
             var snapshot = await catalog.GetActiveAsync(token);
             Assert.AreEqual(KevAvailability.Ready, snapshot.Availability);
+            Assert.AreEqual("official-https", snapshot.Origin);
             var found = await catalog.FindCurrentAsync(source.Id, first.Id, snapshot.ActivationVersion!, ["CVE-2026-0001", "CVE-2026-9999"], token);
             Assert.AreEqual(KevAvailability.Ready, found.Availability);
+            Assert.AreEqual("official-https", found.Origin);
             Assert.AreEqual(KevAvailability.Ready, (await catalog.FindCurrentAsync(source.Id, first.Id, snapshot.ActivationVersion!, [], token)).Availability);
             var maximumBatch = Enumerable.Range(1, 500).Select(x => $"CVE-2026-{x:0000}").ToArray();
             Assert.HasCount(1, (await catalog.FindCurrentAsync(source.Id, first.Id, snapshot.ActivationVersion!, maximumBatch, token)).Entries);
