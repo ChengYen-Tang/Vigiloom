@@ -22,6 +22,7 @@ public partial class Intelligence
     [SupplyParameterFromForm(FormName = "intelligence-activation")] private ActivationForm ActivationInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "intelligence-credential")] private CredentialForm CredentialInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "intelligence-recovery")] private RecoveryForm RecoveryInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "intelligence-revocation")] private RevocationForm RevocationInput { get; set; } = default!;
     private IntelligenceSourcePage? sources;
     private IntelligenceSourceView? selected;
     private IntelligenceRevisionPage? revisions;
@@ -40,9 +41,10 @@ public partial class Intelligence
         var submittedActivation = ActivationInput is not null;
         var submittedCredential = CredentialInput is not null;
         var submittedRecovery = RecoveryInput is not null;
-        PolicyInput ??= new(); ActivationInput ??= new(); CredentialInput ??= new(); RecoveryInput ??= new();
+        RevocationInput ??= new(); PolicyInput ??= new(); ActivationInput ??= new(); CredentialInput ??= new(); RecoveryInput ??= new();
         await LoadAsync();
         if (selected is null) return;
+        if (RevocationInput.SourceId == Guid.Empty) RevocationInput.SourceId = selected.Id;
         if (!submittedPolicy) PolicyInput = new() { SourceId = selected.Id, Version = selected.Version, Enabled = selected.Enabled,
             Interval = selected.UpdateIntervalSeconds, Stale = selected.StaleAfterSeconds, MiB = selected.MaximumBytes / 1048576m, Records = selected.MaximumRecords };
         if (!submittedActivation) ActivationInput = new() { SourceId = selected.Id, ExpectedActiveId = selected.ActiveRevisionId, ExpectedVersion = selected.ActivationVersion };
@@ -148,6 +150,22 @@ public partial class Intelligence
         catch (Exception ex) when (ex is not OperationCanceledException) { LogFailure(ex); }
     }
 
+    private async Task RevokeAsync(EditContext _)
+    {
+        if (!ValidGuid("RevocationInput.SourceId") || !ValidGuid("RevocationInput.RevisionId") ||
+            !ReadBoolean("RevocationInput.Confirm", out var confirmed) || !confirmed ||
+            !Actor(out var actor) || RevocationInput.RevisionId is not { } revision || revision.Version != 7)
+        { message = "請選擇版本並確認撤銷。"; return; }
+        try
+        {
+            var result = await Revocation.RevokeAsync(RevocationInput.SourceId, revision, actor, HttpContext.RequestAborted);
+            message = result is IntelligenceRevocationResult.Revoked or IntelligenceRevocationResult.AlreadyRevoked ? "版本已撤銷。" : "找不到所選版本。";
+            await LoadAsync();
+            if (result is IntelligenceRevocationResult.Revoked or IntelligenceRevocationResult.AlreadyRevoked) ResetForms();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { LogFailure(ex); }
+    }
+
     private async Task RecoverAsync(EditContext _)
     {
         if (!Actor(out var actor) || RecoveryInput is null) return;
@@ -170,6 +188,7 @@ public partial class Intelligence
             Interval = selected.UpdateIntervalSeconds, Stale = selected.StaleAfterSeconds, MiB = selected.MaximumBytes / 1048576m, Records = selected.MaximumRecords };
         ActivationInput = new() { SourceId = selected.Id, ExpectedActiveId = selected.ActiveRevisionId, ExpectedVersion = selected.ActivationVersion };
         CredentialInput = new() { SourceId = selected.Id, Version = selected.Version };
+        RevocationInput = new() { SourceId = selected.Id };
         RecoveryInput = progress?.ImportId is { } id ? new() { SourceId = selected.Id, ImportId = id, Version = progress.Version } : new();
     }
 
@@ -208,13 +227,22 @@ public partial class Intelligence
     private static string DisplayTime(DateTimeOffset? time) => time?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") ?? "尚無資料";
     private static string Coverage(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "CISA 已知遭利用的漏洞；不包含所有漏洞，也無法單獨判定設備是否受影響。", "github-reviewed" => "GitHub 已審核的套件安全公告；不包含未審核或惡意軟體公告，不能單獨判定設備是否受影響。", "sigmahq-rules" => "保存 SigmaHQ 行為規則供檢視；尚未啟用規則偵測與發布。", "signature-base" => "保存 IOC 與 YARA 原始檔案；各規則授權、適用性、偵測與發布尚未驗證。", _ => source.Description?.Coverage ?? "無法確認來源涵蓋範圍。" };
     private static string Category(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "已知遭利用的漏洞", "github-reviewed" => "開源套件安全公告", "sigmahq-rules" => "行為規則", "signature-base" => "IOC／YARA", _ => source.Description?.Category ?? "未知" };
+    private static string PlatformCoverage(IntelligenceSourceView source) => source.Key switch
+    {
+        "cisa-kev" => "涵蓋多種平台與產品；是否受影響需依產品及版本另行判斷。",
+        "github-reviewed" => "各公告所列的開源套件生態系；是否影響設備尚未在此判斷。",
+        "sigmahq-rules" => "依各規則的平台與事件來源而異；相容採集與偵測尚未驗證。",
+        "signature-base" => "依各檔案與規則的平台和相依條件而異；消費端相容性尚未驗證。",
+        _ => source.Description?.PlatformCoverage ?? "未知"
+    };
     private static string ErrorText(string error) => error switch { "KEV retrieval failed." or "Sigma retrieval failed." or "Signature-Base retrieval failed." => "無法取得來源資料。", "KEV retrieval timed out." or "Sigma retrieval timed out." or "Signature-Base retrieval timed out." => "取得來源資料逾時。", "KEV content or response failed validation." or "Sigma source failed validation." or "Signature-Base source failed validation." => "來源資料未通過驗證。", "Sigma license unavailable or changed." or "Signature-Base license unavailable or changed." => "來源授權檔遺失或已變更，必須重新確認授權。", "The retrieved KEV revision is revoked or incomplete." or "Sigma revision is revoked or incomplete." or "Signature-Base revision is revoked or incomplete." => "取得的版本已撤銷或不完整。", _ => "更新未完成，請檢查來源狀態。" };
     private static string FailureText(string code) => code switch { "fetch-failed" => "無法取得來源資料。", "request-timeout" => "取得來源資料逾時。", "invalid-response" => "來源資料不一致或未通過驗證。", "cursor-rejected" => "來源分頁失效。", "limit-exceeded" => "資料超過設定的容量或筆數上限。", "invalid-base" => "目前基礎版本不可使用。", "credential-unavailable" => "無法讀取來源憑證，請重新設定。", _ => "無法完成匯入。" };
-    private static string SourceState(IntelligenceSourceView source) => !source.Enabled ? "已停用" : source.IsStale ? "資料已過期或尚未更新" : source.LastError is not null ? "更新失敗" : source.Key is "sigmahq-rules" or "signature-base" ? "已匯入供檢視" : source.ActiveRevisionId is null ? "尚未啟用版本" : "已選用版本";
+    private static string SourceState(IntelligenceSourceView source) => !source.Enabled ? "已停用" : source.ActiveUnavailable ? "目前版本不可使用" : source.IsStale ? "資料已過期或尚未更新" : source.LastError is not null ? "更新失敗" : source.Key is "sigmahq-rules" or "signature-base" ? "已匯入供檢視" : source.ActiveRevisionId is null ? "尚未啟用版本" : "已選用版本";
     private static string ProgressState(string state) => state switch { "disabled" => "已停用", "not-started" => "尚未開始", "importing" => "匯入中", "reconciling" => "驗證中", "inconsistent" => "資料不一致", "failed" => "失敗", "rate-limited" => "等待來源額度", "awaiting-activation" => "等待啟用", "active" => "已啟用", "active-unavailable" or "candidate-unavailable" => "版本不可使用", "candidate-stale" => "候選版本已過期", _ => "已停止" };
 
     private sealed class PolicyForm { public Guid SourceId { get; set; } public string? Version { get; set; } public bool Enabled { get; set; } public int Interval { get; set; } public int Stale { get; set; } public decimal MiB { get; set; } public int Records { get; set; } }
     private sealed class ActivationForm { public Guid SourceId { get; set; } public Guid? RevisionId { get; set; } public Guid? ExpectedActiveId { get; set; } public string? ExpectedVersion { get; set; } public bool ConfirmReduction { get; set; } }
     private sealed class CredentialForm { public Guid SourceId { get; set; } public string? Version { get; set; } public bool Clear { get; set; } public string? Value { get; set; } }
     private sealed class RecoveryForm { public Guid SourceId { get; set; } public Guid ImportId { get; set; } public string? Version { get; set; } }
+    private sealed class RevocationForm { public Guid SourceId { get; set; } public Guid? RevisionId { get; set; } public bool Confirm { get; set; } }
 }

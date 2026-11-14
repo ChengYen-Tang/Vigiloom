@@ -8,6 +8,7 @@
 @inject IntelligenceStatus Status
 @inject IntelligencePolicy Policy
 @inject IntelligencePublication Publication
+@inject IntelligenceRevocation Revocation
 @inject AdvisoryCredentials Credentials
 @inject AdvisoryRecovery Recovery
 @inject ILogger<Intelligence> Logger
@@ -15,6 +16,16 @@
 <PageTitle>情報來源 - Vigiloom</PageTitle>
 <main class="device-page intelligence-page">
     <header class="device-heading"><div><h1>情報來源</h1><p>管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。</p></div></header>
+    <section class="device-panel" aria-labelledby="intelligence-coverage-title">
+        <h2 id="intelligence-coverage-title">情報類型與目前範圍</h2>
+        <ul>
+            <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
+            <li>行為規則：保存 Sigma 原始規則供檢視；偵測與發布尚未啟用。</li>
+            <li>IOC／YARA：保存來源檔案與 IOC 分類；比對、執行及發布尚未啟用。</li>
+            <li>安全設定基準（SCA）：尚無已核實並可發布的基準來源。</li>
+        </ul>
+        <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
+    </section>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (message is not null) { <p class="intelligence-message" role="status">@message</p> }
     @if (sources is not null)
@@ -39,11 +50,12 @@
                         @if (selected.Description is { } description)
                         {
                             <p>@Coverage(selected)</p><p>類別：@Category(selected)</p>
+                            <p>適用平台與範圍：@PlatformCoverage(selected)</p>
                             <p>來源：<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">官方資料來源</a></p>
                             <details><summary>查看來源授權依據</summary><p>@description.LicenseEvidence</p></details>
                         }
                         else { <p>無法辨識此來源，無法確認資料範圍或授權。</p> }
-                        <p class="intelligence-state @(selected.IsStale || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
+                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
                         <p>最後成功更新（UTC）：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
                         @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">最近更新失敗：@ErrorText(selected.LastError)</p> }
                         @if (progress is not null)
@@ -91,8 +103,8 @@
                         else
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
+                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p></details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
                             @if (selected.Key is not ("cisa-kev" or "github-reviewed"))
@@ -107,6 +119,19 @@
                             </EditForm>
                             }
                             else { <p>此頁沒有其他可選的版本。</p> }
+                            @if (revisions.Items.Any(x => !x.Revoked))
+                            {
+                                <details><summary>撤銷不可信的版本</summary>
+                                    <p>撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。</p>
+                                    <EditForm Model="RevocationInput" FormName="intelligence-revocation" method="post" OnValidSubmit="RevokeAsync" class="intelligence-form">
+                                        <DataAnnotationsValidator /><ValidationSummary />
+                                        <input type="hidden" name="RevocationInput.SourceId" value="@RevocationInput.SourceId" />
+                                        <label for="revoke-revision">選擇要撤銷的版本</label><InputSelect id="revoke-revision" @bind-Value="RevocationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
+                                        <label><InputCheckbox @bind-Value="RevocationInput.Confirm" /> 確認撤銷此版本及相同內容的使用資格</label>
+                                        <div><button type="submit">撤銷版本</button></div>
+                                    </EditForm>
+                                </details>
+                            }
                         }
                     </section>
                     @if (sigmaRules is not null && shownRulesRevision is { } sigmaRevision)
