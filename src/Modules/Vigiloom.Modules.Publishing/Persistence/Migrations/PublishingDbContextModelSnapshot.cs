@@ -31,6 +31,12 @@ namespace Vigiloom.Modules.Publishing.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("HistoryDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("HistorySince")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("IsDefault")
                         .HasColumnType("bit");
 
@@ -84,6 +90,8 @@ namespace Vigiloom.Modules.Publishing.Persistence.Migrations
                     b.ToTable("Templates", "publishing", t =>
                         {
                             t.HasCheckConstraint("CK_Templates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0");
+
+                            t.HasCheckConstraint("CK_Templates_HistoryPeriod", "([HistoryDays] = 0 AND [HistorySince] IS NULL) OR ([HistoryDays] BETWEEN 1 AND 7 AND [HistorySince] IS NOT NULL)");
                         });
                 });
 #pragma warning restore 612, 618

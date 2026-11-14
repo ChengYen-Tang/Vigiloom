@@ -65,6 +65,7 @@ public interface IPublicationClient
 {
     Task<PublicationSettings?> GetAsync(string kind, Guid id, CancellationToken token);
     Task<PublicationPreview?> PreviewAsync(string kind, Guid id, CancellationToken token);
+    Task<PublicDeviceHistory?> PublishedDeviceHistoryAsync(Guid id, DateTimeOffset from, DateTimeOffset to, CancellationToken token);
     Task<PublicationTemplatePage> TemplatesAsync(int page, CancellationToken token);
     Task<PublicationTemplateItem?> TemplateAsync(Guid id, CancellationToken token);
     Task<PublicationTemplateItem?> DefaultTemplateAsync(CancellationToken token);
@@ -88,7 +89,7 @@ public sealed record PublicDevice(Guid Id, string Name, string State, double? La
 public sealed record PublicDeviceHistoryPoint(DateTimeOffset From, double? AverageLatencyMilliseconds);
 
 /// <summary>A bounded preview of latency buckets for the current publication period.</summary>
-public sealed record PublicDeviceHistory(IReadOnlyList<PublicDeviceHistoryPoint> Points);
+public sealed record PublicDeviceHistory(IReadOnlyList<PublicDeviceHistoryPoint> Points, DateTimeOffset? AsOf = null);
 
 /// <summary>A public application's simple health state, independent of any host.</summary>
 public sealed record PublicService(Guid Id, string Name, string State);

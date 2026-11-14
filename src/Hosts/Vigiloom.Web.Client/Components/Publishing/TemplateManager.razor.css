@@ -18,5 +18,10 @@ button:disabled { cursor: default; opacity: .55; }
 label { display: block; font-weight: 600; margin: 12px 0 6px; } input:not([type=checkbox]), select { width: min(100%, 520px); min-height: 42px; padding: 8px; border: 1px solid #afbfda; border-radius: 6px; font: inherit; }
 fieldset { border: 1px solid var(--vigiloom-border); border-radius: 6px; margin: 20px 0; } fieldset label { font-weight: 400; }
 .notice { border: 1px solid #b6d3fc; border-radius: 6px; background: #f1f7ff; padding: 12px; }
-.comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .comparison > div { border: 1px solid var(--vigiloom-border); border-radius: 6px; padding: 12px; overflow-wrap: anywhere; }
-@media (max-width: 850px) { .templates.editing { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .comparison { grid-template-columns: 1fr; } .scroll-hint { display: block; } }
+.history-guidance { margin: 12px 0; padding: 12px; border: 1px solid #b6d3fc; border-radius: 6px; background: #f1f7ff; color: #17427c; }
+.history-guidance p { margin: 0 0 6px; color: inherit; }
+.history-guidance ul { margin: 0; padding-left: 1.4em; }
+.history-guidance li { line-height: 1.5; }
+.comparison, .history-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .comparison > div, .history-comparison > div { border: 1px solid var(--vigiloom-border); border-radius: 6px; padding: 12px; overflow-wrap: anywhere; }
+.history-comparison { margin-top: 12px; }
+@media (max-width: 850px) { .templates.editing { grid-template-columns: minmax(0, 1fr); } .panel { padding: 16px; } .comparison, .history-comparison { grid-template-columns: 1fr; } .scroll-hint { display: block; } }

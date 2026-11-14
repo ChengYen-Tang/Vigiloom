@@ -22,7 +22,7 @@ internal sealed class TemplateAdministration(IDbContextFactory<ResourcesDbContex
         if (actor == Guid.Empty) throw new ArgumentException("An authenticated actor is required.", nameof(actor));
         var now = clock.GetUtcNow().ToUniversalTime();
         PublicationTemplate template;
-        try { template = new(input.Name!, input.ShowLatency, input.ShowObservedAt, now); }
+        try { template = new(input.Name!, input.ShowLatency, input.ShowObservedAt, now, input.HistoryDays); }
         catch (ArgumentException) { return new(TemplateChangeStatus.Invalid); }
         await using var resourcesDb = await resources.CreateDbContextAsync(token);
         await using var transaction = await resourcesDb.Database.BeginTransactionAsync(token);
@@ -37,8 +37,11 @@ internal sealed class TemplateAdministration(IDbContextFactory<ResourcesDbContex
         await audit.AppendAsync(resourcesDb.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new OperationAudit(actor, template.Id, now, new PublicationTemplateChanged(PublicationTemplateAction.Created, 0)), token);
         await transaction.CommitAsync(token);
+        var confirmed = template.HistorySince == PublicationTemplate.PendingHistorySince
+            ? await TemplateHistoryPeriod.ConfirmAsync(resources, template.Id, template.Version, token) : null;
         return new(TemplateChangeStatus.Created, new(template.Id, template.Name, template.ShowLatency, template.ShowObservedAt,
-            template.IsDefault, Convert.ToBase64String(template.Version)));
+            template.IsDefault, Convert.ToBase64String(confirmed ?? template.Version), HistoryDays: template.HistoryDays,
+            HistoryReady: template.HistoryDays > 0 && (confirmed is not null || template.HistorySince != PublicationTemplate.PendingHistorySince)));
     }
 
     internal async Task<TemplateChangeResult> SetDefaultAsync(Guid id, SetDefaultPublicationTemplate input, Guid actor, CancellationToken token)
@@ -81,7 +84,8 @@ internal sealed class TemplateAdministration(IDbContextFactory<ResourcesDbContex
             await transaction.CommitAsync(token);
         }
         return new(TemplateChangeStatus.Updated, new(template.Id, template.Name, template.ShowLatency, template.ShowObservedAt,
-            template.IsDefault, Convert.ToBase64String(template.Version)));
+            template.IsDefault, Convert.ToBase64String(template.Version), HistoryDays: template.HistoryDays,
+            HistoryReady: template.HistoryDays > 0 && template.HistorySince != PublicationTemplate.PendingHistorySince));
     }
 
     private static bool TryVersion(string? value, out byte[] version)
