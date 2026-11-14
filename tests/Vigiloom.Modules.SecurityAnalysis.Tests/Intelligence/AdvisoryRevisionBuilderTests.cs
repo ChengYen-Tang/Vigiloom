@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -21,6 +22,58 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 [TestCategory("Database")]
 public sealed class AdvisoryRevisionBuilderTests(TestContext context)
 {
+    [TestMethod]
+    public Task Lookup_DoesNotReturnCorruptedOrStaleCurrentData() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var staged = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", false));
+            var revision = await new AdvisoryRevisionBuilder(contexts, TimeProvider.System).StageAsync(source.Id, staged.Id, staged.Version, token);
+            Assert.IsNotNull(revision.RevisionId);
+            var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateScheduledAsync(source.Id, revision.RevisionId.Value, null, "", token));
+            var catalog = new AdvisoryCatalog(contexts, TimeProvider.System);
+            var snapshot = await catalog.GetActiveAsync(token);
+            var result = await catalog.FindCurrentAsync(source.Id, revision.RevisionId.Value, snapshot.ActivationVersion!, ["GHSA-abcd-1234-efgh"], token);
+            Assert.AreEqual(AdvisoryAvailability.Ready, result.Availability);
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == revision.RevisionId, token)).Revoked = true;
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual(AdvisoryAvailability.Unavailable, (await catalog.GetActiveAsync(token)).Availability);
+            Assert.AreEqual(AdvisoryAvailability.Unavailable, (await catalog.FindHistoricalAsync(source.Id, revision.RevisionId.Value,
+                ["GHSA-abcd-1234-efgh"], token)).Availability);
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == revision.RevisionId, token)).Revoked = false;
+                await db.SaveChangesAsync(token);
+            }
+            await using (var db = contexts.CreateDbContext())
+            {
+                var page = await db.AdvisoryImportPages.SingleAsync(x => x.ImportId == staged.Id && !x.Reconciliation && x.Phase == 1, token);
+                page.Payload = "[]"u8.ToArray();
+                await db.SaveChangesAsync(token);
+            }
+            var corrupted = await catalog.FindCurrentAsync(source.Id, revision.RevisionId.Value, snapshot.ActivationVersion!, ["GHSA-abcd-1234-efgh"], token);
+            Assert.AreEqual(AdvisoryAvailability.Unavailable, corrupted.Availability);
+            Assert.IsEmpty(corrupted.Entries);
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceSources.SingleAsync(token)).LastSuccessfulCheckAt = DateTimeOffset.UtcNow.AddDays(-30);
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual(AdvisoryAvailability.Stale, (await catalog.GetActiveAsync(token)).Availability);
+            Assert.AreEqual(AdvisoryAvailability.Stale, (await catalog.FindCurrentAsync(source.Id, revision.RevisionId.Value,
+                snapshot.ActivationVersion!, ["GHSA-abcd-1234-efgh"], token)).Availability);
+            await Assert.ThrowsAsync<ArgumentException>(() => catalog.FindCurrentAsync(source.Id, revision.RevisionId.Value,
+                snapshot.ActivationVersion!, ["not-a-ghsa"], token));
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task Activation_DoesNotUndoPreviouslyPublishedWithdrawal() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -42,12 +95,29 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             var firstResult = await builder.StageAsync(source.Id, first.Id, first.Version, token);
             Assert.IsNotNull(firstResult.RevisionId);
             Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, null, "", false, actor, token));
+            var catalog = new AdvisoryCatalog(contexts, TimeProvider.System);
+            var firstSnapshot = await catalog.GetActiveAsync(token);
+            Assert.AreEqual(AdvisoryAvailability.Ready, firstSnapshot.Availability);
+            var firstLookup = await catalog.FindCurrentAsync(source.Id, firstResult.RevisionId.Value, firstSnapshot.ActivationVersion!,
+                ["GHSA-abcd-1234-efgh", "GHSA-zzzz-1234-efgh"], token);
+            Assert.AreEqual(AdvisoryAvailability.Ready, firstLookup.Availability);
+            Assert.HasCount(1, firstLookup.Entries);
+            Assert.IsNull(firstLookup.Entries[0].WithdrawnAt);
             var second = await StageWindowCore(store, contexts, source.Id, token, "2023-01-10T00:00:00Z", ("GHSA-abcd-1234-efgh", "2023-01-04T00:00:00Z", true));
             var secondResult = await builder.StageAsync(source.Id, second.Id, second.Version, token);
             Assert.IsNotNull(secondResult.RevisionId);
             string version;
             await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, firstResult.RevisionId, version, false, actor, token));
+            Assert.AreEqual(AdvisoryAvailability.SelectionChanged, (await catalog.FindCurrentAsync(source.Id, firstResult.RevisionId.Value,
+                firstSnapshot.ActivationVersion!, ["GHSA-abcd-1234-efgh"], token)).Availability);
+            var historical = await catalog.FindHistoricalAsync(source.Id, firstResult.RevisionId.Value, ["GHSA-abcd-1234-efgh"], token);
+            Assert.AreEqual(AdvisoryAvailability.Ready, historical.Availability);
+            Assert.HasCount(1, historical.Entries);
+            var currentSnapshot = await catalog.GetActiveAsync(token);
+            var current = await catalog.FindCurrentAsync(source.Id, secondResult.RevisionId.Value, currentSnapshot.ActivationVersion!, ["GHSA-abcd-1234-efgh"], token);
+            Assert.AreEqual(AdvisoryAvailability.Ready, current.Availability);
+            Assert.IsNotNull(current.Entries.Single().WithdrawnAt);
             await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             await using (var check = contexts.CreateDbContext())

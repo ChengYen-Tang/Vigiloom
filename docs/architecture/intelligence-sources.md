@@ -235,6 +235,16 @@ both query variants must match before staging; matching passes do not guarantee
 that GitHub provided a point-in-time snapshot. Revisions have no invented
 upstream release time when the API does not supply one.
 
+`IAdvisoryCatalog` provides bounded central lookups by known GHSA identifier
+against a fixed activated revision. It preserves upstream package ecosystem,
+name, version-range text and withdrawal time without interpreting applicability.
+The current-version lookup requires the activation token and reports stale or
+changed selections; historical lookup requires a previously activated revision.
+Consumers must treat missing identifiers and unsupported package discovery as
+unknown, and coordinate a final version check with their own result publication.
+This interface does not yet provide package-to-advisory discovery or match
+versions, and does not replace the vendor and OSV source work required by REQ-34.
+
 For Sigma, pin a concrete release or commit and preserve rule ID, author,
 license, source, status, log source, detection expression and the conversion
 version in each staged revision. Validate each rule and its dependency closure
