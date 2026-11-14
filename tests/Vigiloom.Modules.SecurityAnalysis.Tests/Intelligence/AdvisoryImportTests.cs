@@ -17,6 +17,22 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class AdvisoryImportTests(TestContext context)
 {
     [TestMethod]
+    public Task Migration_RefusesToDiscardWiderSourceLimit() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            db.IntelligenceSources.Add(new IntelligenceSource { Key = "github-reviewed", Enabled = true, MaximumBytes = 1_073_741_824, MaximumRecords = 100_000 });
+            await db.SaveChangesAsync(token);
+            var previous = db.Database.GetMigrations().Single(x => x.EndsWith("_AdvisoryCredentials", StringComparison.Ordinal));
+            var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
+            Assert.AreEqual(51000, error.Number);
+            Assert.AreEqual(1_073_741_824, await db.IntelligenceSources.AsNoTracking().Select(x => x.MaximumBytes).SingleAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Migration_PreservesPendingProgressOnDowngrade() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -93,6 +109,91 @@ public sealed class AdvisoryImportTests(TestContext context)
                 verifyBase: true, expectedBaseId: a.Id, expectedBaseVersion: originalVersion));
             await using var check = contexts.CreateDbContext();
             Assert.AreEqual(0, await check.AdvisoryImports.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task SourceByteLimit_CoversBothPassesWithoutPartialPage(bool exact)
+        => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var page = Page("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", null, new string('a', 1100), null);
+            var emptyBytes = Encoding.UTF8.GetBytes("[]");
+            var empty = new AdvisoryPage([], null, emptyBytes, new(2023, 1, 1), new(2023, 2, 1), true, null);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true,
+                MaximumBytes = page.RawBytes.Length + emptyBytes.Length - (exact ? 0 : 1) };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var import = await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, import.Version, null, false, page, token));
+            var state = await ReadAsync(contexts, token);
+            Assert.AreEqual(exact ? AdvisoryStageResult.Stored : AdvisoryStageResult.LimitExceeded,
+                await store.StageAsync(source.Id, import.Id, state.Version, null, true, empty, token));
+            state = await ReadAsync(contexts, token);
+            if (exact)
+            {
+                Assert.AreEqual(source.MaximumBytes, state.TotalBytes);
+                Assert.AreEqual(AdvisoryStageResult.LimitExceeded, await store.StageAsync(source.Id, import.Id, state.Version, null, false, page, token));
+            }
+            else Assert.AreEqual(page.RawBytes.Length, state.TotalBytes);
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(exact ? 2 : 1, await check.AdvisoryImportPages.CountAsync(token));
+            Assert.AreEqual(0, await check.IntelligenceActivations.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task SourceRecordLimit_CountsUniqueRecordsAcrossPages() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true, MaximumRecords = 1 };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var import = await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var first = Page("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", null, "first", "YQ==");
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, import.Version, null, false, first, token));
+            var state = await ReadAsync(contexts, token);
+            var duplicate = Page("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", null, "first", "Yg==", requested: "YQ==");
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, state.Version, "YQ==", false, duplicate, token));
+            state = await ReadAsync(contexts, token);
+            Assert.AreEqual(1, state.RecordCount);
+            Assert.AreEqual(first.RawBytes.Length + duplicate.RawBytes.Length, state.TotalBytes);
+            var another = Page("GHSA-efgh-2345-ijkl", "2023-01-04T00:00:00Z", null, "second", null, requested: "Yg==");
+            Assert.AreEqual(AdvisoryStageResult.LimitExceeded, await store.StageAsync(source.Id, import.Id, state.Version, "Yg==", false, another, token));
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(2, await check.AdvisoryImportPages.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task SourceRecordLimit_AlsoAppliesToReconciliation() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true, MaximumRecords = 1 };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var import = await store.BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var first = Page("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", null, "first", null);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, import.Version, null, false, first, token));
+            var state = await ReadAsync(contexts, token);
+            var bytes = Encoding.UTF8.GetBytes("[]");
+            var empty = new AdvisoryPage([], null, bytes, new(2023, 1, 1), new(2023, 2, 1), true, null);
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, state.Version, null, true, empty, token));
+            state = await ReadAsync(contexts, token);
+            var repeated = first with { NextCursor = "YQ==" };
+            Assert.AreEqual(AdvisoryStageResult.Stored, await store.StageAsync(source.Id, import.Id, state.Version, null, false, repeated, token));
+            state = await ReadAsync(contexts, token);
+            var another = Page("GHSA-efgh-2345-ijkl", "2023-01-04T00:00:00Z", null, "second", null, requested: "YQ==");
+            Assert.AreEqual(AdvisoryStageResult.LimitExceeded, await store.StageAsync(source.Id, import.Id, state.Version, "YQ==", false, another, token));
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(3, await check.AdvisoryImportPages.CountAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

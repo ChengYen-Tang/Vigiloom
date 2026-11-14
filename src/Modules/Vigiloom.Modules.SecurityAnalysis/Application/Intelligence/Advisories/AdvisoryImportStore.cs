@@ -66,13 +66,13 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         if (page.NextCursor is not null && (page.NextCursor == requestedCursor || await db.AdvisoryImportPages.AnyAsync(
                 x => x.ImportId == importId && x.Reconciliation == reconciliation && x.Phase == (withdrawn ? 2 : 1) && x.NextCursor == page.NextCursor, token)))
             return AdvisoryStageResult.Invalid;
-        if (import.PageCount >= 100_000 || import.TotalBytes + page.RawBytes.Length > 1_073_741_824L)
+        if (import.PageCount >= 100_000 || import.TotalBytes + page.RawBytes.Length > source.MaximumBytes)
             return AdvisoryStageResult.LimitExceeded;
         var ids = page.Records.Select(x => x.Id).ToArray();
         var existing = await db.AdvisoryImportEntries.Where(x => x.ImportId == importId && x.Reconciliation == reconciliation && ids.Contains(x.AdvisoryId))
             .ToDictionaryAsync(x => x.AdvisoryId, StringComparer.Ordinal, token);
         var newCount = page.Records.Count(x => !existing.ContainsKey(x.Id));
-        if ((long)(reconciliation ? import.ReconciliationRecordCount : import.RecordCount) + newCount > 100_000) return AdvisoryStageResult.LimitExceeded;
+        if ((long)(reconciliation ? import.ReconciliationRecordCount : import.RecordCount) + newCount > Math.Min(source.MaximumRecords, 100_000)) return AdvisoryStageResult.LimitExceeded;
         var storedPage = new AdvisoryImportPage
         {
             ImportId = importId, Number = import.PageCount + 1, Phase = withdrawn ? 2 : 1, Reconciliation = reconciliation,

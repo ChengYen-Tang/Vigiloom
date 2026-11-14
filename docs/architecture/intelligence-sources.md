@@ -206,6 +206,12 @@ decoded response data, and each HTTP request to 60 seconds. These are initial
 platform safeguards, not GitHub service guarantees; exceeding them fails the
 staged generation with a visible reason and preserves the last valid one. Make
 the limits adjustable by an administrator without allowing an unbounded sync.
+For a newly created GitHub source the configurable defaults are 100,000
+distinct records per pass and 1 GiB across both passes of one generation;
+each response still has its independent 2 MiB hard limit. Abandoned generations
+retain their own data, so this is not a source-wide or database-wide quota.
+Existing source settings are preserved on upgrade. The merged candidate also
+must fit the configured record limit. KEV retains its separate 64 MiB maximum.
 The upstream API's defaults exclude malware and unreviewed advisories, so the
 UI and consumer contract must explicitly show that coverage gap.
 

@@ -166,15 +166,23 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true, MaximumRecords = 1 };
             await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
             var store = new AdvisoryImportStore(contexts, TimeProvider.System);
-            var import = await StageWindow(store, contexts, source.Id, token,
-                ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", false),
-                ("GHSA-bcde-2345-fghi", "2023-01-03T00:00:00Z", false));
-            var result = await new AdvisoryRevisionBuilder(contexts, TimeProvider.System).StageAsync(source.Id, import.Id, import.Version, token);
+            var initial = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", false));
+            var builder = new AdvisoryRevisionBuilder(contexts, TimeProvider.System);
+            var initialResult = await builder.StageAsync(source.Id, initial.Id, initial.Version, token);
+            Assert.IsNotNull(initialResult.RevisionId);
+            await using (var db = contexts.CreateDbContext())
+            {
+                db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = initialResult.RevisionId.Value, ActivatedAt = DateTimeOffset.UtcNow });
+                await db.SaveChangesAsync(token);
+            }
+            var import = await StageWindow(store, contexts, source.Id, token, ("GHSA-bcde-2345-fghi", "2023-01-03T00:00:00Z", false));
+            var result = await builder.StageAsync(source.Id, import.Id, import.Version, token);
             Assert.AreEqual(AdvisoryBuildStatus.LimitExceeded, result.Status);
             await using var check = contexts.CreateDbContext();
-            Assert.AreEqual(0, await check.IntelligenceRevisions.CountAsync(token));
-            Assert.AreEqual(0, await check.AdvisoryRevisionEntries.CountAsync(token));
-            Assert.AreEqual(3, (await check.AdvisoryImports.SingleAsync(token)).Phase);
+            Assert.AreEqual(1, await check.IntelligenceRevisions.CountAsync(token));
+            Assert.AreEqual(1, await check.AdvisoryRevisionEntries.CountAsync(token));
+            Assert.AreEqual(3, (await check.AdvisoryImports.SingleAsync(x => x.Id == import.Id, token)).Phase);
+            Assert.AreEqual(initialResult.RevisionId, (await check.IntelligenceActivations.SingleAsync(token)).RevisionId);
         }, context.CancellationToken);
 
     [TestMethod]

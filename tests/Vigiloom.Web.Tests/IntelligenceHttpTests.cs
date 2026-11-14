@@ -148,6 +148,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
             Assert.IsNotNull(sourcePage);
             var current = sourcePage.Items.Single(x => x.Id == source.Id);
             var policy = new IntelligencePolicyUpdate(true, 43_200, current.StaleAfterSeconds, current.MaximumBytes, current.MaximumRecords, current.Version);
+            using (var result = await admin.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy with { MaximumBytes = 67_108_865 }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
             using (var result = await admin.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await reader.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
