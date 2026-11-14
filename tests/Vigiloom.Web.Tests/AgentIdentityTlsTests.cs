@@ -288,8 +288,10 @@ public sealed class AgentIdentityTlsTests
                             await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
                             await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
-                            await page.GetByText("ok", new() { Exact = true }).WaitForAsync();
-                            await page.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
+                            var table = page.GetByRole(AriaRole.Region, new() { Name = "日誌表格，可左右捲動" });
+                            await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
+                            await table.GetByText("採集缺口：", new() { Exact = true }).WaitForAsync();
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
