@@ -20,6 +20,7 @@ using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting;
+using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
@@ -169,6 +170,8 @@ public sealed class AgentIdentityTlsTests
                 agentBuilder.Services.AddSingleton(new AgentLogSettingsClient(http, agentClock));
                 agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
                 agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
+                // The in-process Agent shares the Web test host's resource counters.
+                agentBuilder.Services.AddSingleton<IMetricResourceMonitor>(new InProcessAgentResourceMonitor());
                 using (var agentHost = agentBuilder.Build())
                 {
                     try
