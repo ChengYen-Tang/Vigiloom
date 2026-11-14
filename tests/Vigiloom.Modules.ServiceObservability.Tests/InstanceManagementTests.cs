@@ -160,20 +160,16 @@ public sealed class InstanceManagementTests(TestContext context)
     [DataRow(true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ConcurrentRetirementRevocationAndReception_CompleteWithoutDeadlock(bool snapshot) =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
-            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
-                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
             var now = DateTimeOffset.UtcNow;
             var source = new ServiceSource("source", new byte[32], now);
             var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
             Guid instanceId;
             await using (var db = new ServiceObservabilityDbContext(options))
             {
-                if (snapshot) await db.Database.ExecuteSqlRawAsync("ALTER DATABASE CURRENT SET READ_COMMITTED_SNAPSHOT ON", token);
-                await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
                 await using var tx = await db.Database.BeginTransactionAsync(token);
                 var resolved = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", "node", token);
@@ -185,7 +181,6 @@ public sealed class InstanceManagementTests(TestContext context)
                 db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 0, 0, now));
                 await db.SaveChangesAsync(token);
             }
-            await using (var db = new OperationsDbContext(operations)) await db.Database.MigrateAsync(token);
             var factory = new Factory(options);
             var actor = Guid.CreateVersion7();
             var barrier = new BlockingAudit();
@@ -231,7 +226,7 @@ public sealed class InstanceManagementTests(TestContext context)
                     catch (Exception) { /* Operations have been observed; preserve the original failure. */ }
                 }
             }
-        }, context.CancellationToken);
+        }, snapshot, context.CancellationToken);
 
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
