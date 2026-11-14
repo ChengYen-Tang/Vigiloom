@@ -15,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.Playwright;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
@@ -25,21 +26,23 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Api;
+using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[TestCategory("Browser")]
+[DoNotParallelize]
 public sealed class AgentIdentityTlsTests
 {
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
     public Task AgentEnrollsOverValidatedTlsAndKestrelEnforcesBodyLimit() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             using var rootKey = RSA.Create(2048);
             var rootRequest = new CertificateRequest("CN=Vigiloom Test Root", rootKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -70,6 +73,7 @@ public sealed class AgentIdentityTlsTests
                 builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new CaptureRejectedStatus(rejectedStatus, knownLengthStatus)));
             });
             factory.UseKestrel(0); factory.StartServer();
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var addresses = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses;
             var listenUrl = new Uri(addresses.Single(x => x.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) + "/");
             var url = new UriBuilder(listenUrl) { Host = "localhost" }.Uri;
@@ -271,6 +275,21 @@ public sealed class AgentIdentityTlsTests
                             Assert.AreEqual(id, gap.AgentId);
                             Assert.AreEqual("TLS log", gap.SourceName);
                             Assert.IsTrue(page.Items.Any(x => x.Content == "ok\n"));
+                        }
+                        using (var playwright = await Playwright.CreateAsync())
+                        await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
+                        await using (var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
+                        {
+                            var page = await browserContext.NewPageAsync();
+                            await using var wasmGate = await AutoRenderGate.HoldAsync(page);
+                            await page.GotoAsync(new Uri(url, $"/devices/{device.Id:D}").ToString());
+                            await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+                            await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+                            await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+                            await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+                            await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
+                            await page.GetByText("ok", new() { Exact = true }).WaitForAsync();
+                            await page.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
                         {
