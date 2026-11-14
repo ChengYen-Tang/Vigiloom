@@ -131,6 +131,7 @@ public sealed class AgentIdentityTlsTests
 
                 // Exercise the actual host workers against the real TLS listener and SQL database.
                 var logPath = Path.Combine(statePath, "integration.log");
+                var multilinePath = Path.Combine(statePath, "multiline.log");
                 await File.WriteAllTextAsync(logPath, "tls-log-one\ntls-log-two\n", token);
                 AgentSettingsView configured;
                 AgentMetricSettingsView configuredMetrics;
@@ -150,6 +151,8 @@ public sealed class AgentIdentityTlsTests
                     var logs = scope.ServiceProvider.GetRequiredService<HostLogConfiguration>();
                     var logSource = await logs.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, "TLS log", logPath, true, AgentTextLogMode.SingleLine), Guid.CreateVersion7(), token);
                     Assert.AreEqual(HostLogConfigurationStatus.Success, logSource.Status);
+                    var multilineSource = await logs.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, "Multiline log", multilinePath, true, AgentTextLogMode.IndentedContinuation), Guid.CreateVersion7(), token);
+                    Assert.AreEqual(HostLogConfigurationStatus.Success, multilineSource.Status);
                 }
                 var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
                 var agentBuilder = AgentHost.CreateBuilder([]);
@@ -251,6 +254,15 @@ public sealed class AgentIdentityTlsTests
                             CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }.Concat(streamed).ToArray(), collected);
                         }
                         TestContext.WriteLine($"100 streamed records delivered over TLS in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
+                        await File.WriteAllTextAsync(multilinePath, "multiline-start\n  continuation\nnext-record\n", deadline.Token);
+                        while (true)
+                        {
+                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
+                            if (await logDb.HostLogs.AnyAsync(x => x.AgentId == id && x.SourceName == "Multiline log" &&
+                                x.Content == "multiline-start\n  continuation\n", deadline.Token)) break;
+                            agentClock.Advance(TimeSpan.FromSeconds(2));
+                            await Task.Delay(250, deadline.Token);
+                        }
                         // A real invalid UTF-8 record must become an observable gap without
                         // preventing the following valid record from reaching the platform.
                         await using (var append = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true))
@@ -330,6 +342,7 @@ public sealed class AgentIdentityTlsTests
                             var table = page.GetByRole(AriaRole.Region, new() { Name = "日誌表格，可左右捲動" });
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
                             await table.GetByText("x", new() { Exact = true }).WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
@@ -340,6 +353,7 @@ public sealed class AgentIdentityTlsTests
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
                             await table.GetByText("x", new() { Exact = true }).WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
                         }
