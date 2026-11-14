@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -45,6 +46,10 @@ public sealed class IntelligencePublicationTests(TestContext context)
                 await db.SaveChangesAsync(token);
             }
             var actor = Guid.CreateVersion7();
+            var status = new IntelligenceStatus(contexts, TimeProvider.System);
+            var initial = (await status.GetSourcesAsync(1, token)).Items.Single();
+            Assert.IsNull(initial.ActiveRevisionId);
+            Assert.AreEqual("", initial.ActivationVersion);
             var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
             Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, first.Id, null, "", false, actor, token));
             var firstVersion = await VersionAsync(contexts, token);
@@ -69,6 +74,21 @@ public sealed class IntelligencePublicationTests(TestContext context)
             var page = await new OperationAuditQueryService(operations).QueryIntelligenceAsync(new OperationAuditQuery(now.AddMinutes(-10), now.AddMinutes(1)), token);
             Assert.HasCount(3, page.Items);
             Assert.IsTrue(page.Items.Any(x => x.IntelligenceRevision?.LargeReductionConfirmed == true));
+            var policy = new IntelligencePolicy(contexts, new OperationAuditWriter(), TimeProvider.System);
+            var currentSource = (await status.GetSourcesAsync(1, token)).Items.Single();
+            var change = new IntelligencePolicyUpdate(true, 43_200, 259_200, 16 * 1024 * 1024, 50_000, currentSource.Version);
+            Assert.AreEqual(IntelligencePolicyResult.Updated, await policy.UpdateAsync(source.Id, change, actor, token));
+            Assert.AreEqual(IntelligencePolicyResult.Conflict, await policy.UpdateAsync(source.Id, change, actor, token));
+            var afterPolicy = (await status.GetSourcesAsync(1, token)).Items.Single();
+            Assert.AreEqual(43_200, afterPolicy.UpdateIntervalSeconds);
+            var invalidAudit = new IntelligencePolicy(contexts, new FailingAudit(), TimeProvider.System);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => invalidAudit.UpdateAsync(source.Id, change with { Version = afterPolicy.Version, Enabled = false }, actor, token));
+            Assert.IsTrue((await status.GetSourcesAsync(1, token)).Items.Single().Enabled);
+            var policyAudit = await new OperationAuditQueryService(operations).QueryIntelligenceAsync(new OperationAuditQuery(now.AddMinutes(-10), now.AddMinutes(1)), token);
+            Assert.IsTrue(policyAudit.Items.Any(x => x.IntelligencePolicy?.Current.UpdateIntervalSeconds == 43_200));
+            var revisions = await status.GetRevisionsAsync(source.Id, 1, token);
+            Assert.IsNotNull(revisions);
+            Assert.HasCount(3, revisions.Items);
             var currentVersion = await VersionAsync(contexts, token);
             var concurrent = await Task.WhenAll(
                 publication.ActivateAsync(source.Id, reduced.Id, first.Id, currentVersion, true, actor, token),

@@ -214,6 +214,13 @@ public sealed class WebHostTests(TestContext testContext)
         var serviceAudit = paths.GetProperty("/api/v1/operations/audit/service-approvals").GetProperty("get");
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);
+        var intelligencePolicy = paths.GetProperty("/api/v1/admin/intelligence/sources/{sourceId}/policy").GetProperty("put");
+        Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsFalse(intelligencePolicy.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
+        var intelligenceAudit = paths.GetProperty("/api/v1/operations/audit/intelligence").GetProperty("get");
+        Assert.IsTrue(intelligenceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.Contains("Administrator", intelligenceAudit.GetProperty("description").GetString()!);
         var candidateList = paths.GetProperty("/api/v1/service-discovery/candidates").GetProperty("get");
         var observation = paths.GetProperty("/api/v1/service-discovery/observations").GetProperty("post");
         Assert.IsTrue(observation.GetProperty("security")[0].TryGetProperty("ServiceSourceBearer", out _));
