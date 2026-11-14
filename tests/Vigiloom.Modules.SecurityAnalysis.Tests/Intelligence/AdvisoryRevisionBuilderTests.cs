@@ -3,6 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -16,6 +20,51 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 [TestCategory("Database")]
 public sealed class AdvisoryRevisionBuilderTests(TestContext context)
 {
+    [TestMethod]
+    public Task Activation_RechecksProvenanceAndRecordsAudit() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operationsOptions = new DbContextOptionsBuilder<OperationsDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory(options);
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operationsOptions)) await db.Database.MigrateAsync(token);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var store = new AdvisoryImportStore(contexts, TimeProvider.System);
+            var builder = new AdvisoryRevisionBuilder(contexts, TimeProvider.System);
+            var publication = new IntelligencePublication(contexts, new OperationAuditWriter(), TimeProvider.System);
+            var first = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-03T00:00:00Z", false));
+            var firstResult = await builder.StageAsync(source.Id, first.Id, first.Version, token);
+            Assert.IsNotNull(firstResult.RevisionId);
+            var actor = Guid.CreateVersion7();
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, null, "", false, actor, token));
+            var second = await StageWindow(store, contexts, source.Id, token, ("GHSA-bcde-2345-fghi", "2023-01-04T00:00:00Z", false));
+            var secondResult = await builder.StageAsync(source.Id, second.Id, second.Version, token);
+            Assert.IsNotNull(secondResult.RevisionId);
+            string version;
+            await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, firstResult.RevisionId, version, false, actor, token));
+            await using (var db = contexts.CreateDbContext())
+            {
+                (await db.IntelligenceRevisions.SingleAsync(x => x.Id == firstResult.RevisionId, token)).Revoked = true;
+                await db.SaveChangesAsync(token);
+                version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            }
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, secondResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+            Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, firstResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+            await using (var db = contexts.CreateDbContext()) Assert.AreEqual(2, await db.IntelligenceActivationEvents.CountAsync(token));
+            var now = DateTimeOffset.UtcNow;
+            var audit = await new OperationAuditQueryService(new OperationsFactory(operationsOptions))
+                .QueryIntelligenceAsync(new OperationAuditQuery(now.AddMinutes(-10), now.AddMinutes(1)), token);
+            Assert.HasCount(2, audit.Items);
+            Assert.IsTrue(audit.Items.All(x => x.ActorId == actor && x.ResourceId == source.Id && x.IntelligenceRevision is not null));
+            CollectionAssert.AreEquivalent(new[] { firstResult.RevisionId.Value, secondResult.RevisionId.Value },
+                audit.Items.Select(x => x.IntelligenceRevision!.RevisionId).ToArray());
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task Migration_RefusesToDiscardStagedRevision() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -167,5 +216,10 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
     {
         public SecurityAnalysisDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class OperationsFactory(DbContextOptions<OperationsDbContext> options) : IDbContextFactory<OperationsDbContext>
+    {
+        public OperationsDbContext CreateDbContext() => new(options);
     }
 }
