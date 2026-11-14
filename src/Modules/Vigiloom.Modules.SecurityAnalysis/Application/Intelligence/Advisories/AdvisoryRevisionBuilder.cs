@@ -35,15 +35,16 @@ internal sealed class AdvisoryRevisionBuilder(IDbContextFactory<SecurityAnalysis
         if (active?.RevisionId != import.BaseRevisionId ||
             (active is null ? import.BaseActivationVersion is not null : !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion))) return new(AdvisoryBuildStatus.Conflict);
 
-        if (active is not null && !await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, active.RevisionId, token))
+        var useBase = active is not null && await AdvisoryRevisionEligibility.IsEligibleAsync(db, sourceId, active.RevisionId, token);
+        if (active is not null && !useBase && import.WindowStart != AdvisoryRefresh.FirstWindow)
             return new(AdvisoryBuildStatus.InvalidBase);
 
         var candidate = db.AdvisoryImportEntries.Where(x => x.ImportId == importId && !x.Reconciliation);
         if (await candidate.CountAsync(token) != import.RecordCount) return new(AdvisoryBuildStatus.Conflict);
-        if (active is not null && await (from old in db.AdvisoryRevisionEntries
+        if (useBase && await (from old in db.AdvisoryRevisionEntries
             join oldEntry in db.AdvisoryImportEntries on old.EntryRowId equals oldEntry.RowId
             join current in candidate on old.AdvisoryId equals current.AdvisoryId
-            where old.RevisionId == active.RevisionId && oldEntry.UpdatedAt == current.UpdatedAt && oldEntry.Digest != current.Digest
+            where old.RevisionId == active!.RevisionId && oldEntry.UpdatedAt == current.UpdatedAt && oldEntry.Digest != current.Digest
             select old.RowId).AnyAsync(token)) return new(AdvisoryBuildStatus.InvalidContent);
 
         // The temporary digest is unique to this not-yet-visible transaction; it is replaced by the manifest digest before commit.
@@ -56,7 +57,7 @@ internal sealed class AdvisoryRevisionBuilder(IDbContextFactory<SecurityAnalysis
         };
         db.IntelligenceRevisions.Add(revision);
         await db.SaveChangesAsync(token);
-        var baseId = active?.RevisionId;
+        var baseId = useBase ? active!.RevisionId : (Guid?)null;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO [security].[AdvisoryRevisionEntries] ([RevisionId], [EntryRowId], [AdvisoryId])
             SELECT {revision.Id}, old.[EntryRowId], old.[AdvisoryId]

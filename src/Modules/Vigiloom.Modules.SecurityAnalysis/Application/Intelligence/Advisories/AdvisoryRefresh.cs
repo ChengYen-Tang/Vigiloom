@@ -13,7 +13,7 @@ public enum AdvisoryRefreshResult { Disabled, NotDue, Busy, Deferred, RateLimite
 public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients,
     TimeProvider clock, IDataProtectionProvider protection)
 {
-    private static readonly DateOnly FirstWindow = new(1970, 1, 1);
+    internal static readonly DateOnly FirstWindow = new(1970, 1, 1);
 
     public async Task<AdvisoryRefreshResult> RunDueAsync(CancellationToken token)
     {
@@ -21,15 +21,20 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
         if (!source.Enabled) return AdvisoryRefreshResult.Disabled;
         AdvisoryImport? import;
         IntelligenceActivation? active;
+        bool activeEligible;
         await using (var db = await contexts.CreateDbContextAsync(token))
         {
             import = await db.AdvisoryImports.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == source.Id && x.Phase < 4, token);
             active = await db.IntelligenceActivations.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == source.Id, token);
+            // Avoid revalidating a large retained catalog on every scheduler tick when no import is due.
+            activeEligible = active is null || import is null && !IntelligenceRefresh.IsDue(source, clock.GetUtcNow()) ||
+                await AdvisoryRevisionEligibility.IsEligibleAsync(db, source.Id, active.RevisionId, token);
         }
         var store = new AdvisoryImportStore(contexts, clock);
         if (import is not null && (!import.SourceVersion.AsSpan().SequenceEqual(source.Version) ||
             import.BaseRevisionId != active?.RevisionId || (active is null ? import.BaseActivationVersion is not null :
-                !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion))))
+                !active.Version.AsSpan().SequenceEqual(import.BaseActivationVersion)) ||
+            !activeEligible && (import.WindowStart != FirstWindow || import.FailureCode == "invalid-base")))
         {
             return await store.AbandonAsync(source.Id, import.Id, import.Version, token)
                 ? AdvisoryRefreshResult.Deferred : AdvisoryRefreshResult.Conflict;
@@ -49,10 +54,10 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
                 active.Version.AsSpan().SequenceEqual(candidate.BaseActivationVersion)) &&
                 await AdvisoryRevisionEligibility.IsPublishableAsync(db, source.Id, candidate.ResultRevisionId!.Value, token))
                 return AdvisoryRefreshResult.AwaitingActivation;
-            if (!IntelligenceRefresh.IsDue(source, clock.GetUtcNow())) return AdvisoryRefreshResult.NotDue;
+            if (activeEligible && !IntelligenceRefresh.IsDue(source, clock.GetUtcNow())) return AdvisoryRefreshResult.NotDue;
             var end = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(-1);
             var start = FirstWindow;
-            if (active is not null)
+            if (active is not null && activeEligible)
             {
                 var previousEnd = await db.AdvisoryImports.AsNoTracking().Where(x => x.SourceId == source.Id && x.ResultRevisionId == active.RevisionId && x.Phase == 4)
                     .Select(x => (DateOnly?)x.WindowEnd).SingleOrDefaultAsync(token);

@@ -39,6 +39,71 @@ public sealed class AdvisoryRefreshTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task RevokedProvenance_RebuildsFullWindowWithoutReusingRevokedEntries(bool revokeAncestor) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var contexts = new Factory(options);
+            await using (var db = contexts.CreateDbContext()) await db.Database.MigrateAsync(token);
+            await using (var db = new OperationsDbContext(operationOptions)) await db.Database.MigrateAsync(token);
+            var clock = new TestClock(new DateTimeOffset(2023, 3, 1, 0, 0, 0, TimeSpan.Zero));
+            var clients = new ClientFactory(request => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(request.RequestUri!.Query.Contains("is_withdrawn=true", StringComparison.Ordinal) ? "[]" :
+                    """[{"ghsa_id":"GHSA-abcd-1234-efgh","type":"reviewed","published_at":"2023-01-01T00:00:00Z","updated_at":"2023-01-03T00:00:00Z","withdrawn_at":null,"vulnerabilities":[]}]""", Encoding.UTF8, "application/json")
+            });
+            var refresh = new AdvisoryRefresh(contexts, clients, clock, Protection);
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+            Guid sourceId;
+            Guid firstId;
+            await using (var db = contexts.CreateDbContext())
+            {
+                var import = await db.AdvisoryImports.SingleAsync(token);
+                sourceId = import.SourceId; firstId = import.ResultRevisionId!.Value;
+            }
+            var actor = Guid.CreateVersion7();
+            var publisher = new IntelligencePublication(contexts, new OperationAuditWriter(), clock);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, firstId, null, "", false, actor, token));
+            var activeId = firstId;
+            if (revokeAncestor)
+            {
+                clock.Advance(TimeSpan.FromDays(2));
+                Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+                await using var db = contexts.CreateDbContext();
+                var second = await db.AdvisoryImports.SingleAsync(x => x.BaseRevisionId == firstId && x.Phase == 4, token);
+                var initialVersion = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+                activeId = second.ResultRevisionId!.Value;
+                Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, activeId, firstId, initialVersion, false, actor, token));
+            }
+            Assert.AreEqual(IntelligenceRevocationResult.Revoked, await new IntelligenceRevocation(contexts, new OperationAuditWriter(), clock)
+                .RevokeAsync(sourceId, firstId, actor, token));
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await refresh.RunDueAsync(token));
+            Guid replacementId;
+            string version;
+            await using (var db = contexts.CreateDbContext())
+            {
+                var rebuilt = await db.AdvisoryImports.SingleAsync(x => x.BaseRevisionId == activeId && x.ResultRevisionId != null && x.Phase == 4, token);
+                Assert.AreEqual(new DateOnly(1970, 1, 1), rebuilt.WindowStart);
+                Assert.AreEqual(activeId, rebuilt.BaseRevisionId);
+                replacementId = rebuilt.ResultRevisionId!.Value;
+                var origins = await (from member in db.AdvisoryRevisionEntries join entry in db.AdvisoryImportEntries on member.EntryRowId equals entry.RowId
+                    where member.RevisionId == replacementId select entry.ImportId).ToArrayAsync(token);
+                Assert.IsNotEmpty(origins);
+                Assert.IsTrue(origins.All(id => id == rebuilt.Id));
+                version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
+            }
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publisher.ActivateAsync(sourceId, replacementId, activeId, version, false, actor, token));
+            await using var final = contexts.CreateDbContext();
+            Assert.IsTrue((await final.IntelligenceRevisions.SingleAsync(x => x.Id == firstId, token)).Revoked);
+            Assert.AreEqual(replacementId, (await final.IntelligenceActivations.SingleAsync(token)).RevisionId);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task RunDue_ConflictingBaseContentCanBeRecovered() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
