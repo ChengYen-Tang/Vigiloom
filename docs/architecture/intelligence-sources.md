@@ -1,7 +1,8 @@
 # Security intelligence sources
 
-Status: REQ-32-T01 source and consumer contract under investigation, 2026-11-14.
-This document does not mean a provider has been implemented or enabled. A
+Status: REQ-32-T01 source inventory and initial provider contracts reviewed,
+2026-11-14. Implementation, provider enablement and consumer acceptance remain
+incomplete. This document does not mean a provider has been implemented or enabled. A
 public endpoint or an open-source client is not, by itself, permission to
 redistribute its data. Record the applicable terms for each source and data
 subset before publication; leave unresolved sources unavailable for publication.
