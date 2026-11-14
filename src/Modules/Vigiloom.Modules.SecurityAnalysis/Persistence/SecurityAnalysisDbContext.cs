@@ -24,6 +24,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<IntelligenceRevision> IntelligenceRevisions => Set<IntelligenceRevision>();
     public DbSet<IntelligenceActivation> IntelligenceActivations => Set<IntelligenceActivation>();
     public DbSet<IntelligenceCache> IntelligenceCaches => Set<IntelligenceCache>();
+    public DbSet<IntelligenceActivationEvent> IntelligenceActivationEvents => Set<IntelligenceActivationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

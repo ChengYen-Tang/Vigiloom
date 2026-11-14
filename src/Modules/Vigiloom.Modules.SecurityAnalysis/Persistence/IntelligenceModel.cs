@@ -41,6 +41,7 @@ internal static class IntelligenceModel
         activation.ToTable("IntelligenceActivations");
         activation.HasKey(x => x.SourceId).IsClustered();
         activation.Property(x => x.SourceId).ValueGeneratedNever();
+        activation.Property(x => x.Version).IsRowVersion();
         activation.HasOne<IntelligenceSource>().WithOne().HasForeignKey<IntelligenceActivation>(x => x.SourceId)
             .OnDelete(DeleteBehavior.NoAction);
         activation.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.RevisionId })
@@ -54,6 +55,16 @@ internal static class IntelligenceModel
         cache.HasOne<IntelligenceSource>().WithOne().HasForeignKey<IntelligenceCache>(x => x.SourceId)
             .OnDelete(DeleteBehavior.NoAction);
         cache.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.RevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+
+        var history = model.Entity<IntelligenceActivationEvent>();
+        history.ToTable("IntelligenceActivationEvents", t => t.HasCheckConstraint("CK_IntelligenceActivationEvents_Actor", "([Scheduled] = 1 AND [ActorId] IS NULL) OR ([Scheduled] = 0 AND [ActorId] IS NOT NULL AND [ActorId] <> '00000000-0000-0000-0000-000000000000')"));
+        history.HasKey(x => x.RowId).IsClustered();
+        history.Property(x => x.RowId).UseIdentityColumn();
+        history.HasIndex(x => new { x.SourceId, x.OccurredAt, x.RowId });
+        history.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.RevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+        history.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.PreviousRevisionId })
             .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
     }
 }
