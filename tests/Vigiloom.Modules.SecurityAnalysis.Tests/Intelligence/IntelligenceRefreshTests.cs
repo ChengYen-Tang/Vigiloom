@@ -14,6 +14,22 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class IntelligenceRefreshTests(TestContext context)
 {
     [TestMethod]
+    public Task RunDue_RecordsInterruptedResponseAsFailure() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clients = new ClientFactory(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BrokenResponseStream()) });
+            var refresh = new IntelligenceRefresh(contexts, clients, TimeProvider.System);
+            Assert.AreEqual(IntelligenceRefreshResult.Failed, await refresh.RunDueAsync(token));
+            await using var db = contexts.CreateDbContext();
+            var source = await db.IntelligenceSources.SingleAsync(token);
+            Assert.AreEqual("KEV retrieval failed.", source.LastError);
+            Assert.IsNotNull(source.LastCheckedAt);
+            Assert.AreEqual(0, await db.IntelligenceRevisions.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task ConcurrentInitialization_CreatesOneSource() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {

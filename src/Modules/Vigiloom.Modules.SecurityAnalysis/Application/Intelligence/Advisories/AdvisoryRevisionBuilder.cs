@@ -9,7 +9,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
-internal enum AdvisoryBuildStatus { Staged, AlreadyStaged, Conflict, InvalidBase, LimitExceeded }
+internal enum AdvisoryBuildStatus { Staged, AlreadyStaged, Conflict, InvalidBase, InvalidContent, LimitExceeded }
 internal sealed record AdvisoryBuildResult(AdvisoryBuildStatus Status, Guid? RevisionId = null);
 
 /// <summary>Creates an immutable revision from a reconciled window and its active base without activating it.</summary>
@@ -44,7 +44,7 @@ internal sealed class AdvisoryRevisionBuilder(IDbContextFactory<SecurityAnalysis
             join oldEntry in db.AdvisoryImportEntries on old.EntryRowId equals oldEntry.RowId
             join current in candidate on old.AdvisoryId equals current.AdvisoryId
             where old.RevisionId == active.RevisionId && oldEntry.UpdatedAt == current.UpdatedAt && oldEntry.Digest != current.Digest
-            select old.RowId).AnyAsync(token)) return new(AdvisoryBuildStatus.Conflict);
+            select old.RowId).AnyAsync(token)) return new(AdvisoryBuildStatus.InvalidContent);
 
         // The temporary digest is unique to this not-yet-visible transaction; it is replaced by the manifest digest before commit.
         var revision = new IntelligenceRevision

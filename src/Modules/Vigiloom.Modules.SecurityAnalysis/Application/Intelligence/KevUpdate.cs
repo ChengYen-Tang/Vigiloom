@@ -41,7 +41,7 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
             if (download.Content is not null)
                 metadata = KevCatalogValidator.Validate(download.Content, source.MaximumBytes, source.MaximumRecords);
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
         {
             var reason = ex switch
             {
