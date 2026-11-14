@@ -93,7 +93,8 @@ internal sealed class TemplateRetirementWorkflow(IDbContextFactory<PublishingDbC
         return (replacement, replacement is not null && Convert.ToBase64String(replacement.Version) == input.ReplacementDefaultVersion);
     }
 
-    private static PublicationTemplateItem Map(PublicationTemplate row) => new(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version));
+    private static PublicationTemplateItem Map(PublicationTemplate row) => new(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version),
+        HistoryDays: row.HistoryDays, HistoryReady: row.HistoryDays > 0 && row.HistorySince != PublicationTemplate.PendingHistorySince);
     private static bool ValidTime(Proof proof, DateTimeOffset now) => proof.IssuedAt <= now && now - proof.IssuedAt <= Lifetime;
     private sealed record Proof(Guid Actor, Guid TemplateId, string Version, string Fingerprint, PublicationTemplateRetirement Choice, DateTimeOffset IssuedAt);
 }

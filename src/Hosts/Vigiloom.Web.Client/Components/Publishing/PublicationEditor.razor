@@ -64,7 +64,24 @@
                         </div>
                         @if (Kind == "services" && model.Policy == PublicationPolicy.ServiceHistoryVersion)
                         { <div class="publication-history-preview"><strong>每日狀態歷史（最多 90 天）</strong><span>公開頁顯示啟用後的實際狀態。</span></div> }
-                        @if (Kind == "devices") { <p>名稱與狀態會公開@(ShowLatency ? "，包含延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；目前不公開歷史。IP 和主機進階資料不會公開。</p> }
+                        @if (Kind == "devices")
+                        {
+                            <p>名稱與狀態會公開@(ShowLatency ? "，包含目前延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；@(SelectedTemplate?.HistoryDays > 0 ? $"歷史平均延遲最多公開 {SelectedTemplate.HistoryDays} 天。" : "不公開歷史。") IP 和主機進階資料不會公開。</p>
+                            @if (SelectedTemplate is { HistoryDays: > 0, HistoryReady: false })
+                            { <p class="publication-message" role="status">此範本的歷史尚未就緒；請至範本管理重新預覽並確認設定。</p> }
+                            else if (SelectedTemplate is { HistoryDays: > 0 } selectedHistory)
+                            {
+                                @if (!settings.Public || settings.TemplateId != selectedHistory.Id)
+                                { <p>套用後從設定生效時開始累積可公開的歷史。</p> }
+                                else if (historyUnavailable || history is null)
+                                { <p>目前無法取得可公開的歷史預覽。</p> }
+                                else if (history.Points.Count == 0)
+                                { <p>目前沒有可顯示的歷史資料。</p> }
+                                else
+                                { var point = history.Points[^1]; <p>最新歷史：@point.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC · @(point.AverageLatencyMilliseconds is { } value ? $"{value:0.##} ms" : "無延遲資料")</p> }
+                                <p>歷史為已結束的五分鐘平均延遲，資料可能持續彙整。</p>
+                            }
+                        }
                         else if (Kind == "services") { <p>名稱與簡易狀態會公開；@(model.Policy == PublicationPolicy.ServiceHistoryVersion ? "啟用後的每日狀態歷史也會公開，最多 90 天。" : "不公開狀態歷史。") IP、日誌與追蹤等進階資訊不會公開。</p> }
                         else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
                     }
@@ -84,6 +101,8 @@
     private readonly Form model = new();
     private PublicationSettings? settings;
     private PublicationPreview? preview;
+    private PublicDeviceHistory? history;
+    private bool historyUnavailable;
     private PublicationTemplateItem? currentTemplate;
     private bool currentTemplateChecked;
     private readonly List<PublicationTemplateItem> templates = [];
@@ -134,6 +153,7 @@
             catch (UnauthorizedAccessException) { throw; }
             catch (Exception ex) when (ex is not OperationCanceledException)
             { Logger.LogWarning(ex, "Unable to load publication preview"); message = "預覽暫時無法讀取，仍可變更公開設定。"; }
+            await RefreshHistoryAsync();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (UnauthorizedAccessException) { settings = null; error = "登入已過期或權限已變更，請重新登入。"; }
@@ -163,6 +183,7 @@
                     ? "公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。" : "公開設定已儲存。";
                 try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
+                await RefreshHistoryAsync();
             }
             else message = result.Status switch { PublicationSaveStatus.Conflict => "設定已變更或資源已封存，請重新整理後再試。", PublicationSaveStatus.Invalid => "公開名稱或範本無效，請檢查後再試。", _ => "資源不存在或無法儲存，請重新整理。" };
         }
@@ -176,6 +197,23 @@
     { "Operational" => "可達", "Unavailable" => "不可達", "Healthy" => "正常", "Degraded" => "降級", "Unhealthy" => "異常", _ => "未知或尚無資料" };
     private static string StateClass(string? state) => state switch
     { "Operational" or "Healthy" => "publication-good", "Unavailable" or "Unhealthy" => "publication-danger", _ => "publication-unknown" };
+    private async Task RefreshHistoryAsync()
+    {
+        history = null; historyUnavailable = false;
+        if (Kind != "devices" || settings is not { Public: true, TemplateId: not null } || currentTemplate is not { HistoryDays: > 0, HistoryReady: true }) return;
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var result = await Client.PublishedDeviceHistoryAsync(Id, now.AddDays(-7), now, lifetime.Token);
+            var latest = await Client.GetAsync(Kind, Id, lifetime.Token);
+            if (latest is null || !latest.Public || latest.Version != settings.Version || latest.TemplateId != settings.TemplateId || latest.TemplateVersion != settings.TemplateVersion)
+            { historyUnavailable = true; return; }
+            history = result;
+            historyUnavailable = result is null;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load published device history preview"); historyUnavailable = true; }
+    }
     private async Task LoadMoreAsync()
     {
         if (loadingTemplates) return;

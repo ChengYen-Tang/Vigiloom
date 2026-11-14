@@ -24,18 +24,19 @@ internal sealed class TemplateUpdateWorkflow(IDbContextFactory<PublishingDbConte
         PublicationTemplateUpdate input, Guid actor, CancellationToken token)
     {
         if (actor == Guid.Empty || id.Version != 7) return (null, TemplateChangeStatus.Invalid);
-        PublicationTemplate candidate;
-        try { candidate = new(input.Name!, input.ShowLatency, input.ShowObservedAt, clock.GetUtcNow()); }
-        catch (ArgumentException) { return (null, TemplateChangeStatus.Invalid); }
         await using var db = await publishing.CreateDbContextAsync(token);
         var row = await db.Templates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && !x.IsRetired, token);
         if (row is null) return (null, TemplateChangeStatus.NotFound);
+        PublicationTemplate candidate;
+        try { candidate = new(input.Name!, input.ShowLatency, input.ShowObservedAt, clock.GetUtcNow(), input.HistoryDays ?? row.HistoryDays); }
+        catch (ArgumentException) { return (null, TemplateChangeStatus.Invalid); }
         var impact = await reader.ImpactAsync(id, 1, token);
         if (impact.Changed || impact.TooMany) return (null, TemplateChangeStatus.Conflict);
         if (impact.Impact is null || impact.Impact.TemplateVersion != Convert.ToBase64String(row.Version)) return (null, TemplateChangeStatus.Conflict);
-        var proposed = new PublicationTemplateUpdate(candidate.Name, input.ShowLatency, input.ShowObservedAt);
+        var proposed = new PublicationTemplateUpdate(candidate.Name, input.ShowLatency, input.ShowObservedAt, candidate.HistoryDays);
         var proof = new Proof(actor, id, impact.Impact.TemplateVersion, impact.Impact.Fingerprint, proposed, clock.GetUtcNow().ToUniversalTime());
-        var current = new PublicationTemplateItem(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version));
+        var current = new PublicationTemplateItem(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version),
+            HistoryDays: row.HistoryDays, HistoryReady: row.HistoryDays > 0 && row.HistorySince != PublicationTemplate.PendingHistorySince);
         return (new(current, proposed, impact.Impact, protector.Protect(JsonSerializer.Serialize(proof))), TemplateChangeStatus.Updated);
     }
 
@@ -63,7 +64,7 @@ internal sealed class TemplateUpdateWorkflow(IDbContextFactory<PublishingDbConte
         if (proof.IssuedAt > now || now - proof.IssuedAt > Lifetime) return new(TemplateChangeStatus.Invalid);
         try
         {
-            row.Update(proof.Proposed.Name!, proof.Proposed.ShowLatency, proof.Proposed.ShowObservedAt, now);
+            row.Update(proof.Proposed.Name!, proof.Proposed.ShowLatency, proof.Proposed.ShowObservedAt, now, proof.Proposed.HistoryDays ?? row.HistoryDays);
             await templates.SaveChangesAsync(token);
         }
         catch (DbUpdateConcurrencyException) { return new(TemplateChangeStatus.Conflict); }
@@ -71,7 +72,11 @@ internal sealed class TemplateUpdateWorkflow(IDbContextFactory<PublishingDbConte
         await audit.AppendAsync(resourcesDb.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new OperationAudit(actor, id, now, new PublicationTemplateChanged(PublicationTemplateAction.Updated, impact.Count)), token);
         await transaction.CommitAsync(token);
-        return new(TemplateChangeStatus.Updated, new(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault, Convert.ToBase64String(row.Version)));
+        var confirmed = row.HistorySince == PublicationTemplate.PendingHistorySince
+            ? await TemplateHistoryPeriod.ConfirmAsync(resources, row.Id, row.Version, token) : null;
+        return new(TemplateChangeStatus.Updated, new(row.Id, row.Name, row.ShowLatency, row.ShowObservedAt, row.IsDefault,
+            Convert.ToBase64String(confirmed ?? row.Version), HistoryDays: row.HistoryDays,
+            HistoryReady: row.HistoryDays > 0 && (confirmed is not null || row.HistorySince != PublicationTemplate.PendingHistorySince)));
     }
 
     private sealed record Proof(Guid Actor, Guid TemplateId, string Version, string Fingerprint, PublicationTemplateUpdate Proposed, DateTimeOffset IssuedAt);

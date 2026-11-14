@@ -20,6 +20,98 @@ namespace Vigiloom.Web.Tests;
 public sealed class TemplateUpdateWorkflowTests(TestContext context)
 {
     [TestMethod]
+    public Task HistoryConfirmation_RejectsStaleVersionsAndCanRetry() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var host = PingTestSite.CreateFactory(database.ConnectionString);
+            using var scope = host.Services.CreateScope();
+            var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            var templates = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+            var administration = scope.ServiceProvider.GetRequiredService<TemplateAdministration>();
+            var actor = Guid.CreateVersion7();
+            var item = (await administration.CreateAsync(new("Original", true, true), actor, token)).Template!;
+            byte[] oldVersion;
+            await using (var db = await templates.CreateDbContextAsync(token))
+            {
+                var row = await db.Templates.SingleAsync(x => x.Id == item.Id, token);
+                row.Update(row.Name, true, true, DateTimeOffset.UtcNow, 1);
+                await db.SaveChangesAsync(token);
+                oldVersion = row.Version;
+            }
+            // Interleave a real default switch between the settings commit and confirmation.
+            var switched = await administration.SetDefaultAsync(item.Id, new(Convert.ToBase64String(oldVersion)), actor, token);
+            Assert.AreEqual(TemplateChangeStatus.Updated, switched.Status);
+            Assert.IsNotNull(switched.Template);
+            Assert.IsTrue(switched.Template.IsDefault);
+            Assert.IsFalse(switched.Template.HistoryReady);
+            var currentVersion = Convert.FromBase64String(switched.Template.Version);
+            Assert.IsNull(await TemplateHistoryPeriod.ConfirmAsync(resources, item.Id, oldVersion, token));
+            await using (var db = await templates.CreateDbContextAsync(token))
+                Assert.AreEqual(Vigiloom.Modules.Publishing.Domain.PublicationTemplate.PendingHistorySince,
+                    (await db.Templates.AsNoTracking().SingleAsync(x => x.Id == item.Id, token)).HistorySince);
+            var workflow = scope.ServiceProvider.GetRequiredService<TemplateUpdateWorkflow>();
+            var retry = await workflow.PreviewAsync(item.Id, new("Original", true, true), actor, token);
+            Assert.IsNotNull(retry.Preview);
+            var resumed = await workflow.ConfirmAsync(item.Id, new(retry.Preview.Confirmation), actor, token);
+            Assert.AreEqual(TemplateChangeStatus.Updated, resumed.Status);
+            Assert.IsTrue(resumed.Template!.HistoryReady);
+            Assert.IsNull(await TemplateHistoryPeriod.ConfirmAsync(resources, item.Id, currentVersion, token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task HistoryChanges_ArePreviewedAndBeginAfterCommit() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var host = PingTestSite.CreateFactory(database.ConnectionString);
+            using var scope = host.Services.CreateScope();
+            var administration = scope.ServiceProvider.GetRequiredService<TemplateAdministration>();
+            var workflow = scope.ServiceProvider.GetRequiredService<TemplateUpdateWorkflow>();
+            var templates = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+            var actor = Guid.CreateVersion7();
+            var original = (await administration.CreateAsync(new("Original", true, true), actor, token)).Template!;
+            var preview = await workflow.PreviewAsync(original.Id, new("Original", true, true, 3), actor, token);
+            Assert.IsNotNull(preview.Preview);
+            Assert.AreEqual(0, preview.Preview.Current.HistoryDays);
+            Assert.AreEqual(3, preview.Preview.Proposed.HistoryDays);
+            var before = DateTimeOffset.UtcNow.AddSeconds(-2);
+            var changed = await workflow.ConfirmAsync(original.Id, new(preview.Preview.Confirmation), actor, token);
+            Assert.AreEqual(TemplateChangeStatus.Updated, changed.Status);
+            Assert.IsNotNull(changed.Template);
+            Assert.AreEqual(3, changed.Template.HistoryDays);
+            Assert.IsTrue(changed.Template.HistoryReady);
+            DateTimeOffset firstStart;
+            await using (var db = await templates.CreateDbContextAsync(token))
+            {
+                var row = await db.Templates.AsNoTracking().SingleAsync(x => x.Id == original.Id, token);
+                Assert.IsNotNull(row.HistorySince);
+                firstStart = row.HistorySince.Value;
+                Assert.IsGreaterThanOrEqualTo(before, firstStart);
+                Assert.IsLessThan(DateTimeOffset.UtcNow.AddSeconds(2), firstStart);
+                Assert.AreEqual(changed.Template.Version, Convert.ToBase64String(row.Version));
+            }
+            Assert.AreEqual(TemplateChangeStatus.Conflict, (await workflow.ConfirmAsync(original.Id, new(preview.Preview.Confirmation), actor, token)).Status);
+            var legacy = await workflow.PreviewAsync(original.Id, new("Renamed", false, true), actor, token);
+            Assert.IsNotNull(legacy.Preview);
+            Assert.AreEqual(3, legacy.Preview.Proposed.HistoryDays);
+            var renamed = await workflow.ConfirmAsync(original.Id, new(legacy.Preview.Confirmation), actor, token);
+            Assert.AreEqual(3, renamed.Template!.HistoryDays);
+            await using (var db = await templates.CreateDbContextAsync(token))
+                Assert.AreEqual(firstStart, (await db.Templates.AsNoTracking().SingleAsync(x => x.Id == original.Id, token)).HistorySince);
+            var narrow = await workflow.PreviewAsync(original.Id, new("Renamed", false, true, 1), actor, token);
+            Assert.IsNotNull(narrow.Preview);
+            Assert.AreEqual(TemplateChangeStatus.Updated, (await workflow.ConfirmAsync(original.Id, new(narrow.Preview.Confirmation), actor, token)).Status);
+            await using (var db = await templates.CreateDbContextAsync(token))
+                Assert.AreEqual(firstStart, (await db.Templates.AsNoTracking().SingleAsync(x => x.Id == original.Id, token)).HistorySince);
+            var expand = await workflow.PreviewAsync(original.Id, new("Renamed", false, true, 7), actor, token);
+            Assert.IsNotNull(expand.Preview);
+            var expanded = await workflow.ConfirmAsync(original.Id, new(expand.Preview.Confirmation), actor, token);
+            Assert.IsTrue(expanded.Template!.HistoryReady);
+            await using (var db = await templates.CreateDbContextAsync(token))
+                Assert.IsGreaterThanOrEqualTo(firstStart, (await db.Templates.AsNoTracking().SingleAsync(x => x.Id == original.Id, token)).HistorySince!.Value);
+            Assert.AreEqual(TemplateChangeStatus.Invalid, (await workflow.PreviewAsync(original.Id, new("Invalid", true, true, 8), actor, token)).Status);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task Confirm_RequiresMatchingActorAndUnchangedDeviceSet() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {

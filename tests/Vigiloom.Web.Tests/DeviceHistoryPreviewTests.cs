@@ -140,7 +140,8 @@ public sealed class DeviceHistoryPreviewTests(TestContext context)
             Assert.IsNotNull(result);
             CollectionAssert.AreEqual(new double?[] { 20d, 30d, null }, result.Points.Select(x => x.AverageLatencyMilliseconds).ToArray());
         }
-        using (var response = await anonymous.GetAsync($"/api/v1/public/devices/{device.Id:D}/history", token)) Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        var range = $"?from={Uri.EscapeDataString(aligned.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(aligned.ToString("O"))}";
+        using (var response = await anonymous.GetAsync($"/api/v1/public/devices/{device.Id:D}/history{range}", token)) Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
         // An older publication must still be bounded to seven days.
         await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [resources].[Devices] SET [PublicSince] = {aligned.AddDays(-9)} WHERE [Id] = {device.Id}", token);

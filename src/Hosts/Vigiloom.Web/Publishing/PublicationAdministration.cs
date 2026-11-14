@@ -104,14 +104,17 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             if (row is null) return new(PublicationChangeStatus.NotFound);
             if (row.IsArchived || !row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
             Dictionary<Guid, byte[]> templates = [];
+            HashSet<Guid> templatesWithHistory = [];
             if (change.Public)
             {
                 var options = new DbContextOptionsBuilder<PublishingDbContext>().UseSqlServer(resourcesDb.Database.GetDbConnection()).Options;
                 await using var templateDb = new PublishingDbContext(options);
                 await templateDb.Database.UseTransactionAsync(transaction.GetDbTransaction(), token);
                 var ids = new[] { row.PublicTemplateId, change.TemplateId }.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
-                templates = await templateDb.Templates.AsNoTracking().Where(x => ids.Contains(x.Id) && !x.IsRetired)
-                    .Select(x => new { x.Id, x.Version }).ToDictionaryAsync(x => x.Id, x => x.Version, token);
+                var active = await templateDb.Templates.AsNoTracking().Where(x => ids.Contains(x.Id) && !x.IsRetired)
+                    .Select(x => new { x.Id, x.Version, x.HistoryDays }).ToArrayAsync(token);
+                templates = active.ToDictionary(x => x.Id, x => x.Version);
+                templatesWithHistory = active.Where(x => x.HistoryDays > 0).Select(x => x.Id).ToHashSet();
             }
             if (templateSelection && (!templates.TryGetValue(change.TemplateId!.Value, out var selectedVersion) || !selectedVersion.AsSpan().SequenceEqual(requestedTemplateVersion)))
                 return new(PublicationChangeStatus.Conflict);
@@ -128,7 +131,8 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             var now = clock.GetUtcNow().ToUniversalTime();
             var wasEffective = previous && (row.PublicPolicyVersion == PublicationPolicy.BaselineVersion && row.PublicTemplateId is null ||
                 row.PublicPolicyVersion == PublicationPolicy.TemplateVersion && row.PublicTemplateId is { } priorId && templates.ContainsKey(priorId));
-            if (templateSelection) row.SetTemplatePublication(name, change.TemplateId!.Value, !wasEffective, now);
+            if (templateSelection) row.SetTemplatePublication(name, change.TemplateId!.Value,
+                !wasEffective || changedTemplate && templatesWithHistory.Contains(change.TemplateId.Value), now);
             else row.SetPublication(change.Public, name, change.PolicyVersion, now, restartPublicPeriod: change.Public && !wasEffective);
             try { await resourcesDb.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }

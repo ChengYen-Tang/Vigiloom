@@ -22,6 +22,36 @@ namespace Vigiloom.Web.Tests;
 public sealed class DeviceTemplatePublicationTests(TestContext context)
 {
     [TestMethod]
+    public Task ApplyHistoryTemplate_StartsNewDeviceAuthorizationPeriod() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var host = PingTestSite.CreateFactory(database.ConnectionString);
+            var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            var publishing = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+            var now = DateTimeOffset.UtcNow;
+            var template = new PublicationTemplate("History", true, true, now, 7);
+            template.ConfirmHistorySince(now.AddDays(-3));
+            await using (var db = await publishing.CreateDbContextAsync(token)) { db.Templates.Add(template); await db.SaveChangesAsync(token); }
+            var device = new Device("Device", "example.com", false, now);
+            device.SetPublication(true, "Public device", PublicationPolicy.BaselineVersion, now);
+            device.ConfirmPublicSince(now.AddDays(-2));
+            await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            var admin = new PublicationAdministration(resources, host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+                publishing, new OperationAuditWriter(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
+            var before = DateTimeOffset.UtcNow.AddSeconds(-2);
+            var result = await admin.SetAsync(PublicationResourceKind.Device, device.Id,
+                new(true, "Public device", PublicationPolicy.TemplateVersion, Convert.ToBase64String(device.Version), template.Id, Convert.ToBase64String(template.Version)),
+                Guid.CreateVersion7(), token);
+            Assert.AreEqual(PublicationChangeStatus.Updated, result.Status);
+            await using var verify = await resources.CreateDbContextAsync(token);
+            var saved = await verify.Devices.AsNoTracking().SingleAsync(x => x.Id == device.Id, token);
+            Assert.IsNotNull(saved.PublicSince);
+            Assert.IsGreaterThanOrEqualTo(before, saved.PublicSince.Value);
+            Assert.IsLessThan(DateTimeOffset.UtcNow.AddSeconds(2), saved.PublicSince.Value);
+            Assert.AreEqual(result.Settings!.Version, Convert.ToBase64String(saved.Version));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task ApplyTemplate_PreservesContinuousPeriodAndRestartsAfterRetirement() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {

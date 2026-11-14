@@ -67,3 +67,9 @@ final result: passed
 See `docs/design/req-39/design-qa.md` for source limitations, combined desktop and narrow comparisons, interaction checks and iteration history.
 
 final result: passed
+
+## REQ-13 template history — current review
+
+See `docs/design/req-13-history/design-qa.md` for the reference, same-state comparisons, narrow capture, and iteration.
+
+final result: passed
