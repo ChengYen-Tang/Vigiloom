@@ -273,6 +273,19 @@ public sealed class ServiceDetailsBrowserTests
         await page.GetByLabel("結束時間（UTC）").FillAsync("2030-01-01T00:00");
         await page.GetByRole(AriaRole.Button, new() { Name = "查詢", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Alert).GetByText("開始須早於結束", new() { Exact = false }).WaitForAsync();
+        // A range before this service existed (and before the retention horizon) is unknown, not healthy.
+        await page.GetByLabel("開始時間（UTC）").FillAsync("2020-01-01T00:00");
+        await page.GetByLabel("結束時間（UTC）").FillAsync("2020-01-02T00:00");
+        await page.GetByRole(AriaRole.Button, new() { Name = "查詢", Exact = true }).ClickAsync();
+        var historyTable = page.Locator("[aria-label='健康歷史表格，可左右滑動']");
+        await Assertions.Expect(historyTable).ToContainTextAsync("2020-01-01");
+        var historySummary = page.GetByText("以表格查看健康歷史", new() { Exact = false });
+        await historySummary.WaitForAsync();
+        await historySummary.FocusAsync();
+        await page.Keyboard.PressAsync("Enter");
+        await Assertions.Expect(historyTable).ToBeVisibleAsync();
+        await Assertions.Expect(historyTable).ToContainTextAsync("2020-01-02");
+        await Assertions.Expect(historyTable).ToContainTextAsync("未知");
         await wasmGate.ReleaseAsync();
         await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
