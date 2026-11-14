@@ -91,8 +91,8 @@
                         else
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th>@if (selected.Key == "sigmahq-rules") { <th>規則</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td>@if (selected.Key == "sigmahq-rules") { <td><a href="@RulesUrl(revision.Id, 1)">查看規則</a></td> }</tr> }
+                            <div class="device-table-wrap" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
                             @if (selected.Key is not ("cisa-kev" or "github-reviewed"))
@@ -123,6 +123,37 @@
                                 </tbody></table></div>
                             }
                             <nav aria-label="規則資料分頁">@if (sigmaRules.Page > 1) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page - 1)">上一頁</a> } <span>第 @sigmaRules.Page 頁</span> @if (sigmaRules.HasMore) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page + 1)">下一頁</a> }</nav>
+                        </section>
+                    }
+                    @if (signatureFiles is not null && shownRulesRevision is { } signatureRevision)
+                    {
+                        <section class="device-panel">
+                            <h2>IOC／YARA 來源檔案</h2>
+                            <p>以下是上游原始檔案的摘要；各規則授權與支援狀態尚未核對，不能用於偵測或發布。</p>
+                            @if (signatureFiles.Items.Count == 0) { <p>此頁沒有來源檔案。</p> }
+                            else
+                            {
+                                <p class="intelligence-scroll-hint">左右滑動可查看完整檔案資訊。</p>
+                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="來源檔案，可左右捲動"><table><thead><tr><th>路徑</th><th>類型</th><th>IOC 分類</th><th>SHA-256</th></tr></thead><tbody>
+                                    @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => "授權證據", _ => "未知" })</td><td>@if (file.Entries is { } count) { <span>@count 筆，</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@file.UnsupportedEntries 筆未支援</a> } else { <span>0 筆未支援</span> } } else { <span>不適用</span> }</td><td>@file.Sha256</td></tr> }
+                                </tbody></table></div>
+                            }
+                            <nav aria-label="來源檔案分頁">@if (signatureFiles.Page > 1) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page - 1)">上一頁</a> } <span>第 @signatureFiles.Page 頁</span> @if (signatureFiles.HasMore) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page + 1)">下一頁</a> }</nav>
+                        </section>
+                    }
+                    @if (iocIssues is not null && IocPath is { } iocPath && shownRulesRevision is { } iocRevision)
+                    {
+                        <section class="device-panel">
+                            <h2>未支援的 IOC 項目</h2>
+                            <p>來源檔案：@iocPath。行號對應原始來源，內容仍保留在該版本中。</p>
+                            @if (iocIssues.Items.Count == 0) { <p>此頁沒有未支援的項目。</p> }
+                            else
+                            {
+                                <div class="device-table-wrap ioc-issues" role="region" tabindex="0" aria-label="未支援的 IOC 項目，可左右捲動"><table><thead><tr><th>行號</th><th>原因</th></tr></thead><tbody>
+                                    @foreach (var issue in iocIssues.Items) { <tr @key="issue.LineNumber"><td>@issue.LineNumber</td><td>@IocIssueReason(issue.Reason)</td></tr> }
+                                </tbody></table></div>
+                            }
+                            <nav aria-label="未支援項目分頁">@if (iocIssues.Page > 1) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page - 1)">上一頁</a> } <span>第 @iocIssues.Page 頁</span> @if (iocIssues.HasMore) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page + 1)">下一頁</a> }</nav>
                         </section>
                     }
                 </div>

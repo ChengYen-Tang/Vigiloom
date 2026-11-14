@@ -40,6 +40,8 @@ public sealed class IntelligenceHttpTests(TestContext context)
             var kev = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
             var gh = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
             var sigma = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true };
+            var signature = new IntelligenceSource { Key = "signature-base", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow,
+                LastError = "Signature-Base license unavailable or changed." };
             var revision = new IntelligenceRevision { SourceId = kev.Id, UpstreamVersion = "v-test", RetrievedAt = DateTimeOffset.UtcNow,
                 Digest = new byte[32], Artifact = [], SchemaVersion = "a795af4c4afc47df12906b4c04e656156cf06493", MappingVersion = "kev-cve-v1",
                 LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493", RecordCount = 1, Normalized = true };
@@ -51,8 +53,18 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
             var rule = new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", RuleId = "sample-rule", Title = "Example behavior",
                 Author = "Example Author", Product = "windows", Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-RULE-CONTENT") };
+            var signatureRevision = new IntelligenceRevision { SourceId = signature.Id, UpstreamVersion = "signature-test", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "signature-base-files-v1", MappingVersion = "signature-base-source-v2",
+                LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 1, Normalized = true };
+            var signatureFile = new SignatureFile { RevisionId = signatureRevision.Id, Path = "iocs/hash-iocs.txt", Kind = 0,
+                Digest = new byte[32], Content = System.Text.Encoding.UTF8.GetBytes("SECRET-IOC-CONTENT") };
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
-            { db.IntelligenceSources.AddRange(kev, gh, sigma); db.IntelligenceRevisions.AddRange(revision, secondRevision, sigmaRevision); db.SigmaRules.Add(rule); await db.SaveChangesAsync(token); }
+            {
+                db.IntelligenceSources.AddRange(kev, gh, sigma, signature); db.IntelligenceRevisions.AddRange(revision, secondRevision, sigmaRevision, signatureRevision);
+                db.SigmaRules.Add(rule); db.SignatureFiles.Add(signatureFile); await db.SaveChangesAsync(token);
+                db.IocEntries.Add(new IocEntry { SignatureFileRowId = signatureFile.RowId, LineNumber = 1, Kind = "unsupported", Reason = "invalid-hash" });
+                await db.SaveChangesAsync(token);
+            }
             using var admin = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(admin, "admin", token);
             using (var sourcePage = await admin.GetAsync($"/settings/intelligence?source={sigma.Id:D}", token))
@@ -73,6 +85,40 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.Contains("Example behavior", body);
                 Assert.DoesNotContain("SECRET-RULE-CONTENT", body);
             }
+            using (var signaturePage = await admin.GetAsync($"/settings/intelligence?source={signature.Id:D}", token))
+            {
+                var body = await signaturePage.Content.ReadAsStringAsync(token);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("iocs/hash-iocs.txt", doc.Body!.TextContent);
+                Assert.Contains("1 筆未支援", doc.Body.TextContent);
+                Assert.Contains("必須重新確認授權", doc.Body.TextContent);
+                Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
+            }
+            using (var response = await admin.GetAsync($"/api/v1/admin/intelligence/sources/{signature.Id:D}/revisions/{signatureRevision.Id:D}/signature-files", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var body = await response.Content.ReadAsStringAsync(token);
+                Assert.Contains("iocs/hash-iocs.txt", body);
+                Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
+            }
+            var issuesUrl = $"/api/v1/admin/intelligence/sources/{signature.Id:D}/revisions/{signatureRevision.Id:D}/ioc-issues?path=iocs%2Fhash-iocs.txt";
+            using (var response = await admin.GetAsync(issuesUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                var body = await response.Content.ReadAsStringAsync(token);
+                Assert.Contains("invalid-hash", body);
+                Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
+            }
+            using (var issuePage = await admin.GetAsync($"/settings/intelligence?source={signature.Id:D}&rulesRevision={signatureRevision.Id:D}&iocPath=iocs%2Fhash-iocs.txt", token))
+            {
+                var body = await issuePage.Content.ReadAsStringAsync(token);
+                var doc = await new HtmlParser().ParseDocumentAsync(body, token);
+                Assert.Contains("雜湊格式無效", doc.Body!.TextContent);
+                Assert.DoesNotContain("SECRET-IOC-CONTENT", body);
+            }
+            using (var anon = PingTestSite.Client(factory))
+            using (var forbidden = await anon.GetAsync(issuesUrl, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, forbidden.StatusCode);
             async Task<Dictionary<string, string>> Form(string url, string name)
             {
                 using var page = await admin.GetAsync(url, token);

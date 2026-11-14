@@ -170,5 +170,29 @@ internal static class IntelligenceModel
         sigma.HasIndex(x => new { x.RevisionId, x.Path }).IsUnique();
         sigma.HasIndex(x => new { x.RevisionId, x.RuleId }).IsUnique().HasFilter("[RuleId] IS NOT NULL");
         sigma.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var signature = model.Entity<SignatureFile>();
+        signature.ToTable("SignatureFiles", t =>
+        {
+            t.HasCheckConstraint("CK_SignatureFiles_Content", "DATALENGTH([Content]) BETWEEN 1 AND 1048576");
+            t.HasCheckConstraint("CK_SignatureFiles_Kind", "[Kind] BETWEEN 0 AND 2");
+        });
+        signature.HasKey(x => x.RowId).IsClustered();
+        signature.Property(x => x.RowId).UseIdentityColumn();
+        signature.Property(x => x.Path).HasMaxLength(512).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        signature.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        signature.Property(x => x.Content).IsRequired();
+        signature.HasIndex(x => new { x.RevisionId, x.Path }).IsUnique();
+        signature.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var ioc = model.Entity<IocEntry>();
+        ioc.ToTable("IocEntries", t => t.HasCheckConstraint("CK_IocEntries_Line", "[LineNumber] > 0"));
+        ioc.HasKey(x => x.RowId).IsClustered();
+        ioc.Property(x => x.RowId).UseIdentityColumn();
+        ioc.Property(x => x.Kind).HasMaxLength(32).IsUnicode(false).IsRequired();
+        ioc.Property(x => x.Value).HasMaxLength(2048);
+        ioc.Property(x => x.Reason).HasMaxLength(128).IsUnicode(false);
+        ioc.HasIndex(x => new { x.SignatureFileRowId, x.LineNumber }).IsUnique();
+        ioc.HasOne<SignatureFile>().WithMany().HasForeignKey(x => x.SignatureFileRowId).OnDelete(DeleteBehavior.NoAction);
     }
 }

@@ -34,6 +34,22 @@ internal static class IntelligenceEndpoints
             return await status.GetSigmaRulesAsync(sourceId, revisionId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<SigmaRulePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List retained Sigma rule provenance");
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-files", async (Guid sourceId, Guid revisionId, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            var selected = page ?? 1;
+            if (selected is < 1 or > 1000) return Results.BadRequest();
+            return await status.GetSignatureFilesAsync(sourceId, revisionId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
+        }).Produces<SignatureFilePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("List retained IOC and YARA source-file metadata");
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/ioc-issues", async (Guid sourceId, Guid revisionId, string? path, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            var selected = page ?? 1;
+            if (selected is < 1 or > 2000 || path is null || path.Length is < 1 or > 512) return Results.BadRequest();
+            return await status.GetIocIssuesAsync(sourceId, revisionId, path, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
+        }).Produces<IocIssuePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("List unsupported IOC line locations and reasons");
         admin.MapGet("/{sourceId:guid}/advisory-progress", async (Guid sourceId, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
