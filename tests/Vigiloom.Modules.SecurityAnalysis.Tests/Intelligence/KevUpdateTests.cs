@@ -146,16 +146,30 @@ public sealed class KevUpdateTests(TestContext context)
                 db.IntelligenceSources.Add(source);
                 await db.SaveChangesAsync(token);
             }
-            using var barrier = new Barrier(2);
+            using var entered = new ManualResetEventSlim();
+            using var release = new ManualResetEventSlim();
+            var requests = 0;
             var clients = new ClientFactory(_ =>
             {
-                if (!barrier.SignalAndWait(TimeSpan.FromSeconds(10), token)) throw new TimeoutException();
+                Interlocked.Increment(ref requests);
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(10), token)) throw new TimeoutException();
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Catalog, Encoding.UTF8, "application/json") };
             });
             var update = new KevUpdate(contexts, clients, TimeProvider.System);
-            var results = await Task.WhenAll(Task.Run(() => update.RunAsync(source.Id, token), token),
-                Task.Run(() => update.RunAsync(source.Id, token), token));
-            CollectionAssert.AreEquivalent(new[] { KevUpdateResult.Staged, KevUpdateResult.Conflict }, results);
+            var first = Task.Run(() => update.RunAsync(source.Id, token), token);
+            try
+            {
+                Assert.IsTrue(entered.Wait(TimeSpan.FromSeconds(10), token));
+                Assert.AreEqual(KevUpdateResult.Busy, await update.RunAsync(source.Id, token));
+            }
+            finally
+            {
+                release.Set();
+                try { await first; } catch { /* Preserve any assertion failure while ensuring the worker has stopped. */ }
+            }
+            Assert.AreEqual(KevUpdateResult.Staged, await first);
+            Assert.AreEqual(1, requests);
             await using var check = contexts.CreateDbContext();
             Assert.AreEqual(1, await check.IntelligenceRevisions.CountAsync(token));
         }, context.CancellationToken);

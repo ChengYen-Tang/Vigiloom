@@ -8,12 +8,20 @@ internal static class IntelligenceModel
     internal static void Configure(ModelBuilder model)
     {
         var source = model.Entity<IntelligenceSource>();
-        source.ToTable("IntelligenceSources", t => t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        source.ToTable("IntelligenceSources", t =>
+        {
+            t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 67108864 AND [MaximumRecords] BETWEEN 1 AND 1000000");
+        });
         source.HasKey(x => x.Id).IsClustered(false);
         source.Property(x => x.Id).ValueGeneratedNever();
         source.Property(x => x.RowId).UseIdentityColumn();
         source.HasIndex(x => x.RowId).IsUnique().IsClustered();
         source.Property(x => x.Key).HasMaxLength(128).IsRequired();
+        source.Property(x => x.UpdateIntervalSeconds).HasDefaultValue(86_400);
+        source.Property(x => x.StaleAfterSeconds).HasDefaultValue(259_200);
+        source.Property(x => x.MaximumBytes).HasDefaultValue(16 * 1024 * 1024);
+        source.Property(x => x.MaximumRecords).HasDefaultValue(50_000);
         source.HasIndex(x => x.Key).IsUnique();
         source.Property(x => x.LastError).HasMaxLength(1024);
         source.Property(x => x.Version).IsRowVersion();

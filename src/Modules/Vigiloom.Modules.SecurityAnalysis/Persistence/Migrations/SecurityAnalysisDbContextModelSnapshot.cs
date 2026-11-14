@@ -623,11 +623,31 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastSuccessfulCheckAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("MaximumBytes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(16777216);
+
+                    b.Property<int>("MaximumRecords")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(50000);
+
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("StaleAfterSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(259200);
+
+                    b.Property<int>("UpdateIntervalSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(86400);
 
                     b.Property<byte[]>("Version")
                         .IsConcurrencyToken()
@@ -650,6 +670,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("IntelligenceSources", "security", t =>
                         {
                             t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 67108864 AND [MaximumRecords] BETWEEN 1 AND 1000000");
                         });
                 });
 

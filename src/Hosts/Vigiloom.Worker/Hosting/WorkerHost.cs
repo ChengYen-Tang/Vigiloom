@@ -67,6 +67,8 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentPackageRefreshJob>();
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
+        builder.Services.AddScoped<IntelligenceRefresh>();
+        builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
         builder.Services.AddScoped<IntegrityExpiryJob>();
         builder.Services.AddScoped<InventoryExpiryJob>();
@@ -81,6 +83,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<SpeedRetentionSchedule>();
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         builder.Services.AddHostedService<InventoryExpirySchedule>();
+        builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
         builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();

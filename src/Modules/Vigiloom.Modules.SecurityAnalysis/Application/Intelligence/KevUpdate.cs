@@ -11,14 +11,17 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
 {
     internal const string LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493";
     internal const string MappingVersion = "kev-raw-v1";
-    internal async Task<KevUpdateResult> RunAsync(Guid sourceId, CancellationToken token)
+    internal async Task<KevUpdateResult> RunAsync(Guid sourceId, CancellationToken token, bool onlyWhenDue = false)
     {
+        await using var lease = await IntelligenceRefreshLease.TryAcquireAsync(contexts, sourceId, token);
+        if (lease is null) return KevUpdateResult.Busy;
         IntelligenceSource? source;
         IntelligenceCache? cached;
         await using (var read = await contexts.CreateDbContextAsync(token))
         {
             source = await read.IntelligenceSources.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sourceId, token);
             if (source is null || !source.Enabled || source.Key != "cisa-kev") return KevUpdateResult.Unavailable;
+            if (onlyWhenDue && !IntelligenceRefresh.IsDue(source, clock.GetUtcNow())) return KevUpdateResult.NotDue;
             cached = await (from cache in read.IntelligenceCaches.AsNoTracking()
                             join revision in read.IntelligenceRevisions.AsNoTracking()
                                 on new { cache.SourceId, Id = cache.RevisionId } equals new { revision.SourceId, revision.Id }
@@ -32,10 +35,10 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
         try
         {
             using var client = clients.CreateClient(IntelligenceHttp.KevClientName);
-            download = await new KevCatalogClient(client).FetchAsync(etag, modified, KevCatalogValidator.DefaultMaximumBytes, token);
+            download = await new KevCatalogClient(client).FetchAsync(etag, modified, source.MaximumBytes, token);
             if (download.ETag is { Length: > 512 }) throw new InvalidDataException("KEV response ETag is too long.");
             if (download.Content is not null)
-                metadata = KevCatalogValidator.Validate(download.Content, KevCatalogValidator.DefaultMaximumBytes, KevCatalogValidator.DefaultMaximumRecords);
+                metadata = KevCatalogValidator.Validate(download.Content, source.MaximumBytes, source.MaximumRecords);
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidDataException or OperationCanceledException && !token.IsCancellationRequested)
         {
@@ -125,4 +128,4 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
     }
 }
 
-internal enum KevUpdateResult { Unavailable, Failed, Conflict, Unchanged, Staged }
+internal enum KevUpdateResult { Unavailable, Failed, Conflict, Unchanged, Staged, Busy, NotDue }
