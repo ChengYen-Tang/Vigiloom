@@ -9,6 +9,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 /// <summary>Stages a verified KEV revision without changing the active revision.</summary>
 internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients, TimeProvider clock)
 {
+    internal const string LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493";
+    internal const string MappingVersion = "kev-raw-v1";
     internal async Task<KevUpdateResult> RunAsync(Guid sourceId, CancellationToken token)
     {
         IntelligenceSource? source;
@@ -79,8 +81,8 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
                 SourceId = sourceId, UpstreamVersion = metadata.Version, ReleasedAt = metadata.ReleasedAt,
                 RetrievedAt = clock.GetUtcNow(), Digest = download.Digest!, Artifact = download.Content,
                 SchemaVersion = KevCatalogValidator.SchemaRevision,
-                MappingVersion = "kev-raw-v1",
-                LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493",
+                MappingVersion = MappingVersion,
+                LicenseEvidence = LicenseEvidence,
                 RecordCount = metadata.RecordCount
             };
             db.IntelligenceRevisions.Add(revision);
