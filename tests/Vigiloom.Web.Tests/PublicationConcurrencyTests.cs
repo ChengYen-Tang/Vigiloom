@@ -15,6 +15,8 @@ using Vigiloom.Modules.Publishing.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Web.Publishing;
 using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
@@ -26,6 +28,194 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class PublicationConcurrencyTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServicePeriod_IsFencedAfterPublicationCommit() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var services = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var candidate = new ServiceCandidate(source.Id, "orders", "production", "Orders", now);
+        var service = new MonitoredService(candidate, now);
+        await using (var db = await services.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            await db.SaveChangesAsync(token);
+        }
+        var gate = new PausingAuditWriter();
+        var admin = new PublicationAdministration(host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>(), services,
+            host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>(), gate, TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
+        var settings = await admin.ReadAsync(PublicationResourceKind.Service, service.Id, token);
+        Assert.IsNotNull(settings);
+        var publish = admin.SetAsync(PublicationResourceKind.Service, service.Id,
+            new(true, "Orders", PublicationPolicy.BaselineVersion, settings.Version), Guid.CreateVersion7(), token);
+        Exception? failure = null;
+        try
+        {
+            await gate.Entered.Task.WaitAsync(token);
+            await using var db = await services.CreateDbContextAsync(token);
+            var preCommit = await db.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            gate.Release.TrySetResult();
+            var result = await publish;
+            Assert.AreEqual(PublicationChangeStatus.Updated, result.Status);
+            var saved = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
+            Assert.IsNotNull(saved.PublicSince);
+            Assert.IsTrue(saved.PublicSince >= preCommit);
+            Assert.AreNotEqual(MonitoredService.PendingPublicSince, saved.PublicSince);
+            Assert.AreEqual(Convert.ToBase64String(saved.Version), result.Settings!.Version);
+        }
+        catch (Exception exception) { failure = exception; throw; }
+        finally
+        {
+            gate.Release.TrySetResult();
+            try { await publish; } catch when (failure is not null) { }
+        }
+    }, context.CancellationToken);
+
+    private sealed class PausingAuditWriter : IOperationAuditWriter<OperationAudit>
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken token)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(token);
+            await new OperationAuditWriter().AppendAsync(connection, transaction, audit, token);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServicePeriod_FailedFenceCanBeRetriedWithoutRepublishing() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var normal = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var candidate = new ServiceCandidate(source.Id, "orders", "production", "Orders", now);
+        var service = new MonitoredService(candidate, now);
+        await using (var db = await normal.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            await db.SaveChangesAsync(token);
+        }
+        var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).AddInterceptors(new FailFirstFence()).Options;
+        var admin = new PublicationAdministration(host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>(),
+            new PooledDbContextFactory<ServiceObservabilityDbContext>(options), host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>(),
+            new OperationAuditWriter(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
+        var settings = await admin.ReadAsync(PublicationResourceKind.Service, service.Id, token);
+        Assert.IsNotNull(settings);
+        var actor = Guid.CreateVersion7();
+        var first = await admin.SetAsync(PublicationResourceKind.Service, service.Id,
+            new(true, "Orders", PublicationPolicy.BaselineVersion, settings.Version), actor, token);
+        Assert.AreEqual(PublicationChangeStatus.Updated, first.Status);
+        DateTimeOffset updatedAt;
+        await using (var db = await normal.CreateDbContextAsync(token))
+        {
+            var pending = await db.Services.SingleAsync(x => x.Id == service.Id, token);
+            Assert.AreEqual(MonitoredService.PendingPublicSince, pending.PublicSince);
+            updatedAt = pending.UpdatedAt;
+        }
+        var retry = await admin.SetAsync(PublicationResourceKind.Service, service.Id,
+            new(true, "Orders", PublicationPolicy.BaselineVersion, first.Settings!.Version), actor, token);
+        Assert.AreEqual(PublicationChangeStatus.Updated, retry.Status);
+        await using var verify = await normal.CreateDbContextAsync(token);
+        var saved = await verify.Services.SingleAsync(x => x.Id == service.Id, token);
+        Assert.IsNotNull(saved.PublicSince);
+        Assert.AreNotEqual(MonitoredService.PendingPublicSince, saved.PublicSince);
+        Assert.AreEqual(updatedAt, saved.UpdatedAt);
+        Assert.AreEqual(Convert.ToBase64String(saved.Version), retry.Settings!.Version);
+    }, context.CancellationToken);
+
+    private sealed class FailFirstFence : DbCommandInterceptor
+    {
+        private int remaining = 1;
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal) && Interlocked.Exchange(ref remaining, 0) == 1)
+                throw new DbUpdateException("Simulated post-commit fence failure.");
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServicePeriod_OldFenceCannotOverwriteRepublishedPeriod() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var services = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+        var publishing = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var candidate = new ServiceCandidate(source.Id, "orders", "production", "Orders", now);
+        var service = new MonitoredService(candidate, now);
+        await using (var db = await services.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            await db.SaveChangesAsync(token);
+        }
+        var gate = new PauseFence();
+        var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).AddInterceptors(gate).Options;
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance;
+        var slow = new PublicationAdministration(resources, new PooledDbContextFactory<ServiceObservabilityDbContext>(options), publishing,
+            new OperationAuditWriter(), TimeProvider.System, logger);
+        var fast = new PublicationAdministration(resources, services, publishing, new OperationAuditWriter(), TimeProvider.System, logger);
+        var settings = await slow.ReadAsync(PublicationResourceKind.Service, service.Id, token);
+        Assert.IsNotNull(settings);
+        var actor = Guid.CreateVersion7();
+        var first = slow.SetAsync(PublicationResourceKind.Service, service.Id,
+            new(true, "Orders", PublicationPolicy.BaselineVersion, settings.Version), actor, token);
+        Exception? failure = null;
+        try
+        {
+            await gate.Entered.Task.WaitAsync(token);
+            var current = await fast.ReadAsync(PublicationResourceKind.Service, service.Id, token);
+            Assert.IsNotNull(current);
+            var revoked = await fast.SetAsync(PublicationResourceKind.Service, service.Id, new(false, null, null, current.Version), actor, token);
+            Assert.AreEqual(PublicationChangeStatus.Updated, revoked.Status);
+            var republished = await fast.SetAsync(PublicationResourceKind.Service, service.Id,
+                new(true, "Orders", PublicationPolicy.BaselineVersion, revoked.Settings!.Version), actor, token);
+            Assert.AreEqual(PublicationChangeStatus.Updated, republished.Status);
+            await using var db = await services.CreateDbContextAsync(token);
+            var newer = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
+            gate.Release.TrySetResult();
+            await first;
+            var after = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
+            Assert.AreEqual(newer.PublicSince, after.PublicSince);
+            Assert.AreEqual(Convert.ToBase64String(newer.Version), Convert.ToBase64String(after.Version));
+            Assert.AreNotEqual(MonitoredService.PendingPublicSince, after.PublicSince);
+        }
+        catch (Exception exception) { failure = exception; throw; }
+        finally
+        {
+            gate.Release.TrySetResult();
+            try { await first; } catch when (failure is not null) { }
+        }
+    }, context.CancellationToken);
+
+    private sealed class PauseFence : DbCommandInterceptor
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("TODATETIMEOFFSET(SYSUTCDATETIME()", StringComparison.Ordinal))
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task PublicationAuditFailure_RollsBackChange() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>

@@ -1,4 +1,5 @@
 using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests;
 
@@ -33,5 +34,30 @@ public sealed class CandidateTests
         Assert.AreEqual("production", service.Environment);
         Assert.IsFalse(service.IsPublic);
         Assert.IsNull(service.RevokedAt);
+    }
+
+    [TestMethod]
+    public void PublicationPeriod_OnlyRestartsAfterPrivacyIsRevoked()
+    {
+        var now = new DateTimeOffset(2026, 11, 14, 0, 0, 0, TimeSpan.Zero);
+        var candidate = new ServiceCandidate(Guid.CreateVersion7(), "orders", "production", "Orders", now);
+        var service = new MonitoredService(candidate, now);
+        Assert.IsNull(service.PublicSince);
+
+        service.SetPublication(true, "Orders", PublicationPolicy.BaselineVersion, now.AddMinutes(1));
+        Assert.AreEqual(MonitoredService.PendingPublicSince, service.PublicSince);
+        service.ConfirmPublicSince(now.AddMinutes(1));
+        Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
+        service.SetPublication(true, "Orders API", PublicationPolicy.BaselineVersion, now.AddMinutes(2));
+        Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
+        service.Revoke(now.AddMinutes(3));
+        service.Resume(now.AddMinutes(4));
+        Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
+        service.SetPublication(false, null, null, now.AddMinutes(5));
+        Assert.IsNull(service.PublicSince);
+        service.SetPublication(true, "Orders", PublicationPolicy.BaselineVersion, now.AddMinutes(6));
+        Assert.AreEqual(MonitoredService.PendingPublicSince, service.PublicSince);
+        service.ConfirmPublicSince(now.AddMinutes(6));
+        Assert.AreEqual(now.AddMinutes(6), service.PublicSince);
     }
 }

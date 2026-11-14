@@ -8,6 +8,7 @@ using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
 
 namespace Vigiloom.Web.Publishing;
 
@@ -73,14 +74,21 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             if (!row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
             if (previous == change.Public && !changedName && (!change.Public || row.PublicPolicyVersion == change.PolicyVersion))
-                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version));
+            {
+                await tx.CommitAsync(token);
+                var confirmed = row.PublicSince == MonitoredService.PendingPublicSince
+                    ? await ConfirmServicePeriodAsync(id, row.Version, token) : null;
+                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmed ?? row.Version));
+            }
             var now = clock.GetUtcNow().ToUniversalTime();
             row.SetPublication(change.Public, name, change.PolicyVersion, now);
             try { await db.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
             await AppendAsync(db, tx, actor, id, now, kind, previous, change.Public, changedName, token);
             await tx.CommitAsync(token);
-            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version));
+            var confirmedVersion = row.PublicSince == MonitoredService.PendingPublicSince
+                ? await ConfirmServicePeriodAsync(id, row.Version, token) : null;
+            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmedVersion ?? row.Version));
         }
         await using var resourcesDb = await resources.CreateDbContextAsync(token);
         await using var transaction = await resourcesDb.Database.BeginTransactionAsync(token);
@@ -138,6 +146,30 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         PublicationResourceKind kind, bool previous, bool current, bool nameChanged, CancellationToken token, bool templateChanged = false) =>
         audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
             new OperationAudit(actor, id, now, new PublicationChanged(kind, previous, current, nameChanged, templateChanged)), token);
+
+    private async Task<byte[]?> ConfirmServicePeriodAsync(Guid id, byte[] publishedVersion, CancellationToken token)
+    {
+        try
+        {
+            await using var db = await services.CreateDbContextAsync(token);
+            var row = await db.Services.SingleOrDefaultAsync(x => x.Id == id, token);
+            if (row is null || !row.IsPublic || row.PublicSince != MonitoredService.PendingPublicSince ||
+                !row.Version.AsSpan().SequenceEqual(publishedVersion)) return null;
+            // This time is obtained after the publication transaction committed. The rowversion
+            // ensures a delayed confirmation cannot authorize history for a later publication.
+            var afterCommit = await db.Database.SqlQueryRaw<DateTimeOffset>(
+                "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            row.ConfirmPublicSince(afterCommit);
+            await db.SaveChangesAsync(token);
+            return row.Version;
+        }
+        catch (DbUpdateConcurrencyException) { /* A newer publication owns the period. */ }
+        catch (Exception ex) when (ex is DbException or DbUpdateException && !token.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Unable to confirm the public history period for service {ServiceId}", id);
+        }
+        return null;
+    }
 
     private static PublicationSettings Settings(Guid id, bool isPublic, string? name, string? policy, byte[] version, Guid? templateId = null, byte[]? templateVersion = null) =>
         new(id, isPublic, name, policy, Convert.ToBase64String(version), templateId, templateVersion is null ? null : Convert.ToBase64String(templateVersion));
