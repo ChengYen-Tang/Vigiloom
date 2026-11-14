@@ -293,6 +293,7 @@ public sealed class AgentIdentityTlsTests
                         {
                             var gap = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.GapReason == AgentLogGapReason.CursorLost, deadline.Token);
                             var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "after-rotation\n", deadline.Token);
+                            Assert.IsNull(gap.GapAffectedCount);
                             Assert.IsLessThan(resumed.RowId, gap.RowId);
                         }
                         using (var playwright = await Playwright.CreateAsync())
@@ -309,6 +310,7 @@ public sealed class AgentIdentityTlsTests
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
                             var table = page.GetByRole(AriaRole.Region, new() { Name = "日誌表格，可左右捲動" });
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
                             await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
                             await wasmGate.ReleaseAsync();
@@ -317,6 +319,7 @@ public sealed class AgentIdentityTlsTests
                             await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
                             await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
                             await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
+                            await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
                             await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(2);
                         }
                         await using (var scope = factory.Services.CreateAsyncScope())
