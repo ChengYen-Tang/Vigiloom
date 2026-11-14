@@ -260,6 +260,16 @@ public sealed class HealthRunnerTests(TestContext context)
                 var history = await new HealthHistoryReader(factory).ReadAsync(serviceId, start, end, token);
                 Assert.IsNotNull(history);
                 Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Degraded, history.Intervals[^1].State);
+                var last = history.Intervals[^1];
+                Assert.IsGreaterThan(last.Start, last.End);
+                var clippedStart = last.Start.AddTicks((last.End - last.Start).Ticks / 3);
+                var clippedEnd = last.Start.AddTicks((last.End - last.Start).Ticks * 2 / 3);
+                var clipped = await new HealthHistoryReader(factory).ReadAsync(serviceId, clippedStart, clippedEnd, token);
+                Assert.IsNotNull(clipped);
+                var interval = Assert.ContainsSingle(clipped.Intervals);
+                Assert.AreEqual(clippedStart, interval.Start);
+                Assert.AreEqual(clippedEnd, interval.End);
+                Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Degraded, interval.State);
             }
             finally
             {
