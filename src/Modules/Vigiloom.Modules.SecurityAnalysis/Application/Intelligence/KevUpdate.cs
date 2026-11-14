@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> contexts, IHttpClientFactory clients, TimeProvider clock)
 {
     internal const string LicenseEvidence = "CISA KEV: CC0-1.0; cisagov/kev-data@a795af4c4afc47df12906b4c04e656156cf06493";
-    internal const string MappingVersion = "kev-raw-v1";
+    internal const string MappingVersion = "kev-cve-v1";
     internal async Task<KevUpdateResult> RunAsync(Guid sourceId, CancellationToken token, bool onlyWhenDue = false)
     {
         await using var lease = await IntelligenceRefreshLease.TryAcquireAsync(contexts, sourceId, token);
@@ -25,7 +25,8 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
             cached = await (from cache in read.IntelligenceCaches.AsNoTracking()
                             join revision in read.IntelligenceRevisions.AsNoTracking()
                                 on new { cache.SourceId, Id = cache.RevisionId } equals new { revision.SourceId, revision.Id }
-                            where cache.SourceId == source.Id && !revision.Revoked
+                            where cache.SourceId == source.Id && !revision.Revoked && revision.Normalized && revision.MappingVersion == MappingVersion &&
+                                !read.IntelligenceRevisions.Any(x => x.SourceId == revision.SourceId && x.Digest == revision.Digest && x.Revoked)
                             select cache).SingleOrDefaultAsync(token);
         }
         var etag = cached?.ETag;
@@ -61,15 +62,18 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
         var currentCache = await db.IntelligenceCaches.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (download.Content is null && (cached is null || currentCache is null || currentCache.RevisionId != cached.RevisionId ||
             currentCache.ETag != cached.ETag || currentCache.LastModified != cached.LastModified ||
-            !await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Id == cached.RevisionId && !x.Revoked, token)))
+            !await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Id == cached.RevisionId && !x.Revoked && x.Normalized && x.MappingVersion == MappingVersion &&
+                !db.IntelligenceRevisions.Any(other => other.SourceId == x.SourceId && other.Digest == x.Digest && other.Revoked), token)))
             return KevUpdateResult.Conflict;
         var existing = download.Digest is null ? null : await db.IntelligenceRevisions.AsNoTracking()
-            .Where(x => x.SourceId == sourceId && x.Digest == download.Digest)
-            .Select(x => new { x.Id, x.Revoked }).SingleOrDefaultAsync(token);
-        if (existing?.Revoked == true)
+            .Where(x => x.SourceId == sourceId && x.Digest == download.Digest && x.MappingVersion == MappingVersion)
+            .Select(x => new { x.Id, x.Revoked, x.Normalized }).SingleOrDefaultAsync(token);
+        var contentRevoked = download.Digest is not null && await db.IntelligenceRevisions.AsNoTracking()
+            .AnyAsync(x => x.SourceId == sourceId && x.Digest == download.Digest && x.Revoked, token);
+        if (contentRevoked || existing is { Normalized: false })
         {
             current.LastCheckedAt = clock.GetUtcNow();
-            current.LastError = "The retrieved KEV revision was revoked.";
+            current.LastError = "The retrieved KEV revision is revoked or incomplete.";
             db.Entry(current).Property(x => x.LastCheckedAt).IsModified = true;
             try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
             catch (DbUpdateConcurrencyException) { return KevUpdateResult.Conflict; }
@@ -86,7 +90,7 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
                 SchemaVersion = KevCatalogValidator.SchemaRevision,
                 MappingVersion = MappingVersion,
                 LicenseEvidence = LicenseEvidence,
-                RecordCount = metadata.RecordCount
+                RecordCount = metadata.RecordCount, Normalized = true
             };
             db.IntelligenceRevisions.Add(revision);
             existingId = revision.Id;
@@ -109,7 +113,28 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
         current.LastSuccessfulCheckAt = current.LastCheckedAt;
         current.LastError = null;
         db.Entry(current).Property(x => x.LastCheckedAt).IsModified = true;
-        try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
+        try
+        {
+            await db.SaveChangesAsync(token);
+            if (download.Content is not null && !revisionExists)
+            {
+                db.ChangeTracker.Clear();
+                var pending = 0;
+                var written = 0;
+                foreach (var record in KevNormalizer.Read(download.Content, existingId!.Value))
+                {
+                    db.KevRecords.Add(record);
+                    written++;
+                    if (++pending < 256) continue;
+                    await db.SaveChangesAsync(token);
+                    db.ChangeTracker.Clear();
+                    pending = 0;
+                }
+                if (pending != 0) await db.SaveChangesAsync(token);
+                if (written != metadata!.RecordCount) throw new InvalidDataException("Normalized KEV count does not match the validated catalog.");
+            }
+            await transaction.CommitAsync(token);
+        }
         catch (DbUpdateConcurrencyException) { return KevUpdateResult.Conflict; }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { return KevUpdateResult.Conflict; }
         return download.Content is null || revisionExists ? KevUpdateResult.Unchanged : KevUpdateResult.Staged;

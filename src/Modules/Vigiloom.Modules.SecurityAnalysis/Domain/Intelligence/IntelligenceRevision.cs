@@ -18,4 +18,5 @@ public sealed class IntelligenceRevision
     public required string LicenseEvidence { get; set; }
     public int RecordCount { get; set; }
     public bool Revoked { get; set; }
+    public bool Normalized { get; set; }
 }

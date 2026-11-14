@@ -48,10 +48,12 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             return IntelligencePublicationResult.Conflict;
         var candidate = await db.IntelligenceRevisions
             .FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceRevisions] WITH (UPDLOCK, HOLDLOCK) WHERE [SourceId] = {sourceId} AND [Id] = {revisionId}")
-            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.Normalized, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.Digest }).SingleOrDefaultAsync(token);
         if (candidate is null) return IntelligencePublicationResult.NotFound;
-        if (candidate.Revoked || candidate.SchemaVersion != KevCatalogValidator.SchemaRevision ||
+        if (candidate.Revoked || !candidate.Normalized || candidate.SchemaVersion != KevCatalogValidator.SchemaRevision ||
             candidate.MappingVersion != KevUpdate.MappingVersion || candidate.LicenseEvidence != KevUpdate.LicenseEvidence)
+            return IntelligencePublicationResult.Unavailable;
+        if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;
         if (active?.RevisionId == candidate.Id) return IntelligencePublicationResult.Unchanged;
         int? previousCount = null;

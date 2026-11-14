@@ -43,7 +43,7 @@ internal static class IntelligenceModel
         revision.Property(x => x.LicenseEvidence).HasMaxLength(1024).IsRequired();
         revision.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
         revision.Property(x => x.Artifact).IsRequired();
-        revision.HasIndex(x => new { x.SourceId, x.Digest }).IsUnique();
+        revision.HasIndex(x => new { x.SourceId, x.Digest, x.MappingVersion }).IsUnique();
         revision.HasOne<IntelligenceSource>().WithMany().HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.NoAction);
         var activation = model.Entity<IntelligenceActivation>();
         activation.ToTable("IntelligenceActivations");
@@ -74,5 +74,18 @@ internal static class IntelligenceModel
             .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
         history.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.PreviousRevisionId })
             .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+
+        var kev = model.Entity<KevRecord>();
+        kev.ToTable("KevRecords");
+        kev.HasKey(x => x.RowId).IsClustered();
+        kev.Property(x => x.RowId).UseIdentityColumn();
+        kev.Property(x => x.CveId).HasMaxLength(28).IsUnicode(false).IsRequired();
+        kev.Property(x => x.VendorProject).IsRequired();
+        kev.Property(x => x.Product).IsRequired();
+        kev.Property(x => x.VulnerabilityName).IsRequired();
+        kev.Property(x => x.Description).IsRequired();
+        kev.Property(x => x.RequiredAction).IsRequired();
+        kev.HasIndex(x => new { x.RevisionId, x.CveId }).IsUnique();
+        kev.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
     }
 }
