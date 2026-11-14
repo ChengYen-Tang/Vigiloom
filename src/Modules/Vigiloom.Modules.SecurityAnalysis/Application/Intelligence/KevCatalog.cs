@@ -101,6 +101,6 @@ public sealed class KevCatalog(IDbContextFactory<SecurityAnalysisDbContext> cont
         return true;
     }
 
-    private sealed record RevisionHeader(Guid Id, string UpstreamVersion, DateTimeOffset ReleasedAt, byte[] Digest,
+    private sealed record RevisionHeader(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, byte[] Digest,
         bool Revoked, bool Normalized, string SchemaVersion, string MappingVersion, string LicenseEvidence);
 }
