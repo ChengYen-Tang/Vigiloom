@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
@@ -172,6 +173,110 @@ public sealed class HealthRunnerTests(TestContext context)
             finally
             {
                 await CleanupScanAsync(cancellation, listener, scan, runner, server, failure);
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task TwoInstances_KeepProbeEvidenceAndAggregateAcrossRunnerRestart() =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var healthyListener = new TcpListener(IPAddress.Loopback, 0);
+            var degradedListener = new TcpListener(IPAddress.Loopback, 0);
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cancellation.CancelAfter(TimeSpan.FromSeconds(30));
+            Task? servers = null;
+            try
+            {
+                healthyListener.Start();
+                degradedListener.Start();
+                var options = Options(database.ConnectionString);
+                var healthyTarget = await SeedAsync(options, ((IPEndPoint)healthyListener.LocalEndpoint).Port, token);
+                Guid serviceId, sourceId, degradedTarget;
+                await using (var db = new ServiceObservabilityDbContext(options))
+                {
+                    serviceId = (await db.Services.SingleAsync(token)).Id;
+                    sourceId = (await db.Sources.SingleAsync(token)).Id;
+                }
+                async Task<Guid> ResolveAsync(string externalId)
+                {
+                    await using var db = new ServiceObservabilityDbContext(options);
+                    await using var transaction = await db.Database.BeginTransactionAsync(token);
+                    var result = await ServiceInstanceResolver.ResolveAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                        sourceId, "orders", "prod", externalId, token);
+                    Assert.AreEqual(InstanceResolutionStatus.Resolved, result.Status);
+                    Assert.IsNotNull(result.InstanceId);
+                    Assert.AreEqual(serviceId, result.Service!.ServiceId);
+                    await transaction.CommitAsync(token);
+                    return result.InstanceId.Value;
+                }
+                var healthyInstance = await ResolveAsync("node-a");
+                var degradedInstance = await ResolveAsync("node-b");
+                Assert.AreNotEqual(healthyInstance, degradedInstance);
+                await using (var db = new ServiceObservabilityDbContext(options))
+                {
+                    var now = DateTimeOffset.UtcNow.AddSeconds(-1);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthTargets] SET [InstanceId] = {healthyInstance} WHERE [Id] = {healthyTarget}", token);
+                    var target = new HealthTarget(serviceId, degradedInstance, $"http://127.0.0.1:{((IPEndPoint)degradedListener.LocalEndpoint).Port}/health", 30, 5, 3, 2, now);
+                    target.SetEnabled(true, now);
+                    degradedTarget = target.Id;
+                    db.HealthTargets.Add(target);
+                    db.HealthSchedules.Add(new HealthSchedule(target.Id, true, now));
+                    db.HealthStateIntervals.Add(new HealthStateInterval(target.Id, 0, 0, now));
+                    await db.SaveChangesAsync(token);
+                }
+
+                var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+                for (var pass = 0; pass < 2; pass++)
+                {
+                    if (pass > 0)
+                    {
+                        await using var db = new ServiceObservabilityDbContext(options);
+                        await db.Database.ExecuteSqlRawAsync("UPDATE [service].[HealthSchedules] SET [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+                    }
+                    servers = Task.WhenAll(ServeAsync(healthyListener, null, null, cancellation.Token),
+                        ServeAsync(degradedListener, null, null, cancellation.Token, degraded: true));
+                    using var runner = new HealthRunner(factory, TimeProvider.System);
+                    await runner.RunOnceAsync(cancellation.Token);
+                    await servers;
+                }
+
+                Assert.AreEqual(healthyInstance, await ResolveAsync("node-a"));
+                Assert.AreEqual(degradedInstance, await ResolveAsync("node-b"));
+                await using var verify = new ServiceObservabilityDbContext(options);
+                Assert.AreEqual(1, await verify.Services.CountAsync(token));
+                Assert.AreEqual(2, await verify.Instances.CountAsync(token));
+                Assert.AreEqual(healthyInstance, (await verify.HealthTargets.SingleAsync(x => x.Id == healthyTarget, token)).InstanceId);
+                Assert.AreEqual(degradedInstance, (await verify.HealthTargets.SingleAsync(x => x.Id == degradedTarget, token)).InstanceId);
+                Assert.AreEqual(2, await verify.HealthObservations.CountAsync(x => x.TargetId == healthyTarget && x.Kind == HealthObservationKind.Healthy, token));
+                Assert.AreEqual(2, await verify.HealthObservations.CountAsync(x => x.TargetId == degradedTarget && x.Kind == HealthObservationKind.Degraded, token));
+                Assert.AreEqual((byte)EvaluatedHealth.Healthy, (await verify.HealthSchedules.SingleAsync(x => x.TargetId == healthyTarget, token)).State);
+                Assert.AreEqual((byte)EvaluatedHealth.Degraded, (await verify.HealthSchedules.SingleAsync(x => x.TargetId == degradedTarget, token)).State);
+                var status = await new HealthStatusReader(factory).ReadAsync(serviceId, token);
+                Assert.IsNotNull(status);
+                Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Degraded, status.State);
+                var start = await verify.HealthStateIntervals.MinAsync(x => x.StartedAt, token);
+                var end = await new HealthStore(factory).NowAsync(token);
+                var history = await new HealthHistoryReader(factory).ReadAsync(serviceId, start, end, token);
+                Assert.IsNotNull(history);
+                Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Degraded, history.Intervals[^1].State);
+                var last = history.Intervals[^1];
+                Assert.IsGreaterThan(last.Start, last.End);
+                var clippedStart = last.Start.AddTicks((last.End - last.Start).Ticks / 3);
+                var clippedEnd = last.Start.AddTicks((last.End - last.Start).Ticks * 2 / 3);
+                var clipped = await new HealthHistoryReader(factory).ReadAsync(serviceId, clippedStart, clippedEnd, token);
+                Assert.IsNotNull(clipped);
+                var interval = Assert.ContainsSingle(clipped.Intervals);
+                Assert.AreEqual(clippedStart, interval.Start);
+                Assert.AreEqual(clippedEnd, interval.End);
+                Assert.AreEqual(Vigiloom.Contracts.Services.ServiceHealthState.Degraded, interval.State);
+            }
+            finally
+            {
+                cancellation.Cancel();
+                healthyListener.Stop();
+                degradedListener.Stop();
+                if (servers is not null) try { await servers; } catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException) { }
             }
         }, context.CancellationToken);
 
@@ -560,7 +665,7 @@ public sealed class HealthRunnerTests(TestContext context)
         return target.Id;
     }
 
-    private static async Task ServeAsync(TcpListener listener, TaskCompletionSource? received, TaskCompletionSource? release, CancellationToken token)
+    private static async Task ServeAsync(TcpListener listener, TaskCompletionSource? received, TaskCompletionSource? release, CancellationToken token, bool degraded = false)
     {
         using var peer = await listener.AcceptTcpClientAsync(token);
         await using var stream = peer.GetStream();
@@ -568,6 +673,9 @@ public sealed class HealthRunnerTests(TestContext context)
         while (!string.IsNullOrEmpty(await reader.ReadLineAsync(token))) { }
         received?.SetResult();
         if (release is not null) await release.Task.WaitAsync(token);
-        await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nHealthy"u8.ToArray(), token);
+        var response = degraded
+            ? "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 8\r\nConnection: close\r\n\r\nDegraded"u8.ToArray()
+            : "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nConnection: close\r\n\r\nHealthy"u8.ToArray();
+        await stream.WriteAsync(response, token);
     }
 }

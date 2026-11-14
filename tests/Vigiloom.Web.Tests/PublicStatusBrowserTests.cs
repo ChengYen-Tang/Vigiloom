@@ -190,7 +190,7 @@ public sealed class PublicStatusBrowserTests(TestContext context)
 
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
-        await using var browserContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 } });
+        await using var browserContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1280, Height = 900 }, HasTouch = true });
         var page = await browserContext.NewPageAsync();
         var streamOpened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var bodies = new ConcurrentBag<Task<string>>();
@@ -278,10 +278,17 @@ public sealed class PublicStatusBrowserTests(TestContext context)
         await page.GetByLabel("結束時間（UTC）").FillAsync(DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm"));
         await page.GetByRole(AriaRole.Button, new() { Name = "套用時間範圍" }).ClickAsync();
         await page.Locator(".history-strip").WaitForAsync(new() { Timeout = 30000 });
-        await page.Locator(".history-day").First.ClickAsync();
+        var historyDay = page.Locator(".history-day").First;
+        await historyDay.FocusAsync();
+        await page.Keyboard.PressAsync("Enter");
         await page.GetByRole(AriaRole.Heading, new() { Name = "Public service", Exact = true }).WaitForAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "登入後查看服務詳情" })).ToHaveAttributeAsync("href", $"/services/{service.Id:D}");
         await page.GetByText("區間起點", new() { Exact = false }).First.WaitForAsync(new() { Timeout = 30000 });
+        await page.GetByRole(AriaRole.Button, new() { Name = "Public service", Exact = true }).ClickAsync();
+        await Assertions.Expect(page.GetByText("區間起點", new() { Exact = false })).ToHaveCountAsync(0);
+        await page.SetViewportSizeAsync(390, 844);
+        await page.Locator(".history-day").First.TapAsync();
+        await page.GetByText("區間起點", new() { Exact = false }).First.WaitForAsync();
         await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
         {
             (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(true, "Public service", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
