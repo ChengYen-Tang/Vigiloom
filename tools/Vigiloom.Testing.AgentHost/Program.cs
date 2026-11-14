@@ -30,6 +30,13 @@ var mode = Environment.GetEnvironmentVariable("VIGILOOM_TEST_MODE") ?? throw new
 if (mode is not ("unavailable" or "drop-ack" or "normal")) throw new InvalidOperationException("Invalid test mode.");
 using var root = X509CertificateLoader.LoadCertificateFromFile(rootPath);
 var builder = AgentHost.CreateBuilder([]);
+if (Environment.GetEnvironmentVariable("VIGILOOM_TEST_REPLAY_ONLY") == "enabled")
+{
+    // The replay stages exercise transport and persisted queue recovery, not collectors.
+    string[] collectors = ["Vigiloom.Agent.Hosting.Metrics.MetricWorker", "Vigiloom.Agent.Hosting.Logs.LogWorker", "Vigiloom.Agent.Hosting.Integrity.IntegrityWorker"];
+    foreach (var descriptor in builder.Services.Where(x => collectors.Contains(x.ImplementationType?.FullName)).ToArray())
+        builder.Services.Remove(descriptor);
+}
 if (Environment.GetEnvironmentVariable("VIGILOOM_TEST_INVENTORY") != "enabled")
 {
     // Replay tests deliberately isolate their queue; the inventory integration case opts in.
