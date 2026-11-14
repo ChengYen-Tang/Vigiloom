@@ -141,6 +141,13 @@ internal static class PublicationEndpoints
             return await publications.ReadAsync(resourceKind, id, token) is { } settings ? Results.Ok(settings) : Results.NotFound();
         }).Produces<PublicationSettings>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get publication settings");
+        admin.MapGet("/devices/{id:guid}/history-preview", async (Guid id, DeviceHistoryPreviewReader preview, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await preview.ReadAsync(id, token) is { } history ? Results.Ok(history) : Results.NotFound();
+        }).Produces<PublicDeviceHistory>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Preview eligible device latency history without publishing it");
+
         admin.MapGet("/{kind}/{id:guid}/preview", async (string kind, Guid id, PublicationPreviewReader preview, CancellationToken token) =>
         {
             if (!TryKind(kind, out var resourceKind)) return Results.NotFound();
