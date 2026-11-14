@@ -7,4 +7,8 @@
   <ItemGroup>
     <PackageReference Include="Respawn" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/LICENSE" />
+    <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/README.md" />
+  </ItemGroup>
 </Project>

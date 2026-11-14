@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -89,6 +90,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             AdvisoryRevisionBuilder.LicenseEvidence),
         "sigmahq-rules" => new("SigmaHQ 規則", "behavioral-rules", "https://github.com/SigmaHQ/sigma",
             "Source rules are retained for review; detection and publication remain unsupported until the consumer is verified.", SigmaRefresh.LicenseEvidence),
+        "signature-base" => new("Signature-Base", "IOC / YARA", "https://github.com/Neo23x0/signature-base",
+            "IOC and YARA source files are retained for review; interpretation, detection and publication remain unsupported.", SignatureRefresh.LicenseEvidence),
         _ => null
     };
 
@@ -124,5 +127,45 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             .Select(x => new { x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service, x.Digest }).ToArrayAsync(token);
         return new(rows.Take(PageSize).Select(x => new SigmaRuleView(x.Path, x.RuleId, x.Title, x.Author, x.Status, x.License, x.Product, x.Category, x.Service,
             Convert.ToHexStringLower(x.Digest))).ToArray(), page, rows.Length > PageSize && page < 1000);
+    }
+
+    public async Task<SignatureFilePage?> GetSignatureFilesAsync(Guid sourceId, Guid revisionId, int page, CancellationToken token)
+    {
+        if (page is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(page));
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var exists = await (from source in db.IntelligenceSources.AsNoTracking()
+                            join revision in db.IntelligenceRevisions.AsNoTracking() on source.Id equals revision.SourceId
+                            where source.Id == sourceId && source.Key == "signature-base" && revision.Id == revisionId &&
+                                  revision.MappingVersion == SignatureRefresh.MappingVersion && revision.SchemaVersion == SignatureRefresh.SchemaVersion &&
+                                  revision.LicenseEvidence == SignatureRefresh.LicenseEvidence && revision.Normalized
+                            select revision.Id).AnyAsync(token);
+        if (!exists) return null;
+        var rows = await db.SignatureFiles.AsNoTracking().Where(x => x.RevisionId == revisionId).OrderBy(x => x.Path)
+            .Skip((page - 1) * PageSize).Take(PageSize + 1)
+            .Select(x => new { x.Path, x.Kind, x.Digest,
+                Entries = x.Kind == 0 ? (int?)db.IocEntries.Count(i => i.SignatureFileRowId == x.RowId) : null,
+                Unsupported = x.Kind == 0 ? (int?)db.IocEntries.Count(i => i.SignatureFileRowId == x.RowId && i.Kind == "unsupported") : null }).ToArrayAsync(token);
+        return new(rows.Take(PageSize).Select(x => new SignatureFileView(x.Path, x.Kind switch
+        { 0 => "ioc", 1 => "yara", 2 => "license-evidence", _ => "unknown" }, Convert.ToHexStringLower(x.Digest), x.Entries, x.Unsupported)).ToArray(),
+            page, rows.Length > PageSize && page < 1000);
+    }
+
+    public async Task<IocIssuePage?> GetIocIssuesAsync(Guid sourceId, Guid revisionId, string path, int page, CancellationToken token)
+    {
+        if (page is < 1 or > 2000 || path.Length is < 1 or > 512) throw new ArgumentOutOfRangeException();
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var fileId = await (from source in db.IntelligenceSources.AsNoTracking()
+                            join revision in db.IntelligenceRevisions.AsNoTracking() on source.Id equals revision.SourceId
+                            join file in db.SignatureFiles.AsNoTracking() on revision.Id equals file.RevisionId
+                            where source.Id == sourceId && source.Key == "signature-base" && revision.Id == revisionId &&
+                                  revision.MappingVersion == SignatureRefresh.MappingVersion && revision.SchemaVersion == SignatureRefresh.SchemaVersion &&
+                                  revision.LicenseEvidence == SignatureRefresh.LicenseEvidence && revision.Normalized && file.Kind == 0 && file.Path == path
+                            select (long?)file.RowId).SingleOrDefaultAsync(token);
+        if (fileId is null) return null;
+        var rows = await db.IocEntries.AsNoTracking().Where(x => x.SignatureFileRowId == fileId && x.Kind == "unsupported")
+            .OrderBy(x => x.LineNumber).Skip((page - 1) * PageSize).Take(PageSize + 1)
+            .Select(x => new { x.LineNumber, x.Reason }).ToArrayAsync(token);
+        return new(rows.Take(PageSize).Select(x => new IocIssueView(x.LineNumber, x.Reason ?? "unknown")).ToArray(),
+            page, rows.Length > PageSize && page < 2000);
     }
 }

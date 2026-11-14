@@ -27,20 +27,28 @@ public sealed class IntelligenceBrowserTests(TestContext context)
             LastError = "KEV retrieval failed." };
         var advisorySource = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
         var sigmaSource = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
+        var signatureSource = new IntelligenceSource { Key = "signature-base", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
         var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test-catalog-v1", ReleasedAt = DateTimeOffset.UtcNow.AddDays(-1),
             RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test",
             LicenseEvidence = "test", RecordCount = 1, Normalized = true };
         var sigmaRevision = new IntelligenceRevision { SourceId = sigmaSource.Id, UpstreamVersion = "sigma-test", RetrievedAt = DateTimeOffset.UtcNow,
             Digest = new byte[32], Artifact = [], SchemaVersion = "sigma-yaml-source-v1", MappingVersion = "sigma-rule-source-v1",
             LicenseEvidence = "SigmaHQ rules: DRL-1.1, subject to individual rule terms; SigmaHQ/sigma@54967d64e6dda2b4daa81f47f7a8bf1f591b68a0", RecordCount = 1, Normalized = true };
+        var signatureRevision = new IntelligenceRevision { SourceId = signatureSource.Id, UpstreamVersion = "signature-test", RetrievedAt = DateTimeOffset.UtcNow,
+            Digest = new byte[32], Artifact = [], SchemaVersion = "signature-base-files-v1", MappingVersion = "signature-base-source-v2",
+            LicenseEvidence = "Signature-Base repository terms and per-rule exceptions require review; Neo23x0/signature-base@eb8c53cb08ed103d031fe9c98d1d23e94904839d", RecordCount = 1, Normalized = true };
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
         {
             await db.Database.MigrateAsync(token);
-            db.IntelligenceSources.AddRange(source, advisorySource, sigmaSource);
-            db.IntelligenceRevisions.AddRange(revision, sigmaRevision);
+            db.IntelligenceSources.AddRange(source, advisorySource, sigmaSource, signatureSource);
+            db.IntelligenceRevisions.AddRange(revision, sigmaRevision, signatureRevision);
             db.SigmaRules.Add(new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", Title = "Example rule",
                 Author = "Example author", Product = "windows", Digest = new byte[32], Content = [1] });
+            var file = new SignatureFile { RevisionId = signatureRevision.Id, Path = "iocs/hash-iocs.txt", Kind = 0, Digest = new byte[32], Content = [1] };
+            db.SignatureFiles.Add(file);
             db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(token);
+            db.IocEntries.Add(new IocEntry { SignatureFileRowId = file.RowId, LineNumber = 5, Kind = "unsupported", Reason = "invalid-hash" });
             await db.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
@@ -90,6 +98,15 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         Assert.Contains("尚未啟用偵測", await page.Locator("main").InnerTextAsync());
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "sigma-mobile.png"), FullPage = true });
+        await page.Locator(".intelligence-source").Filter(new() { HasText = "Signature-Base" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "IOC／YARA 來源檔案" }).WaitForAsync();
+        Assert.Contains("iocs/hash-iocs.txt", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.GetByRole(AriaRole.Link, new() { Name = "1 筆未支援" }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "未支援的 IOC 項目" }).WaitForAsync();
+        Assert.Contains("雜湊格式無效", await page.Locator("main").InnerTextAsync());
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "signature-mobile.png"), FullPage = true });
         Assert.IsEmpty(errors);
         await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
         var current = await check.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token);

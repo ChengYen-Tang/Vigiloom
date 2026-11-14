@@ -948,6 +948,48 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IocEntry", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<long>("SignatureFileRowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SignatureFileRowId", "LineNumber")
+                        .IsUnique();
+
+                    b.ToTable("IocEntries", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_IocEntries_Line", "[LineNumber] > 0");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.KevRecord", b =>
                 {
                     b.Property<long>("RowId")
@@ -1086,6 +1128,49 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("SigmaRules", "security", t =>
                         {
                             t.HasCheckConstraint("CK_SigmaRules_Content", "DATALENGTH([Content]) BETWEEN 1 AND 1048576");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SignatureFile", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId", "Path")
+                        .IsUnique();
+
+                    b.ToTable("SignatureFiles", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SignatureFiles_Content", "DATALENGTH([Content]) BETWEEN 1 AND 1048576");
+
+                            t.HasCheckConstraint("CK_SignatureFiles_Kind", "[Kind] BETWEEN 0 AND 2");
                         });
                 });
 
@@ -1616,6 +1701,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IocEntry", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SignatureFile", null)
+                        .WithMany()
+                        .HasForeignKey("SignatureFileRowId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.KevRecord", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
@@ -1626,6 +1720,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SignatureFile", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
                         .WithMany()

@@ -7,7 +7,7 @@ public static class IntelligenceHttp
 {
     public const string KevClientName = "cisa-kev";
     public const string AdvisoryClientName = "github-advisories";
-    public const string SigmaClientName = "sigmahq-rules";
+    public const string RepositoryClientName = "intelligence-repositories";
 
     public static HttpMessageHandler CreateKevHandler() => new HttpClientHandler
     {

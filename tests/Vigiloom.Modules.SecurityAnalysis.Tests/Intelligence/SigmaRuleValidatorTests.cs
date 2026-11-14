@@ -1,6 +1,7 @@
 using System.Text;
 using System.IO.Compression;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Repositories;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 
@@ -81,7 +82,7 @@ public sealed class SigmaRuleValidatorTests(TestContext context)
             await gzip.WriteAsync(new byte[1536], context.CancellationToken);
         }
         archive.Position = 0;
-        await Assert.ThrowsAsync<InvalidDataException>(() => SigmaTarPreflight.ValidateAsync(archive, context.CancellationToken));
+        await Assert.ThrowsAsync<InvalidDataException>(() => RepositoryTarPreflight.ValidateAsync(archive, context.CancellationToken));
     }
 
     [TestMethod]
@@ -99,6 +100,6 @@ public sealed class SigmaRuleValidatorTests(TestContext context)
             await gzip.WriteAsync(new byte[512 - body.Length + 1024], context.CancellationToken);
         }
         archive.Position = 0;
-        await Assert.ThrowsAsync<InvalidDataException>(() => SigmaTarPreflight.ValidateAsync(archive, context.CancellationToken));
+        await Assert.ThrowsAsync<InvalidDataException>(() => RepositoryTarPreflight.ValidateAsync(archive, context.CancellationToken));
     }
 }

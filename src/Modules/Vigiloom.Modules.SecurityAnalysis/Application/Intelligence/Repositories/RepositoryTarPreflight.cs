@@ -2,10 +2,10 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.IO.Compression;
 
-namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Repositories;
 
 /// <summary>Bounds TAR metadata before TarReader can allocate an extended-header buffer.</summary>
-internal static class SigmaTarPreflight
+internal static class RepositoryTarPreflight
 {
     private const int BlockSize = 512;
     private const long MaximumExpandedBytes = 512L * 1024 * 1024;
@@ -23,7 +23,7 @@ internal static class SigmaTarPreflight
             {
                 await gzip.ReadExactlyAsync(buffer.AsMemory(0, BlockSize), token);
                 total += BlockSize;
-                if (total > MaximumExpandedBytes) throw new InvalidDataException("Sigma archive exceeds the expanded size limit.");
+                if (total > MaximumExpandedBytes) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
                 if (buffer.AsSpan(0, BlockSize).IndexOfAnyExcept((byte)0) < 0)
                 {
                     if (++zeroBlocks == 2) return;
@@ -33,9 +33,9 @@ internal static class SigmaTarPreflight
                 var size = ParseSize(buffer.AsSpan(124, 12));
                 var kind = buffer[156];
                 if (kind is (byte)'x' or (byte)'g' or (byte)'L' or (byte)'K' && size > MaximumMetadataBytes)
-                    throw new InvalidDataException("Sigma TAR metadata exceeds the limit.");
+                    throw new InvalidDataException("Repository TAR metadata exceeds the limit.");
                 var remaining = checked((size + BlockSize - 1) / BlockSize * BlockSize);
-                if (remaining > MaximumExpandedBytes - total) throw new InvalidDataException("Sigma archive exceeds the expanded size limit.");
+                if (remaining > MaximumExpandedBytes - total) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
                 if (kind is (byte)'x' or (byte)'g')
                 {
                     await gzip.ReadExactlyAsync(buffer.AsMemory(0, (int)size), token);
@@ -52,7 +52,7 @@ internal static class SigmaTarPreflight
                 }
             }
         }
-        catch (EndOfStreamException error) { throw new InvalidDataException("Truncated Sigma archive.", error); }
+        catch (EndOfStreamException error) { throw new InvalidDataException("Truncated Repository archive.", error); }
         finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 

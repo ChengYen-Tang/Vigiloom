@@ -35,6 +35,16 @@ public sealed record SigmaRuleView(string Path, string? RuleId, string Title, st
     string? Product, string? Category, string? Service, string Sha256);
 public sealed record SigmaRulePage(IReadOnlyList<SigmaRuleView> Items, int Page, bool HasMore);
 
+/// <summary>Metadata of retained IOC, YARA or license evidence, without distributing its source bytes.</summary>
+public sealed record SignatureFileView(string Path, string Kind, string Sha256, int? Entries, int? UnsupportedEntries);
+/// <summary>A bounded page of retained Signature-Base file metadata.</summary>
+public sealed record SignatureFilePage(IReadOnlyList<SignatureFileView> Items, int Page, bool HasMore);
+
+/// <summary>Location and reason for an IOC line that cannot be interpreted.</summary>
+public sealed record IocIssueView(int LineNumber, string Reason);
+/// <summary>A bounded page of unsupported or invalid IOC lines.</summary>
+public sealed record IocIssuePage(IReadOnlyList<IocIssueView> Items, int Page, bool HasMore);
+
 /// <summary>Expected selection and explicit confirmation for a revision activation.</summary>
 public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? ExpectedActiveRevisionId, string ExpectedVersion, bool ConfirmLargeReduction);
 
@@ -50,7 +60,7 @@ public static class IntelligencePolicyLimits
     public static bool ValidForSource(string key, int bytes, int records) => key switch
     {
         "github-reviewed" => bytes <= 1073741824 && records <= 100000,
-        "sigmahq-rules" => bytes <= 67108864 && records <= 50000,
+        "sigmahq-rules" or "signature-base" => bytes <= 67108864 && records <= 50000,
         _ => bytes <= 67108864
     };
 }
