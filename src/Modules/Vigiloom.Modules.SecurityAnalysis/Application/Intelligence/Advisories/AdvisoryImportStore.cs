@@ -99,9 +99,30 @@ internal sealed class AdvisoryImportStore(IDbContextFactory<SecurityAnalysisDbCo
         import.Cursor = page.NextCursor;
         if (page.NextCursor is null) import.Phase++;
         import.NotBefore = null;
+        import.RateLimitAttempts = 0;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         return AdvisoryStageResult.Stored;
+    }
+
+    internal async Task<bool> DeferAsync(Guid sourceId, Guid importId, byte[] expectedVersion, DateTimeOffset? retryAt, CancellationToken token)
+    {
+        if (sourceId == Guid.Empty || importId == Guid.Empty || expectedVersion.Length != 8) return false;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var source = await LockSourceAsync(db, sourceId, token);
+        if (source is null || !source.Enabled || source.Key != "github-reviewed") return false;
+        var import = await db.AdvisoryImports
+            .FromSqlInterpolated($"SELECT * FROM [security].[AdvisoryImports] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {importId} AND [SourceId] = {sourceId}")
+            .SingleOrDefaultAsync(token);
+        if (import is null || import.Phase is not (1 or 2) || !import.Version.AsSpan().SequenceEqual(expectedVersion) ||
+            !import.SourceVersion.AsSpan().SequenceEqual(source.Version)) return false;
+        import.RateLimitAttempts = Math.Min(import.RateLimitAttempts + 1, 20);
+        var minimum = clock.GetUtcNow().AddMinutes(1 << Math.Min(import.RateLimitAttempts - 1, 6));
+        import.NotBefore = retryAt is { } limit && limit > minimum ? limit.ToUniversalTime() : minimum;
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return true;
     }
 
     private static Task<IntelligenceSource?> LockSourceAsync(SecurityAnalysisDbContext db, Guid id, CancellationToken token) =>

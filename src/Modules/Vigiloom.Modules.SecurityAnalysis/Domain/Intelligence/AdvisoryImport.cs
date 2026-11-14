@@ -20,5 +20,6 @@ public sealed class AdvisoryImport
     public long TotalBytes { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? NotBefore { get; set; }
+    public int RateLimitAttempts { get; set; }
     public byte[] Version { get; private set; } = [];
 }
