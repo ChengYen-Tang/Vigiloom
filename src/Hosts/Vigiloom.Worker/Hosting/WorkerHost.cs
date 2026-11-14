@@ -77,6 +77,8 @@ public static class WorkerHost
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
         builder.Services.AddHttpClient(IntelligenceHttp.KevClientName)
             .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.AdvisoryClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
         builder.Services.AddScoped<ISpeedProbe, SpeedtestNetProbe>();
         builder.Services.AddScoped<AutomaticSpeedJob>();
         builder.Services.AddHostedService<SpeedWorker>();

@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -28,29 +27,8 @@ internal sealed class KevCatalogClient(HttpClient client)
         response.EnsureSuccessStatusCode();
         if (response.StatusCode != HttpStatusCode.OK)
             throw new InvalidDataException("Unexpected KEV response status.");
-        if (response.Content.Headers.ContentEncoding.Any(x => !string.Equals(x, "identity", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidDataException("Unsupported KEV content encoding.");
-        if (response.Content.Headers.ContentLength is long length && length > maxBytes)
-            throw new InvalidDataException("KEV response exceeds the allowed size.");
-
-        await using var input = await response.Content.ReadAsStreamAsync(timeout.Token);
-        using var output = new MemoryStream();
-        var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            int read;
-            while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), timeout.Token)) != 0)
-            {
-                if (output.Length + read > maxBytes) throw new InvalidDataException("KEV response exceeds the allowed size.");
-                output.Write(buffer, 0, read);
-            }
-            var bytes = output.ToArray();
-            return new(bytes, SHA256.HashData(bytes), response.Headers.ETag?.ToString(), response.Content.Headers.LastModified);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        var bytes = await BoundedHttpBody.ReadAsync(response.Content, maxBytes, timeout.Token);
+        return new(bytes, SHA256.HashData(bytes), response.Headers.ETag?.ToString(), response.Content.Headers.LastModified);
     }
 }
 
