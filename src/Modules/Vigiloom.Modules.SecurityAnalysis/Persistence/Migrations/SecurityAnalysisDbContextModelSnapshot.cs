@@ -444,6 +444,11 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasColumnType("varchar(1024)")
                         .UseCollation("Latin1_General_100_BIN2");
 
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
                     b.Property<DateTimeOffset?>("NotBefore")
                         .HasColumnType("datetimeoffset");
 
@@ -535,6 +540,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("AdvisoryImports", "security", t =>
                         {
                             t.HasCheckConstraint("CK_AdvisoryImports_Base", "([BaseRevisionId] IS NULL AND [BaseActivationVersion] IS NULL) OR ([BaseRevisionId] IS NOT NULL AND [BaseActivationVersion] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_AdvisoryImports_FailureCode", "[FailureCode] IS NULL OR [FailureCode] IN ('fetch-failed','invalid-response','request-timeout','cursor-rejected','limit-exceeded','invalid-base')");
 
                             t.HasCheckConstraint("CK_AdvisoryImports_RateLimitAttempts", "[RateLimitAttempts] BETWEEN 0 AND 20");
 

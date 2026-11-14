@@ -27,5 +27,6 @@ public sealed class AdvisoryImport
     public byte[]? ResultSourceVersion { get; set; }
     public int ReconciliationPhase { get; set; } = 1;
     public int ReconciliationRecordCount { get; set; }
+    public string? FailureCode { get; set; }
     public byte[] Version { get; private set; } = [];
 }

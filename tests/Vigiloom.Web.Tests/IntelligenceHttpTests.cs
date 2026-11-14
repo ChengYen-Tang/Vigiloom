@@ -37,6 +37,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
             });
             await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
+            var advisorySource = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
             var secret = "SECRET-ARTIFACT-MUST-NOT-BE-RETURNED";
             var revision = new IntelligenceRevision
             {
@@ -48,7 +49,12 @@ public sealed class IntelligenceHttpTests(TestContext context)
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
             {
                 db.IntelligenceSources.Add(source);
+                db.IntelligenceSources.Add(advisorySource);
                 db.IntelligenceRevisions.Add(revision);
+                await db.SaveChangesAsync(token);
+                db.AdvisoryImports.Add(new AdvisoryImport { SourceId = advisorySource.Id, SourceVersion = advisorySource.Version,
+                    WindowStart = new(2023, 1, 1), WindowEnd = new(2023, 2, 1), StartedAt = DateTimeOffset.UtcNow,
+                    Cursor = "SECRET-CURSOR", FailureCode = "fetch-failed" });
                 await db.SaveChangesAsync(token);
             }
             string apiCredential;
@@ -86,6 +92,22 @@ public sealed class IntelligenceHttpTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
                 Assert.DoesNotContain(secret, await result.Content.ReadAsStringAsync(token));
             }
+            var progressPath = $"{path}{advisorySource.Id:D}/advisory-progress";
+            using (var result = await anonymous.GetAsync(progressPath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await reader.GetAsync(progressPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
+            using (var result = await api.GetAsync(progressPath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await admin.GetAsync(progressPath, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+                Assert.IsTrue(result.Headers.CacheControl?.NoStore);
+                var body = await result.Content.ReadAsStringAsync(token);
+                Assert.DoesNotContain("SECRET-CURSOR", body);
+                var progress = JsonSerializer.Deserialize<AdvisoryImportProgressView>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                Assert.IsNotNull(progress);
+                Assert.AreEqual("failed", progress.State);
+                Assert.AreEqual("fetch-failed", progress.FailureCode);
+            }
+            using (var result = await admin.GetAsync($"{path}{source.Id:D}/advisory-progress", token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
             using (var result = await admin.GetAsync($"{path}?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
             using (var result = await admin.GetAsync($"{path}{Guid.CreateVersion7():D}/revisions", token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
             var request = new IntelligenceActivationRequest(revision.Id, null, "", false);
@@ -97,7 +119,7 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using (var result = await admin.PostAsJsonAsync($"{path}{source.Id:D}/activation", request, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             var sourcePage = await admin.GetFromJsonAsync<IntelligenceSourcePage>(path, token);
             Assert.IsNotNull(sourcePage);
-            var current = sourcePage.Items.Single();
+            var current = sourcePage.Items.Single(x => x.Id == source.Id);
             var policy = new IntelligencePolicyUpdate(true, 43_200, current.StaleAfterSeconds, current.MaximumBytes, current.MaximumRecords, current.Version);
             using (var result = await admin.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PutAsJsonAsync($"{path}{source.Id:D}/policy", policy, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);

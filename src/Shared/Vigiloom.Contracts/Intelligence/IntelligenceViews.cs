@@ -8,6 +8,11 @@ public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, i
 /// <summary>Bounded page of intelligence source status.</summary>
 public sealed record IntelligenceSourcePage(IReadOnlyList<IntelligenceSourceView> Items, int Page, bool HasMore);
 
+/// <summary>Non-secret progress and coverage for the GitHub-reviewed advisory source.</summary>
+public sealed record AdvisoryImportProgressView(Guid SourceId, Guid? ImportId, string State, DateOnly? WindowStart, DateOnly? WindowEnd,
+    DateTimeOffset? StartedAt, int PageCount, int RecordCount, long TotalBytes, DateTimeOffset? RetryAt,
+    string? FailureCode, Guid? CandidateRevisionId, string Coverage);
+
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
 public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,
     string Sha256, string SchemaVersion, string MappingVersion, string LicenseEvidence, int RecordCount, bool Revoked, bool Normalized, bool Active);
