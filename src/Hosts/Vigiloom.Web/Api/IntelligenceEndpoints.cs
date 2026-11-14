@@ -1,5 +1,6 @@
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -31,6 +32,18 @@ internal static class IntelligenceEndpoints
             return await status.GetAdvisoryProgressAsync(sourceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<AdvisoryImportProgressView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read GitHub advisory import progress and coverage");
+        admin.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, AdvisoryImportRecoveryRequest input, AdvisoryRecovery recovery, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            if (sourceId == Guid.Empty || input.ImportId.Version != 7) return Results.ValidationProblem(new Dictionary<string, string[]> { ["import"] = ["Invalid import identity."] });
+            return await ApiMutation.ExecuteAsync(context, async actor => (await recovery.AbandonAsync(sourceId, input, actor, token)) switch
+            {
+                AdvisoryRecoveryResult.Abandoned => Results.NoContent(),
+                AdvisoryRecoveryResult.NotFound => Results.NotFound(),
+                _ => Results.Problem(statusCode: 409, title: "The import changed or cannot be restarted; reload and try again.")
+            }, allowApiCredential: false);
+        }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Abandon a failed advisory import so a later scheduled refresh can start again");
         admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligencePolicy policy, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";

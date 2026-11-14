@@ -218,6 +218,12 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsFalse(intelligencePolicy.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
+        var advisoryProgress = paths.GetProperty("/api/v1/admin/intelligence/sources/{sourceId}/advisory-progress").GetProperty("get");
+        Assert.IsTrue(advisoryProgress.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        var advisoryRecovery = paths.GetProperty("/api/v1/admin/intelligence/sources/{sourceId}/advisory-recovery").GetProperty("post");
+        Assert.IsTrue(advisoryRecovery.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(advisoryRecovery.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsFalse(advisoryRecovery.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
         var intelligenceAudit = paths.GetProperty("/api/v1/operations/audit/intelligence").GetProperty("get");
         Assert.IsTrue(intelligenceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", intelligenceAudit.GetProperty("description").GetString()!);

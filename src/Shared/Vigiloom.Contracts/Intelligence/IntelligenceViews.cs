@@ -11,7 +11,10 @@ public sealed record IntelligenceSourcePage(IReadOnlyList<IntelligenceSourceView
 /// <summary>Non-secret progress and coverage for the GitHub-reviewed advisory source.</summary>
 public sealed record AdvisoryImportProgressView(Guid SourceId, Guid? ImportId, string State, DateOnly? WindowStart, DateOnly? WindowEnd,
     DateTimeOffset? StartedAt, int PageCount, int RecordCount, long TotalBytes, DateTimeOffset? RetryAt,
-    string? FailureCode, Guid? CandidateRevisionId, string Coverage);
+    string? FailureCode, Guid? CandidateRevisionId, string Coverage, string? Version);
+
+/// <summary>Identifies the failed import and version the administrator reviewed.</summary>
+public sealed record AdvisoryImportRecoveryRequest(Guid ImportId, string Version);
 
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
 public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,

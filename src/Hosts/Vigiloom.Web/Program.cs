@@ -158,6 +158,7 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelli
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevCatalog>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePolicy>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryRecovery>();
 builder.Services.AddScoped<AgentInventorySettings>();
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>();
 builder.Services.AddScoped<AgentInventoryStatus>();
