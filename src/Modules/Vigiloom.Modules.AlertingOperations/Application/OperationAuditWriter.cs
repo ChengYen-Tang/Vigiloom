@@ -37,6 +37,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             ServiceSourceChanged change when change.Action is ServiceSourceAction.Issued or ServiceSourceAction.Revoked or ServiceSourceAction.CredentialRotated => (AuditKinds.ServiceSourceChangedV1, JsonSerializer.Serialize(change)),
             GroupChanged change when IsValid(change) => (AuditKinds.GroupChangedV1, JsonSerializer.Serialize(change)),
             PublicationChanged change when IsValid(change) => (AuditKinds.PublicationChangedV1, JsonSerializer.Serialize(change)),
+            PublicationTemplateChanged change when IsValid(change) => (AuditKinds.PublicationTemplateChangedV1, JsonSerializer.Serialize(change)),
             InstancePolicyChanged change when IsValid(change) => (AuditKinds.InstancePolicyChangedV1, JsonSerializer.Serialize(change)),
             ServiceInstanceChanged change when IsValid(change) => (AuditKinds.ServiceInstanceChangedV1, JsonSerializer.Serialize(change)),
             ServiceCollectionChanged change when IsValid(change) => (AuditKinds.ServiceCollectionChangedV1, JsonSerializer.Serialize(change)),
@@ -81,7 +82,9 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         (change.Action is GroupAction.DevicesChanged or GroupAction.ServicesChanged || (change.Added == 0 && change.Removed == 0));
 
     internal static bool IsValid(PublicationChanged change) => change.ResourceKind is >= PublicationResourceKind.Device and <= PublicationResourceKind.Group &&
-        (change.PreviousPublic != change.CurrentPublic || change.NameChanged);
+        (change.PreviousPublic != change.CurrentPublic || change.NameChanged || change.TemplateChanged && change.ResourceKind == PublicationResourceKind.Device);
+    internal static bool IsValid(PublicationTemplateChanged change) => change.Action is >= PublicationTemplateAction.Created and <= PublicationTemplateAction.DefaultCleared &&
+        change.AffectedDevices is >= 0 and <= 10000;
 
     internal static bool IsValid(InstancePolicyChanged change) => change.Previous is not null && change.Current is not null &&
         change.Previous.PerService > 0 && change.Previous.Total > 0 && change.Current.PerService > 0 && change.Current.Total > 0 &&

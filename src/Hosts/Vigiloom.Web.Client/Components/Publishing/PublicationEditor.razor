@@ -8,7 +8,7 @@
     else if (settings is null) { <section class="publication-card" role="alert">@(error ?? "找不到資源或已無法存取。")</section> }
     else
     {
-        <section class="publication-info"><strong>目前狀態：@(settings.Public ? "公開中" : "不公開")</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
+        <section class="publication-info"><strong>目前狀態：@CurrentStatus</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
         @if (message is not null) { <p class="publication-message" role="@(success ? "status" : "alert")">@message</p> }
         <EditForm Model="model" OnSubmit="SaveAsync" FormName="publication-editor">
             <section class="publication-card publication-layout">
@@ -25,19 +25,29 @@
                         <InputText id="public-name" @bind-Value="model.Name" maxlength="256" disabled="@Disabled" />
                         <p>名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。</p>
                         <label for="public-policy">公開範本</label>
-                        <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled"><option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option></InputSelect>
+                        <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled">
+                            @if (Kind == "devices") { <option value="">請選擇公開範本</option> }
+                            <option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option>
+                            @foreach (var template in templates) { <option value="@template.Id.ToString()">@template.Name@(template.IsDefault ? "（預設）" : "")</option> }
+                            @if (MissingSelection) { <option value="@model.Policy" disabled>原範本已無法使用，請重新選擇</option> }
+                        </InputSelect>
+                        @if (Kind == "devices" && moreTemplates) { <button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">載入更多範本</button> }
+                        @if (templateError is not null) { <p role="alert">@templateError</p><button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">重試載入</button> }
                     }
                 </div>
                 <aside aria-labelledby="publication-preview-heading">
                     <h2 id="publication-preview-heading">公開預覽</h2>
                     @if (!model.Public) { <p>目前選擇不公開，訪客不會看到此資源。</p> }
+                    else if (Kind == "devices" && model.Policy != PublicationPolicy.BaselineVersion && SelectedTemplate is null)
+                    { <p>請選擇可用的公開範本後查看預覽。</p> }
                     else
                     {
                         <div class="publication-preview"><strong>@(string.IsNullOrWhiteSpace(model.Name) ? "請輸入公開名稱" : model.Name)</strong>
                             @if (Kind != "groups") { <span class="@StateClass(preview?.State)">@StateText(preview?.State)</span> }
-                            @if (Kind == "devices" && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
+                            @if (Kind == "devices" && ShowLatency && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
+                            @if (Kind == "devices" && ShowObservedAt && preview?.ObservedAt is { } observed) { <span>@observed.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }
                         </div>
-                        @if (Kind == "devices") { <p>名稱、狀態及延遲會公開；目前不公開歷史。IP 和主機進階資料不會公開。</p> }
+                        @if (Kind == "devices") { <p>名稱與狀態會公開@(ShowLatency ? "，包含延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；目前不公開歷史。IP 和主機進階資料不會公開。</p> }
                         else if (Kind == "services") { <p>名稱與簡易狀態會公開；目前不公開歷史及進階遙測。</p> }
                         else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
                     }
@@ -57,9 +67,23 @@
     private readonly Form model = new();
     private PublicationSettings? settings;
     private PublicationPreview? preview;
-    private bool loading = true, saving, success;
+    private PublicationTemplateItem? currentTemplate;
+    private bool currentTemplateChecked;
+    private readonly List<PublicationTemplateItem> templates = [];
+    private int templatePage;
+    private bool moreTemplates;
+    private string? templateError;
+    private bool loading = true, saving, success, loadingTemplates;
     private string? error, message;
     private bool Disabled => !RendererInfo.IsInteractive || saving;
+    private PublicationTemplateItem? SelectedTemplate => templates.FirstOrDefault(x => x.Id.ToString() == model.Policy);
+    private bool MissingSelection => Kind == "devices" && model.Policy.Length != 0 && model.Policy != PublicationPolicy.BaselineVersion && SelectedTemplate is null;
+    private bool ShowLatency => model.Policy == PublicationPolicy.BaselineVersion || SelectedTemplate?.ShowLatency == true;
+    private bool ShowObservedAt => model.Policy == PublicationPolicy.BaselineVersion || SelectedTemplate?.ShowObservedAt == true;
+    private string CurrentStatus => settings is null || !settings.Public ? "不公開" :
+        Kind == "devices" && settings.PolicyVersion == PublicationPolicy.TemplateVersion
+            ? !currentTemplateChecked ? "已設定公開，範本狀態暫時無法確認" : currentTemplate is null ? "已設定公開，但範本失效，目前訪客不可見" : "公開中"
+            : settings.PolicyVersion == PublicationPolicy.BaselineVersion ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
 
     protected override async Task OnInitializedAsync()
     {
@@ -69,7 +93,26 @@
             if (settings is null) return;
             model.Public = settings.Public;
             model.Name = settings.DisplayName ?? InitialName;
-            model.Policy = settings.PolicyVersion ?? PublicationPolicy.BaselineVersion;
+            model.Policy = Kind == "devices" && settings.PolicyVersion == PublicationPolicy.TemplateVersion && settings.TemplateId is { } selected
+                ? selected.ToString() : settings.PolicyVersion ?? (Kind == "devices" ? "" : PublicationPolicy.BaselineVersion);
+            if (Kind == "devices")
+            {
+                try
+                {
+                    await LoadMoreAsync();
+                    if (settings.PolicyVersion == PublicationPolicy.TemplateVersion)
+                    {
+                        currentTemplate = settings.TemplateId is { } existing ? await Client.TemplateAsync(existing, lifetime.Token) : null;
+                        currentTemplateChecked = true;
+                        if (currentTemplate is not null && !templates.Any(x => x.Id == currentTemplate.Id)) templates.Add(currentTemplate);
+                    }
+                    if (settings.PolicyVersion is null)
+                    { var item = await Client.DefaultTemplateAsync(lifetime.Token); if (item is not null) { if (!templates.Any(x => x.Id == item.Id)) templates.Add(item); model.Policy = item.Id.ToString(); } }
+                }
+                catch (UnauthorizedAccessException) { throw; }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = "範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"; }
+            }
             try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
             catch (UnauthorizedAccessException) { throw; }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -85,15 +128,19 @@
     {
         if (settings is null || saving) return;
         success = false; message = null;
-        if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || model.Policy != PublicationPolicy.BaselineVersion))
+        var selected = SelectedTemplate;
+        if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || model.Policy != PublicationPolicy.BaselineVersion && (Kind != "devices" || selected is null)))
         { message = "請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"; return; }
         saving = true;
         try
         {
-            var result = await Client.SaveAsync(Kind, Id, new(model.Public, model.Name, model.Policy, settings.Version), lifetime.Token);
+            var policy = model.Public && selected is not null ? PublicationPolicy.TemplateVersion : model.Policy;
+            var result = await Client.SaveAsync(Kind, Id, new(model.Public, model.Name, policy, settings.Version,
+                model.Public ? selected?.Id : null, model.Public ? selected?.Version : null), lifetime.Token);
             if (result.Status == PublicationSaveStatus.Updated && result.Settings is not null)
             {
-                settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; success = true; message = "公開設定已儲存。";
+                settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; currentTemplate = model.Public ? selected : null;
+                currentTemplateChecked = true; success = true; message = "公開設定已儲存。";
                 try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
             }
@@ -109,6 +156,21 @@
     { "Operational" => "可達", "Unavailable" => "不可達", "Healthy" => "正常", "Degraded" => "降級", "Unhealthy" => "異常", _ => "未知或尚無資料" };
     private static string StateClass(string? state) => state switch
     { "Operational" or "Healthy" => "publication-good", "Unavailable" or "Unhealthy" => "publication-danger", _ => "publication-unknown" };
+    private async Task LoadMoreAsync()
+    {
+        if (loadingTemplates) return;
+        loadingTemplates = true;
+        try
+        {
+            var page = await Client.TemplatesAsync(templatePage + 1, lifetime.Token);
+            foreach (var item in page.Items) if (!templates.Any(x => x.Id == item.Id)) templates.Add(item);
+            templatePage = page.Page; moreTemplates = page.HasMore; templateError = null;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (UnauthorizedAccessException) { templateError = "登入已過期或權限已變更，請重新登入。"; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = "範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"; }
+        finally { loadingTemplates = false; }
+    }
     public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
     private sealed class Form { public bool Public { get; set; } public string? Name { get; set; } public string Policy { get; set; } = PublicationPolicy.BaselineVersion; }
 }

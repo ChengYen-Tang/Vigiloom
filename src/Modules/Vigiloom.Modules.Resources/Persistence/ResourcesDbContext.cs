@@ -16,7 +16,11 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     {
         modelBuilder.HasDefaultSchema("resources");
         var device = modelBuilder.Entity<Device>();
-        device.ToTable("Devices", table => table.HasCheckConstraint("CK_Devices_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        device.ToTable("Devices", table =>
+        {
+            table.HasCheckConstraint("CK_Devices_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_Devices_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
+        });
         device.HasKey(x => x.Id).IsClustered(false);
         device.Property(x => x.Id).ValueGeneratedNever();
         device.Property(x => x.RowId).UseIdentityColumn();
@@ -25,6 +29,7 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         device.Property(x => x.Address).HasMaxLength(253).IsRequired();
         device.Property(x => x.PublicDisplayName).HasMaxLength(256);
         device.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
+        device.HasIndex(x => x.PublicTemplateId).HasFilter("[PublicTemplateId] IS NOT NULL");
         device.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });
         device.Property(x => x.DeepMonitoring).HasColumnName("HasAgent");
         device.Property(x => x.IsEnabled).HasDefaultValue(true);

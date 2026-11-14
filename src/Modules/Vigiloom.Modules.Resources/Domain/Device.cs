@@ -29,6 +29,8 @@ public sealed class Device
     public bool IsPublic { get; private set; }
     public string? PublicDisplayName { get; private set; }
     public string? PublicPolicyVersion { get; private set; }
+    public Guid? PublicTemplateId { get; private set; }
+    public DateTimeOffset? PublicSince { get; private set; }
     /// <summary>Changes on archive so restored devices cannot reactivate previous Agent credentials.</summary>
     public long AgentAuthorizationGeneration { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
@@ -61,16 +63,33 @@ public sealed class Device
         IsArchived = true;
         IsEnabled = false;
         IsPublic = false;
+        PublicSince = null;
         UpdatedAt = now.ToUniversalTime();
     }
 
-    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
+    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now, bool restartPublicPeriod = false)
     {
         if (IsArchived) throw new InvalidOperationException("Archived devices cannot be published.");
         if (isPublic && (policyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(displayName, out _)))
             throw new ArgumentException("An approved publication policy and public name are required.");
+        if (isPublic && (!IsPublic || restartPublicPeriod)) PublicSince = now.ToUniversalTime();
+        if (!isPublic) PublicSince = null;
         IsPublic = isPublic;
-        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
+        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; PublicTemplateId = null; }
+        UpdatedAt = now.ToUniversalTime();
+    }
+
+    /// <summary>Apply an already validated active template to a device.</summary>
+    public void SetTemplatePublication(string displayName, Guid templateId, bool restartPublicPeriod, DateTimeOffset now)
+    {
+        if (IsArchived) throw new InvalidOperationException("Archived devices cannot be published.");
+        if (templateId.Version != 7 || !PublicationPolicy.TryValidateName(displayName, out var name))
+            throw new ArgumentException("A valid template and public name are required.");
+        if (!IsPublic || restartPublicPeriod) PublicSince = now.ToUniversalTime();
+        IsPublic = true;
+        PublicDisplayName = name;
+        PublicPolicyVersion = PublicationPolicy.TemplateVersion;
+        PublicTemplateId = templateId;
         UpdatedAt = now.ToUniversalTime();
     }
 
