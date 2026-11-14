@@ -27,7 +27,8 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         {
             await using var db = await services.CreateDbContextAsync(token);
             var row = await db.Services.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
-            return row is null ? null : Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version);
+            return row is null ? null : Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version,
+                historyReady: row.IsPublic && row.PublicSince != MonitoredService.PendingPublicSince);
         }
         await using var resourceDb = await resources.CreateDbContextAsync(token);
         if (kind == PublicationResourceKind.Device)
@@ -63,7 +64,8 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         byte[] requestedTemplateVersion = [];
         if (templateSelection && (change.TemplateId?.Version != 7 || !TryVersion(change.TemplateVersion, out requestedTemplateVersion))) return new(PublicationChangeStatus.Invalid);
         if (!templateSelection && (change.TemplateId is not null || change.TemplateVersion is not null)) return new(PublicationChangeStatus.Invalid);
-        if (change.Public && ((!templateSelection && change.PolicyVersion != PublicationPolicy.BaselineVersion) || !PublicationPolicy.TryValidateName(change.DisplayName, out name)))
+        var serviceHistory = kind == PublicationResourceKind.Service && change.PolicyVersion == PublicationPolicy.ServiceHistoryVersion;
+        if (change.Public && ((!templateSelection && !serviceHistory && change.PolicyVersion != PublicationPolicy.BaselineVersion) || !PublicationPolicy.TryValidateName(change.DisplayName, out name)))
             return new(PublicationChangeStatus.Invalid);
         if (kind == PublicationResourceKind.Service)
         {
@@ -73,22 +75,25 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             if (row is null) return new(PublicationChangeStatus.NotFound);
             if (!row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
+            var changedPolicy = previous && change.Public && row.PublicPolicyVersion != change.PolicyVersion;
             if (previous == change.Public && !changedName && (!change.Public || row.PublicPolicyVersion == change.PolicyVersion))
             {
                 await tx.CommitAsync(token);
                 var confirmed = row.PublicSince == MonitoredService.PendingPublicSince
                     ? await ConfirmServicePeriodAsync(id, row.Version, token) : null;
-                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmed ?? row.Version));
+                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmed ?? row.Version,
+                    historyReady: row.IsPublic && (confirmed is not null || row.PublicSince != MonitoredService.PendingPublicSince)));
             }
             var now = clock.GetUtcNow().ToUniversalTime();
             row.SetPublication(change.Public, name, change.PolicyVersion, now);
             try { await db.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
-            await AppendAsync(db, tx, actor, id, now, kind, previous, change.Public, changedName, token);
+            await AppendAsync(db, tx, actor, id, now, kind, previous, change.Public, changedName, token, policyChanged: changedPolicy);
             await tx.CommitAsync(token);
             var confirmedVersion = row.PublicSince == MonitoredService.PendingPublicSince
                 ? await ConfirmServicePeriodAsync(id, row.Version, token) : null;
-            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmedVersion ?? row.Version));
+            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmedVersion ?? row.Version,
+                historyReady: row.IsPublic && (confirmedVersion is not null || row.PublicSince != MonitoredService.PendingPublicSince)));
         }
         await using var resourcesDb = await resources.CreateDbContextAsync(token);
         await using var transaction = await resourcesDb.Database.BeginTransactionAsync(token);
@@ -150,9 +155,9 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
     }
 
     private Task AppendAsync(DbContext db, IDbContextTransaction tx, Guid actor, Guid id, DateTimeOffset now,
-        PublicationResourceKind kind, bool previous, bool current, bool nameChanged, CancellationToken token, bool templateChanged = false) =>
+        PublicationResourceKind kind, bool previous, bool current, bool nameChanged, CancellationToken token, bool templateChanged = false, bool policyChanged = false) =>
         audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
-            new OperationAudit(actor, id, now, new PublicationChanged(kind, previous, current, nameChanged, templateChanged)), token);
+            new OperationAudit(actor, id, now, new PublicationChanged(kind, previous, current, nameChanged, templateChanged, policyChanged)), token);
 
     private async Task<byte[]?> ConfirmServicePeriodAsync(Guid id, byte[] publishedVersion, CancellationToken token)
     {
@@ -178,8 +183,8 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         return null;
     }
 
-    private static PublicationSettings Settings(Guid id, bool isPublic, string? name, string? policy, byte[] version, Guid? templateId = null, byte[]? templateVersion = null) =>
-        new(id, isPublic, name, policy, Convert.ToBase64String(version), templateId, templateVersion is null ? null : Convert.ToBase64String(templateVersion));
+    private static PublicationSettings Settings(Guid id, bool isPublic, string? name, string? policy, byte[] version, Guid? templateId = null, byte[]? templateVersion = null, bool? historyReady = null) =>
+        new(id, isPublic, name, policy, Convert.ToBase64String(version), templateId, templateVersion is null ? null : Convert.ToBase64String(templateVersion), historyReady);
     private static bool TryVersion(string? text, out byte[] version)
     {
         version = [];

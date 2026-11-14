@@ -7,6 +7,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Domain;
 
 namespace Vigiloom.Web.Publishing;
 
@@ -50,7 +51,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
                 OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL) AS [DeviceCount],
           (SELECT COUNT(*) FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
             WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
-              AND s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
+              AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
+                OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
         FROM [resources].[Groups] AS g
         WHERE g.[IsPublic] = CAST(1 AS bit) AND g.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(g.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND g.[PublicDisplayName] IS NOT NULL
           AND (EXISTS (SELECT 1 FROM [resources].[DeviceGroups] AS m JOIN [resources].[Devices] AS d ON d.[Id] = m.[DeviceId]
@@ -59,7 +61,8 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
                     OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL)
             OR EXISTS (SELECT 1 FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
                 WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
-                  AND s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}) AND s.[PublicDisplayName] IS NOT NULL))
+                  AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
+                    OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))) AND s.[PublicDisplayName] IS NOT NULL))
         """);
 
     private static IQueryable<DeviceRow> VisibleDevices(ResourcesDbContext db) => db.Database.SqlQuery<DeviceRow>($"""
@@ -105,12 +108,19 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
         return current is not null && SameDevicePolicy(row, current) ? Map(row, states) : null;
     }
 
+    private static IQueryable<MonitoredService> VisibleServices(ServiceObservabilityDbContext db) => db.Services.AsNoTracking().Where(x =>
+        x.IsPublic && x.PublicDisplayName != null &&
+        ((EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion &&
+          EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2) ||
+         (EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&
+          EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryVersion.Length * 2)));
+
     public async Task<PublicPage<PublicService>> ServicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
     {
         await using var db = await services.CreateDbContextAsync(token);
         var groupVersion = groupId is { } requestedGroup ? await GroupVersionAsync(requestedGroup, token) : null;
         if (groupId is not null && groupVersion is null) return new([], page, false);
-        var query = db.Services.AsNoTracking().Where(x => x.IsPublic && EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2 && x.PublicDisplayName != null);
+        var query = VisibleServices(db);
         if (groupId is { } group)
         {
             // Group membership is owned by Resources; the host coordinates the two schemas in the same SQL database.
@@ -130,9 +140,9 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
             .Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
         var states = await health.ReadManyAsync(rows.Select(x => x.Id).ToArray(), token);
         var ids = rows.Select(x => x.Id).ToArray();
-        var current = await (from service in db.Services.AsNoTracking()
+        var current = await (from service in VisibleServices(db)
                              join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
-                             where ids.Contains(service.Id) && service.IsPublic && EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2
+                             where ids.Contains(service.Id)
                              select new { service.Id, service.Version, SourceVersion = source.Version }).ToDictionaryAsync(x => x.Id, token);
         HashSet<Guid>? members = null;
         if (groupId is { } finalGroup)
@@ -150,15 +160,15 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     {
         if (id.Version != 7) return null;
         await using var db = await services.CreateDbContextAsync(token);
-        var row = await (from service in db.Services.AsNoTracking()
+        var row = await (from service in VisibleServices(db)
                          join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
-                         where service.Id == id && service.IsPublic && EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2 && service.PublicDisplayName != null
+                         where service.Id == id
                          select new ServiceRow(service.Id, service.PublicDisplayName!, service.Version, source.Id, source.Version)).SingleOrDefaultAsync(token);
         if (row is null || !PublicationPolicy.TryValidateName(row.Name, out _)) return null;
         var states = await health.ReadManyAsync([id], token);
-        var current = await (from service in db.Services.AsNoTracking()
+        var current = await (from service in VisibleServices(db)
                              join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
-                             where service.Id == id && service.IsPublic && EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion && EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2
+                             where service.Id == id
                              select new { service.Version, SourceVersion = source.Version }).SingleOrDefaultAsync(token);
         return current is not null && current.Version.AsSpan().SequenceEqual(row.Version) && current.SourceVersion.AsSpan().SequenceEqual(row.SourceVersion) &&
             states.TryGetValue(id, out var state) ? Map(row, state) : null;

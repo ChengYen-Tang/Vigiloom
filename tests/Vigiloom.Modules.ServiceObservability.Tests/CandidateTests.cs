@@ -50,9 +50,12 @@ public sealed class CandidateTests
         Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
         service.SetPublication(true, "Orders API", PublicationPolicy.BaselineVersion, now.AddMinutes(2));
         Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
+        service.SetPublication(true, "Orders API", PublicationPolicy.ServiceHistoryVersion, now.AddMinutes(2));
+        Assert.AreEqual(MonitoredService.PendingPublicSince, service.PublicSince);
+        service.ConfirmPublicSince(now.AddMinutes(2));
         service.Revoke(now.AddMinutes(3));
         service.Resume(now.AddMinutes(4));
-        Assert.AreEqual(now.AddMinutes(1), service.PublicSince);
+        Assert.AreEqual(now.AddMinutes(2), service.PublicSince);
         service.SetPublication(false, null, null, now.AddMinutes(5));
         Assert.IsNull(service.PublicSince);
         service.SetPublication(true, "Orders", PublicationPolicy.BaselineVersion, now.AddMinutes(6));

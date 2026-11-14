@@ -148,6 +148,7 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         var first = await admin.SetAsync(PublicationResourceKind.Service, service.Id,
             new(true, "Orders", PublicationPolicy.BaselineVersion, settings.Version), actor, token);
         Assert.AreEqual(PublicationChangeStatus.Updated, first.Status);
+        Assert.IsFalse(first.Settings!.HistoryReady ?? true);
         DateTimeOffset updatedAt;
         await using (var db = await normal.CreateDbContextAsync(token))
         {
@@ -158,6 +159,7 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         var retry = await admin.SetAsync(PublicationResourceKind.Service, service.Id,
             new(true, "Orders", PublicationPolicy.BaselineVersion, first.Settings!.Version), actor, token);
         Assert.AreEqual(PublicationChangeStatus.Updated, retry.Status);
+        Assert.IsTrue(retry.Settings!.HistoryReady ?? false);
         await using var verify = await normal.CreateDbContextAsync(token);
         var saved = await verify.Services.SingleAsync(x => x.Id == service.Id, token);
         Assert.IsNotNull(saved.PublicSince);

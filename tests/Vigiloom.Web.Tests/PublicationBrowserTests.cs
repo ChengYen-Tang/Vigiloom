@@ -9,6 +9,9 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.Publishing.Domain;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Web.Tests;
 
@@ -19,6 +22,65 @@ namespace Vigiloom.Web.Tests;
 [DoNotParallelize]
 public sealed class PublicationBrowserTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Administrator_CanChooseServiceHistoryInBothRuntimes() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var candidate = new ServiceCandidate(source.Id, "orders", "production", "Orders", now);
+        var service = new MonitoredService(candidate, now);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
+            await db.SaveChangesAsync(token);
+        }
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var browserContext = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1487, Height = 1058 } });
+        var page = await browserContext.NewPageAsync();
+        await using var gate = await AutoRenderGate.HoldAsync(page);
+        await page.GotoAsync($"{url}/settings/publication/services/{service.Id:D}");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.Locator(".publication-editor[data-runtime='Server'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        Assert.AreEqual(0, await page.GetByText("包含簡易每日狀態歷史").CountAsync());
+        await page.GetByLabel("公開（允許訪客查看）").CheckAsync();
+        await page.GetByRole(AriaRole.Radio, new() { Name = "包含簡易每日狀態歷史", Exact = false }).CheckAsync();
+        await page.GetByLabel("公開顯示名稱").FillAsync("Orders");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            Assert.AreEqual(PublicationPolicy.ServiceHistoryVersion, (await db.Services.SingleAsync(x => x.Id == service.Id, token)).PublicPolicyVersion);
+        await gate.ReleaseAsync();
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+        await page.ReloadAsync();
+        await page.Locator(".publication-editor[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        Assert.IsTrue(await page.GetByRole(AriaRole.Radio, new() { Name = "包含簡易每日狀態歷史", Exact = false }).IsCheckedAsync());
+        await page.GetByRole(AriaRole.Radio, new() { Name = "僅顯示簡易狀態", Exact = false }).CheckAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        await using (var verify = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            var saved = await verify.Services.SingleAsync(x => x.Id == service.Id, token);
+            Assert.AreEqual(PublicationPolicy.BaselineVersion, saved.PublicPolicyVersion);
+            // Reproduce a committed publication whose post-commit confirmation failed.
+            saved.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, DateTimeOffset.UtcNow);
+            await verify.SaveChangesAsync(token);
+        }
+        await page.ReloadAsync();
+        await page.Locator(".publication-editor[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByText("公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual(0, await page.GetByText("公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。", new() { Exact = true }).CountAsync());
+    }, context.CancellationToken);
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Administrator_CanSelectTemplateAndKeepChoiceAcrossRuntimes() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
