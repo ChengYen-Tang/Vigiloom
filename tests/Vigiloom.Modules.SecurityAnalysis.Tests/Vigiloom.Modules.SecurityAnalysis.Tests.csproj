@@ -10,5 +10,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/LICENSE" />
     <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/README.md" />
+    <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/hash-iocs.txt.gz" />
+    <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/c2-iocs.txt.gz" />
   </ItemGroup>
 </Project>

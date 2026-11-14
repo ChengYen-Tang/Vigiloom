@@ -15,8 +15,8 @@ internal sealed class SignatureLicenseException() : Exception("Signature-Base li
 internal static class SignatureArchive
 {
     private const int MaximumFileBytes = 1024 * 1024;
-    private const string LicenseHash = "8a959b2413d0c83ca1b3ce9153076c649abf2e4bbfebbb493fb24c2074a1eb8a";
-    private const string ReadmeHash = "746dec77d0504667bf0f57196a98e8e9c936a08d834048589f91517674464496";
+    internal const string LicenseHash = "8a959b2413d0c83ca1b3ce9153076c649abf2e4bbfebbb493fb24c2074a1eb8a";
+    internal const string ReadmeHash = "746dec77d0504667bf0f57196a98e8e9c936a08d834048589f91517674464496";
 
     internal static async Task<int> ReadAsync(Stream archive, string commit, int maximumFiles,
         Func<string, SignatureFileKind, byte[], byte[], CancellationToken, Task> accept, CancellationToken token)

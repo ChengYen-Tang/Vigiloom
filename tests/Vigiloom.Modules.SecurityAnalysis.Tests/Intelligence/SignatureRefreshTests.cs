@@ -1,7 +1,12 @@
 using System.Net;
+using System.Data.Common;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -84,6 +89,7 @@ public sealed class SignatureRefreshTests(TestContext context)
                 Assert.AreEqual("invalid-hash", (await db.IocEntries.SingleAsync(token)).Reason);
                 Assert.AreEqual(0, await db.IntelligenceActivations.CountAsync(token));
                 var source = await db.IntelligenceSources.SingleAsync(token);
+                Assert.IsFalse(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token));
                 var files = await new IntelligenceStatus(contexts, clock).GetSignatureFilesAsync(source.Id, revision.Id, 1, token);
                 Assert.IsNotNull(files);
                 Assert.HasCount(5, files.Items);
@@ -105,6 +111,124 @@ public sealed class SignatureRefreshTests(TestContext context)
             Assert.AreEqual(5, await final.SignatureFiles.CountAsync(token));
             Assert.AreEqual(1, await final.IocEntries.CountAsync(token));
             Assert.AreEqual("Signature-Base license unavailable or changed.", (await final.IntelligenceSources.SingleAsync(token)).LastError);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task ReviewedIocFiles_CanBeSelectedAndReadWithTransactionalAudit() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var source = new IntelligenceSource { Key = "signature-base", Enabled = true, LastSuccessfulCheckAt = clock.GetUtcNow() };
+            var artifact = "reviewed-source"u8.ToArray();
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = First, RetrievedAt = clock.GetUtcNow(),
+                Digest = SHA256.HashData(artifact), Artifact = artifact, SchemaVersion = SignatureRefresh.SchemaVersion,
+                MappingVersion = SignatureRefresh.MappingVersion, LicenseEvidence = SignatureRefresh.LicenseEvidence, RecordCount = 4, Normalized = true };
+            await using (var db = contexts.CreateDbContext())
+            {
+                db.IntelligenceSources.Add(source);
+                db.IntelligenceRevisions.Add(revision);
+                foreach (var (path, fixture, kind, compressed) in new[] {
+                    ("LICENSE", "LICENSE", 2, false), ("README.md", "README.md", 2, false),
+                    (IocSourceEligibility.HashPath, "hash-iocs.txt.gz", 0, true), (IocSourceEligibility.C2Path, "c2-iocs.txt.gz", 0, true) })
+                {
+                    using var input = typeof(SignatureRefreshTests).Assembly.GetManifestResourceStream($"Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence.Fixtures.SignatureBase.{fixture}")!;
+                    using var uncompressed = new MemoryStream();
+                    if (compressed) { using var gzip = new GZipStream(input, CompressionMode.Decompress); await gzip.CopyToAsync(uncompressed, token); }
+                    else await input.CopyToAsync(uncompressed, token);
+                    var bytes = uncompressed.ToArray();
+                    db.SignatureFiles.Add(new SignatureFile { RevisionId = revision.Id, Path = path, Kind = kind, Content = bytes, Digest = SHA256.HashData(bytes) });
+                }
+                await db.SaveChangesAsync(token);
+            }
+            var actor = Guid.CreateVersion7();
+            var fail = new IntelligencePublication(contexts, new TestAudit(true), clock);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fail.ActivateAsync(source.Id, revision.Id, null, "", false, actor, token));
+            await using (var db = contexts.CreateDbContext())
+            {
+                Assert.AreEqual(0, await db.IntelligenceActivations.CountAsync(token));
+                Assert.AreEqual(0, await db.IntelligenceActivationEvents.CountAsync(token));
+            }
+            var audit = new TestAudit(false);
+            var publication = new IntelligencePublication(contexts, audit, clock);
+            Assert.AreEqual(IntelligencePublicationResult.Published, await publication.ActivateAsync(source.Id, revision.Id, null, "", false, actor, token));
+            Assert.AreEqual(1, audit.Count);
+            var consumer = new IocSource(contexts, clock);
+            var selection = await consumer.GetActiveAsync(token);
+            Assert.AreEqual(IocSourceAvailability.Ready, selection.Availability);
+            var content = await consumer.ReadFileAsync(selection, IocSourceEligibility.HashPath, token);
+            Assert.AreEqual(IocSourceAvailability.Ready, content.Availability);
+            Assert.AreEqual(IocSourceEligibility.Reviewed.HashFileSha256, Convert.ToHexStringLower(SHA256.HashData(content.Content!)));
+            var c2 = await consumer.ReadFileAsync(selection, IocSourceEligibility.C2Path, token);
+            Assert.AreEqual(IocSourceAvailability.Ready, c2.Availability);
+            Assert.AreEqual(IocSourceEligibility.Reviewed.C2FileSha256, Convert.ToHexStringLower(SHA256.HashData(c2.Content!)));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task IocSource_RequiresReviewedFilesAndRejectsNestedTermsOrChangedContent() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var clients = new ClientFactory(request =>
+            {
+                if (request.RequestUri!.Host == "api.github.com") return new(HttpStatusCode.OK) { Content = new StringContent($"{{\"sha\":\"{First}\"}}") };
+                using var archive = SignatureArchiveTests.Archive(includeC2: true);
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(archive.ToArray()) };
+            });
+            Assert.AreEqual(SignatureRefreshResult.Staged, await new SignatureRefresh(contexts, clients, clock).RunDueAsync(token));
+            await using var db = contexts.CreateDbContext();
+            var source = await db.IntelligenceSources.SingleAsync(token);
+            var revision = await db.IntelligenceRevisions.SingleAsync(token);
+            var policy = new IocSourcePolicy(Convert.ToHexStringLower(SHA256.HashData("hash;description"u8)),
+                Convert.ToHexStringLower(SHA256.HashData("example.org"u8)));
+            Assert.IsTrue(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token, policy));
+            Assert.IsFalse(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token));
+            db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(token);
+            var catalog = new IocSource(contexts, clock, policy);
+            var selection = await catalog.GetActiveAsync(token);
+            Assert.AreEqual(IocSourceAvailability.Ready, selection.Availability);
+            var content = await catalog.ReadFileAsync(selection, IocSourceEligibility.HashPath, token);
+            Assert.AreEqual(IocSourceAvailability.Ready, content.Availability);
+            CollectionAssert.AreEqual("hash;description"u8.ToArray(), content.Content);
+            Assert.AreEqual("DRL-1.1", content.License);
+            Assert.AreEqual($"https://github.com/Neo23x0/signature-base/blob/{First}/LICENSE", content.LicenseUrl);
+            Assert.AreEqual(IocSourceAvailability.SelectionChanged,
+                (await catalog.ReadFileAsync(selection with { ActivationVersion = "invalid" }, IocSourceEligibility.HashPath, token)).Availability);
+            await Assert.ThrowsAsync<ArgumentException>(() => catalog.ReadFileAsync(selection, "yara/example.yar", token));
+            var file = await db.SignatureFiles.SingleAsync(x => x.Path == IocSourceEligibility.HashPath, token);
+            var original = file.Content;
+            file.Content = [1];
+            await db.SaveChangesAsync(token);
+            Assert.IsFalse(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token, policy));
+            Assert.AreEqual(IocSourceAvailability.Unavailable, (await catalog.ReadFileAsync(selection, IocSourceEligibility.HashPath, token)).Availability);
+            file.Content = original;
+            var exception = new SignatureFile { RevisionId = revision.Id, Path = "iocs/LICENSE.extra", Kind = 2,
+                Content = [1], Digest = SHA256.HashData([1]) };
+            db.SignatureFiles.Add(exception);
+            revision.RecordCount++;
+            await db.SaveChangesAsync(token);
+            Assert.IsFalse(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token, policy));
+            db.SignatureFiles.Remove(exception);
+            revision.RecordCount--;
+            await db.SaveChangesAsync(token);
+            Assert.IsTrue(await IocSourceEligibility.IsEligibleAsync(db, source.Id, revision.Id, token, policy));
+            revision.Revoked = true;
+            await db.SaveChangesAsync(token);
+            Assert.AreEqual(IocSourceAvailability.Unavailable, (await catalog.ReadFileAsync(selection, IocSourceEligibility.HashPath, token)).Availability);
+            revision.Revoked = false;
+            source.Enabled = false;
+            await db.SaveChangesAsync(token);
+            Assert.AreEqual(IocSourceAvailability.Disabled, (await catalog.ReadFileAsync(selection, IocSourceEligibility.HashPath, token)).Availability);
+            source.Enabled = true;
+            await db.SaveChangesAsync(token);
+            clock.Advance(TimeSpan.FromDays(31));
+            var stale = await catalog.ReadFileAsync(selection, IocSourceEligibility.HashPath, token);
+            Assert.AreEqual(IocSourceAvailability.Stale, stale.Availability);
+            Assert.IsNull(stale.Content);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -205,6 +329,17 @@ public sealed class SignatureRefreshTests(TestContext context)
     {
         public override DateTimeOffset GetUtcNow() => now;
         public void Advance(TimeSpan value) => now += value;
+    }
+
+    private sealed class TestAudit(bool fail) : IOperationAuditWriter<OperationAudit>
+    {
+        public int Count { get; private set; }
+        public Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken)
+        {
+            if (fail) throw new InvalidOperationException("Injected audit failure");
+            Count++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ClientFactory(Func<HttpRequestMessage, HttpResponseMessage> response) : IHttpClientFactory
