@@ -34,10 +34,13 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
         for (var pageCount = 0; pageCount < MaxPagesPerSlice && elapsed.Elapsed < timeLimit; pageCount++)
         {
             AdvisoryImport? import;
+            bool sourceLimited;
             try
             {
                 await using var db = await contexts.CreateDbContextAsync(budget.Token);
                 import = await db.AdvisoryImports.AsNoTracking().SingleOrDefaultAsync(x => x.Id == importId && x.SourceId == sourceId, budget.Token);
+                var now = clock.GetUtcNow();
+                sourceLimited = await db.AdvisoryImports.AsNoTracking().AnyAsync(x => x.SourceId == sourceId && x.NotBefore > now, budget.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && budget.IsCancellationRequested)
             {
@@ -53,7 +56,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
             if (import.Phase == 3 && import.ReconciliationPhase == 4) return new(AdvisoryRunResult.Inconsistent, importId);
             if (import.Phase == 3 && !reconcile) return new(AdvisoryRunResult.AwaitingReconciliation, importId);
             if (import.Phase is not (1 or 2 or 3)) return new(AdvisoryRunResult.Conflict, importId);
-            if (import.NotBefore is { } notBefore && notBefore > clock.GetUtcNow()) return new(AdvisoryRunResult.RateLimited, importId);
+            if (sourceLimited) return new(AdvisoryRunResult.RateLimited, importId);
             var withdrawn = (import.Phase == 3 ? import.ReconciliationPhase : import.Phase) == 2;
             AdvisoryPage page;
             try
@@ -67,7 +70,7 @@ internal sealed class AdvisoryImportRunner(IDbContextFactory<SecurityAnalysisDbC
                 persistenceBudget.CancelAfter(TimeSpan.FromSeconds(10));
                 try
                 {
-                    return new(await store.DeferAsync(sourceId, importId, import.Version, error.RetryAt, persistenceBudget.Token)
+                    return new(await store.DeferAsync(sourceId, importId, error.RetryAt, persistenceBudget.Token)
                         ? AdvisoryRunResult.RateLimited : AdvisoryRunResult.Conflict, importId);
                 }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested && persistenceBudget.IsCancellationRequested)
