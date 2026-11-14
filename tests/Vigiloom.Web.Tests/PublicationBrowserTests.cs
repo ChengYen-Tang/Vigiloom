@@ -6,6 +6,8 @@ using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
+using Vigiloom.Modules.Publishing.Domain;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -17,6 +19,58 @@ namespace Vigiloom.Web.Tests;
 [DoNotParallelize]
 public sealed class PublicationBrowserTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Administrator_CanSelectTemplateAndKeepChoiceAcrossRuntimes() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0); factory.StartServer();
+        var device = await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var now = DateTimeOffset.UtcNow;
+        var first = new PublicationTemplate("Default network", false, true, now);
+        var second = new PublicationTemplate("Alternative", true, false, now);
+        first.SetDefault(true, now);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
+        { db.Templates.AddRange(first, second); await db.SaveChangesAsync(token); }
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var browserContext = await browser.NewContextAsync();
+        var page = await browserContext.NewPageAsync();
+        await using var gate = await AutoRenderGate.HoldAsync(page);
+        await page.GotoAsync($"{url}/devices/{device.Id:D}");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Link, new() { Name = "公開設定", Exact = true }).ClickAsync();
+        await page.Locator(".publication-editor[data-runtime='Server'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        Assert.AreEqual(0, await page.GetByLabel("公開範本").CountAsync());
+        await page.GetByLabel("公開（允許訪客查看）").CheckAsync();
+        Assert.AreEqual(first.Id.ToString(), await page.GetByLabel("公開範本").InputValueAsync());
+        await page.GetByLabel("公開範本").SelectOptionAsync(second.Id.ToString());
+        await page.GetByLabel("公開顯示名稱").FillAsync("External network");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        await gate.ReleaseAsync();
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+        await page.ReloadAsync();
+        await page.Locator(".publication-editor[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        Assert.AreEqual(second.Id.ToString(), await page.GetByLabel("公開範本").InputValueAsync());
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token))
+        { var retired = await db.Templates.SingleAsync(x => x.Id == second.Id, token); retired.Retire(DateTimeOffset.UtcNow); await db.SaveChangesAsync(token); }
+        await page.ReloadAsync();
+        await page.Locator(".publication-editor[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByText("已設定公開，但範本失效，目前訪客不可見", new() { Exact = false }).WaitForAsync();
+        await page.GetByLabel("不公開（僅登入後可查看）").CheckAsync();
+        Assert.AreEqual(0, await page.GetByLabel("公開範本").CountAsync());
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
+        await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
+        await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token);
+        var saved = await verify.Devices.SingleAsync(x => x.Id == device.Id, token);
+        Assert.IsFalse(saved.IsPublic);
+        Assert.AreEqual(second.Id, saved.PublicTemplateId);
+    }, context.CancellationToken);
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Administrator_CanPreviewPublishAndRevokeInBothRuntimes() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -43,6 +97,7 @@ public sealed class PublicationBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
         await page.GetByRole(AriaRole.Alert).GetByText("名稱", new() { Exact = false }).WaitForAsync();
         await page.GetByLabel("公開顯示名稱").FillAsync("External network");
+        await page.GetByLabel("公開範本").SelectOptionAsync("baseline-v1");
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
         await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
 

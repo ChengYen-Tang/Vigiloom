@@ -1,0 +1,9 @@
+@page "/settings/publication-templates"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+
+<PageTitle>公開範本 - Vigiloom</PageTitle>
+<main class="device-page">
+    <header class="device-heading"><div><h1>公開範本</h1><p>管理設備公開欄位與預設範本。</p></div></header>
+    <Vigiloom.Web.Client.Components.Publishing.TemplateManager @rendermode="InteractiveAuto" />
+</main>

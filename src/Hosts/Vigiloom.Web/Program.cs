@@ -18,6 +18,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -56,6 +57,7 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configurati
 builder.Services.AddModuleSqlServer<AgentManagementDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "agent");
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "service");
 builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "security", pooled: true);
+builder.Services.AddModuleSqlServer<PublishingDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "publishing", pooled: true);
 builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(_ => SchedulingRegistration.Connection(builder.Configuration), "scheduling");
 builder.Services.AddModuleSqlServer<OperationsDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "operations");
@@ -179,6 +181,10 @@ builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClie
 builder.Services.AddScoped<Vigiloom.Web.Workspace.WorkspaceOverviewReader>();
 builder.Services.AddScoped<IWorkspaceOverviewClient, Vigiloom.Web.Workspace.ServerWorkspaceOverviewClient>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateReader>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateAdministration>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateUpdateWorkflow>();
+builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateRetirementWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicationPreviewReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Publishing.IPublicationClient, Vigiloom.Web.Publishing.ServerPublicationClient>();

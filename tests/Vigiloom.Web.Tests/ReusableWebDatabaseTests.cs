@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Publishing.Domain;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
@@ -20,6 +22,30 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class ReusableWebDatabaseTests(TestContext context)
 {
+    [TestMethod]
+    public async Task TemplateData_IsResetAndMigrationHistoryIsPreserved()
+    {
+        string? firstDatabase = null;
+        for (var pass = 0; pass < 2; pass++)
+            await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+            {
+                firstDatabase ??= database.DatabaseName;
+                Assert.AreEqual(firstDatabase, database.DatabaseName);
+                var options = new DbContextOptionsBuilder<PublishingDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "publishing")).Options;
+                await using var db = new PublishingDbContext(options);
+                Assert.AreEqual(0, await db.Templates.CountAsync(token));
+                Assert.IsFalse((await db.Database.GetPendingMigrationsAsync(token)).Any());
+                var now = DateTimeOffset.UtcNow;
+                var active = new PublicationTemplate("Active", true, false, now);
+                active.SetDefault(true, now);
+                var retired = new PublicationTemplate("Retired", false, false, now);
+                retired.Retire(now);
+                db.Templates.AddRange(active, retired);
+                await db.SaveChangesAsync(token);
+            }, context.CancellationToken);
+    }
+
     [TestMethod]
     public Task IndependentHosts_RunTogetherOnDifferentEphemeralPorts() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>

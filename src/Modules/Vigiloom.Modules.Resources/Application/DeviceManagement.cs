@@ -99,6 +99,8 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         if (actor == Guid.Empty) throw new ArgumentException("An authenticated actor is required.", nameof(actor));
         if (validation.Errors.Count != 0) return new(DeviceResultStatus.Invalid, Errors: validation.Errors);
         await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        if (!await PublicationMutationLock.TryAcquireAsync(db, token)) return new(DeviceResultStatus.Conflict);
         var device = await db.Devices.SingleOrDefaultAsync(x => x.Id == id, token);
         if (device is null) return new(DeviceResultStatus.NotFound);
         if (device.IsArchived) return new(DeviceResultStatus.Conflict);
@@ -111,7 +113,7 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         var now = clock.GetUtcNow();
         device.Update(validation.Name, validation.Address, input.DeepMonitoring, input.Enabled, now);
         db.DeviceAudits.Add(new DeviceAudit(id, actor, "updated", now));
-        try { await db.SaveChangesAsync(token); }
+        try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
         catch (DbUpdateConcurrencyException) { return new(DeviceResultStatus.Conflict); }
         return new(DeviceResultStatus.Success, Map(device, validation.Targets));
     }
@@ -121,6 +123,8 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         if (actor == Guid.Empty) throw new ArgumentException("An authenticated actor is required.", nameof(actor));
         if (!TryVersion(expectedVersion, out var version)) return new(DeviceResultStatus.Invalid, Errors: new Dictionary<string, string[]> { ["version"] = ["請重新整理後再試。"] });
         await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        if (!await PublicationMutationLock.TryAcquireAsync(db, token)) return new(DeviceResultStatus.Conflict);
         var device = await db.Devices.SingleOrDefaultAsync(x => x.Id == id, token);
         if (device is null) return new(DeviceResultStatus.NotFound);
         if (device.IsArchived == archive) return new(DeviceResultStatus.Conflict);
@@ -128,7 +132,7 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         var now = clock.GetUtcNow();
         if (archive) device.Archive(now); else device.Restore(now);
         db.DeviceAudits.Add(new DeviceAudit(id, actor, archive ? "archived" : "restored", now));
-        try { await db.SaveChangesAsync(token); }
+        try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
         catch (DbUpdateConcurrencyException) { return new(DeviceResultStatus.Conflict); }
         var targets = await db.DeviceTargets.AsNoTracking().Where(x => x.DeviceId == id).OrderBy(x => x.Address).Select(x => x.Address).ToArrayAsync(token);
         return new(DeviceResultStatus.Success, Map(device, targets));

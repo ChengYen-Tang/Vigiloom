@@ -24,4 +24,5 @@ internal static class AuditKinds
     public const short AgentPackageCatalogueRefreshedV1 = 19;
     public const short AgentPackageTrustInitializedV1 = 20;
     public const short PublicationChangedV1 = 21;
+    public const short PublicationTemplateChangedV1 = 22;
 }

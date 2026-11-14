@@ -1,9 +1,12 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Web.Publishing;
@@ -13,7 +16,8 @@ internal sealed record PublicationChangeResult(PublicationChangeStatus Status, P
 
 /// <summary>Coordinates owner-module publication settings and audit in one database transaction.</summary>
 internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbContext> resources,
-    IDbContextFactory<ServiceObservabilityDbContext> services, IOperationAuditWriter<OperationAudit> audit, TimeProvider clock)
+    IDbContextFactory<ServiceObservabilityDbContext> services, IDbContextFactory<PublishingDbContext> publishing,
+    IOperationAuditWriter<OperationAudit> audit, TimeProvider clock, ILogger<PublicationAdministration> logger)
 {
     public async Task<PublicationSettings?> ReadAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
     {
@@ -28,7 +32,18 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         if (kind == PublicationResourceKind.Device)
         {
             var row = await resourceDb.Devices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
-            return row is null ? null : Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version);
+            if (row is null) return null;
+            byte[]? templateVersion = null;
+            if (row.PublicTemplateId is { } templateId)
+            {
+                try
+                {
+                    await using var templateDb = await publishing.CreateDbContextAsync(token);
+                    templateVersion = await templateDb.Templates.AsNoTracking().Where(x => x.Id == templateId && !x.IsRetired).Select(x => x.Version).SingleOrDefaultAsync(token);
+                }
+                catch (DbException ex) when (!token.IsCancellationRequested) { logger.LogWarning(ex, "Unable to read the device publication template version"); }
+            }
+            return Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version, row.PublicTemplateId, templateVersion);
         }
         if (kind == PublicationResourceKind.Group)
         {
@@ -43,7 +58,11 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         if (id.Version != 7 || actor == Guid.Empty || kind is < PublicationResourceKind.Device or > PublicationResourceKind.Group || !TryVersion(change.Version, out var version))
             return new(PublicationChangeStatus.Invalid);
         var name = string.Empty;
-        if (change.Public && (change.PolicyVersion != PublicationPolicy.BaselineVersion || !PublicationPolicy.TryValidateName(change.DisplayName, out name)))
+        var templateSelection = change.Public && kind == PublicationResourceKind.Device && change.PolicyVersion == PublicationPolicy.TemplateVersion;
+        byte[] requestedTemplateVersion = [];
+        if (templateSelection && (change.TemplateId?.Version != 7 || !TryVersion(change.TemplateVersion, out requestedTemplateVersion))) return new(PublicationChangeStatus.Invalid);
+        if (!templateSelection && (change.TemplateId is not null || change.TemplateVersion is not null)) return new(PublicationChangeStatus.Invalid);
+        if (change.Public && ((!templateSelection && change.PolicyVersion != PublicationPolicy.BaselineVersion) || !PublicationPolicy.TryValidateName(change.DisplayName, out name)))
             return new(PublicationChangeStatus.Invalid);
         if (kind == PublicationResourceKind.Service)
         {
@@ -67,19 +86,38 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
         await using var transaction = await resourcesDb.Database.BeginTransactionAsync(token);
         if (kind == PublicationResourceKind.Device)
         {
+            if (!await PublicationMutationLock.TryAcquireAsync(resourcesDb, token)) return new(PublicationChangeStatus.Conflict);
             var row = await resourcesDb.Devices.FromSqlInterpolated($"SELECT * FROM [resources].[Devices] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
             if (row is null) return new(PublicationChangeStatus.NotFound);
             if (row.IsArchived || !row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
+            Dictionary<Guid, byte[]> templates = [];
+            if (change.Public)
+            {
+                var options = new DbContextOptionsBuilder<PublishingDbContext>().UseSqlServer(resourcesDb.Database.GetDbConnection()).Options;
+                await using var templateDb = new PublishingDbContext(options);
+                await templateDb.Database.UseTransactionAsync(transaction.GetDbTransaction(), token);
+                var ids = new[] { row.PublicTemplateId, change.TemplateId }.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
+                templates = await templateDb.Templates.AsNoTracking().Where(x => ids.Contains(x.Id) && !x.IsRetired)
+                    .Select(x => new { x.Id, x.Version }).ToDictionaryAsync(x => x.Id, x => x.Version, token);
+            }
+            if (templateSelection && (!templates.TryGetValue(change.TemplateId!.Value, out var selectedVersion) || !selectedVersion.AsSpan().SequenceEqual(requestedTemplateVersion)))
+                return new(PublicationChangeStatus.Conflict);
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
-            if (previous == change.Public && !changedName && (!change.Public || row.PublicPolicyVersion == change.PolicyVersion))
-                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version));
+            var changedTemplate = change.Public && (row.PublicPolicyVersion != change.PolicyVersion || row.PublicTemplateId != change.TemplateId);
+            if (previous == change.Public && !changedName && !changedTemplate)
+                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version,
+                    row.PublicTemplateId, row.PublicTemplateId is { } oldId && templates.TryGetValue(oldId, out var oldVersion) ? oldVersion : null));
             var now = clock.GetUtcNow().ToUniversalTime();
-            row.SetPublication(change.Public, name, change.PolicyVersion, now);
+            var wasEffective = previous && (row.PublicPolicyVersion == PublicationPolicy.BaselineVersion && row.PublicTemplateId is null ||
+                row.PublicPolicyVersion == PublicationPolicy.TemplateVersion && row.PublicTemplateId is { } priorId && templates.ContainsKey(priorId));
+            if (templateSelection) row.SetTemplatePublication(name, change.TemplateId!.Value, !wasEffective, now);
+            else row.SetPublication(change.Public, name, change.PolicyVersion, now, restartPublicPeriod: change.Public && !wasEffective);
             try { await resourcesDb.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
-            await AppendAsync(resourcesDb, transaction, actor, id, now, kind, previous, change.Public, changedName, token);
+            await AppendAsync(resourcesDb, transaction, actor, id, now, kind, previous, change.Public, changedName, token, changedTemplate);
             await transaction.CommitAsync(token);
-            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version));
+            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version,
+                row.PublicTemplateId, row.PublicTemplateId is { } currentId && templates.TryGetValue(currentId, out var currentVersion) ? currentVersion : null));
         }
         var group = await resourcesDb.Groups.FromSqlInterpolated($"SELECT * FROM [resources].[Groups] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
         if (group is null) return new(PublicationChangeStatus.NotFound);
@@ -97,12 +135,12 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
     }
 
     private Task AppendAsync(DbContext db, IDbContextTransaction tx, Guid actor, Guid id, DateTimeOffset now,
-        PublicationResourceKind kind, bool previous, bool current, bool nameChanged, CancellationToken token) =>
+        PublicationResourceKind kind, bool previous, bool current, bool nameChanged, CancellationToken token, bool templateChanged = false) =>
         audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
-            new OperationAudit(actor, id, now, new PublicationChanged(kind, previous, current, nameChanged)), token);
+            new OperationAudit(actor, id, now, new PublicationChanged(kind, previous, current, nameChanged, templateChanged)), token);
 
-    private static PublicationSettings Settings(Guid id, bool isPublic, string? name, string? policy, byte[] version) =>
-        new(id, isPublic, name, policy, Convert.ToBase64String(version));
+    private static PublicationSettings Settings(Guid id, bool isPublic, string? name, string? policy, byte[] version, Guid? templateId = null, byte[]? templateVersion = null) =>
+        new(id, isPublic, name, policy, Convert.ToBase64String(version), templateId, templateVersion is null ? null : Convert.ToBase64String(templateVersion));
     private static bool TryVersion(string? text, out byte[] version)
     {
         version = [];

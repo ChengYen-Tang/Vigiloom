@@ -10,6 +10,129 @@ internal static class PublicationEndpoints
     public static void MapPublicationEndpoints(this WebApplication app)
     {
         var admin = app.MapGroup("/api/v1/admin/publications").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+        admin.MapPost("/templates", async (CreatePublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await templates.CreateAsync(input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Created => Results.Ok(result.Template),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["請輸入 1 至 256 個字元的範本名稱。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template name is already in use or the settings are being changed.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
+            .WithSummary("Create a publication template");
+        admin.MapPut("/templates/{id:guid}/default", async (Guid id, SetDefaultPublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await templates.SetDefaultAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Template),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["version"] = ["請重新整理後再試。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template or default selection changed; refresh and try again.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Select the default publication template");
+        admin.MapGet("/templates", async (int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return page is < 1 or > TemplateReader.MaximumPage ? Results.BadRequest() : Results.Ok(await templates.ListAsync(page ?? 1, token));
+        }).Produces<PublicationTemplatePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("List publication templates");
+        admin.MapGet("/templates/default", async (TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await templates.DefaultAsync(token) is { } template ? Results.Ok(template) : Results.NotFound();
+        }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get the current default publication template");
+        admin.MapGet("/templates/{id:guid}", async (Guid id, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await templates.GetAsync(id, token) is { } template ? Results.Ok(template) : Results.NotFound();
+        }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get a publication template");
+        admin.MapPost("/templates/{id:guid}/update-preview", async (Guid id, PublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await workflow.PreviewAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Preview),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["請確認範本名稱。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The preview could not be prepared; refresh and try again.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateUpdatePreview>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Preview a publication template update");
+        admin.MapPut("/templates/{id:guid}", async (Guid id, ConfirmPublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await workflow.ConfirmAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Template),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["confirmation"] = ["預覽已失效，請重新預覽。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template or affected devices changed; refresh the preview.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateItem>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Confirm a publication template update");
+        admin.MapPost("/templates/{id:guid}/retirement-preview", async (Guid id, PublicationTemplateRetirement input, TemplateRetirementWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await workflow.PreviewAsync(id, input, actor, token);
+                return result.Status switch
+                {
+                    TemplateChangeStatus.Updated => Results.Ok(result.Preview),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["replacement"] = ["請確認替代預設範本。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The preview could not be prepared; refresh and try again.")
+                };
+            }, allowApiCredential: false);
+        }).Produces<PublicationTemplateRetirementPreview>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Preview retirement of a publication template");
+        admin.MapPost("/templates/{id:guid}/retire", async (Guid id, ConfirmPublicationTemplateRetirement input, TemplateRetirementWorkflow workflow, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var status = await workflow.ConfirmAsync(id, input, actor, token);
+                return status switch
+                {
+                    TemplateChangeStatus.Updated => Results.NoContent(),
+                    TemplateChangeStatus.NotFound => Results.NotFound(),
+                    TemplateChangeStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["confirmation"] = ["預覽已失效，請重新預覽。"] }),
+                    _ => Results.Problem(statusCode: 409, title: "The template or affected devices changed; refresh the preview.")
+                };
+            }, allowApiCredential: false);
+        }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Confirm retirement of a publication template");
+        admin.MapGet("/templates/{id:guid}/impact", async (Guid id, int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (page is < 1 or > (TemplateImpact.MaximumDevices + TemplateImpact.PageSize - 1) / TemplateImpact.PageSize) return Results.BadRequest();
+            var result = await templates.ImpactAsync(id, page ?? 1, token);
+            if (result.Changed) return Results.Problem(statusCode: 409, title: "The template changed; refresh the preview.");
+            if (result.TooMany) return Results.Problem(statusCode: 409, title: "Too many devices to preview safely.");
+            return result.Impact is null ? Results.NotFound() : Results.Ok(result.Impact);
+        }).Produces<PublicationImpact>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Preview devices assigned to a publication template");
         admin.MapGet("/{kind}/{id:guid}", async (string kind, Guid id, PublicationAdministration publications, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
