@@ -232,6 +232,44 @@ public sealed class AdvisoryRunnerTests(TestContext context)
             Assert.AreEqual(5, calls);
         }, context.CancellationToken);
 
+    [TestMethod]
+    public Task Reconciliation_ExpiredCursorRestartsEntireWindow() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var clock = new TestClock(DateTimeOffset.UtcNow);
+            var source = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
+            await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+            var import = await new AdvisoryImportStore(contexts, clock).BeginAsync(source.Id, new(2023, 1, 1), new(2023, 2, 1), token);
+            Assert.IsNotNull(import);
+            var calls = 0;
+            var clients = new ClientFactory(request =>
+            {
+                calls++;
+                var query = request.RequestUri!.Query;
+                if (calls is 2 or 6 or 8) Assert.Contains("is_withdrawn=true", query);
+                else Assert.DoesNotContain("is_withdrawn=true", query);
+                if (calls == 4) Assert.Contains("after=YQ%3D%3D", query);
+                else Assert.DoesNotContain("after=", query);
+                if (calls == 4) return new HttpResponseMessage(HttpStatusCode.UnprocessableEntity);
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]", Encoding.UTF8, "application/json") };
+                if (calls == 3)
+                    response.Headers.TryAddWithoutValidation("Link", "<https://api.github.com/advisories?type=reviewed&per_page=100&sort=updated&direction=asc&modified=2023-01-01..2023-02-01&after=YQ%3D%3D>; rel=\"next\"");
+                return response;
+            });
+            var runner = new AdvisoryImportRunner(contexts, clients, clock);
+            Assert.AreEqual(AdvisoryRunResult.AwaitingReconciliation, (await runner.RunSliceAsync(source.Id, import.Id, null, token)).Status);
+            var result = await runner.RunSliceAsync(source.Id, import.Id, null, token, reconcile: true);
+            Assert.AreEqual(AdvisoryRunResult.Reconciled, result.Status);
+            Assert.AreNotEqual(import.Id, result.ImportId);
+            Assert.AreEqual(8, calls);
+            await using var check = contexts.CreateDbContext();
+            Assert.AreEqual(5, (await check.AdvisoryImports.SingleAsync(x => x.Id == import.Id, token)).Phase);
+            Assert.AreEqual(3, (await check.AdvisoryImports.SingleAsync(x => x.Id == result.ImportId, token)).ReconciliationPhase);
+            Assert.AreEqual(0, await check.IntelligenceActivations.CountAsync(token));
+        }, context.CancellationToken);
+
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
     {
         public SecurityAnalysisDbContext CreateDbContext() => new(options);
