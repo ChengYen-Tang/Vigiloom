@@ -14,6 +14,8 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Publishing.Domain;
+using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
@@ -109,6 +111,7 @@ public sealed class PublicStatusStreamTests(TestContext context)
 
     [TestMethod]
     [DataRow("devices")]
+    [DataRow("device-template-retired")]
     [DataRow("services")]
     [DataRow("groups")]
     [DataRow("group-member")]
@@ -134,6 +137,13 @@ public sealed class PublicStatusStreamTests(TestContext context)
         service.SetPublication(true, "Public service", PublicationPolicy.BaselineVersion, now);
         var group = new Group("private-group", now);
         group.SetPublication(true, "Public group", PublicationPolicy.BaselineVersion, now);
+        var template = new PublicationTemplate("Private template", true, true, now);
+        if (kind == "device-template-retired")
+        {
+            await using var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token);
+            db.Templates.Add(template);
+            await db.SaveChangesAsync(token);
+        }
         await using (var db = await serviceContexts.CreateDbContextAsync(token))
         {
             db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service);
@@ -142,7 +152,8 @@ public sealed class PublicStatusStreamTests(TestContext context)
         await using (var db = await contexts.CreateDbContextAsync(token))
         {
             var saved = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
-            saved.SetPublication(true, "Public network", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+            if (kind == "device-template-retired") saved.SetTemplatePublication("Public network", template.Id, false, now);
+            else saved.SetPublication(true, "Public network", PublicationPolicy.BaselineVersion, now);
             db.Groups.Add(group);
             db.ServiceGroups.Add(new ServiceGroup(group.Id, service.Id));
             await db.SaveChangesAsync(token);
@@ -151,11 +162,11 @@ public sealed class PublicStatusStreamTests(TestContext context)
         using var client = new HttpClient { BaseAddress = host.ClientOptions.BaseAddress };
         var (id, publicName) = kind switch
         {
-            "devices" => (device.Id, "Public network"),
+            "devices" or "device-template-retired" => (device.Id, "Public network"),
             "services" => (service.Id, "Public service"),
             _ => (group.Id, "Public group")
         };
-        var routeKind = kind == "group-member" ? "groups" : kind;
+        var routeKind = kind switch { "group-member" => "groups", "device-template-retired" => "devices", _ => kind };
         var url = $"/api/v1/public/{routeKind}/{id:D}/events";
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
@@ -174,7 +185,13 @@ public sealed class PublicStatusStreamTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.ServiceUnavailable, busy.StatusCode);
             Assert.IsNotNull(busy.Headers.RetryAfter);
         }
-        if (kind is "services" or "group-member")
+        if (kind == "device-template-retired")
+        {
+            await using var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token);
+            (await db.Templates.SingleAsync(x => x.Id == template.Id, token)).Retire(DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(token);
+        }
+        else if (kind is "services" or "group-member")
         {
             await using var db = await serviceContexts.CreateDbContextAsync(token);
             (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
