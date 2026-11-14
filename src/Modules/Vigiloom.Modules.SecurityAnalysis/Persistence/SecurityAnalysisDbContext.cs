@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -19,10 +20,15 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<IntegrityScan> IntegrityScans => Set<IntegrityScan>();
     public DbSet<IntegrityChunkData> IntegrityChunks => Set<IntegrityChunkData>();
     public DbSet<IntegrityChangeRecord> IntegrityChanges => Set<IntegrityChangeRecord>();
+    public DbSet<IntelligenceSource> IntelligenceSources => Set<IntelligenceSource>();
+    public DbSet<IntelligenceRevision> IntelligenceRevisions => Set<IntelligenceRevision>();
+    public DbSet<IntelligenceActivation> IntelligenceActivations => Set<IntelligenceActivation>();
+    public DbSet<IntelligenceCache> IntelligenceCaches => Set<IntelligenceCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("security");
+        IntelligenceModel.Configure(modelBuilder);
         var source = modelBuilder.Entity<InventorySourceState>();
         source.ToTable("InventorySources", table =>
         {

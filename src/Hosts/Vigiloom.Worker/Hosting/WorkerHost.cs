@@ -22,6 +22,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 namespace Vigiloom.Worker.Hosting;
 
@@ -71,6 +72,8 @@ public static class WorkerHost
         builder.Services.AddScoped<InventoryExpiryJob>();
         builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.KevClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
         builder.Services.AddScoped<ISpeedProbe, SpeedtestNetProbe>();
         builder.Services.AddScoped<AutomaticSpeedJob>();
         builder.Services.AddHostedService<SpeedWorker>();
