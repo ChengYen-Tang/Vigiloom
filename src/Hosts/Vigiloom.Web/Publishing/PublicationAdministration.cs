@@ -113,8 +113,13 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
             var changedTemplate = change.Public && (row.PublicPolicyVersion != change.PolicyVersion || row.PublicTemplateId != change.TemplateId);
             if (previous == change.Public && !changedName && !changedTemplate)
-                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version,
+            {
+                await transaction.CommitAsync(token);
+                var confirmed = row.PublicSince == Vigiloom.Modules.Resources.Domain.Device.PendingPublicSince
+                    ? await DevicePublicationPeriod.ConfirmAsync(resources, id, row.Version, logger, token) : null;
+                return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmed ?? row.Version,
                     row.PublicTemplateId, row.PublicTemplateId is { } oldId && templates.TryGetValue(oldId, out var oldVersion) ? oldVersion : null));
+            }
             var now = clock.GetUtcNow().ToUniversalTime();
             var wasEffective = previous && (row.PublicPolicyVersion == PublicationPolicy.BaselineVersion && row.PublicTemplateId is null ||
                 row.PublicPolicyVersion == PublicationPolicy.TemplateVersion && row.PublicTemplateId is { } priorId && templates.ContainsKey(priorId));
@@ -124,7 +129,9 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
             await AppendAsync(resourcesDb, transaction, actor, id, now, kind, previous, change.Public, changedName, token, changedTemplate);
             await transaction.CommitAsync(token);
-            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, row.Version,
+            var confirmedVersion = row.PublicSince == Vigiloom.Modules.Resources.Domain.Device.PendingPublicSince
+                ? await DevicePublicationPeriod.ConfirmAsync(resources, id, row.Version, logger, token) : null;
+            return new(PublicationChangeStatus.Updated, Settings(id, row.IsPublic, row.PublicDisplayName, row.PublicPolicyVersion, confirmedVersion ?? row.Version,
                 row.PublicTemplateId, row.PublicTemplateId is { } currentId && templates.TryGetValue(currentId, out var currentVersion) ? currentVersion : null));
         }
         var group = await resourcesDb.Groups.FromSqlInterpolated($"SELECT * FROM [resources].[Groups] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
