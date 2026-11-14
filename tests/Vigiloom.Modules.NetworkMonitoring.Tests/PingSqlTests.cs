@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -473,6 +474,101 @@ public sealed class PingSqlTests
         Assert.AreEqual(40d, bucket.LatencySum);
         Assert.IsTrue(await check.PingSamples.Where(x => x.DeviceId == device.Id).AllAsync(x => x.Aggregated, token));
     }, snapshotReads);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Commit_RetriesDeadlockWithoutDuplicatingSample(bool disableTarget) => WithDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var original = new PingStore(network, new DevicePingSource(resources), clock);
+        await original.ReconcileAsync(policy, token); await DueAsync(network, token);
+        var lease = (await original.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+        await using var db = network.CreateDbContext();
+        var connectionString = db.Database.GetConnectionString()!;
+        await using var other = new SqlConnection(connectionString);
+        await other.OpenAsync(token);
+        await using var otherTransaction = (SqlTransaction)await other.BeginTransactionAsync(token);
+        await using (var hold = other.CreateCommand())
+        {
+            hold.Transaction = otherTransaction;
+            hold.CommandText = "SELECT COUNT(*) FROM [network].[PingRollups] WITH (TABLOCKX, HOLDLOCK)";
+            await hold.ExecuteScalarAsync(token);
+        }
+        var gate = new PauseFirstRollup();
+        var options = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(connectionString).AddInterceptors(gate).Options;
+        var tested = new PingStore(new PooledDbContextFactory<NetworkDbContext>(options), new DevicePingSource(resources), clock);
+        using var workers = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var commit = tested.CommitAsync(lease, policy, new(PingOutcome.Success, "127.0.0.1", 5), clock.Now, "central", workers.Token);
+        Task? competitor = null;
+        Exception? failure = null;
+        try
+        {
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
+            competitor = Task.Run(async () =>
+            {
+                await using var update = other.CreateCommand();
+                update.Transaction = otherTransaction;
+                update.CommandText = disableTarget
+                    ? "UPDATE [network].[PingTargets] SET [Enabled] = 0 WHERE [DeviceId] = @device AND [Target] = @target"
+                    : "UPDATE [network].[PingTargets] SET [DueAt] = [DueAt] WHERE [DeviceId] = @device AND [Target] = @target";
+                update.Parameters.AddWithValue("@device", lease.DeviceId);
+                update.Parameters.AddWithValue("@target", lease.Target);
+                await update.ExecuteNonQueryAsync(workers.Token);
+                await otherTransaction.CommitAsync(workers.Token);
+            }, workers.Token);
+            gate.Release.TrySetResult();
+            Assert.AreEqual(!disableTarget, await commit.WaitAsync(TimeSpan.FromSeconds(40), token));
+            await competitor;
+            Assert.AreEqual(disableTarget ? 1 : 2, gate.Attempts);
+            await using var check = network.CreateDbContext();
+            Assert.AreEqual(disableTarget ? 0 : 1, await check.PingSamples.CountAsync(x => x.DeviceId == device.Id, token));
+            var bucket = await check.PingRollups.SingleOrDefaultAsync(x => x.DeviceId == device.Id, token);
+            if (disableTarget) Assert.IsNull(bucket);
+            else
+            {
+                Assert.IsNotNull(bucket);
+                Assert.AreEqual(1L, bucket.Attempts);
+                Assert.AreEqual(5d, bucket.LatencySum);
+                Assert.IsNull((await check.PingTargets.SingleAsync(x => x.DeviceId == device.Id && x.Target == lease.Target, token)).LeaseUntil);
+            }
+        }
+        catch (Exception ex) { failure = ex; throw; }
+        finally
+        {
+            await workers.CancelAsync();
+            gate.Release.TrySetResult();
+            try { await commit; } catch when (failure is not null) { }
+            if (competitor is not null) { try { await competitor; } catch when (failure is not null) { } }
+        }
+    });
+
+    private sealed class PauseFirstRollup : DbCommandInterceptor
+    {
+        private int attempts;
+        public int Attempts => Volatile.Read(ref attempts);
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override async ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command,
+            CommandEventData eventData, InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("[network].[PingRollups] WITH (UPDLOCK, HOLDLOCK)", StringComparison.Ordinal))
+            {
+                if (Interlocked.Increment(ref attempts) == 1)
+                {
+                    command.CommandText = "SET DEADLOCK_PRIORITY LOW; " + command.CommandText;
+                    Entered.TrySetResult();
+                    await Release.Task.WaitAsync(cancellationToken);
+                }
+            }
+            return result;
+        }
+    }
 
     [TestMethod]
     public Task RollupMigration_RejectsDataLosingDowngrade() => WithDatabase(async (resources, network, token) =>
