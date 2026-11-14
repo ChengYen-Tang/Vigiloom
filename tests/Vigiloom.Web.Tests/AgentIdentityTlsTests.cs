@@ -351,8 +351,19 @@ public sealed class AgentIdentityTlsTests
                         }
                         using (var playwright = await Playwright.CreateAsync())
                         await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
-                        await using (var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
                         {
+                            await using (var publicContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
+                            {
+                                var publicPage = await publicContext.NewPageAsync();
+                                await using var publicGate = await AutoRenderGate.HoldAsync(publicPage);
+                                await publicPage.GotoAsync(url.ToString());
+                                await publicPage.GetByRole(AriaRole.Button, new() { Name = "Public TLS device", Exact = true }).WaitForAsync(new() { Timeout = 60000 });
+                                var body = await publicPage.Locator("body").InnerTextAsync();
+                                Assert.DoesNotContain("multiline-start", body);
+                                Assert.DoesNotContain("after-rotation", body);
+                                Assert.DoesNotContain("TLS log", body);
+                            }
+                            await using var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true });
                             var page = await browserContext.NewPageAsync();
                             await using var wasmGate = await AutoRenderGate.HoldAsync(page);
                             await page.GotoAsync(new Uri(url, $"/devices/{device.Id:D}").ToString());
