@@ -77,6 +77,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
         try
         {
             using var scope = services.CreateScope();
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<AdvisoryRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<SigmaRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<SignatureRefreshJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
@@ -100,6 +103,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await sql.OpenAsync(token);
             await using var command = sql.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-agent-inbox-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-sigma-refresh'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-signature-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         }
         finally { await host.StopAsync(CancellationToken.None); }

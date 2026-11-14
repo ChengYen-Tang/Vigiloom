@@ -46,13 +46,16 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [];
                 operation.Description = "Anonymous published data only; private resources and network addresses are excluded.";
             }
-            else if (path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
             {
                 var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
                 if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
                     session[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
                 operation.Security = [session];
+                if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase))
+                    operation.Description = "Requires a signed-in Administrator session; mutations also require an antiforgery token.";
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/update/metadata/{name}", StringComparison.OrdinalIgnoreCase) ||
@@ -165,6 +168,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                      path.Equals("/api/v1/operations/audit/service-collections", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/health-targets", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/health-networks", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/intelligence", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/operations/audit-feed/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/platform-status", StringComparison.OrdinalIgnoreCase))
             {
