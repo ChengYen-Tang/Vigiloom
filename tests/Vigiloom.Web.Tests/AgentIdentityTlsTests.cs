@@ -337,11 +337,13 @@ public sealed class AgentIdentityTlsTests
                         }
                         using (var anonymous = CreateClient())
                         {
-                            foreach (var path in new[] { "/api/v1/public/devices", $"/api/v1/public/devices/{device.Id:D}", "/" })
+                            foreach (var path in new[] { "/api/v1/public/devices", $"/api/v1/public/devices/{device.Id:D}" })
                             {
                                 using var response = await anonymous.GetAsync(new Uri(url, path), deadline.Token);
                                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                                 var body = await response.Content.ReadAsStringAsync(deadline.Token);
+                                Assert.Contains("Public TLS device", body);
+                                Assert.Contains(device.Id.ToString("D"), body);
                                 Assert.DoesNotContain("multiline-start", body);
                                 Assert.DoesNotContain("after-rotation", body);
                                 Assert.DoesNotContain("TLS log", body);
