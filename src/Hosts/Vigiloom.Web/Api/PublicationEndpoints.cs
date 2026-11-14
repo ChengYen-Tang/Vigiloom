@@ -179,6 +179,23 @@ internal static class PublicationEndpoints
         publicApi.MapGet("/devices/{id:guid}", async (Guid id, PublicReader reader, CancellationToken token) =>
             await reader.DeviceAsync(id, token) is { } result ? Results.Ok(result) : Results.NotFound())
             .Produces<PublicDevice>().ProducesProblem(404).WithSummary("Get a published Ping state");
+        publicApi.MapGet("/devices/{id:guid}/history", async (Guid id, DateTimeOffset from, DateTimeOffset to,
+            PublicDeviceHistoryReader reader, PublicHistoryAdmission admission, HttpContext context, CancellationToken token) =>
+        {
+            if (!PublicDeviceHistoryReader.Valid(from, to)) return Results.BadRequest();
+            if (!await admission.Gate.WaitAsync(0, token))
+            {
+                context.Response.Headers.RetryAfter = "5";
+                return Results.Problem(statusCode: 503, title: "Public history is busy; please retry.");
+            }
+            using var timeout = new CancellationTokenSource(admission.Timeout, admission.Clock);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+            try { return await reader.ReadAsync(id, from, to, deadline.Token) is { } result ? Results.Ok(result) : Results.NotFound(); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            { context.Response.Headers.RetryAfter = "5"; return Results.Problem(statusCode: 503, title: "The public history request timed out; please retry."); }
+            finally { admission.Gate.Release(); }
+        }).Produces<PublicDeviceHistory>().ProducesProblem(400).ProducesProblem(404).ProducesProblem(503)
+            .WithSummary("Get explicitly published device latency history");
         publicApi.MapGet("/services", async (string? search, int? page, PublicReader reader, CancellationToken token) =>
             Valid(search, page) ? Results.Ok(await reader.ServicesAsync(search?.Trim(), page ?? 1, null, token)) : Results.BadRequest())
             .Produces<PublicPage<PublicService>>().ProducesProblem(400).WithSummary("List published service health");
