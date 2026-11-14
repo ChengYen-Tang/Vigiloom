@@ -1,0 +1,40 @@
+@baseUrl = https://localhost:5001
+@sourceId = 00000000-0000-7000-8000-000000000001
+@revisionId = 00000000-0000-7000-8000-000000000002
+@requestToken = replace-with-session-antiforgery-token
+@sourceVersion = replace-with-source-version
+
+### Read source status (administrator session required)
+GET {{baseUrl}}/api/v1/admin/intelligence/sources/?page=1
+
+### Read retained revisions
+GET {{baseUrl}}/api/v1/admin/intelligence/sources/{{sourceId}}/revisions?page=1
+
+### Update policy (send the administrator session cookie and antiforgery token)
+PUT {{baseUrl}}/api/v1/admin/intelligence/sources/{{sourceId}}/policy
+Content-Type: application/json
+RequestVerificationToken: {{requestToken}}
+
+{
+  "enabled": true,
+  "updateIntervalSeconds": 86400,
+  "staleAfterSeconds": 259200,
+  "maximumBytes": 16777216,
+  "maximumRecords": 50000,
+  "version": "{{sourceVersion}}"
+}
+
+### Activate the first revision (use the current activation version for later selections)
+POST {{baseUrl}}/api/v1/admin/intelligence/sources/{{sourceId}}/activation
+Content-Type: application/json
+RequestVerificationToken: {{requestToken}}
+
+{
+  "revisionId": "{{revisionId}}",
+  "expectedActiveRevisionId": null,
+  "expectedVersion": "",
+  "confirmLargeReduction": false
+}
+
+### Query intelligence management audit history
+GET {{baseUrl}}/api/v1/operations/audit/intelligence?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z&page=1

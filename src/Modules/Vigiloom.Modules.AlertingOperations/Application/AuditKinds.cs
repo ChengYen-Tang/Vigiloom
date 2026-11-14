@@ -27,4 +27,5 @@ internal static class AuditKinds
     public const short PublicationTemplateChangedV1 = 22;
     public const short DeploymentLinkChangedV1 = 23;
     public const short IntelligenceRevisionActivatedV1 = 24;
+    public const short IntelligencePolicyChangedV1 = 25;
 }

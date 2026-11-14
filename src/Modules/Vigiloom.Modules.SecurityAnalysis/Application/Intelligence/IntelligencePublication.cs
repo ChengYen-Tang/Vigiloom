@@ -29,8 +29,9 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
     {
         if (sourceId == Guid.Empty || revisionId == Guid.Empty || expectedActiveRevisionId == Guid.Empty)
             throw new ArgumentException("Invalid source or revision identity.");
+        if (expectedVersion is null || expectedVersion.Length > 32) return IntelligencePublicationResult.Conflict;
         byte[] version;
-        try { version = Convert.FromBase64String(expectedVersion ?? ""); }
+        try { version = Convert.FromBase64String(expectedVersion); }
         catch (FormatException) { return IntelligencePublicationResult.Conflict; }
         if (version.Length is not (0 or 8)) return IntelligencePublicationResult.Conflict;
         await using var db = await contexts.CreateDbContextAsync(token);
