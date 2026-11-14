@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -58,7 +59,11 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             var thirdResult = await builder.StageAsync(source.Id, third.Id, third.Version, token);
             Assert.IsNotNull(thirdResult.RevisionId);
             Assert.AreEqual("candidate-unavailable", (await new IntelligenceStatus(contexts, TimeProvider.System).GetAdvisoryProgressAsync(source.Id, token))?.State);
+            var refresh = new AdvisoryRefresh(contexts, new UnusedClientFactory(), TimeProvider.System, new EphemeralDataProtectionProvider());
+            Assert.AreEqual(AdvisoryRefreshResult.NotDue, await refresh.RunDueAsync(token));
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, thirdResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
+            var dueRefresh = new AdvisoryRefresh(contexts, new EmptyClientFactory(), new FixedClock(DateTimeOffset.UtcNow.AddDays(2)), new EphemeralDataProtectionProvider());
+            Assert.AreEqual(AdvisoryRefreshResult.Staged, await dueRefresh.RunDueAsync(token));
             var fourth = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-11T00:00:00Z", false));
             var fourthResult = await builder.StageAsync(source.Id, fourth.Id, fourth.Version, token);
             Assert.IsNotNull(fourthResult.RevisionId);
@@ -286,6 +291,24 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
     private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
     {
         public SecurityAnalysisDbContext CreateDbContext() => new(options);
+    }
+
+    private sealed class UnusedClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => throw new InvalidOperationException("No network request is expected before the source is due.");
+    }
+    private sealed class EmptyClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(new EmptyHandler());
+        private sealed class EmptyHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+                Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("[]") });
+        }
+    }
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class OperationsFactory(DbContextOptions<OperationsDbContext> options) : IDbContextFactory<OperationsDbContext>
