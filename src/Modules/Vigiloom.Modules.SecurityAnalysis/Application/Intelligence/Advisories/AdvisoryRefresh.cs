@@ -47,7 +47,7 @@ public sealed class AdvisoryRefresh(IDbContextFactory<SecurityAnalysisDbContext>
                 checkedAt <= now && checkedAt >= now.AddSeconds(-source.StaleAfterSeconds) &&
                 (active is null ? candidate.BaseActivationVersion is null :
                 active.Version.AsSpan().SequenceEqual(candidate.BaseActivationVersion)) &&
-                await AdvisoryRevisionEligibility.IsEligibleAsync(db, source.Id, candidate.ResultRevisionId!.Value, token))
+                await AdvisoryRevisionEligibility.IsPublishableAsync(db, source.Id, candidate.ResultRevisionId!.Value, token))
                 return AdvisoryRefreshResult.AwaitingActivation;
             if (!IntelligenceRefresh.IsDue(source, clock.GetUtcNow())) return AdvisoryRefreshResult.NotDue;
             var end = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(-1);

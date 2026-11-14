@@ -57,6 +57,7 @@ public sealed class AdvisoryRevisionBuilderTests(TestContext context)
             var third = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-05T00:00:00Z", false));
             var thirdResult = await builder.StageAsync(source.Id, third.Id, third.Version, token);
             Assert.IsNotNull(thirdResult.RevisionId);
+            Assert.AreEqual("candidate-unavailable", (await new IntelligenceStatus(contexts, TimeProvider.System).GetAdvisoryProgressAsync(source.Id, token))?.State);
             Assert.AreEqual(IntelligencePublicationResult.Unavailable, await publication.ActivateAsync(source.Id, thirdResult.RevisionId.Value, secondResult.RevisionId, version, false, actor, token));
             var fourth = await StageWindow(store, contexts, source.Id, token, ("GHSA-abcd-1234-efgh", "2023-01-11T00:00:00Z", false));
             var fourthResult = await builder.StageAsync(source.Id, fourth.Id, fourth.Version, token);
