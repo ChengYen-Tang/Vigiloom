@@ -106,6 +106,9 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Heading, new() { Name = "IOC／YARA 來源檔案" }).WaitForAsync();
         Assert.Contains("iocs/hash-iocs.txt", await page.Locator("main").InnerTextAsync());
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        var classification = await page.Locator(".signature-files tbody tr").First.Locator("td").Nth(2).BoundingBoxAsync();
+        Assert.IsNotNull(classification);
+        Assert.IsGreaterThanOrEqualTo(120, classification.Width);
         await page.GetByRole(AriaRole.Link, new() { Name = "1 筆未支援" }).ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "未支援的 IOC 項目" }).WaitForAsync();
         Assert.Contains("雜湊格式無效", await page.Locator("main").InnerTextAsync());
