@@ -111,3 +111,46 @@ duplicate, unsupported and over-limit data, together with atomic activation,
 rollback and concurrent update behavior. REQ-34 is responsible for applying
 KEV to an independently established asset/CVE relationship; its acceptance and
 the signed publication path are not established by this source contract alone.
+
+## OSV and rule-consumer interoperability
+
+The [OSV 1.9.2 format](https://ossf.github.io/osv-schema/) and its
+[reviewed schema revision](https://github.com/ossf/osv-schema/blob/972b058557d91ee36d92306fd5f986947b1b3c30/validation/schema.json) include a record ID,
+`modified`, optional `withdrawn`, aliases, affected package identity and
+version/commit ranges. Preserve these independently; aliases are relationships,
+not permission to discard the original record or merge conflicting provider
+claims. A package range requires its ecosystem's comparison semantics and an
+identified package/version. An unsupported range, missing inventory or an
+unrecognized ecosystem is unknown, not an unaffected verdict.
+`SEMVER`, `ECOSYSTEM` and `GIT` ranges are distinct: a `GIT` range requires
+the specified repository and commit ancestry, not just package-version order.
+
+[OSV exports](https://google.github.io/osv.dev/data/) include withdrawn records
+and provide per-ecosystem snapshots and `modified_id.csv` indexes. Incremental
+sync must handle records with the same modified timestamp without skipping any,
+checkpoint only after all referenced records and their provenance are durable,
+and reconcile deletions or inaccessible records explicitly. OSV's documented
+handling of deleted upstream records varies by source; an orphaned or missing
+record cannot automatically be treated as withdrawn or safe. Restrict imports
+and publication by the actual upstream subset and license; ecosystem membership
+alone does not prove a record's origin or redistribution permission. The
+GitHub Advisory Database [documents CC-BY-4.0](https://github.com/github/advisory-database/blob/09ff71573b6748a21637a08ffd9047b8a7da00cc/README.md#license)
+for its repository; retain the required attribution, source and license links,
+and upstream-provided notices for any selected GitHub subset, and indicate
+changes when transforming it.
+Pin the upstream snapshot and schema revision used by an implemented importer.
+The first authorized subset, index consistency strategy and resource limits
+still need to be finalized before that importer can be enabled.
+
+For Sigma, pin a concrete release or commit and preserve rule ID, author,
+license, source, status, log source, detection expression and the conversion
+version in each staged revision. Validate each rule and its dependency closure
+before it can be published. A rule using unsupported syntax, required fields,
+correlation, log source or backend semantics must be marked unsupported; do
+not silently weaken it or declare that it found no threat. Upstream separates
+core, emerging-threat and threat-hunting rules, and explicitly states that
+[threat-hunting rules are not for alerting](https://github.com/SigmaHQ/sigma/blob/master/Releases.md).
+REQ-33 must decide supported semantics and preserve author attribution in
+match messages; REQ-32 must carry the source metadata and avoid activating a
+candidate until that contract has been verified end to end. Previous revisions
+remain subject to the authorization and withdrawal checks above.
