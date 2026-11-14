@@ -18,6 +18,7 @@
 .intelligence-page thead { background: #f1f6fc; }
 .intelligence-page .device-table-wrap { overflow-x: auto; max-width: 100%; }
 .intelligence-page .ioc-issues table { min-width: 0; }
+.intelligence-page .signature-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
 .intelligence-scroll-hint { display: none; }
 .intelligence-page nav { display: flex; gap: 16px; margin-top: 16px; }
 .intelligence-message { padding: 12px; border-radius: 6px; background: #eaf3ff; color: var(--vigiloom-ink); }

@@ -315,6 +315,15 @@ Apply the same bounded archive, YAML/file and path controls as the Sigma source;
 the YARA compiler and supported external variables are owned by REQ-36. IOC and
 YARA detection, alerting and author attribution in match output require the
 actual consumer integration before the source can be declared end-to-end usable.
+Administrators can page through bounded candidate source lines mentioning authors or
+licenses, linked to the retained file path and digest. These are literal search
+results, not parsed YARA metadata: comments, strings, multiple rules per file,
+and omitted or truncated lines mean they cannot establish a rule's author,
+applicable license or eligibility for distribution. The source remains
+unavailable for publication until the consumer validates rule boundaries,
+dependencies and applicable terms.
+An administrator can inspect a limited number of surrounding source lines for
+each candidate; these remain raw context, not a rule-boundary determination.
 
 ### SigmaHQ rule-source adapter
 

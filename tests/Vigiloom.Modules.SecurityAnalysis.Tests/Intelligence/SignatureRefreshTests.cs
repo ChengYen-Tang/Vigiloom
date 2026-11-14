@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -15,6 +17,46 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Intelligence;
 public sealed class SignatureRefreshTests(TestContext context)
 {
     private const string First = "eb8c53cb08ed103d031fe9c98d1d23e94904839d";
+
+    [TestMethod]
+    public Task Evidence_IsBoundedAndChecksEncodingAndIntegrity() =>
+        ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var contexts = new Factory(options);
+            var source = new IntelligenceSource { Key = "signature-base", Enabled = true };
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = First, RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = SignatureRefresh.SchemaVersion, MappingVersion = SignatureRefresh.MappingVersion,
+                LicenseEvidence = SignatureRefresh.LicenseEvidence, RecordCount = 1, Normalized = true };
+            var bytes = Encoding.UTF8.GetBytes(string.Join('\n', Enumerable.Repeat("author " + new string('a', 600), 101)));
+            var file = new SignatureFile { RevisionId = revision.Id, Path = "yara/example.yar", Kind = 1, Digest = SHA256.HashData(bytes), Content = bytes };
+            await using (var db = contexts.CreateDbContext())
+            { db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision); db.SignatureFiles.Add(file); await db.SaveChangesAsync(token); }
+            var status = new IntelligenceStatus(contexts, TimeProvider.System);
+            var evidence = await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token);
+            Assert.IsNotNull(evidence); Assert.IsTrue(evidence.Truncated); Assert.HasCount(100, evidence.Lines);
+            Assert.IsTrue(evidence.Lines[0].Truncated); Assert.AreEqual(512, evidence.Lines[0].Text.Length);
+            var secondPage = await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token, page: 2);
+            Assert.IsNotNull(secondPage); Assert.HasCount(1, secondPage.Lines); Assert.AreEqual(101, secondPage.Lines[0].Number); Assert.IsFalse(secondPage.Truncated);
+            var context = await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token, 51);
+            Assert.IsNotNull(context?.Context); Assert.HasCount(21, context.Context);
+            Assert.AreEqual(41, context.Context[0].Number); Assert.AreEqual(61, context.Context[^1].Number);
+            Assert.IsTrue(context.ContextHasMore);
+            var lastContext = await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token, 101);
+            Assert.IsNotNull(lastContext?.Context); Assert.AreEqual(101, lastContext.Context[^1].Number); Assert.IsFalse(lastContext.ContextHasMore);
+            await using (var db = contexts.CreateDbContext())
+            {
+                var saved = await db.SignatureFiles.SingleAsync(token);
+                saved.Content = [0xff]; saved.Digest = SHA256.HashData(saved.Content); await db.SaveChangesAsync(token);
+            }
+            Assert.IsTrue((await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token))!.InvalidEncoding);
+            await using (var db = contexts.CreateDbContext())
+            {
+                var saved = await db.SignatureFiles.SingleAsync(token);
+                saved.Content = [1]; await db.SaveChangesAsync(token);
+            }
+            Assert.IsFalse((await status.GetSignatureEvidenceAsync(source.Id, revision.Id, file.Path, token))!.IntegrityValid);
+        }, context.CancellationToken);
 
     [TestMethod]
     public Task Refresh_StoresVersionAndPreservesItWhenNewLicenseIsInvalid() =>
@@ -47,6 +89,12 @@ public sealed class SignatureRefreshTests(TestContext context)
                 Assert.HasCount(5, files.Items);
                 Assert.IsTrue(files.Items.Any(x => x.Kind == "ioc"));
                 Assert.IsTrue(files.Items.Any(x => x.Kind == "yara"));
+                var evidence = await new IntelligenceStatus(contexts, clock).GetSignatureEvidenceAsync(source.Id, revision.Id, "yara/example.yar", token);
+                Assert.IsNotNull(evidence);
+                Assert.IsTrue(evidence.IntegrityValid);
+                Assert.HasCount(1, evidence.Lines);
+                Assert.Contains("author", evidence.Lines[0].Text);
+                Assert.IsNull(await new IntelligenceStatus(contexts, clock).GetSignatureEvidenceAsync(source.Id, revision.Id, "iocs/hash-iocs.txt", token));
                 Assert.IsNull(await new IntelligenceStatus(contexts, clock).GetSignatureFilesAsync(Guid.CreateVersion7(), revision.Id, 1, token));
             }
             clock.Advance(TimeSpan.FromDays(2));

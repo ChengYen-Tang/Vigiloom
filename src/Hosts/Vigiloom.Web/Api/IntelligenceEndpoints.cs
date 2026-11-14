@@ -42,6 +42,13 @@ internal static class IntelligenceEndpoints
             return await status.GetSignatureFilesAsync(sourceId, revisionId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<SignatureFilePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List retained IOC and YARA source-file metadata");
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-evidence", async (Guid sourceId, Guid revisionId, string? path, int? line, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            if (path is null || path.Length is < 1 or > 512 || line is < 1 or > 1048576 || page is < 1 or > 2000) return Results.BadRequest();
+            return await status.GetSignatureEvidenceAsync(sourceId, revisionId, path, token, line, page ?? 1) is { } result ? Results.Ok(result) : Results.NotFound();
+        }).Produces<SignatureEvidenceView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Read bounded candidate author and license lines from a retained source file");
         admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/ioc-issues", async (Guid sourceId, Guid revisionId, string? path, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";

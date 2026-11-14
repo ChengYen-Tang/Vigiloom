@@ -17,6 +17,9 @@ public partial class Intelligence
     [SupplyParameterFromQuery(Name = "rulesRevision")] private Guid? RulesRevision { get; set; }
     [SupplyParameterFromQuery(Name = "rulePage")] private int? RulePage { get; set; }
     [SupplyParameterFromQuery(Name = "iocPath")] private string? IocPath { get; set; }
+    [SupplyParameterFromQuery(Name = "evidencePath")] private string? EvidencePath { get; set; }
+    [SupplyParameterFromQuery(Name = "evidenceLine")] private int? EvidenceLine { get; set; }
+    [SupplyParameterFromQuery(Name = "evidencePage")] private int? EvidencePage { get; set; }
     [SupplyParameterFromQuery(Name = "issuePage")] private int? IssuePage { get; set; }
     [SupplyParameterFromQuery(Name = "import")] private string? ImportResult { get; set; }
     [SupplyParameterFromForm(FormName = "intelligence-policy")] private PolicyForm PolicyInput { get; set; } = default!;
@@ -31,6 +34,7 @@ public partial class Intelligence
     private SigmaRulePage? sigmaRules;
     private SignatureFilePage? signatureFiles;
     private IocIssuePage? iocIssues;
+    private SignatureEvidenceView? signatureEvidence;
     private Guid? shownRulesRevision;
     private string? error;
     private string? message;
@@ -55,7 +59,7 @@ public partial class Intelligence
 
     private async Task LoadAsync()
     {
-        sources = null; selected = null; revisions = null; progress = null; sigmaRules = null; signatureFiles = null; iocIssues = null; shownRulesRevision = null; error = null;
+        sources = null; selected = null; revisions = null; progress = null; sigmaRules = null; signatureFiles = null; iocIssues = null; signatureEvidence = null; shownRulesRevision = null; error = null;
         try
         {
             sources = await Status.GetSourcesAsync(Math.Clamp(SourcePage ?? 1, 1, 1000), HttpContext.RequestAborted);
@@ -79,6 +83,12 @@ public partial class Intelligence
                 {
                     iocIssues = await Status.GetIocIssuesAsync(selected.Id, signatureRevision, path, Math.Clamp(IssuePage ?? 1, 1, 2000), HttpContext.RequestAborted);
                     if (iocIssues is null) error = "找不到所選的 IOC 來源檔案，請重新選擇。";
+                }
+                if (signatureFiles is not null && EvidencePath is { Length: > 0 and <= 512 } evidencePath)
+                {
+                    signatureEvidence = await Status.GetSignatureEvidenceAsync(selected.Id, signatureRevision, evidencePath, HttpContext.RequestAborted,
+                        EvidenceLine is { } number ? Math.Clamp(number, 1, 1048576) : null, Math.Clamp(EvidencePage ?? 1, 1, 2000));
+                    if (signatureEvidence is null) error = "找不到所選的授權來源檔案，請重新選擇。";
                 }
             }
         }
@@ -220,6 +230,7 @@ public partial class Intelligence
     private string VersionUrl(int page) => $"/settings/intelligence?source={selected?.Id:D}&sourcePage={sources?.Page ?? 1}&versionPage={page}";
     private string RulesUrl(Guid revision, int page) => $"/settings/intelligence?source={selected?.Id:D}&sourcePage={sources?.Page ?? 1}&versionPage={revisions?.Page ?? 1}&rulesRevision={revision:D}&rulePage={page}";
     private string IocIssuesUrl(Guid revision, string path, int page) => $"{RulesUrl(revision, signatureFiles?.Page ?? 1)}&iocPath={Uri.EscapeDataString(path)}&issuePage={page}";
+    private string EvidenceUrl(Guid revision, string path, int? line = null, int? page = null) => $"{RulesUrl(revision, signatureFiles?.Page ?? 1)}&evidencePath={Uri.EscapeDataString(path)}&evidencePage={page ?? signatureEvidence?.Page ?? 1}{(line is null ? "" : $"&evidenceLine={line}")}";
     private static string IocIssueReason(string reason) => reason switch
     {
         "invalid-hash" => "雜湊格式無效", "invalid-c2" => "網域或 IP 格式無效", "noncanonical-ip" => "IP 格式不明確",
