@@ -93,12 +93,15 @@ public static class WorkerHost
         builder.Services.AddScoped<SigmaRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.SignatureRefresh>();
         builder.Services.AddScoped<SignatureRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.BaselineRefresh>();
+        builder.Services.AddScoped<BaselineRefreshJob>();
         builder.Services.AddScoped<AdvisoryRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, KevCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, AdvisoryCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
         builder.Services.AddHostDetection();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IBaselineSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.BaselineSource>();
         builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
         builder.Services.AddScoped<IntegrityExpiryJob>();
@@ -138,6 +141,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
         builder.Services.AddHostedService<SigmaRefreshSchedule>();
         builder.Services.AddHostedService<SignatureRefreshSchedule>();
+        builder.Services.AddHostedService<BaselineRefreshSchedule>();
         builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();
