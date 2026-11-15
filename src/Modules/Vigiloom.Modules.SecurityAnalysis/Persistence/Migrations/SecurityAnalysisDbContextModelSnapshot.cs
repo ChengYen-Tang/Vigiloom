@@ -693,6 +693,99 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("AdvisoryRevisionEntries", "security");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.DebianAdvisory", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("AdvisoryId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("FixedVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("Release")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourcePackage")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId", "Release", "SourcePackage", "AdvisoryId")
+                        .IsUnique();
+
+                    b.ToTable("DebianAdvisories", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_DebianAdvisories_Fix", "([State] = 1 AND [FixedVersion] IS NOT NULL) OR ([State] <> 1 AND [FixedVersion] IS NULL)");
+
+                            t.HasCheckConstraint("CK_DebianAdvisories_State", "[State] BETWEEN 0 AND 3");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.EpssScoreRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Cve")
+                        .IsRequired()
+                        .HasMaxLength(28)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(28)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<decimal>("Percentile")
+                        .HasPrecision(10, 9)
+                        .HasColumnType("decimal(10,9)");
+
+                    b.Property<decimal>("Probability")
+                        .HasPrecision(10, 9)
+                        .HasColumnType("decimal(10,9)");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RevisionId", "Cve")
+                        .IsUnique();
+
+                    b.HasIndex("RevisionId", "Probability", "Cve")
+                        .IsDescending(false, true, false);
+
+                    b.ToTable("EpssScores", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_EpssScores_Ranges", "[Probability] BETWEEN 0 AND 1 AND [Percentile] BETWEEN 0 AND 1");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceActivation", b =>
                 {
                     b.Property<Guid>("SourceId")
@@ -889,6 +982,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
+                    b.Property<Guid?>("LastObservedRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("LastSuccessfulCheckAt")
                         .HasColumnType("datetimeoffset");
 
@@ -944,7 +1040,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 
-                            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 1073741824 AND [MaximumRecords] BETWEEN 1 AND 1000000 AND ([Key] = 'github-reviewed' OR [MaximumBytes] <= 67108864)");
+                            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 1073741824 AND [MaximumRecords] BETWEEN 1 AND 1000000 AND ([Key] IN ('github-reviewed', 'msrc-cvrf') OR ([Key] IN ('debian-security', 'ubuntu-osv') AND [MaximumBytes] <= 268435456) OR [MaximumBytes] <= 67108864)");
                         });
                 });
 
@@ -1053,6 +1149,154 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("KevRecords", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcArtifact", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<int>("IndexedCveCount")
+                        .HasColumnType("int")
+                        .HasDefaultValue(-1);
+
+                    b.Property<int>("IndexedProductCount")
+                        .HasColumnType("int")
+                        .HasDefaultValue(-1);
+
+                    b.Property<bool>("ProductIndexComplete")
+                        .HasColumnType("bit");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasAlternateKey("Digest");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("Digest"), false);
+
+                    b.ToTable("MsrcArtifacts", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_MsrcArtifacts_Content", "DATALENGTH([Content]) BETWEEN 1 AND 67108864");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcCveIndex", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Cve")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("Cve", "Digest");
+
+                    b.HasIndex("Digest", "Cve")
+                        .IsUnique();
+
+                    b.ToTable("MsrcCveIndexes", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcDocument", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("Digest");
+
+                    b.HasIndex("RevisionId", "DocumentId")
+                        .IsUnique();
+
+                    b.ToTable("MsrcDocuments", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcProductIndex", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Cve")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<byte[]>("ProductHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("Digest", "ProductHash", "Cve")
+                        .IsUnique();
+
+                    b.HasIndex("ProductHash", "Digest", "Cve");
+
+                    b.ToTable("MsrcProductIndexes", "security");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.OfflineImport", b =>
@@ -1251,6 +1495,141 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuDocument", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("AdvisoryId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("Compressed")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("MappingVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("OriginalLength")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("WithdrawnAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasAlternateKey("Digest", "MappingVersion");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("Digest", "MappingVersion"), false);
+
+                    b.HasAlternateKey("Digest", "MappingVersion", "AdvisoryId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("Digest", "MappingVersion", "AdvisoryId"), false);
+
+                    b.ToTable("UbuntuDocuments", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_UbuntuDocuments_Length", "[OriginalLength] BETWEEN 1 AND 8388608 AND DATALENGTH([Compressed]) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuRevisionDocument", b =>
+                {
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdvisoryId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("MappingVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("RevisionId", "AdvisoryId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RevisionId", "AdvisoryId"));
+
+                    b.HasIndex("AdvisoryId", "RevisionId");
+
+                    b.HasIndex("Digest", "MappingVersion", "AdvisoryId");
+
+                    b.HasIndex("Digest", "MappingVersion", "RevisionId");
+
+                    b.ToTable("UbuntuRevisionDocuments", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuScope", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("Ecosystem")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("MappingVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("SourcePackage")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("Digest", "MappingVersion");
+
+                    b.HasIndex("Ecosystem", "SourcePackage", "Digest", "MappingVersion")
+                        .IsUnique();
+
+                    b.ToTable("UbuntuScopes", "security");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChangeRecord", b =>
                 {
                     b.Property<long>("RowId")
@@ -1307,7 +1686,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] IN (1, 4) AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] IN (2, 5) AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
 
-                            t.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 15 AND [Kind] BETWEEN 1 AND 5");
+                            t.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 16 AND [Kind] BETWEEN 1 AND 5");
                         });
                 });
 
@@ -1623,7 +2002,414 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_InventorySources_RejectionReason", "([LastStatus] IS NOT NULL AND [LastStatus] = 5 AND [LastRejectionReason] IS NOT NULL AND [LastRejectionReason] BETWEEN 1 AND 3) OR (([LastStatus] IS NULL OR [LastStatus] <> 5) AND [LastRejectionReason] IS NULL)");
 
-                            t.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 15");
+                            t.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 16");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityCoverage", b =>
+                {
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<DateTimeOffset>("EvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("HostSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MatcherVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("PackageCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PackageSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("UnknownPackageCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("DeviceId", "SourceId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("DeviceId", "SourceId"));
+
+                    b.HasIndex("SourceId", "RevisionId");
+
+                    b.ToTable("VulnerabilityCoverage", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityCoverage_Counts", "[PackageCount] >= 0 AND [UnknownPackageCount] BETWEEN 0 AND [PackageCount] AND [DeviceGeneration] >= 0");
+
+                            t.HasCheckConstraint("CK_VulnerabilityCoverage_Ids", "[RunId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000' AND [SourceId] <> '00000000-0000-0000-0000-000000000000' AND [AgentId] <> '00000000-0000-0000-0000-000000000000' AND [HostSnapshotId] <> '00000000-0000-0000-0000-000000000000' AND ([PackageSnapshotId] IS NULL OR [PackageSnapshotId] <> '00000000-0000-0000-0000-000000000000') AND ([MatcherVersion] LIKE 'windows-%' OR [PackageSnapshotId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityEvaluation", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Architecture")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("BinaryVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Ecosystem")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset>("EvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FindingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("FixStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FixedVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<Guid>("HostSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MatcherVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PackageSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourcePackage")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("SourceVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UbuntuPriority")
+                        .HasMaxLength(10)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(10)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("WindowsEvidence")
+                        .HasMaxLength(8192)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("FindingId", "RunId")
+                        .IsUnique();
+
+                    b.HasIndex("SourceId", "FindingId");
+
+                    b.HasIndex("SourceId", "RevisionId");
+
+                    b.HasIndex("FindingId", "EvaluatedAt", "RowId");
+
+                    b.ToTable("VulnerabilityEvaluations", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityEvaluations_Ids", "[RunId] <> '00000000-0000-0000-0000-000000000000' AND [FindingId] <> '00000000-0000-0000-0000-000000000000' AND [RevisionId] <> '00000000-0000-0000-0000-000000000000' AND [AgentId] <> '00000000-0000-0000-0000-000000000000' AND [HostSnapshotId] <> '00000000-0000-0000-0000-000000000000' AND ([PackageSnapshotId] IS NULL OR [PackageSnapshotId] <> '00000000-0000-0000-0000-000000000000')");
+
+                            t.HasCheckConstraint("CK_VulnerabilityEvaluations_InventoryKind", "[MatcherVersion] LIKE 'windows-%' OR ([PackageSnapshotId] IS NOT NULL AND [SourcePackage] IS NOT NULL AND [SourceVersion] IS NOT NULL AND [BinaryVersion] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_VulnerabilityEvaluations_Result", "[State] BETWEEN 0 AND 5 AND [Origin] BETWEEN 0 AND 3 AND [Reason] BETWEEN 0 AND 3 AND [DeviceGeneration] >= 0");
+
+                            t.HasCheckConstraint("CK_VulnerabilityEvaluations_UbuntuPriority", "[UbuntuPriority] IS NULL OR [UbuntuPriority] IN ('critical', 'high', 'medium', 'low', 'negligible')");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityFinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdvisoryId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("CurrentState")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("FirstEvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("IdentityHash")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<DateTimeOffset>("LastEvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("LastPackageSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LastRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("LastRunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PackageKey")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasAlternateKey("SourceId", "Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("SourceId", "Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("SourceId", "LastRevisionId");
+
+                    b.HasIndex("DeviceId", "CurrentState", "LastEvaluatedAt");
+
+                    b.HasIndex("DeviceId", "SourceId", "IdentityHash")
+                        .IsUnique();
+
+                    b.HasIndex("DeviceId", "SourceId", "LastRunId");
+
+                    b.ToTable("VulnerabilityFindings", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityFindings_Ids", "[Id] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000' AND [SourceId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_VulnerabilityFindings_State", "[CurrentState] BETWEEN 0 AND 5 AND [LastEvaluatedAt] >= [FirstEvaluatedAt]");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityInventoryEvidence", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RunId", "Source");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RunId", "Source"));
+
+                    b.ToTable("VulnerabilityInventoryEvidence", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityInventoryEvidence_Snapshot", "([SnapshotId] IS NULL AND [Outcome] IS NULL AND [ObservedAt] IS NULL) OR ([SnapshotId] IS NOT NULL AND [SnapshotId] <> '00000000-0000-0000-0000-000000000000' AND [Outcome] IS NOT NULL AND [Outcome] IN (1, 2) AND [ObservedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_VulnerabilityInventoryEvidence_Source", "[Source] IN (7, 8, 16)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityRun", b =>
+                {
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CatalogCheckedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool?>("CatalogComplete")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Digest")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.Property<string>("Ecosystem")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid?>("HostSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MatcherVersion")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid?>("PackageSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("ProductDiscoveryComplete")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RunId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RunId"));
+
+                    b.HasIndex("SourceId", "RevisionId");
+
+                    b.HasIndex("DeviceId", "SourceId", "CompletedAt");
+
+                    b.ToTable("VulnerabilityRuns", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityRuns_Catalog", "([CatalogComplete] IS NULL AND [CatalogCheckedAt] IS NULL) OR ([CatalogComplete] IS NOT NULL AND [CatalogCheckedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_VulnerabilityRuns_Evidence", "([RevisionId] IS NULL AND [AgentId] IS NULL AND [DeviceGeneration] IS NULL AND [HostSnapshotId] IS NULL AND [PackageSnapshotId] IS NULL AND [MatcherVersion] IS NULL) OR ([RevisionId] IS NOT NULL AND [AgentId] IS NOT NULL AND [DeviceGeneration] IS NOT NULL AND [DeviceGeneration] >= 0 AND [HostSnapshotId] IS NOT NULL AND [MatcherVersion] IS NOT NULL AND ([MatcherVersion] LIKE 'windows-%' OR [PackageSnapshotId] IS NOT NULL))");
+
+                            t.HasCheckConstraint("CK_VulnerabilityRuns_Ids", "[RunId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000' AND [SourceId] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityUnknownPackage", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Architecture")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("BinaryVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("PackageKey")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourcePackage")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("SourceVersion")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RunId", "RowId");
+
+                    b.ToTable("VulnerabilityUnknownPackages", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_VulnerabilityUnknownPackages_Reason", "[Reason] IN (1, 2)");
                         });
                 });
 
@@ -1721,6 +2507,24 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.DebianAdvisory", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.EpssScoreRecord", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceActivation", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource", null)
@@ -1796,6 +2600,42 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcCveIndex", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcArtifact", null)
+                        .WithMany()
+                        .HasForeignKey("Digest")
+                        .HasPrincipalKey("Digest")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcDocument", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcArtifact", null)
+                        .WithMany()
+                        .HasForeignKey("Digest")
+                        .HasPrincipalKey("Digest")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcProductIndex", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcArtifact", null)
+                        .WithMany()
+                        .HasForeignKey("Digest")
+                        .HasPrincipalKey("Digest")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.OfflineImport", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
@@ -1833,6 +2673,32 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuRevisionDocument", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuDocument", null)
+                        .WithMany()
+                        .HasForeignKey("Digest", "MappingVersion", "AdvisoryId")
+                        .HasPrincipalKey("Digest", "MappingVersion", "AdvisoryId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuScope", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.UbuntuDocument", null)
+                        .WithMany()
+                        .HasForeignKey("Digest", "MappingVersion")
+                        .HasPrincipalKey("Digest", "MappingVersion")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventoryChunkData", b =>
                 {
                     b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Inventory.InventorySnapshot", null)
@@ -1858,6 +2724,82 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("AgentId", "Source")
                         .HasPrincipalKey("AgentId", "Source")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityCoverage", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "RevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityEvaluation", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityFinding", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "FindingId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "RevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityFinding", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "LastRevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityInventoryEvidence", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityRun", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "RevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityUnknownPackage", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

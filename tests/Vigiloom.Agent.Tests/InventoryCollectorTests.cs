@@ -10,6 +10,44 @@ public sealed class InventoryCollectorTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public void WindowsUpdates_MapsEvidenceAsPartialVersionedSnapshot()
+    {
+        var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var observation = new Vigiloom.Agent.Platforms.Windows.Inventory.WindowsUpdateObservation(id, 2, "update", true, false,
+            ["CVE-2025-1234"], ["1234567"]);
+        var result = InventoryCollector.WindowsUpdates(new(InventoryReadStatus.Partial, [observation]));
+        Assert.AreEqual(InventoryReadStatus.Partial, result.Status);
+        var now = DateTimeOffset.UtcNow;
+        var batch = InventoryChunkBuilder.Build(Guid.CreateVersion7(), 1, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, result.Items).Single();
+        Assert.IsTrue(InventoryChunkCodec.TryRead(batch.Payload, out var chunk));
+        Assert.AreEqual(id, chunk!.Items.Single().UpdateId);
+        Assert.AreEqual(2, chunk.Items.Single().UpdateRevision);
+        var notInstalled = observation with { UpdateId = Guid.Parse("22222222-2222-4222-8222-222222222222"), Installed = false };
+        var observed = InventoryCollector.WindowsUpdates(new(InventoryReadStatus.Partial, [observation, notInstalled]));
+        var observedBatch = InventoryChunkBuilder.Build(Guid.CreateVersion7(), 1, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, observed.Items).Single();
+        Assert.IsTrue(InventoryChunkCodec.TryRead(observedBatch.Payload, out var observedChunk));
+        Assert.IsFalse(observedChunk!.Items.Single(x => x.UpdateId == notInstalled.UpdateId).UpdateInstalled);
+        Assert.AreEqual(InventoryReadStatus.Partial, observed.Status);
+        Assert.AreEqual(InventoryReadStatus.Partial, InventoryCollector.WindowsUpdates(new(InventoryReadStatus.Partial, [observation, observation])).Status);
+        Assert.IsEmpty(InventoryCollector.WindowsUpdates(new(InventoryReadStatus.Partial, [observation, observation])).Items);
+    }
+
+    [TestMethod]
+    public void Software_PreservesCompleteSourceEvidenceAndDoesNotInventMissingValues()
+    {
+        var read = new InventoryReadResult<InstalledSoftware>(InventoryReadStatus.Complete,
+        [
+            new("binary:amd64", "binary", "1.0-1+b1", null, "amd64", "source", "1.0-1"),
+            new("other:amd64", "other", "2.0", null, "amd64", "other-source", null)
+        ]);
+        var result = InventoryCollector.Software(read);
+        Assert.AreEqual("source", result.Items[0].SourcePackageName);
+        Assert.AreEqual("1.0-1", result.Items[0].SourcePackageVersion);
+        Assert.IsNull(result.Items[1].SourcePackageName);
+        Assert.IsNull(result.Items[1].SourcePackageVersion);
+    }
+
+    [TestMethod]
     public async Task Processes_CollectsPathOnlyWhenEnabledAndNeverIncludesArguments()
     {
         var collector = new InventoryCollector(TimeProvider.System);

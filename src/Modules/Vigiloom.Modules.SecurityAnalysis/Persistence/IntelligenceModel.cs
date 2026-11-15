@@ -11,7 +11,7 @@ internal static class IntelligenceModel
         source.ToTable("IntelligenceSources", t =>
         {
             t.HasCheckConstraint("CK_IntelligenceSources_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
-            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 1073741824 AND [MaximumRecords] BETWEEN 1 AND 1000000 AND ([Key] = 'github-reviewed' OR [MaximumBytes] <= 67108864)");
+            t.HasCheckConstraint("CK_IntelligenceSources_Settings", "[UpdateIntervalSeconds] BETWEEN 300 AND 604800 AND [StaleAfterSeconds] BETWEEN 3600 AND 2592000 AND [MaximumBytes] BETWEEN 1024 AND 1073741824 AND [MaximumRecords] BETWEEN 1 AND 1000000 AND ([Key] IN ('github-reviewed', 'msrc-cvrf') OR ([Key] IN ('debian-security', 'ubuntu-osv') AND [MaximumBytes] <= 268435456) OR [MaximumBytes] <= 67108864)");
         });
         source.HasKey(x => x.Id).IsClustered(false);
         source.Property(x => x.Id).ValueGeneratedNever();
@@ -88,6 +88,56 @@ internal static class IntelligenceModel
         kev.Property(x => x.RequiredAction).IsRequired();
         kev.HasIndex(x => new { x.RevisionId, x.CveId }).IsUnique();
         kev.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var debian = model.Entity<DebianAdvisory>();
+        debian.ToTable("DebianAdvisories", t =>
+        {
+            t.HasCheckConstraint("CK_DebianAdvisories_State", "[State] BETWEEN 0 AND 3");
+            t.HasCheckConstraint("CK_DebianAdvisories_Fix", "([State] = 1 AND [FixedVersion] IS NOT NULL) OR ([State] <> 1 AND [FixedVersion] IS NULL)");
+        });
+        debian.HasKey(x => x.RowId).IsClustered();
+        debian.Property(x => x.RowId).UseIdentityColumn();
+        debian.Property(x => x.SourcePackage).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        debian.Property(x => x.AdvisoryId).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        debian.Property(x => x.Release).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        debian.Property(x => x.FixedVersion).HasMaxLength(2048);
+        debian.HasIndex(x => new { x.RevisionId, x.Release, x.SourcePackage, x.AdvisoryId }).IsUnique();
+        debian.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+
+        var ubuntuDocument = model.Entity<UbuntuDocument>();
+        ubuntuDocument.ToTable("UbuntuDocuments", t => t.HasCheckConstraint("CK_UbuntuDocuments_Length", "[OriginalLength] BETWEEN 1 AND 8388608 AND DATALENGTH([Compressed]) > 0"));
+        ubuntuDocument.HasKey(x => x.RowId).IsClustered();
+        ubuntuDocument.Property(x => x.RowId).UseIdentityColumn();
+        ubuntuDocument.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        ubuntuDocument.Property(x => x.MappingVersion).HasMaxLength(64).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuDocument.Property(x => x.AdvisoryId).HasMaxLength(128).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuDocument.Property(x => x.Compressed).IsRequired();
+        ubuntuDocument.HasAlternateKey(x => new { x.Digest, x.MappingVersion }).IsClustered(false);
+        ubuntuDocument.HasAlternateKey(x => new { x.Digest, x.MappingVersion, x.AdvisoryId }).IsClustered(false);
+
+        var ubuntuScope = model.Entity<UbuntuScope>();
+        ubuntuScope.ToTable("UbuntuScopes");
+        ubuntuScope.HasKey(x => x.RowId).IsClustered();
+        ubuntuScope.Property(x => x.RowId).UseIdentityColumn();
+        ubuntuScope.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        ubuntuScope.Property(x => x.MappingVersion).HasMaxLength(64).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuScope.Property(x => x.Ecosystem).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuScope.Property(x => x.SourcePackage).HasMaxLength(256).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuScope.HasIndex(x => new { x.Ecosystem, x.SourcePackage, x.Digest, x.MappingVersion }).IsUnique();
+        ubuntuScope.HasOne<UbuntuDocument>().WithMany().HasForeignKey(x => new { x.Digest, x.MappingVersion })
+            .HasPrincipalKey(x => new { x.Digest, x.MappingVersion }).OnDelete(DeleteBehavior.NoAction);
+
+        var ubuntuRevision = model.Entity<UbuntuRevisionDocument>();
+        ubuntuRevision.ToTable("UbuntuRevisionDocuments");
+        ubuntuRevision.HasKey(x => new { x.RevisionId, x.AdvisoryId }).IsClustered();
+        ubuntuRevision.Property(x => x.AdvisoryId).HasMaxLength(128).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuRevision.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        ubuntuRevision.Property(x => x.MappingVersion).HasMaxLength(64).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        ubuntuRevision.HasIndex(x => new { x.Digest, x.MappingVersion, x.RevisionId });
+        ubuntuRevision.HasIndex(x => new { x.AdvisoryId, x.RevisionId });
+        ubuntuRevision.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+        ubuntuRevision.HasOne<UbuntuDocument>().WithMany().HasForeignKey(x => new { x.Digest, x.MappingVersion, x.AdvisoryId })
+            .HasPrincipalKey(x => new { x.Digest, x.MappingVersion, x.AdvisoryId }).OnDelete(DeleteBehavior.NoAction);
 
         var import = model.Entity<AdvisoryImport>();
         import.ToTable("AdvisoryImports", t =>
@@ -204,6 +254,57 @@ internal static class IntelligenceModel
         ioc.Property(x => x.Reason).HasMaxLength(128).IsUnicode(false);
         ioc.HasIndex(x => new { x.SignatureFileRowId, x.LineNumber }).IsUnique();
         ioc.HasOne<SignatureFile>().WithMany().HasForeignKey(x => x.SignatureFileRowId).OnDelete(DeleteBehavior.NoAction);
+
+        var msrc = model.Entity<MsrcDocument>();
+        msrc.ToTable("MsrcDocuments");
+        msrc.HasKey(x => x.RowId).IsClustered();
+        msrc.Property(x => x.RowId).UseIdentityColumn();
+        msrc.Property(x => x.DocumentId).HasMaxLength(16).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        msrc.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        msrc.HasIndex(x => new { x.RevisionId, x.DocumentId }).IsUnique();
+        msrc.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
+        var msrcArtifact = model.Entity<MsrcArtifact>();
+        msrcArtifact.ToTable("MsrcArtifacts", t => t.HasCheckConstraint("CK_MsrcArtifacts_Content", "DATALENGTH([Content]) BETWEEN 1 AND 67108864"));
+        msrcArtifact.HasKey(x => x.RowId).IsClustered();
+        msrcArtifact.Property(x => x.RowId).UseIdentityColumn();
+        msrcArtifact.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        msrcArtifact.Property(x => x.Content).IsRequired();
+        msrcArtifact.Property(x => x.IndexedCveCount).HasDefaultValue(-1).ValueGeneratedNever();
+        msrcArtifact.Property(x => x.IndexedProductCount).HasDefaultValue(-1).ValueGeneratedNever();
+        msrcArtifact.HasAlternateKey(x => x.Digest).IsClustered(false);
+        msrc.HasOne<MsrcArtifact>().WithMany().HasForeignKey(x => x.Digest).HasPrincipalKey(x => x.Digest).OnDelete(DeleteBehavior.NoAction);
+        var msrcCve = model.Entity<MsrcCveIndex>();
+        msrcCve.ToTable("MsrcCveIndexes");
+        msrcCve.HasKey(x => x.RowId).IsClustered();
+        msrcCve.Property(x => x.RowId).UseIdentityColumn();
+        msrcCve.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        msrcCve.Property(x => x.Cve).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        msrcCve.HasIndex(x => new { x.Digest, x.Cve }).IsUnique();
+        msrcCve.HasIndex(x => new { x.Cve, x.Digest });
+        msrcCve.HasOne<MsrcArtifact>().WithMany().HasForeignKey(x => x.Digest).HasPrincipalKey(x => x.Digest).OnDelete(DeleteBehavior.Cascade);
+
+        var msrcProduct = model.Entity<MsrcProductIndex>();
+        msrcProduct.ToTable("MsrcProductIndexes");
+        msrcProduct.HasKey(x => x.RowId).IsClustered();
+        msrcProduct.Property(x => x.RowId).UseIdentityColumn();
+        msrcProduct.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        msrcProduct.Property(x => x.ProductHash).HasColumnType("binary(32)").IsRequired();
+        msrcProduct.Property(x => x.ProductName).HasMaxLength(512).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        msrcProduct.Property(x => x.Cve).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        msrcProduct.HasIndex(x => new { x.Digest, x.ProductHash, x.Cve }).IsUnique();
+        msrcProduct.HasIndex(x => new { x.ProductHash, x.Digest, x.Cve });
+        msrcProduct.HasOne<MsrcArtifact>().WithMany().HasForeignKey(x => x.Digest).HasPrincipalKey(x => x.Digest).OnDelete(DeleteBehavior.Cascade);
+
+        var epss = model.Entity<EpssScoreRecord>();
+        epss.ToTable("EpssScores", t => t.HasCheckConstraint("CK_EpssScores_Ranges", "[Probability] BETWEEN 0 AND 1 AND [Percentile] BETWEEN 0 AND 1"));
+        epss.HasKey(x => x.RowId).IsClustered();
+        epss.Property(x => x.RowId).UseIdentityColumn();
+        epss.Property(x => x.Cve).HasMaxLength(28).IsUnicode(false).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        epss.Property(x => x.Probability).HasPrecision(10, 9);
+        epss.Property(x => x.Percentile).HasPrecision(10, 9);
+        epss.HasIndex(x => new { x.RevisionId, x.Cve }).IsUnique();
+        epss.HasIndex(x => new { x.RevisionId, x.Probability, x.Cve }).IsDescending(false, true, false);
+        epss.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => x.RevisionId).OnDelete(DeleteBehavior.NoAction);
 
         var offline = model.Entity<OfflineImport>();
         offline.ToTable("OfflineImports", t => t.HasCheckConstraint("CK_OfflineImports_Actor", "[ActorId] <> '00000000-0000-0000-0000-000000000000'"));

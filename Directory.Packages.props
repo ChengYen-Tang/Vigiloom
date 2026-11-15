@@ -3,8 +3,10 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="CsvHelper" Version="34.0.0" />
     <PackageVersion Include="Google.Api.CommonProtos" Version="2.17.0" />
     <PackageVersion Include="Respawn" Version="7.0.0" />
+    <PackageVersion Include="SharpCompress" Version="0.50.9" />
     <PackageVersion Include="AngleSharp" Version="1.9.0" />
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
     <PackageVersion Include="Hangfire.SqlServer" Version="1.8.25" />
@@ -41,6 +43,7 @@
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="NuGet.Versioning" Version="7.9.0" />
     <PackageVersion Include="Otp.NET" Version="1.4.1" />
+    <PackageVersion Include="Poushec.UpdateCatalogParser" Version="4.2.0" />
     <PackageVersion Include="QRCoder" Version="1.8.1" />
     <PackageVersion Include="Tuf" Version="1.1.1" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
@@ -48,6 +51,7 @@
     <!-- SqlClient 6.1.7 requests 9.0.11; pin the patched 9.x release. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.22" />
     <PackageVersion Include="System.Management" Version="10.0.14" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
     <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
     <PackageVersion Include="System.DirectoryServices.AccountManagement" Version="10.0.14" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
