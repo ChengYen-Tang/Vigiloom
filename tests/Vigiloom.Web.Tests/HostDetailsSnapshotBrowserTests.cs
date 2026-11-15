@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Playwright;
+using System.Text.RegularExpressions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -104,7 +105,7 @@ public sealed class HostDetailsSnapshotBrowserTests
         await findingsCard.GetByText("第 2 頁", new() { Exact = true }).WaitForAsync();
         await host.GetByText("對應產品：Windows Server 2022 (Server Core installation)", new() { Exact = true }).WaitForAsync();
         await host.GetByText("已知遭利用（CISA KEV）", new() { Exact = true }).WaitForAsync();
-        await host.GetByText("EPSS：85.00%", new() { Exact = true }).WaitForAsync();
+        await host.GetByText(new Regex(@"^EPSS：85[.,]00\s*%$")).WaitForAsync();
         await host.GetByText("系統組建：20348.1", new() { Exact = true }).WaitForAsync();
         await host.GetByText("相關 KB：1234567", new() { Exact = true }).WaitForAsync();
         await host.GetByText("查看更新取代線索", new() { Exact = true }).ClickAsync();
