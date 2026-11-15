@@ -20,6 +20,8 @@ For frequency-based rules, support Sigma event-count correlation only when the r
 
 Stored upstream rules retain source revision, ID, content digest and per-rule license status from REQ-32. Local enablement, test results and exceptions are separate from the upstream file. A rule must pass matching and non-matching examples before activation; edits do not overwrite the retained source. Rule diagnostics identify which syntax or input capability is missing.
 
+Administrators can test exact field-value exclusions alongside a rule. Exclusions match any decoded value using case-insensitive equality and do not apply when the field is missing or the event is indeterminate. For event-count rules they filter base events before counting. The tested exclusions are stored with the immutable test evidence; applying a changed set selects a new successful test and isolates correlation state using the existing activation version. The page distinguishes the active exclusions from those being tested.
+
 ## Engine selection and verification
 
 `EventViewerX.Detection` 4.2.1 is an MIT-licensed .NET Sigma compiler, but its own project explicitly marks the package and core engine as Windows-only; it cannot establish the required Linux-hosted central worker support. SigmaHQ's `sigma_engine` is MIT-licensed and implements both matching and correlation, but is a Rust library with no existing .NET package or C ABI. The initial .NET implementation should follow the upstream engine's supported behavior and examples rather than importing a Windows-only dependency or requiring an additional service on every monitored host.

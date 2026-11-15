@@ -46,6 +46,24 @@ public sealed class OutboxTests
     });
 
     [TestMethod]
+    public Task Dispatch_DrainsMoreThanOneFormerBatch() => WithDatabase(async (connectionString, token) =>
+    {
+        var handler = new TestHandler();
+        var writer = new OutboxWriter([handler]);
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(token);
+        await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
+        {
+            for (var i = 0; i < 64; i++)
+                await writer.WriteAsync(new(Guid.CreateVersion7(), handler.MessageType, "{}"), connection, transaction, token);
+            await transaction.CommitAsync(token);
+        }
+        await Dispatcher(connectionString, handler).DispatchAsync(token);
+        Assert.AreEqual(64, await CountAsync(connection, "SELECT COUNT(*) FROM scheduling.Outbox WHERE State=2", token));
+        Assert.AreEqual(64, await CountAsync(connection, "SELECT COUNT(*) FROM scheduling.TestEffects", token));
+    });
+
+    [TestMethod]
     public Task ConcurrentDispatchers_ApplyOneEffect_AndRecoverExpiredLease() => WithIsolatedDatabase(async (connectionString, token) =>
     {
         await using (var configuration = new SqlConnection(connectionString))

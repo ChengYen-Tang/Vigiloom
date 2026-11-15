@@ -1,6 +1,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Contracts.Agent.Inventory
+@using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Web.Client.Components
 @implements IAsyncDisposable
 @inject IHostMonitoringClient Monitoring
@@ -15,7 +16,7 @@
             <button type="button" disabled="@(!RendererInfo.IsInteractive)" class="@(tab == item.Key ? "active" : "")" aria-current="@(tab == item.Key ? "page" : null)" @onclick="() => ChangeTabAsync(item.Key)">@item.Label</button>
         }
     </nav>
-    @if (tab is "metrics" or "logs" or "integrity")
+    @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
         <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></div>
     }
@@ -110,6 +111,36 @@
         }
         else { <p>這段時間沒有主機日誌。</p> }
         @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">較新紀錄</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">較早紀錄</button> }
+    }
+    else if (tab == "detections")
+    {
+        <p>顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。</p>
+        @if (detectionPage?.Items.Count > 0)
+        {
+            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="行為偵測紀錄，可左右捲動">
+                <table><thead><tr><th>接收時間（UTC）</th><th>規則</th><th>結果與證據</th></tr></thead><tbody>
+                @foreach (var item in detectionPage.Items)
+                {
+                    <tr @key="(item.AgentId, item.MessageId, item.TestId, item.ActivationVersion)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.RulePath</td><td>
+                        <span class="detection-status @(item.Outcome == SigmaExpectedOutcome.Match ? "detection-match" : "detection-unknown")">@(item.Outcome == SigmaExpectedOutcome.Match ? "命中" : "未評估")</span>
+                        @if (item.Correlation is { } evidence) { <div>@evidence.Count 筆事件 · @DisplayTime(evidence.FirstEventAt) 至 @DisplayTime(evidence.LastEventAt)（UTC）</div> }
+                        <details><summary>查看來源與事件識別</summary><div>來源版本：@item.RevisionId</div><div>規則摘要：@item.RuleSha256</div><div>Agent：@item.AgentId</div><div>事件：@item.MessageId</div></details>
+                    </td></tr>
+                }
+                </tbody></table>
+            </div>
+        }
+        else { <p>這段時間沒有偵測紀錄。</p> }
+        @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
+        <h3>資料缺口</h3>
+        @if (detectionGaps?.Items.Count > 0)
+        {
+            <div class="host-table" tabindex="0" role="region" aria-label="偵測資料缺口，可左右捲動"><table><thead><tr><th>紀錄時間（UTC）</th><th>原因</th><th>事件</th></tr></thead><tbody>
+            @foreach (var gap in detectionGaps.Items) { <tr><td>@DisplayTime(gap.RecordedAt)</td><td>@(gap.Kind == SigmaDetectionGapKind.OriginalEventUnavailable ? "原始日誌無法取得" : "規則無法使用")</td><td>@gap.MessageId</td></tr> }
+            </tbody></table></div>
+        }
+        else { <p>這段時間沒有已記錄的資料缺口。</p> }
+        @if (detectionGaps is not null && (gapCursors.Count > 0 || detectionGaps.NextCursor is not null)) { <button type="button" disabled="@(gapCursors.Count == 0)" @onclick="PreviousGapsAsync">較新缺口</button><button type="button" disabled="@(detectionGaps.NextCursor is null)" @onclick="NextGapsAsync">較早缺口</button> }
     }
     else if (tab == "integrity")
     {

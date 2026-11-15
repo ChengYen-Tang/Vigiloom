@@ -24,6 +24,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Worker.Hosting;
 
@@ -63,6 +64,7 @@ public static class WorkerHost
         builder.Services.AddScoped<SpeedRetentionCleanup>();
         builder.Services.AddScoped<SpeedRetentionJob>();
         builder.Services.AddScoped<AgentInboxCleanup>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
         builder.Services.AddScoped<UpdateTrustStore>();
         builder.Services.AddScoped<AgentPackageSourceSettings>();
         builder.Services.AddScoped<AgentPackageRefreshJob>();
@@ -78,6 +80,7 @@ public static class WorkerHost
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, KevCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, AdvisoryCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
+        builder.Services.AddHostDetection();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
         builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();
