@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -47,6 +48,12 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
     public DbSet<AdvisoryRevisionEntry> AdvisoryRevisionEntries => Set<AdvisoryRevisionEntry>();
     public DbSet<SigmaRule> SigmaRules => Set<SigmaRule>();
+    public DbSet<SigmaRuleTest> SigmaRuleTests => Set<SigmaRuleTest>();
+    public DbSet<SigmaRuleActivation> SigmaRuleActivations => Set<SigmaRuleActivation>();
+    public DbSet<SigmaDetectionResult> SigmaDetectionResults => Set<SigmaDetectionResult>();
+    public DbSet<SigmaCorrelationEvent> SigmaCorrelationEvents => Set<SigmaCorrelationEvent>();
+    public DbSet<SigmaCorrelationCoverage> SigmaCorrelationCoverages => Set<SigmaCorrelationCoverage>();
+    public DbSet<SigmaEventGap> SigmaEventGaps => Set<SigmaEventGap>();
     public DbSet<SigmaManifest> SigmaManifests => Set<SigmaManifest>();
     public DbSet<SignatureFile> SignatureFiles => Set<SignatureFile>();
     public DbSet<IocEntry> IocEntries => Set<IocEntry>();
@@ -56,6 +63,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     {
         modelBuilder.HasDefaultSchema("security");
         IntelligenceModel.Configure(modelBuilder);
+        DetectionModel.Configure(modelBuilder);
         VulnerabilityModel.Configure(modelBuilder);
         var source = modelBuilder.Entity<InventorySourceState>();
         source.ToTable("InventorySources", table =>

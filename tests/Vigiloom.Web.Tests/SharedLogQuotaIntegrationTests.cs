@@ -21,6 +21,7 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -69,6 +70,8 @@ public sealed class SharedLogQuotaIntegrationTests(TestContext context)
                     await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                     await using (var db = await services.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                     await using (var db = await quota.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                    var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+                    await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                     var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
                     var device = new Device("quota-host", "127.0.0.1", true, now);
                     await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }

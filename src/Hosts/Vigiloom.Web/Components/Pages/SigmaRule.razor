@@ -1,0 +1,153 @@
+@page "/settings/sigma/rule"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Modules.SecurityAnalysis.Application.Detection
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.Resources.Application
+@inject SigmaRuleInventory Inventory
+@inject SigmaRuleService Rules
+@inject DeviceManagement Devices
+@inject HostLogHistory Logs
+@inject TimeProvider Clock
+@inject ILogger<SigmaRule> Logger
+
+<PageTitle>規則管理 - Vigiloom</PageTitle>
+<main class="device-page sigma-rule-page">
+    <a href="@BackUrl">← 返回行為規則</a>
+    <header class="device-heading"><div><h1>@(rule?.Source.Title ?? "規則管理")</h1><p>使用已收集的日誌試跑規則，確認結果後再啟用。</p></div></header>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (message is not null) { <p class="sigma-message" role="status">@message</p> }
+    @if (testResults is { Count: > 0 })
+    {
+        <section class="device-panel">
+            <h2>試跑結果</h2>
+            <ul>
+                @foreach (var result in testResults)
+                {
+                    var sample = TestInput.Selected.FirstOrDefault(x => x.AgentId == result.AgentId && x.MessageId == result.MessageId);
+                    <li>@(sample?.Label ?? result.MessageId.ToString())：預期 @ExpectedLabel(result.Expected.ToString())，實際 @ExpectedLabel(result.Actual.ToString())</li>
+                }
+            </ul>
+        </section>
+    }
+    @if (rule is not null && page?.Source.SourceId is { } sourceId)
+    {
+        <section class="device-panel">
+            <h2>規則狀態</h2>
+            <p>@rule.Source.Path</p>
+            <p>支援狀態：@(rule.Supported ? "支援試跑" : "尚不支援此規則")</p>
+            <p>最近試跑：@(rule.LatestTestPassed switch { true => "通過", false => "未通過", _ => "尚未試跑" })</p>
+            <p>啟用狀態：@(rule.EnabledForCurrentSource ? "已啟用" : rule.Enabled ? "來源或版本已變更，尚未評估" : "未啟用")</p>
+            @if (rule.EnabledForCurrentSource)
+            {
+                <p>目前生效的排除條件：</p>
+                @if (rule.ActiveExceptions is { Count: > 0 })
+                {
+                    <ul>@foreach (var item in rule.ActiveExceptions) { <li>@item.Field = @item.Value</li> }</ul>
+                }
+                else { <p>無。</p> }
+            }
+            <p>規則已啟用不代表設備已收集所需日誌。</p>
+            @if (rule.Enabled || rule.Supported && rule.LatestTestPassed == true)
+            {
+                <EditForm Model="StateInput" FormName="sigma-rule-state" method="post" OnSubmit="ChangeStateAsync">
+                    <input type="hidden" name="StateInput.SourceId" value="@StateInput.SourceId" />
+                    <input type="hidden" name="StateInput.Path" value="@StateInput.Path" />
+                    <input type="hidden" name="StateInput.TestId" value="@StateInput.TestId" />
+                    <input type="hidden" name="StateInput.Version" value="@StateInput.Version" />
+                    <input type="hidden" name="StateInput.Enable" value="@(StateInput.Enable ? "true" : "false")" />
+                    <button type="submit">@(rule.Enabled ? "停用規則" : "啟用規則")</button>
+                    @if (rule.Enabled && rule.LatestTestPassed == true && rule.LatestTestId != rule.ActiveTestId)
+                    {
+                        <button type="submit" name="StateInput.Apply" value="true">套用通過的試跑</button>
+                    }
+                </EditForm>
+            }
+            else if (rule.Supported) { <p>請先完成通過的試跑，才能啟用。</p> }
+        </section>
+        @if (rule.Supported)
+        {
+            <section class="device-panel">
+                <h2>選擇測試日誌</h2>
+                @if (logs is null)
+                {
+                <form method="get" action="/settings/sigma/rule" class="sigma-device-filter">
+                    <input type="hidden" name="path" value="@Path" />
+                    @if (Cursor is not null) { <input type="hidden" name="cursor" value="@Cursor" /> }
+                    <label for="sigma-search">搜尋設備</label><input id="sigma-search" name="search" value="@Search" />
+                    <label for="sigma-range">日誌時間</label><select id="sigma-range" name="hours"><option value="24" selected="@(SelectedHours == 24)">最近 24 小時</option><option value="168" selected="@(SelectedHours == 168)">最近 7 天</option><option value="720" selected="@(SelectedHours == 720)">最近 30 天</option></select>
+                    <button type="submit">搜尋</button>
+                    @if (devices is not null)
+                    {
+                        <label for="sigma-device">設備</label><select id="sigma-device" name="device"><option value="">請選擇設備</option>@foreach (var device in devices.Items) { <option value="@device.Id" selected="@(DeviceId == device.Id)">@device.Name</option> }</select>
+                        <button type="submit">查看日誌</button>
+                    }
+                </form>
+                }
+                @if (devices is { Total: > 50 }) { <p>搜尋設備名稱可縮小範圍，目前顯示前 50 筆。</p> }
+                @if (DeviceId is not null && logs is { Items.Count: 0 }) { <p>這段時間沒有主機日誌。</p> }
+                @if (logs is not null)
+                {
+                    <p>對每筆案例選擇預期結果，至少包含「應命中」及「不應命中」；一次最多 20 筆。</p>
+                    <EditForm Model="TestInput" FormName="sigma-rule-test" method="post" OnSubmit="TestAsync">
+                        <input type="hidden" name="TestInput.Path" value="@TestInput.Path" />
+                        <label for="sigma-exceptions">本機排除條件（選填）</label>
+                        <p>每行輸入一組「欄位=值」，值以不區分大小寫的完整內容比對；符合任一條件的事件會被排除。關聯規則會在計數前排除。變更後請重新試跑並啟用。</p>
+                        <textarea id="sigma-exceptions" name="TestInput.Exceptions" rows="3">@TestInput.Exceptions</textarea>
+                        <input type="hidden" name="TestInput.LogCursor" value="@LogCursor" />
+                        <input type="hidden" name="TestInput.DeviceId" value="@DeviceId" />
+                        @if (TestInput.Selected.Count > 0)
+                        {
+                            <h3>已選案例</h3><p>可跨頁挑選；勾選移除後，按「更新案例」即可移除。</p>
+                            <ul>@for (var selectedIndex = 0; selectedIndex < TestInput.Selected.Count; selectedIndex++)
+                            {
+                                var selected = TestInput.Selected[selectedIndex];
+                                <li>
+                                    <input type="hidden" name="@($"TestInput.Selected[{selectedIndex}].AgentId")" value="@selected.AgentId" />
+                                    <input type="hidden" name="@($"TestInput.Selected[{selectedIndex}].MessageId")" value="@selected.MessageId" />
+                                    <input type="hidden" name="@($"TestInput.Selected[{selectedIndex}].Expected")" value="@selected.Expected" />
+                                    <input type="hidden" name="@($"TestInput.Selected[{selectedIndex}].Label")" value="@selected.Label" />
+                                    <label><input type="checkbox" name="@($"TestInput.Selected[{selectedIndex}].Remove")" value="true" /> 移除</label>
+                                    @selected.Label · @ExpectedLabel(selected.Expected)
+                                </li>
+                            }</ul>
+                        }
+                        <p class="sigma-scroll-hint">左右滑動查看完整日誌資訊。</p>
+                        <div class="sigma-table-wrap" role="region" tabindex="0" aria-label="測試日誌，可左右捲動">
+                            <table class="sigma-table"><thead><tr><th>接收時間（UTC）</th><th>來源與內容</th><th>預期結果</th></tr></thead><tbody>
+                            @for (var index = 0; index < logs.Items.Count; index++)
+                            {
+                                var item = logs.Items[index];
+                                <tr @key="(item.AgentId, item.MessageId)"><td>@item.ReceivedAt.ToString("yyyy-MM-dd HH:mm:ss")</td><td><strong>@item.SourceName</strong>@if (item.Gap is not null) { <div>採集缺口</div> }<pre>@item.Content</pre></td><td>
+                                    <input type="hidden" name="@($"TestInput.Samples[{index}].AgentId")" value="@item.AgentId" />
+                                    <input type="hidden" name="@($"TestInput.Samples[{index}].MessageId")" value="@item.MessageId" />
+                                    <input type="hidden" name="@($"TestInput.Samples[{index}].Label")" value="@($"{item.SourceName} · {item.ReceivedAt:yyyy-MM-dd HH:mm:ss} UTC")" />
+                                    <label for="@($"sample-{index}")">案例 @(index + 1)</label>
+                                    <select id="@($"sample-{index}")" name="@($"TestInput.Samples[{index}].Expected")"><option value="">不使用</option><option value="Match" selected="@(SelectedExpected(item) == "Match")">應命中</option><option value="NoMatch" selected="@(SelectedExpected(item) == "NoMatch")">不應命中</option><option value="Unknown" selected="@(SelectedExpected(item) == "Unknown")">應為未評估</option></select>
+                                </td></tr>
+                            }
+                            </tbody></table>
+                        </div>
+                        <div class="sigma-actions">
+                            <button type="submit" name="TestInput.Action" value="update">更新案例</button>
+                            @if (logs.NextCursor is not null) { <button type="submit" name="TestInput.Action" value="next">加入所選並查看較早日誌</button> }
+                            <button type="submit" name="TestInput.Action" value="run">執行試跑</button>
+                        </div>
+                        @if (devices is not null)
+                        {
+                            <div class="sigma-device-filter">
+                                <label for="sigma-next-range">日誌時間</label><select id="sigma-next-range" name="TestInput.RangeHours"><option value="24" selected="@(SelectedHours == 24)">最近 24 小時</option><option value="168" selected="@(SelectedHours == 168)">最近 7 天</option><option value="720" selected="@(SelectedHours == 720)">最近 30 天</option></select>
+                                <button type="submit" name="TestInput.Action" value="range">變更時間並保留案例</button>
+                                <label for="sigma-next-search">搜尋其他設備</label><input id="sigma-next-search" name="TestInput.DeviceSearch" value="@Search" />
+                                <button type="submit" name="TestInput.Action" value="search">搜尋並保留案例</button>
+                                <label for="sigma-next-device">其他設備</label><select id="sigma-next-device" name="TestInput.NextDevice"><option value="">請選擇設備</option>@foreach (var device in devices.Items) { <option value="@device.Id">@device.Name</option> }</select>
+                                <button type="submit" name="TestInput.Action" value="switch">切換設備並保留案例</button>
+                            </div>
+                        }
+                    </EditForm>
+                }
+            </section>
+        }
+    }
+</main>

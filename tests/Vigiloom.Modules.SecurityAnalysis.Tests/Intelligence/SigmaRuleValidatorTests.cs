@@ -32,6 +32,7 @@ public sealed class SigmaRuleValidatorTests(TestContext context)
         var yaml = """
             title: Suspicious process
             id: 929a690e-bef0-4204-a928-ef5e620d6fcc
+            name: suspicious_process
             status: test
             author: Example Author
             logsource:
@@ -45,6 +46,7 @@ public sealed class SigmaRuleValidatorTests(TestContext context)
         var result = SigmaRuleValidator.Validate(Encoding.UTF8.GetBytes(yaml));
         Assert.AreEqual("Suspicious process", result.Title);
         Assert.AreEqual("929a690e-bef0-4204-a928-ef5e620d6fcc", result.Id);
+        Assert.AreEqual("suspicious_process", result.Name);
         Assert.AreEqual("Example Author", result.Author);
         Assert.AreEqual("test", result.Status);
         Assert.IsNull(result.License);
@@ -58,6 +60,7 @@ public sealed class SigmaRuleValidatorTests(TestContext context)
     [DataRow("title: !custom x\nlogsource: {}\ndetection: {}")]
     [DataRow("title: x\nlogsource: []\ndetection: {}")]
     [DataRow("title: x\nlicense: null\nlogsource: {}\ndetection: {}")]
+    [DataRow("title: x\nname: null\nlogsource: {}\ndetection: {}")]
     [DataRow("title: x\nlogsource: {}\ndetection: {}\n---\ntitle: y")]
     public void Validate_RejectsAmbiguousOrUnsafeYaml(string yaml) =>
         Assert.Throws<InvalidDataException>(() => SigmaRuleValidator.Validate(Encoding.UTF8.GetBytes(yaml)));
