@@ -15,6 +15,7 @@ using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.Publishing.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.AlertingOperations.Application;
@@ -350,6 +351,53 @@ public sealed class PublicationConcurrencyTests(TestContext context)
         {
             gate.Release.TrySetResult();
             try { await first; } catch when (failure is not null) { }
+        }
+    }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServiceArchive_DelayedPublicationConfirmationCannotRestorePublicHistory() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var services = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var resources = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+        var publishing = host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>();
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "production", "Orders", now), now);
+        await using (var db = await services.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+        }
+        var gate = new PauseFence();
+        var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).AddInterceptors(gate).Options;
+        var slow = new PublicationAdministration(resources, new PooledDbContextFactory<ServiceObservabilityDbContext>(options), publishing,
+            new OperationAuditWriter(), TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<PublicationAdministration>.Instance);
+        var settings = await slow.ReadAsync(PublicationResourceKind.Service, service.Id, token);
+        Assert.IsNotNull(settings);
+        var pending = slow.SetAsync(PublicationResourceKind.Service, service.Id,
+            new(true, "Orders", PublicationPolicy.ServiceHistoryVersion, settings.Version), Guid.CreateVersion7(), token);
+        Exception? failure = null;
+        try
+        {
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(20), token);
+            await using var db = await services.CreateDbContextAsync(token);
+            var current = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
+            var manager = new ServiceCollectionAdministration(services, new OperationAuditWriter());
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await manager.SetArchivedAsync(service.Id, Convert.ToBase64String(current.Version), true, Guid.CreateVersion7(), token));
+            gate.Release.TrySetResult();
+            await pending.WaitAsync(TimeSpan.FromSeconds(20), token);
+            var after = await db.Services.AsNoTracking().SingleAsync(x => x.Id == service.Id, token);
+            Assert.IsNotNull(after.ArchivedAt);
+            Assert.IsFalse(after.IsPublic);
+            Assert.IsNull(after.PublicSince);
+        }
+        catch (Exception exception) { failure = exception; throw; }
+        finally
+        {
+            gate.Release.TrySetResult();
+            try { await pending; } catch when (failure is not null) { }
         }
     }, context.CancellationToken);
 
