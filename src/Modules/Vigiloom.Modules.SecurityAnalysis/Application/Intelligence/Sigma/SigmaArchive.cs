@@ -43,7 +43,7 @@ internal static class SigmaArchive
             SigmaRuleMetadata metadata;
             try { metadata = SigmaRuleValidator.Validate(content); }
             catch (InvalidDataException error) { throw new InvalidDataException($"Invalid Sigma rule: {path}.", error); }
-            if (metadata.Id is { Length: > 128 } || metadata.Author is { Length: > 1024 } ||
+            if (metadata.Id is { Length: > 128 } || metadata.Name is { Length: > 256 } || metadata.Author is { Length: > 1024 } ||
                 metadata.Status is { Length: > 128 } || metadata.License is { Length: > 256 } ||
                 metadata.Product is { Length: > 128 } || metadata.Category is { Length: > 128 } || metadata.Service is { Length: > 128 } ||
                 metadata.Id is { } id && !ids.Add(id))

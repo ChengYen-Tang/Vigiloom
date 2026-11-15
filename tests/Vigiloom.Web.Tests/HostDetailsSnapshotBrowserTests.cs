@@ -5,6 +5,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Playwright;
 using System.Text.RegularExpressions;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -23,6 +27,79 @@ namespace Vigiloom.Web.Tests;
 public sealed class HostDetailsSnapshotBrowserTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task DetectionHistory_ServerAndWebAssembly_ShowResultsAndIndependentPages() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        factory.UseKestrel(0); factory.StartServer();
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var device = new Device("detection server", "127.0.0.7", true, now);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var source = new IntelligenceSource { Key = "test-detection-source", Enabled = true };
+        var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test", RetrievedAt = now,
+            Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+        var test = new SigmaRuleTest { Id = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml",
+            Digest = new string('a', 64), ActivationVersion = "source-version", MatcherVersion = "1", SamplesJson = "[]",
+            Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = now };
+        var activation = new SigmaRuleActivation { Id = Guid.CreateVersion7(), SourceId = source.Id, Path = test.Path, TestId = test.Id,
+            Enabled = true, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now };
+        var agent = Guid.CreateVersion7();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+        {
+            db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision); db.SigmaRuleTests.Add(test); db.SigmaRuleActivations.Add(activation);
+            for (var i = 0; i < 51; i++)
+            {
+                db.SigmaDetectionResults.Add(new SigmaDetectionResult { AgentId = agent, DeviceId = device.Id, DeviceGeneration = 1,
+                    MessageId = Guid.CreateVersion7(), ActivationId = activation.Id, TestId = test.Id, ActivationVersion = new byte[8],
+                    Result = i == 0 ? (int)SigmaExpectedOutcome.Unknown : (int)SigmaExpectedOutcome.Match,
+                    OccurredAt = now.AddSeconds(-i), ReceivedAt = now.AddSeconds(-i), EvaluatedAt = now });
+                db.SigmaEventGaps.Add(new SigmaEventGap { AgentId = agent, DeviceId = device.Id, DeviceGeneration = 1,
+                    MessageId = Guid.CreateVersion7(), Kind = i == 0 ? 1 : 2, RecordedAt = now.AddSeconds(-i) });
+            }
+            await db.SaveChangesAsync(token);
+        }
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await using var browserContext = await browser.NewContextAsync();
+        var page = await browserContext.NewPageAsync();
+        await using var gate = await AutoRenderGate.HoldAsync(page);
+        var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+        await page.GotoAsync($"{url}/devices/{device.Id:D}");
+        await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await VerifyAsync("Server");
+        await gate.ReleaseAsync();
+        await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+        await page.ReloadAsync();
+        await VerifyAsync("WebAssembly");
+
+        async Task VerifyAsync(string runtime)
+        {
+            var host = page.Locator($".host-details[data-runtime='{runtime}']");
+            await host.WaitForAsync(new() { Timeout = 60000 });
+            await host.GetByRole(AriaRole.Button, new() { Name = "行為偵測", Exact = true }).ClickAsync();
+            var events = host.GetByRole(AriaRole.Region, new() { Name = "行為偵測紀錄，可左右捲動" });
+            var gaps = host.GetByRole(AriaRole.Region, new() { Name = "偵測資料缺口，可左右捲動" });
+            await events.GetByRole(AriaRole.Row).Filter(new() { HasText = "未評估" }).First.WaitForAsync();
+            await events.GetByRole(AriaRole.Row).Filter(new() { HasText = "命中" }).First.WaitForAsync();
+            await gaps.GetByText("原始日誌無法取得", new() { Exact = true }).WaitForAsync();
+            if (runtime == "Server" && Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)
+            {
+                Directory.CreateDirectory(evidence);
+                await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "detection-history.png"), FullPage = true });
+            }
+            await host.GetByRole(AriaRole.Button, new() { Name = "較早紀錄", Exact = true }).ClickAsync();
+            await Assertions.Expect(events.GetByRole(AriaRole.Row)).ToHaveCountAsync(2);
+            await Assertions.Expect(gaps.GetByRole(AriaRole.Row)).ToHaveCountAsync(51);
+            await host.GetByRole(AriaRole.Button, new() { Name = "較早缺口", Exact = true }).ClickAsync();
+            await Assertions.Expect(gaps.GetByRole(AriaRole.Row)).ToHaveCountAsync(2);
+            await Assertions.Expect(events.GetByRole(AriaRole.Row)).ToHaveCountAsync(2);
+        }
+    }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task VulnerabilityTab_ShowsStaleEvidenceAndHistory() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -321,6 +398,8 @@ public sealed class HostDetailsSnapshotBrowserTests
         public Task<HostMetricThresholdStatus?> GetMetricThresholdAsync(Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension, CancellationToken token) => Task.FromResult<HostMetricThresholdStatus?>(null);
         public Task<HostMetricAggregate?> AggregateMetricsAsync(Guid deviceId, Guid agentId, DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension, int bucketSeconds, CancellationToken token) => throw new NotSupportedException();
         public Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => throw new NotSupportedException();
+        public Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => throw new NotSupportedException();
+        public Task<SigmaDetectionGapPage?> GetDetectionGapsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => throw new NotSupportedException();
         public Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token) => Task.FromResult<DeviceIntegrityView?>(
             new(deviceId, agent, [new(scope, 2, IntegrityScopeKind.Directory, "/etc", true, now, IntegrityScanOutcome.Complete, IntegrityCompletion.Complete, null, false, now, snapshot, 1, now, 2, 2)]));
         public Task<IntegritySnapshotChunkView?> GetIntegrityChunkAsync(Guid deviceId, Guid scopeId, Guid snapshotId, int chunkIndex, CancellationToken token) => Task.FromResult<IntegritySnapshotChunkView?>(

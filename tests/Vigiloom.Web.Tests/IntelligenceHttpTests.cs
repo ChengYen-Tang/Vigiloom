@@ -19,6 +19,8 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
 
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
+
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
@@ -26,6 +28,52 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class IntelligenceHttpTests(TestContext context)
 {
+    [TestMethod]
+    public Task SigmaSavedRule_AdministratorCanDisableWhenSourceIsUnavailable() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var source = new IntelligenceSource { Key = "sigmahq-rules", Enabled = false };
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+            var tested = new SigmaRuleTest { Id = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml",
+                Digest = new string('a', 64), ActivationVersion = "version", MatcherVersion = "1", SamplesJson = "[]",
+                Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = DateTimeOffset.UtcNow };
+            var activation = new SigmaRuleActivation { Id = Guid.CreateVersion7(), SourceId = source.Id, Path = tested.Path, TestId = tested.Id,
+                Enabled = true, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = DateTimeOffset.UtcNow };
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            {
+                db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision); db.SigmaRuleTests.Add(tested); db.SigmaRuleActivations.Add(activation);
+                await db.SaveChangesAsync(token);
+            }
+            using var admin = PingTestSite.Client(factory);
+            using var reader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            using var list = await admin.GetAsync("/settings/sigma", token);
+            var listDoc = await new HtmlParser().ParseDocumentAsync(await list.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("規則來源無法使用", listDoc.Body!.TextContent);
+            var link = listDoc.QuerySelector("a[href^='/settings/sigma/saved?']")?.GetAttribute("href");
+            Assert.IsNotNull(link);
+            using var readOnly = await reader.GetAsync(link, token);
+            Assert.AreNotEqual(HttpStatusCode.OK, readOnly.StatusCode);
+            using var detail = await admin.GetAsync(link, token);
+            var detailDoc = await new HtmlParser().ParseDocumentAsync(await detail.Content.ReadAsStringAsync(token), token);
+            var form = detailDoc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "sigma-saved-disable");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            using var response = await admin.PostAsync(link, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("規則已停用", (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.IsFalse((await verify.SigmaRuleActivations.AsNoTracking().SingleAsync(token)).Enabled);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task UbuntuVersion_CanBeActivatedFromManagementPage() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>

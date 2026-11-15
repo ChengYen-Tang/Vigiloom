@@ -23,6 +23,327 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationCoverage", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("ActivationVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<DateTimeOffset>("CompleteSince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("IncompleteUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TestId", "ActivationVersion")
+                        .IsUnique();
+
+                    b.ToTable("SigmaCorrelationCoverage", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationEvent", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("ActivationVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("TestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TestId", "ActivationVersion", "AgentId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("TestId", "ActivationVersion", "OccurredAt", "RowId");
+
+                    b.ToTable("SigmaCorrelationEvents", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SigmaCorrelationEvents_DeviceGeneration", "[DeviceGeneration] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaDetectionResult", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("ActivationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("ActivationVersion")
+                        .IsRequired()
+                        .HasColumnType("binary(8)");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CorrelationCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("CorrelationFirstAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("CorrelationLastAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("ActivationId");
+
+                    b.HasIndex("TestId");
+
+                    b.HasIndex("DeviceId", "ReceivedAt", "RowId");
+
+                    b.HasIndex("AgentId", "MessageId", "TestId", "ActivationVersion")
+                        .IsUnique();
+
+                    b.ToTable("SigmaDetectionResults", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SigmaDetectionResults_Correlation", "([CorrelationCount] IS NULL AND [CorrelationFirstAt] IS NULL AND [CorrelationLastAt] IS NULL) OR ([Result] = 1 AND [CorrelationCount] IS NOT NULL AND [CorrelationCount] > 0 AND [CorrelationFirstAt] IS NOT NULL AND [CorrelationLastAt] IS NOT NULL AND [CorrelationFirstAt] <= [CorrelationLastAt])");
+
+                            t.HasCheckConstraint("CK_SigmaDetectionResults_Result", "[Result] IN (1, 2)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaEventGap", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "MessageId", "Kind")
+                        .IsUnique();
+
+                    b.HasIndex("DeviceId", "RecordedAt", "RowId");
+
+                    b.ToTable("SigmaEventGaps", "security", t =>
+                        {
+                            t.HasCheckConstraint("CK_SigmaEventGaps_Kind", "[Kind] IN (1, 2)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleActivation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("SourceId", "Path")
+                        .IsUnique();
+
+                    b.HasIndex("TestId", "SourceId");
+
+                    b.ToTable("SigmaRuleActivations", "security");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActivationVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Digest")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("MatcherVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<bool>("Passed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("SamplesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("TestedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasAlternateKey("Id", "SourceId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasAlternateKey("Id", "SourceId"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("SourceId", "RevisionId");
+
+                    b.HasIndex("SourceId", "Path", "TestedAt", "RowId");
+
+                    b.ToTable("SigmaRuleTests", "security");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord", b =>
                 {
                     b.Property<long>("RowId")
@@ -2411,6 +2732,59 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_VulnerabilityUnknownPackages_Reason", "[Reason] IN (1, 2)");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationCoverage", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", null)
+                        .WithMany()
+                        .HasForeignKey("TestId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationEvent", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", null)
+                        .WithMany()
+                        .HasForeignKey("TestId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaDetectionResult", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleActivation", null)
+                        .WithMany()
+                        .HasForeignKey("ActivationId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", null)
+                        .WithMany()
+                        .HasForeignKey("TestId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleActivation", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", null)
+                        .WithMany()
+                        .HasForeignKey("TestId", "SourceId")
+                        .HasPrincipalKey("Id", "SourceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "RevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChunkData", b =>
