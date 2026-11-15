@@ -69,8 +69,11 @@ internal static class ServiceDiscoveryEndpoints
             HttpContext context, ServiceCollectionAdministration management, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor =>
             {
-                if (serviceId.Version != 7 || action is not ("stop" or "resume")) return Results.BadRequest();
-                return await management.SetStoppedAsync(serviceId, request.Version, action == "stop", actor, token) switch
+                if (serviceId.Version != 7 || action is not ("stop" or "resume" or "archive" or "restore")) return Results.BadRequest();
+                var result = action is "archive" or "restore"
+                    ? await management.SetArchivedAsync(serviceId, request.Version, action == "archive", actor, token)
+                    : await management.SetStoppedAsync(serviceId, request.Version, action == "stop", actor, token);
+                return result switch
                 {
                     ServiceCollectionStatus.Updated => Results.NoContent(),
                     ServiceCollectionStatus.NotFound => Results.NotFound(),

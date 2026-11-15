@@ -78,7 +78,7 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
     private static async Task<Authorization?> ReadAuthorizationAsync(ServiceObservabilityDbContext db, Guid id, bool requireDetails, CancellationToken token) =>
         await (from service in db.Services.AsNoTracking()
                join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
-               where service.Id == id && service.IsPublic && service.PublicSince != null && service.PublicDisplayName != null &&
+               where service.Id == id && service.IsPublic && service.ArchivedAt == null && service.PublicSince != null && service.PublicDisplayName != null &&
                    ((EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryDetailsVersion &&
                      EF.Functions.DataLength(service.PublicPolicyVersion) == PublicationPolicy.ServiceHistoryDetailsVersion.Length * 2) ||
                     (!requireDetails && EF.Functions.Collate(service.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&
