@@ -542,6 +542,8 @@ public sealed class AgentIdentityHttpTests
             await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var quota = factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
             await using (var db = await quota.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+            await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var administration = new PolicyAdministration(quota);
             Assert.IsNotNull(await administration.UpdateAsync(new(1, 1, 1, 1), "", Guid.CreateVersion7(),
                 (_, _, _, _) => Task.CompletedTask, token));

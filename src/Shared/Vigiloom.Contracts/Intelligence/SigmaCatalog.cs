@@ -11,6 +11,7 @@ public sealed record SigmaSourceRule(string Path, string Title, string? Id, stri
 
 public sealed record SigmaSourcePage(SigmaAvailability Availability, IReadOnlyList<SigmaSourceRule> Rules, string? NextPath);
 public sealed record SigmaSourceContent(SigmaAvailability Availability, SigmaSourceRule? Rule, byte[]? Content);
+public sealed record SigmaSourceContentPage(SigmaAvailability Availability, IReadOnlyList<SigmaSourceContent> Rules, string? NextPath);
 
 /// <summary>
 /// Reads only the attributed, authorized core source subset, not executable detections.
@@ -21,4 +22,5 @@ public interface ISigmaCatalog
     Task<SigmaSnapshot> GetActiveAsync(CancellationToken cancellationToken);
     Task<SigmaSourcePage> ReadPageAsync(SigmaSnapshot selection, string? afterPath, CancellationToken cancellationToken);
     Task<SigmaSourceContent> ReadRuleAsync(SigmaSnapshot selection, string path, CancellationToken cancellationToken);
+    Task<SigmaSourceContentPage> ReadContentPageAsync(SigmaSnapshot selection, string? afterPath, CancellationToken cancellationToken);
 }

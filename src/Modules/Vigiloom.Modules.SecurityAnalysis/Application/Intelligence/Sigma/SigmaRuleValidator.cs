@@ -5,7 +5,7 @@ using YamlDotNet.Core.Events;
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 
 internal sealed record SigmaRuleMetadata(string Title, string? Id, string? Author, string? Status, string? License,
-    string? Product, string? Category, string? Service);
+    string? Product, string? Category, string? Service, bool IsCorrelation, string? Name);
 
 /// <summary>Reads bounded rule metadata without deserializing arbitrary YAML objects or evaluating detections.</summary>
 internal static class SigmaRuleValidator
@@ -28,6 +28,10 @@ internal static class SigmaRuleValidator
             var rootSeen = false;
             var logSource = false;
             var detection = false;
+            var correlation = false;
+            var logSourceSeen = false;
+            var detectionSeen = false;
+            var correlationSeen = false;
             while (parser.MoveNext())
             {
                 if (++count > MaximumEvents) throw new InvalidDataException("Sigma rule has too many YAML events.");
@@ -57,6 +61,7 @@ internal static class SigmaRuleValidator
                                     section = parent.Key;
                                     if (parent.Key == "logsource") logSource = current is MappingStart;
                                     if (parent.Key == "detection") detection = current is MappingStart;
+                                    if (parent.Key == "correlation") correlation = current is MappingStart;
                                     if (IsMetadata(parent.Key)) throw new InvalidDataException("Sigma metadata must be scalar.");
                                 }
                                 else if (frames.Count == 2 && parent.Section == "logsource" && IsLogSource(parent.Key))
@@ -79,25 +84,37 @@ internal static class SigmaRuleValidator
                         if (top.ExpectingKey)
                         {
                             if (string.IsNullOrEmpty(scalar.Value) || !top.Keys.Add(scalar.Value)) throw new InvalidDataException("Invalid or duplicate YAML key.");
+                            if (frames.Count == 1)
+                            {
+                                logSourceSeen |= scalar.Value == "logsource";
+                                detectionSeen |= scalar.Value == "detection";
+                                correlationSeen |= scalar.Value == "correlation";
+                            }
                             top.Key = scalar.Value;
                             top.ExpectingKey = false;
                         }
                         else
                         {
-                            if (frames.Count == 1 && IsMetadata(top.Key)) metadata.Add(top.Key!, scalar.Value);
+                            if (frames.Count == 1 && IsMetadata(top.Key))
+                            {
+                                if (top.Key == "name" && (string.IsNullOrWhiteSpace(scalar.Value) ||
+                                    scalar.Style == ScalarStyle.Plain && (scalar.Value == "~" || scalar.Value.Equals("null", StringComparison.OrdinalIgnoreCase))))
+                                    throw new InvalidDataException("Invalid Sigma rule name.");
+                                metadata.Add(top.Key!, scalar.Value);
+                            }
                             if (frames.Count == 2 && top.Section == "logsource" && IsLogSource(top.Key)) metadata.Add("logsource." + top.Key, scalar.Value);
                             top.ExpectingKey = true;
                         }
                         break;
                 }
             }
-            if (documents != 1 || !rootSeen || frames.Count != 0 || !logSource || !detection ||
+            if (documents != 1 || !rootSeen || frames.Count != 0 || !(logSource && detection && !correlationSeen || correlation && !logSourceSeen && !detectionSeen) ||
                 !metadata.TryGetValue("title", out var title) || string.IsNullOrWhiteSpace(title) || title.Length > 256)
                 throw new InvalidDataException("Sigma rule is missing required fields.");
             if (metadata.TryGetValue("license", out var declaredLicense) && (string.IsNullOrWhiteSpace(declaredLicense) ||
                 declaredLicense == "~" || declaredLicense.Equals("null", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidDataException("Sigma rule has an unresolved license declaration.");
-            return new(title, Get("id"), Get("author"), Get("status"), Get("license"), Get("logsource.product"), Get("logsource.category"), Get("logsource.service"));
+            return new(title, Get("id"), Get("author"), Get("status"), Get("license"), Get("logsource.product"), Get("logsource.category"), Get("logsource.service"), correlation, Get("name"));
 
             string? Get(string key) => metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
         }
@@ -107,7 +124,7 @@ internal static class SigmaRuleValidator
         }
     }
 
-    private static bool IsMetadata(string? key) => key is "title" or "id" or "author" or "status" or "license";
+    private static bool IsMetadata(string? key) => key is "title" or "id" or "name" or "author" or "status" or "license";
     private static bool IsLogSource(string? key) => key is "product" or "category" or "service";
 
     private sealed class Frame(bool mapping, string? section)

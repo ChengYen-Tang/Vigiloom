@@ -60,21 +60,56 @@ public sealed class SigmaCatalog(IDbContextFactory<SecurityAnalysisDbContext> co
         var status = await CheckSelectionAsync(db, selection, cancellationToken);
         if (status != SigmaAvailability.Ready) return new(status, null, null);
         var rule = await db.SigmaRules.AsNoTracking().SingleOrDefaultAsync(x => x.RevisionId == selection.RevisionId && x.Path == path && x.ExclusionReason == null, cancellationToken);
-        if (rule is null || SigmaLicense.ExclusionReason(rule.Path, rule.Author, rule.License) is not null ||
-            !CryptographicOperations.FixedTimeEquals(SHA256.HashData(rule.Content), rule.Digest)) return new(SigmaAvailability.Unavailable, null, null);
-        SigmaRuleMetadata metadata;
-        try { metadata = SigmaRuleValidator.Validate(rule.Content); }
-        catch (InvalidDataException) { return new(SigmaAvailability.Unavailable, null, null); }
-        if (metadata.Title != rule.Title || metadata.Id != rule.RuleId || metadata.Author != rule.Author || metadata.License != rule.License ||
-            metadata.Status != rule.Status || metadata.Product != rule.Product || metadata.Category != rule.Category || metadata.Service != rule.Service)
-            return new(SigmaAvailability.Unavailable, null, null);
+        if (rule is null || !ValidRule(rule)) return new(SigmaAvailability.Unavailable, null, null);
         if (!await StillFreshAsync(db, selection.SourceId!.Value, cancellationToken)) return new(SigmaAvailability.Stale, null, null);
         return new(SigmaAvailability.Ready, Describe(selection.Commit!, rule.Path, rule.Title, rule.RuleId, rule.Author!, rule.Digest), rule.Content);
     }
 
+    public async Task<SigmaSourceContentPage> ReadContentPageAsync(SigmaSnapshot selection, string? afterPath, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        if (afterPath is { Length: > 512 }) throw new ArgumentOutOfRangeException(nameof(afterPath));
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var status = await CheckSelectionAsync(db, selection, cancellationToken);
+        if (status != SigmaAvailability.Ready) return new(status, [], null);
+        var query = db.SigmaRules.AsNoTracking().Where(x => x.RevisionId == selection.RevisionId && x.ExclusionReason == null);
+        if (afterPath is not null) query = query.Where(x => string.Compare(x.Path, afterPath) > 0);
+        var results = new List<SigmaSourceContent>(PageSize);
+        var totalBytes = 0;
+        var more = false;
+        await foreach (var rule in query.OrderBy(x => x.Path).Take(PageSize + 1).AsAsyncEnumerable().WithCancellation(cancellationToken))
+        {
+            if (rule.Content.Length > SigmaRuleValidator.MaximumRuleBytes) return new(SigmaAvailability.Unavailable, [], null);
+            if (results.Count == PageSize || totalBytes + rule.Content.Length > 4 * 1024 * 1024)
+            {
+                more = true;
+                break;
+            }
+            if (!ValidRule(rule)) return new(SigmaAvailability.Unavailable, [], null);
+            totalBytes += rule.Content.Length;
+            results.Add(new(SigmaAvailability.Ready, Describe(selection.Commit!, rule.Path, rule.Title, rule.RuleId, rule.Author!, rule.Digest), rule.Content));
+        }
+        if (!await StillFreshAsync(db, selection.SourceId!.Value, cancellationToken)) return new(SigmaAvailability.Stale, [], null);
+        return new(SigmaAvailability.Ready, results, more ? results[^1].Rule!.Path : null);
+    }
+
+    private static bool ValidRule(SigmaRule rule)
+    {
+        if (SigmaLicense.ExclusionReason(rule.Path, rule.Author, rule.License) is not null ||
+            !CryptographicOperations.FixedTimeEquals(SHA256.HashData(rule.Content), rule.Digest)) return false;
+        SigmaRuleMetadata metadata;
+        try { metadata = SigmaRuleValidator.Validate(rule.Content); }
+        catch (InvalidDataException) { return false; }
+        if (metadata.Title != rule.Title || metadata.Id != rule.RuleId || metadata.Author != rule.Author || metadata.License != rule.License ||
+            metadata.Status != rule.Status || metadata.Product != rule.Product || metadata.Category != rule.Category || metadata.Service != rule.Service)
+            return false;
+        return true;
+    }
+
     // Immutable revision rows are checked once when producing the snapshot. Each read fences the selection and
     // policy; rule bytes and their metadata are checked again before a consumer can use them.
-    private async Task<SigmaAvailability> CheckSelectionAsync(SecurityAnalysisDbContext db, SigmaSnapshot selection, CancellationToken token)
+    internal async Task<SigmaAvailability> CheckSelectionAsync(SecurityAnalysisDbContext db, SigmaSnapshot selection, CancellationToken token)
     {
         if (selection.Availability != SigmaAvailability.Ready || selection.SourceId is not { } sourceId || selection.RevisionId is not { } revisionId ||
             selection.ActivationVersion is null || selection.ManifestSha256 is null || selection.Commit is null)

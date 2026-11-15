@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Intelligence;
 
 namespace Vigiloom.Web.Client.Services;
 
@@ -15,6 +16,8 @@ internal sealed class BrowserHostMonitoringClient(HttpClient client) : IHostMoni
     public Task<HostMetricThresholdStatus?> GetMetricThresholdAsync(Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension, CancellationToken token) => ReadAsync<HostMetricThresholdStatus>($"api/v1/devices/{deviceId:D}/host-metric-threshold?agentId={agentId:D}&kind={(int)kind}&source={Escape(source)}{(dimension is null ? "" : $"&dimension={Escape(dimension)}")}", token);
     public Task<HostMetricAggregate?> AggregateMetricsAsync(Guid deviceId, Guid agentId, DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension, int bucketSeconds, CancellationToken token) => ReadAsync<HostMetricAggregate>($"api/v1/devices/{deviceId:D}/host-metrics/aggregate?agentId={agentId:D}&from={Escape(from)}&until={Escape(until)}&kind={(int)kind}&source={Escape(source)}{(dimension is null ? "" : $"&dimension={Escape(dimension)}")}&bucketSeconds={bucketSeconds}", token);
     public Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => ReadAsync<HostLogPage>($"api/v1/devices/{deviceId:D}/host-logs?from={Escape(from)}&until={Escape(until)}{Cursor(cursor)}", token);
+    public Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => ReadAsync<SigmaDetectionEventPage>($"api/v1/devices/{deviceId:D}/sigma-detections?from={Escape(from)}&until={Escape(until)}{Cursor(cursor)}", token);
+    public Task<SigmaDetectionGapPage?> GetDetectionGapsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => ReadAsync<SigmaDetectionGapPage>($"api/v1/devices/{deviceId:D}/sigma-gaps?from={Escape(from)}&until={Escape(until)}{Cursor(cursor)}", token);
     public Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token) => ReadAsync<DeviceIntegrityView>($"api/v1/devices/{deviceId:D}/integrity", token);
     public Task<IntegritySnapshotChunkView?> GetIntegrityChunkAsync(Guid deviceId, Guid scopeId, Guid snapshotId, int chunkIndex, CancellationToken token) => ReadAsync<IntegritySnapshotChunkView>($"api/v1/devices/{deviceId:D}/integrity/scopes/{scopeId:D}/snapshots/{snapshotId:D}/chunks/{chunkIndex}", token);
     public Task<IntegrityChangePage?> GetIntegrityChangesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => ReadAsync<IntegrityChangePage>($"api/v1/devices/{deviceId:D}/integrity/changes?from={Escape(from)}&until={Escape(until)}{Cursor(cursor)}", token);

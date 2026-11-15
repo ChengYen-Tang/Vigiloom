@@ -22,6 +22,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Web.Tests;
@@ -43,6 +44,8 @@ public sealed partial class CollectorInteropTests
             await File.WriteAllTextAsync(logPath, "shared-quota-agent\n", token);
             var agentDb = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
             await using (var db = await agentDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+            await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             var device = new Device("collector-quota-host", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }

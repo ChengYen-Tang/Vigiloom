@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Data.SqlClient;
@@ -10,6 +12,7 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -19,9 +22,15 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 
 namespace Vigiloom.Modules.AgentManagement.Tests;
 
@@ -308,6 +317,13 @@ public sealed class AgentIdentitySqlTests
         var gap = next.Items.Single(x => x.Gap is not null);
         Assert.IsNull(gap.OccurredAt); Assert.IsNull(gap.Gap!.AffectedCount);
         Assert.AreEqual(AgentLogGapReason.CursorLost, gap.Gap.Reason);
+        var reader = new HostLogReader(agents);
+        var selected = await reader.ReadAsync(first.Id, [gap.MessageId, page.Items[0].MessageId, Guid.CreateVersion7()], token);
+        Assert.HasCount(2, selected);
+        Assert.AreEqual(AgentLogGapReason.CursorLost, selected.Single(x => x.MessageId == gap.MessageId).Gap!.Reason);
+        var other = await reader.ReadAsync(second.Id, [gap.MessageId, page.Items[0].MessageId], token);
+        Assert.HasCount(1, other);
+        Assert.AreEqual(second.Id, other[0].AgentId);
         Assert.IsEmpty((await history.GetAsync(firstDevice.Id, from, until, null, Guid.CreateVersion7(), token))!.Items);
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => history.GetAsync(firstDevice.Id, from, until, "bad", null, token));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => history.GetAsync(firstDevice.Id, from, from.AddDays(32), null, null, token));
@@ -460,7 +476,8 @@ public sealed class AgentIdentitySqlTests
         var record = new AgentLogRecord(Guid.CreateVersion7(), clock.Now, "first\nsecond", "provider", 42, "info", null, null);
         var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), clock.Now,
             Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [record]);
-        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var dispatch = new RecordingLogDispatch();
+        var receiver = new AgentBatchReceiver(agents, identity, clock, logDispatchWriter: dispatch);
         var payload = AgentLogBatchCodec.Serialize(batch);
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
         long tokensAfterFirst;
@@ -469,8 +486,16 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
             AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        Assert.HasCount(1, dispatch.Messages);
+        Assert.AreEqual(agentId, dispatch.Messages[0].AgentId);
+        Assert.AreEqual(device.Id, dispatch.Messages[0].DeviceId);
+        Assert.AreEqual(record.MessageId, Assert.ContainsSingle(dispatch.Messages[0].MessageIds));
         Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(credential,
             AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [record with { Content = "changed" }] }), token));
+        dispatch.Fail = true;
+        var dispatchFailure = batch with { BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7() }] };
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => receiver.ReceiveAsync(credential, AgentLogBatchCodec.Serialize(dispatchFailure), token));
+        dispatch.Fail = false;
         await using (var db = agents.CreateDbContext())
         {
             Assert.AreEqual(tokensAfterFirst, await db.Database.SqlQuery<long>($"SELECT [Microtokens] AS [Value] FROM [logquota].[Buckets] WHERE [Kind] = 0").SingleAsync(token));
@@ -504,6 +529,91 @@ public sealed class AgentIdentitySqlTests
         var downgrade = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261110080138_AgentMetricLoss", token));
         Assert.AreEqual(51000, downgrade.Number);
         Assert.AreEqual(1, await verify.HostLogs.AsNoTracking().CountAsync(token));
+    });
+
+    private sealed class RecordingLogDispatch : IHostLogDispatchWriter
+    {
+        public List<HostLogDispatch> Messages { get; } = [];
+        public bool Fail { get; set; }
+        public Task StageAsync(DbConnection connection, DbTransaction transaction, HostLogDispatch dispatch, CancellationToken token)
+        {
+            if (Fail) throw new InvalidOperationException("Simulated staging failure.");
+            Messages.Add(dispatch);
+            return Task.CompletedTask;
+        }
+    }
+
+    [TestMethod]
+    public Task HostLogDispatch_ReceivesAndAcknowledgesOutboxWithoutDuplicateWork() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("dispatch server", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        await using var agentDb = agents.CreateDbContext();
+        var connectionString = agentDb.Database.GetConnectionString()!;
+        var quotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(connectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+        var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(connectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        var securityOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(connectionString,
+            sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+        await using (var quota = new LogAdmissionDbContext(quotaOptions)) await quota.Database.MigrateAsync(token);
+        await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
+        await using (var security = new SecurityAnalysisDbContext(securityOptions)) await security.Database.MigrateAsync(token);
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IDbContextFactory<SecurityAnalysisDbContext>>(new Factory<SecurityAnalysisDbContext>(() => new(securityOptions)));
+        services.AddSingleton<IDbContextFactory<AgentManagementDbContext>>(agents);
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddScoped<ISigmaCatalog, SigmaCatalog>();
+        services.AddScoped<IHostLogReader, HostLogReader>();
+        services.AddScoped<OutboxWriter>();
+        services.AddHostDetection();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var receiver = new AgentBatchReceiver(agents, identity, clock, logDispatchWriter: scope.ServiceProvider.GetRequiredService<IHostLogDispatchWriter>());
+        var record = new AgentLogRecord(Guid.CreateVersion7(), clock.Now, "sample", null, null, null, null, null);
+        var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), clock.Now,
+            Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [record]);
+        var payload = AgentLogBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(0, await agentDb.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+        var source = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true };
+        var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test", RetrievedAt = clock.Now,
+            Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+        var actor = Guid.CreateVersion7();
+        var ruleTest = new SigmaRuleTest { Id = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id,
+            Path = "rules/test.yml", Digest = new string('a', 64), ActivationVersion = "AQ==", MatcherVersion = "1",
+            SamplesJson = "[]", Passed = true, ActorId = actor, TestedAt = clock.Now };
+        await using (var security = new SecurityAnalysisDbContext(securityOptions))
+        {
+            security.IntelligenceSources.Add(source);
+            security.IntelligenceRevisions.Add(revision);
+            security.SigmaRuleTests.Add(ruleTest);
+            security.SigmaRuleActivations.Add(new SigmaRuleActivation { Id = Guid.CreateVersion7(), SourceId = source.Id,
+                Path = ruleTest.Path, TestId = ruleTest.Id, Enabled = true, UpdatedBy = actor, UpdatedAt = clock.Now });
+            await security.SaveChangesAsync(token);
+        }
+        batch = batch with { BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7() }] };
+        payload = AgentLogBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentLogBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        Assert.AreEqual(1, await agentDb.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE State = 0").SingleAsync(token));
+        await using (var security = new SecurityAnalysisDbContext(securityOptions))
+        {
+            (await security.SigmaRuleActivations.SingleAsync(token)).Enabled = false;
+            await security.SaveChangesAsync(token);
+        }
+        var dispatcher = new OutboxDispatcher(connectionString, scope.ServiceProvider.GetServices<IOutboxHandler>(), NullLogger<OutboxDispatcher>.Instance);
+        await dispatcher.DispatchAsync(token);
+        Assert.AreEqual(1, await agentDb.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE State = 2").SingleAsync(token));
     });
 
     [TestMethod]
