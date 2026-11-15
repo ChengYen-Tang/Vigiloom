@@ -7,6 +7,7 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -55,7 +56,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
-        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss")) return IntelligencePublicationResult.Unavailable;
+        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") && BaselineDefinitions.Find(source.Key) is null) return IntelligencePublicationResult.Unavailable;
         if (requireLatest && source.LastObservedRevisionId != revisionId)
             return IntelligencePublicationResult.Conflict;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
@@ -79,6 +80,8 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         else if (source.LastSuccessfulCheckAt is null || source.LastSuccessfulCheckAt > now ||
                  source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
         if (source.Key == "github-reviewed" && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token))
+            return IntelligencePublicationResult.Unavailable;
+        if (BaselineDefinitions.Find(source.Key) is not null && !await BaselineEligibility.IsEligibleAsync(db, source.Key, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
         if (source.Key == UbuntuRevisionStage.SourceKey && !await UbuntuRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, now, token))
             return IntelligencePublicationResult.Unavailable;
