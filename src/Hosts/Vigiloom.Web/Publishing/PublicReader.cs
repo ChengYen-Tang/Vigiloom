@@ -50,7 +50,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
               AND ((d.[PublicTemplateId] IS NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
                 OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL) AS [DeviceCount],
           (SELECT COUNT(*) FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
-            WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
+            WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit) AND s.[ArchivedAt] IS NULL
               AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
                 OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))
                 OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryDetailsVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryDetailsVersion}))) AND s.[PublicDisplayName] IS NOT NULL) AS [ServiceCount]
@@ -61,7 +61,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
                   AND ((d.[PublicTemplateId] IS NULL AND d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
                     OR (d.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.TemplateVersion} AND DATALENGTH(d.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.TemplateVersion}) AND EXISTS (SELECT 1 FROM [publishing].[Templates] AS t WHERE t.[Id] = d.[PublicTemplateId] AND t.[IsRetired] = 0))) AND d.[PublicDisplayName] IS NOT NULL)
             OR EXISTS (SELECT 1 FROM [resources].[ServiceGroups] AS m JOIN [service].[Services] AS s ON s.[Id] = m.[ServiceId]
-                WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit)
+                WHERE m.[GroupId] = g.[Id] AND s.[IsPublic] = CAST(1 AS bit) AND s.[ArchivedAt] IS NULL
                   AND ((s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.BaselineVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.BaselineVersion}))
                     OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryVersion}))
                     OR (s.[PublicPolicyVersion] COLLATE Latin1_General_100_BIN2 = {PublicationPolicy.ServiceHistoryDetailsVersion} AND DATALENGTH(s.[PublicPolicyVersion]) = DATALENGTH({PublicationPolicy.ServiceHistoryDetailsVersion}))) AND s.[PublicDisplayName] IS NOT NULL))
@@ -111,7 +111,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     }
 
     private static IQueryable<MonitoredService> VisibleServices(ServiceObservabilityDbContext db) => db.Services.AsNoTracking().Where(x =>
-        x.IsPublic && x.PublicDisplayName != null &&
+        x.IsPublic && x.ArchivedAt == null && x.PublicDisplayName != null &&
         ((EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.BaselineVersion &&
           EF.Functions.DataLength(x.PublicPolicyVersion) == PublicationPolicy.BaselineVersion.Length * 2) ||
          (EF.Functions.Collate(x.PublicPolicyVersion!, "Latin1_General_100_BIN2") == PublicationPolicy.ServiceHistoryVersion &&

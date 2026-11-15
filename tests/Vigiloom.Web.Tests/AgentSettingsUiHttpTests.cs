@@ -672,6 +672,14 @@ public sealed class AgentSettingsUiHttpTests
             resumeService["ServiceForm.Id"] = service.Id.ToString("D"); resumeService[$"service-confirm-{service.Id:N}"] = "true";
             using var resumed = await admin.PostAsync(url, new FormUrlEncodedContent(resumeService), token);
             Assert.Contains("服務已恢復授權", await BodyTextAsync(resumed, token));
+            var archiveService = await FieldsAsync(resumed, token, "service-collection");
+            archiveService["ServiceForm.ArchiveId"] = service.Id.ToString("D"); archiveService[$"archive-confirm-{service.Id:N}"] = "true";
+            using var archived = await admin.PostAsync(url, new FormUrlEncodedContent(archiveService), token);
+            Assert.Contains("服務已封存並撤回公開", await BodyTextAsync(archived, token));
+            var restoreService = await FieldsAsync(archived, token, "service-collection");
+            restoreService["ServiceForm.ArchiveId"] = service.Id.ToString("D"); restoreService[$"archive-confirm-{service.Id:N}"] = "true";
+            using var restoredService = await admin.PostAsync(url, new FormUrlEncodedContent(restoreService), token);
+            Assert.Contains("服務已恢復，維持私人及停止收集", await BodyTextAsync(restoredService, token));
             using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
             {
                 var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
@@ -689,7 +697,7 @@ public sealed class AgentSettingsUiHttpTests
             Assert.HasCount(3, audit!.Items);
             var collectionAuditUrl = $"/api/v1/operations/audit/service-collections?from={Uri.EscapeDataString(at.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(at.AddHours(1).ToString("O"))}";
             var collectionAudit = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(collectionAuditUrl, token);
-            Assert.HasCount(2, collectionAudit!.Items);
+            Assert.HasCount(4, collectionAudit!.Items);
         }, TestContext.CancellationToken);
 
     [TestMethod]

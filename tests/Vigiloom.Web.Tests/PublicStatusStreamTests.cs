@@ -19,6 +19,7 @@ using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Web.Publishing;
 using Vigiloom.Web.Tests.Fixtures;
@@ -113,6 +114,7 @@ public sealed class PublicStatusStreamTests(TestContext context)
     [DataRow("devices")]
     [DataRow("device-template-retired")]
     [DataRow("services")]
+    [DataRow("service-archive")]
     [DataRow("groups")]
     [DataRow("group-member")]
     [Timeout(120000, CooperativeCancellation = true)]
@@ -163,10 +165,10 @@ public sealed class PublicStatusStreamTests(TestContext context)
         var (id, publicName) = kind switch
         {
             "devices" or "device-template-retired" => (device.Id, "Public network"),
-            "services" => (service.Id, "Public service"),
+            "services" or "service-archive" => (service.Id, "Public service"),
             _ => (group.Id, "Public group")
         };
-        var routeKind = kind switch { "group-member" => "groups", "device-template-retired" => "devices", _ => kind };
+        var routeKind = kind switch { "group-member" => "groups", "device-template-retired" => "devices", "service-archive" => "services", _ => kind };
         var url = $"/api/v1/public/{routeKind}/{id:D}/events";
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
@@ -190,6 +192,14 @@ public sealed class PublicStatusStreamTests(TestContext context)
             await using var db = await host.Services.GetRequiredService<IDbContextFactory<PublishingDbContext>>().CreateDbContextAsync(token);
             (await db.Templates.SingleAsync(x => x.Id == template.Id, token)).Retire(DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(token);
+        }
+        else if (kind == "service-archive")
+        {
+            using var scope = host.Services.CreateScope();
+            var manager = scope.ServiceProvider.GetRequiredService<ServiceCollectionAdministration>();
+            await using var db = await serviceContexts.CreateDbContextAsync(token);
+            var version = await db.Services.AsNoTracking().Where(x => x.Id == service.Id).Select(x => x.Version).SingleAsync(token);
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await manager.SetArchivedAsync(service.Id, Convert.ToBase64String(version), true, Guid.CreateVersion7(), token));
         }
         else if (kind is "services" or "group-member")
         {

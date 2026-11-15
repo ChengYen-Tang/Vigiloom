@@ -114,7 +114,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         change.Action is ServiceInstanceAction.Retired or ServiceInstanceAction.Restored;
     internal static bool IsValid(DeploymentLinkChanged change) => change.DeviceId.Version == 7 && change.ServiceInstanceId.Version == 7 &&
         change.Action is DeploymentLinkAction.Created or DeploymentLinkAction.Ended;
-    internal static bool IsValid(ServiceCollectionChanged change) => change.Action is ServiceCollectionAction.Stopped or ServiceCollectionAction.Resumed;
+    internal static bool IsValid(ServiceCollectionChanged change) => change.Action is ServiceCollectionAction.Stopped or ServiceCollectionAction.Resumed or ServiceCollectionAction.Archived or ServiceCollectionAction.Restored;
     internal static bool IsValid(HealthTargetChanged change) => change.ServiceId.Version == 7 && ValidHealthTarget(change.Current) &&
         IsVersion(change.CurrentVersion) && (change.Action == HealthTargetAction.Created
             ? change.Previous is null && change.PreviousVersion == ""
