@@ -239,7 +239,7 @@ public partial class Intelligence
     };
     private static string DisplayTime(DateTimeOffset? time) => time?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") ?? "尚無資料";
     private static string Coverage(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "CISA 已知遭利用的漏洞；不包含所有漏洞，也無法單獨判定設備是否受影響。", "github-reviewed" => "GitHub 已審核的套件安全公告；不包含未審核或惡意軟體公告，不能單獨判定設備是否受影響。", "debian-security" => "Debian 各發行版本的來源套件漏洞狀態；實際設備是否受影響需結合盤點資料判斷。", "ubuntu-osv" => "Canonical Ubuntu 漏洞資料；設備是否受影響需結合發行版本與套件盤點判斷。", "sigmahq-rules" => "保存 SigmaHQ 行為規則；支援的規則可試跑後啟用，不代表所有規則或設備均已涵蓋。", "signature-base" => "保存 IOC 與 YARA 原始檔案；IOC 來源可依條件選用，YARA 規則授權與相容性仍待核對。", _ => source.Description?.Coverage ?? "無法確認來源涵蓋範圍。" };
-    private static string Category(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "已知遭利用的漏洞", "github-reviewed" => "開源套件安全公告", "debian-security" or "ubuntu-osv" => "發行版安全公告", "sigmahq-rules" => "行為規則", "signature-base" => "IOC／YARA", _ => source.Description?.Category ?? "未知" };
+    private static string Category(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "已知遭利用的漏洞", "github-reviewed" => "開源套件安全公告", "debian-security" or "ubuntu-osv" => "發行版安全公告", "sigmahq-rules" => "行為規則", "signature-base" => "IOC／YARA", "compliance-as-code-shadow" or "powerstig-network-selection" => "安全組態檢查", _ => source.Description?.Category ?? "未知" };
     private static string PlatformCoverage(IntelligenceSourceView source) => source.Key switch
     {
         "cisa-kev" => "涵蓋多種平台與產品；是否受影響需依產品及版本另行判斷。",

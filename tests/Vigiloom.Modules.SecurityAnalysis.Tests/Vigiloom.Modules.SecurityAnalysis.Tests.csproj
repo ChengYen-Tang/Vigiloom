@@ -12,5 +12,7 @@
     <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/README.md" />
     <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/hash-iocs.txt.gz" />
     <EmbeddedResource Include="Intelligence/Fixtures/SignatureBase/c2-iocs.txt.gz" />
+    <EmbeddedResource Include="Intelligence/Fixtures/Baseline/shadow-rule.yml.gz" />
+    <EmbeddedResource Include="Intelligence/Fixtures/Baseline/windows-2022.xml.gz" />
   </ItemGroup>
 </Project>
