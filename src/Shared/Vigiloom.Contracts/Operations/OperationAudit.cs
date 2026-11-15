@@ -75,7 +75,7 @@ public sealed record ServiceInstanceChanged(ServiceInstanceAction Action, Guid S
 public enum DeploymentLinkAction { Created = 1, Ended = 2 }
 /// <summary>Only resource identifiers are audited; the administrator's evidence text is excluded.</summary>
 public sealed record DeploymentLinkChanged(DeploymentLinkAction Action, Guid DeviceId, Guid ServiceInstanceId) : OperationAuditDetails;
-public enum ServiceCollectionAction { Stopped = 1, Resumed = 2 }
+public enum ServiceCollectionAction { Stopped = 1, Resumed = 2, Archived = 3, Restored = 4 }
 public sealed record ServiceCollectionChanged(ServiceCollectionAction Action) : OperationAuditDetails;
 public enum CollectorAction { Registered = 1, RouteAdded = 2, RouteRemoved = 3 }
 /// <summary>Records identifiers only, never credentials or arbitrary exporter text.</summary>

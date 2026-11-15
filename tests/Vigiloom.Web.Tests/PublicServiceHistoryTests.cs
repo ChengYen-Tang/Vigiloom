@@ -15,6 +15,7 @@ using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -31,6 +32,38 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class PublicServiceHistoryTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServiceArchive_RevokesPublicHistoryAndPeriods() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var start = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var source = new ServiceSource("source", new byte[32], start);
+        var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", start), start);
+        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryDetailsVersion, start);
+        service.ConfirmPublicSince(start);
+        var contexts = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        await using (var db = await contexts.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+        }
+        using var anonymous = PingTestSite.Client(host);
+        var range = $"?from={Uri.EscapeDataString(start.ToString("O"))}&to={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddSeconds(-1).ToString("O"))}";
+        foreach (var suffix in new[] { "history", "history/periods" })
+        {
+            using var before = await anonymous.GetAsync($"/api/v1/public/services/{service.Id:D}/{suffix}{range}", token);
+            Assert.AreEqual(HttpStatusCode.OK, before.StatusCode);
+        }
+        using var scope = host.Services.CreateScope();
+        var manager = scope.ServiceProvider.GetRequiredService<ServiceCollectionAdministration>();
+        Assert.AreEqual(ServiceCollectionStatus.Updated, await manager.SetArchivedAsync(service.Id, Convert.ToBase64String(service.Version), true, Guid.CreateVersion7(), token));
+        foreach (var suffix in new[] { "history", "history/periods" })
+        {
+            using var after = await anonymous.GetAsync($"/api/v1/public/services/{service.Id:D}/{suffix}{range}", token);
+            Assert.AreEqual(HttpStatusCode.NotFound, after.StatusCode);
+        }
+    }, context.CancellationToken);
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -227,6 +260,10 @@ public sealed class PublicServiceHistoryTests(TestContext context)
     [DataRow(0, true, true)]
     [DataRow(1, true, true)]
     [DataRow(2, true, true)]
+    [DataRow(3, false, false)]
+    [DataRow(3, true, false)]
+    [DataRow(3, false, true)]
+    [DataRow(3, true, true)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task History_RechecksPublicationAndSourceAfterReading(int mutation, bool snapshotReads, bool periods) => WithHistoryReadMode(snapshotReads, async (database, token) =>
     {
@@ -265,6 +302,7 @@ public sealed class PublicServiceHistoryTests(TestContext context)
             {
                 if (mutation == 1) (await db.Sources.SingleAsync(x => x.Id == source.Id, token)).Revoke(now);
                 else if (mutation == 2) (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, now);
+                else if (mutation == 3) (await db.Services.SingleAsync(x => x.Id == service.Id, token)).Archive(now);
                 else (await db.Services.SingleAsync(x => x.Id == service.Id, token)).SetPublication(false, null, null, now);
                 await db.SaveChangesAsync(token);
             }
