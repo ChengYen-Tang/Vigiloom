@@ -13,6 +13,211 @@ public sealed class InventoryGenerationTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task WindowsUpdateQueue_PreservesFenceWhenLogSchemaIsInitialized(bool logFirst, bool relationships)
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryGenerationTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var now = DateTimeOffset.UtcNow;
+            var agent = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = agent,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var owner = new AgentSettingsOwner(agent, "https://example.test/", vault.StateDirectory);
+            var queue = new DurableBatchQueue(vault, agent);
+            var sourceId = Guid.CreateVersion7();
+            if (logFirst) Assert.IsNull(await queue.ReadLogCursorAsync(owner, sourceId, token));
+            var snapshot = Guid.CreateVersion7();
+            var item = new InventoryEntry("11111111-1111-4111-8111-111111111111:1", "update",
+                UpdateId: Guid.Parse("11111111-1111-4111-8111-111111111111"), UpdateRevision: 1,
+                UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: []);
+            if (relationships) item = item with { UpdateServerSelection = 0, UpdateServiceId = Guid.Empty, UpdateSupersededIds = [] };
+            var batch = InventoryChunkBuilder.Build(snapshot, 1, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, [item]).Single();
+            await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueManyAsync([batch], token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([batch], owner, InventorySource.WindowsUpdate, 1, snapshot, token));
+            Assert.IsNull(await queue.ReadLogCursorAsync(owner, sourceId, token));
+            Assert.AreEqual(relationships ? 10L : 9L, await Version());
+            var rejected = new InventoryStatusResult(InventoryStatusResultKind.Success,
+                [new(InventorySource.WindowsUpdate, 1, null, 1, InventoryOutcome.Partial, InventoryCompletion.Rejected, InventoryRejectionReason.Capacity, snapshot)], owner);
+            Assert.AreEqual(InventoryReconcileResult.Rejected, await queue.ReconcileInventoryAsync(owner, new(InventorySource.WindowsUpdate, 1, snapshot), rejected, token));
+            Assert.AreEqual(relationships ? 10L : 9L, await Version());
+            if (relationships)
+            {
+                var legacySnapshot = Guid.CreateVersion7();
+                var legacyItem = item with { UpdateServerSelection = null, UpdateServiceId = null, UpdateSupersededIds = null };
+                var legacyBatch = InventoryChunkBuilder.Build(legacySnapshot, 2, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, [legacyItem]).Single();
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([legacyBatch], owner, InventorySource.WindowsUpdate, 2, legacySnapshot, token));
+                Assert.AreEqual(10L, await Version());
+                Assert.IsTrue(await queue.AcknowledgeAsync(batch.BatchId, token));
+                Assert.AreEqual(9L, await Version());
+                var completed = new InventoryStatusResult(InventoryStatusResultKind.Success,
+                    [new(InventorySource.WindowsUpdate, 2, null, 2, InventoryOutcome.Partial, InventoryCompletion.Partial, null, legacySnapshot)], owner);
+                Assert.AreEqual(InventoryReconcileResult.Completed, await queue.ReconcileInventoryAsync(owner, new(InventorySource.WindowsUpdate, 2, legacySnapshot), completed, token));
+            }
+            else Assert.IsTrue(await queue.AcknowledgeAsync(batch.BatchId, token));
+            Assert.AreEqual(3L, await Version());
+            if (relationships)
+            {
+                var lastSnapshot = Guid.CreateVersion7();
+                var last = InventoryChunkBuilder.Build(lastSnapshot, 3, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, [item]).Single();
+                Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([last], owner, InventorySource.WindowsUpdate, 3, lastSnapshot, token));
+                await using (var corrupt = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+                {
+                    await corrupt.OpenAsync(token);
+                    await using var command = corrupt.CreateCommand(); command.CommandText = "DROP TABLE inventory_retained_v10";
+                    await command.ExecuteNonQueryAsync(token);
+                }
+                await Assert.ThrowsExactlyAsync<InvalidDataException>(() => queue.PeekAsync(token));
+            }
+
+            async Task<long> Version()
+            {
+                await using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+                await db.OpenAsync(token);
+                await using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+                return (long)(await command.ExecuteScalarAsync(token))!;
+            }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task WindowsReleaseQueue_RetainsVersionFenceThroughQuarantine()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryGenerationTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var now = DateTimeOffset.UtcNow;
+            var agent = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = agent,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var owner = new AgentSettingsOwner(agent, "https://example.test/", vault.StateDirectory);
+            var snapshot = Guid.CreateVersion7();
+            var host = new InventoryEntry("host", "machine", "10.0.20348", "X64", OperatingSystem: "Windows",
+                ProcessArchitecture: "X64", Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows",
+                WindowsEdition: "ServerStandard", WindowsBuild: 20348, WindowsRevision: 3000);
+            var batch = InventoryChunkBuilder.Build(snapshot, 1, InventorySource.HostSystem, now, now, InventoryOutcome.Complete, [host]).Single();
+            var queue = new DurableBatchQueue(vault, agent);
+            await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueManyAsync([batch], token));
+            await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueManyForOwnerAsync([batch], owner, token));
+            await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueAsync(batch.BatchId, batch.EnqueuedAt, batch.RecordCount, batch.Payload, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([batch], owner, InventorySource.HostSystem, 1, snapshot, token));
+            Assert.AreEqual(8L, await Version());
+            var rejected = new InventoryStatusResult(InventoryStatusResultKind.Success,
+                [new(InventorySource.HostSystem, 1, null, 1, InventoryOutcome.Complete, InventoryCompletion.Rejected, InventoryRejectionReason.Capacity, snapshot)], owner);
+            Assert.AreEqual(InventoryReconcileResult.Rejected, await queue.ReconcileInventoryAsync(owner, new(InventorySource.HostSystem, 1, snapshot), rejected, token));
+            Assert.AreEqual(8L, await Version());
+            Assert.IsTrue(await queue.AcknowledgeAsync(batch.BatchId, token));
+            Assert.AreEqual(2L, await Version());
+
+            var nextSnapshot = Guid.CreateVersion7();
+            var next = InventoryChunkBuilder.Build(nextSnapshot, 2, InventorySource.HostSystem, now, now, InventoryOutcome.Complete, [host]).Single();
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([next], owner, InventorySource.HostSystem, 2, nextSnapshot, token));
+            await using (var corrupt = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+            {
+                await corrupt.OpenAsync(token);
+                await using var command = corrupt.CreateCommand(); command.CommandText = "DROP TABLE inventory_retained_v8";
+                await command.ExecuteNonQueryAsync(token);
+            }
+            await Assert.ThrowsExactlyAsync<InvalidDataException>(() => queue.PeekAsync(token));
+
+            async Task<long> Version()
+            {
+                await using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+                await db.OpenAsync(token);
+                await using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+                return (long)(await command.ExecuteScalarAsync(token))!;
+            }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task InventoryQueue_NewSchemaKeepsFenceUntilQuarantineIsRemoved()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryGenerationTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+        var now = DateTimeOffset.UtcNow;
+        var agent = Guid.CreateVersion7();
+        var vault = new IdentityVault(root);
+        await using (var session = vault.Acquire())
+            await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = agent,
+                MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, TestContext.CancellationToken);
+        var owner = new AgentSettingsOwner(agent, "https://example.test/", vault.StateDirectory);
+        var snapshot = Guid.CreateVersion7();
+        var existing = InventoryChunkBuilder.Build(snapshot, 1, InventorySource.LinuxDpkg, now, now, InventoryOutcome.Complete, []);
+        Assert.IsTrue(InventoryChunkCodec.TryRead(existing[0].Payload, out var parsed));
+        var newChunk = parsed! with { SchemaVersion = InventoryChunkCodec.DpkgSourceSchemaVersion };
+        var batch = existing[0] with { Payload = InventoryChunkCodec.Serialize(newChunk) };
+        var queue = new DurableBatchQueue(vault, agent);
+        await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueManyAsync([batch], TestContext.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueManyForOwnerAsync([batch], owner, TestContext.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => queue.EnqueueAsync(batch.BatchId, batch.EnqueuedAt, batch.RecordCount, batch.Payload, TestContext.CancellationToken));
+        Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([batch], owner, InventorySource.LinuxDpkg, 1, snapshot, TestContext.CancellationToken));
+        Assert.AreEqual(7L, await Version());
+        var rejected = new InventoryStatusResult(InventoryStatusResultKind.Success,
+            [new(InventorySource.LinuxDpkg, 1, null, 1, InventoryOutcome.Complete, InventoryCompletion.Rejected, InventoryRejectionReason.Capacity, snapshot)], owner);
+        Assert.AreEqual(InventoryReconcileResult.Rejected, await queue.ReconcileInventoryAsync(owner, new(InventorySource.LinuxDpkg, 1, snapshot), rejected, TestContext.CancellationToken));
+        Assert.AreEqual(7L, await Version());
+        Assert.IsTrue(await queue.AcknowledgeAsync(batch.BatchId, TestContext.CancellationToken));
+        Assert.AreEqual(2L, await Version());
+
+        var secondId = Guid.CreateVersion7();
+        var secondOld = InventoryChunkBuilder.Build(secondId, 2, InventorySource.LinuxDpkg, now, now, InventoryOutcome.Complete, []);
+        Assert.IsTrue(InventoryChunkCodec.TryRead(secondOld[0].Payload, out var secondParsed));
+        var second = secondOld[0] with { Payload = InventoryChunkCodec.Serialize(secondParsed! with { SchemaVersion = InventoryChunkCodec.DpkgSourceSchemaVersion }) };
+        Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueInventoryForOwnerAsync([second], owner, InventorySource.LinuxDpkg, 2, secondId, TestContext.CancellationToken));
+        await using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString()))
+        {
+            await db.OpenAsync(TestContext.CancellationToken);
+            await using var command = db.CreateCommand(); command.CommandText = "DROP TABLE integrity_gap_state";
+            await command.ExecuteNonQueryAsync(TestContext.CancellationToken);
+        }
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => queue.PeekAsync(TestContext.CancellationToken));
+
+        async Task<long> Version()
+        {
+            await using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+            await db.OpenAsync(TestContext.CancellationToken);
+            await using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+            return (long)(await command.ExecuteScalarAsync(TestContext.CancellationToken))!;
+        }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task InventoryQueue_VersionFenceTracksRetainedNewAndOldSnapshots()
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryGenerationTests");

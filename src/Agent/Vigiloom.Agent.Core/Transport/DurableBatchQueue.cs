@@ -41,17 +41,20 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
         if (!Enum.IsDefined(source) || generation < 1 || snapshotId.Version != 7 || batches.Count is < 1 or > InventoryChunkCodec.MaximumChunks)
             throw new ArgumentException("Invalid inventory generation.");
         using var fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int? schemaVersion = null;
         for (var index = 0; index < batches.Count; index++)
         {
             var batch = batches[index];
             if (batch is null || !InventoryChunkCodec.TryRead(batch.Payload, out var chunk) ||
                 chunk!.BatchId != batch.BatchId || chunk.EnqueuedAt != batch.EnqueuedAt ||
                 Math.Max(1, chunk.Items.Count) != batch.RecordCount || chunk.Source != source ||
-                chunk.Generation != generation || chunk.SnapshotId != snapshotId || chunk.ChunkIndex != index || chunk.ChunkCount != batches.Count)
+                chunk.Generation != generation || chunk.SnapshotId != snapshotId || chunk.ChunkIndex != index || chunk.ChunkCount != batches.Count ||
+                schemaVersion is not null && schemaVersion != chunk.SchemaVersion)
                 throw new ArgumentException("Inventory batches do not form the specified generation.", nameof(batches));
+            schemaVersion = chunk.SchemaVersion;
             fingerprint.AppendData(SHA256.HashData(batch.Payload));
         }
-        return EnqueueManyCoreAsync(batches, owner, new(source, generation, snapshotId, fingerprint.GetHashAndReset()), null, token);
+        return EnqueueManyCoreAsync(batches, owner, new(source, generation, snapshotId, fingerprint.GetHashAndReset(), schemaVersion!.Value), null, token);
     }
 
     /// <summary>Atomically queues an integrity generation and its durable outstanding marker.</summary>
@@ -223,7 +226,10 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 versionCommand.Transaction = transaction;
                 versionCommand.CommandText = "PRAGMA user_version";
                 var currentVersion = Convert.ToInt32(versionCommand.ExecuteScalar());
-                var requiredVersion = inventory.Source > InventorySource.HostVolumes ? 5 : 4;
+                var requiredVersion = inventory.SchemaVersion == InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion ? 10 : inventory.SchemaVersion == InventoryChunkCodec.WindowsUpdateSchemaVersion ? 9 : inventory.SchemaVersion == InventoryChunkCodec.WindowsReleaseSchemaVersion ? 8 : inventory.SchemaVersion == InventoryChunkCodec.DpkgSourceSchemaVersion ? 7 : inventory.Source > InventorySource.HostVolumes ? 5 : 4;
+                // A format-7 queue must retain the format-6 integrity tables even when
+                // no integrity batch has been queued yet, so missing tables fail closed.
+                if (requiredVersion >= 7) EnsureIntegrityOutstandingTable(connection, transaction);
                 if (currentVersion < requiredVersion)
                 {
                     versionCommand.CommandText = $"PRAGMA user_version = {requiredVersion}";
@@ -237,6 +243,19 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 {
                     memberId.Value = batch.BatchId.ToString("D");
                     insertMember.ExecuteNonQuery();
+                }
+                var retainedVersionSql = requiredVersion switch
+                {
+                    7 => "INSERT INTO inventory_retained_v7(batch_id) VALUES ($id)",
+                    8 => "INSERT INTO inventory_retained_v8(batch_id) VALUES ($id)",
+                    9 => "INSERT INTO inventory_retained_v9(batch_id) VALUES ($id)",
+                    10 => "INSERT INTO inventory_retained_v10(batch_id) VALUES ($id)",
+                    _ => null
+                };
+                if (retainedVersionSql is not null)
+                {
+                    insertMember.CommandText = retainedVersionSql;
+                    foreach (var batch in batches) { memberId.Value = batch.BatchId.ToString("D"); insertMember.ExecuteNonQuery(); }
                 }
             }
             if (integrity is not null)
@@ -255,9 +274,9 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 command.CommandText = "INSERT INTO integrity_outstanding_batches(batch_id) VALUES ($id)";
                 var member = command.Parameters.Add("$id", SqliteType.Text);
                 foreach (var batch in batches) { member.Value = batch.BatchId.ToString("D"); command.ExecuteNonQuery(); }
-                command.CommandText = "PRAGMA user_version = 6";
+                command.CommandText = "PRAGMA user_version";
                 command.Parameters.Clear();
-                command.ExecuteNonQuery();
+                if (Convert.ToInt32(command.ExecuteScalar()) < 6) { command.CommandText = "PRAGMA user_version = 6"; command.ExecuteNonQuery(); }
             }
             token.ThrowIfCancellationRequested();
             transaction.Commit();
@@ -446,23 +465,43 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
             var version = (long)command.ExecuteScalar()!;
-            if (version is not (0 or 1 or 2 or 3 or 4 or 5 or 6)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
-            if (version is 4 or 5 or 6)
+            if (version is not (0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10)) throw new InvalidDataException("The Agent transport database format is not supported by this version.");
+            if (version is 4 or 5 or 6 or 7 or 8 or 9 or 10)
             {
                 command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('inventory_outstanding', 'inventory_outstanding_batches', 'inventory_retained_batches')";
                 if (Convert.ToInt64(command.ExecuteScalar()) != 3) throw new InvalidDataException("The Agent inventory queue format is incomplete.");
             }
-            if (version is 5 or 6)
+            if (version is 5 or 6 or 7 or 8 or 9 or 10)
             {
                 command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v5')";
                 if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent inventory version fence is incomplete.");
             }
-            if (version == 6)
+            if (version is 6 or 7 or 8 or 9 or 10)
             {
                 command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('integrity_outstanding', 'integrity_outstanding_batches', 'integrity_retained_v6', 'integrity_generations', 'integrity_gap_state')";
                 if (Convert.ToInt64(command.ExecuteScalar()) != 5) throw new InvalidDataException("The Agent integrity queue format is incomplete.");
             }
-            if (version is 1 or 2 or 3 or 4 or 5 or 6)
+            if (version is 7 or 8 or 9 or 10)
+            {
+                command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v7')";
+                if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent dpkg inventory version fence is incomplete.");
+            }
+            if (version is 8 or 9 or 10)
+            {
+                command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v8')";
+                if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent Windows inventory version fence is incomplete.");
+            }
+            if (version is 9 or 10)
+            {
+                command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v9')";
+                if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent update inventory version fence is incomplete.");
+            }
+            if (version == 10)
+            {
+                command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v10')";
+                if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent update relationship inventory version fence is incomplete.");
+            }
+            if (version is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10)
             {
                 command.CommandText = "SELECT agent_id FROM queue_state WHERE singleton = 1";
                 if (!string.Equals(command.ExecuteScalar() as string, agentId.ToString("D"), StringComparison.Ordinal))
@@ -507,9 +546,9 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                 if (!reader.Read()) return false;
                 if (isVersion)
                 {
-                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or IntegrityChunkCodec.SchemaVersion;
+                    if (reader.TokenType == JsonTokenType.Number) return reader.TryGetInt32(out var version) && version is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or InventoryChunkCodec.DpkgSourceSchemaVersion or InventoryChunkCodec.WindowsReleaseSchemaVersion or InventoryChunkCodec.WindowsUpdateSchemaVersion or InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion or IntegrityChunkCodec.SchemaVersion;
                     return reader.TokenType == JsonTokenType.String &&
-                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or IntegrityChunkCodec.SchemaVersion;
+                        int.TryParse(reader.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed is InventoryChunkCodec.SchemaVersion or InventoryChunkCodec.ProcessSchemaVersion or InventoryChunkCodec.DpkgSourceSchemaVersion or InventoryChunkCodec.WindowsReleaseSchemaVersion or InventoryChunkCodec.WindowsUpdateSchemaVersion or InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion or IntegrityChunkCodec.SchemaVersion;
                 }
                 reader.Skip();
             }

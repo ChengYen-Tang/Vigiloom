@@ -27,6 +27,61 @@ namespace Vigiloom.Web.Tests;
 public sealed class IntelligenceHttpTests(TestContext context)
 {
     [TestMethod]
+    public Task UbuntuVersion_CanBeActivatedFromManagementPage() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var now = DateTimeOffset.UtcNow;
+            var source = new IntelligenceSource { Key = "ubuntu-osv", Enabled = true, LastSuccessfulCheckAt = now };
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "ubuntu-test", RetrievedAt = now,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "osv-1", MappingVersion = "ubuntu-osv-v1",
+                LicenseEvidence = "Canonical Ubuntu Security Notices, CC BY-SA 4.0; https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE",
+                RecordCount = 1, Normalized = true };
+            source.LastObservedRevisionId = revision.Id;
+            var digest = Enumerable.Repeat((byte)7, 32).ToArray();
+            const string advisory = "UBUNTU-CVE-2025-0012";
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            {
+                db.IntelligenceSources.Add(source);
+                db.IntelligenceRevisions.Add(revision);
+                db.UbuntuDocuments.Add(new UbuntuDocument { Digest = digest, MappingVersion = revision.MappingVersion, AdvisoryId = advisory,
+                    Compressed = [1], OriginalLength = 1, ModifiedAt = now });
+                db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = revision.Id, Digest = digest,
+                    MappingVersion = revision.MappingVersion, AdvisoryId = advisory });
+                await db.SaveChangesAsync(token);
+            }
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            var url = $"/settings/intelligence?source={source.Id:D}";
+            using var page = await admin.GetAsync(url, token);
+            var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+            var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            fields["ActivationInput.RevisionId"] = revision.Id.ToString("D");
+            using var response = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
+            var result = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("版本已啟用", result.Body!.TextContent);
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(revision.Id, (await verify.IntelligenceActivations.SingleAsync(x => x.SourceId == source.Id, token)).RevisionId);
+            var newer = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "ubuntu-newer", RetrievedAt = now,
+                Digest = Enumerable.Repeat((byte)9, 32).ToArray(), Artifact = [], SchemaVersion = revision.SchemaVersion,
+                MappingVersion = revision.MappingVersion, LicenseEvidence = revision.LicenseEvidence, RecordCount = 1, Normalized = true };
+            verify.IntelligenceRevisions.Add(newer);
+            await verify.SaveChangesAsync(token);
+            await verify.IntelligenceSources.Where(x => x.Id == source.Id).ExecuteUpdateAsync(x => x.SetProperty(s => s.LastObservedRevisionId, newer.Id), token);
+            using var outdated = await admin.GetAsync(url, token);
+            var outdatedDoc = await new HtmlParser().ParseDocumentAsync(await outdated.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("選用的版本不是最新確認資料", outdatedDoc.Body!.TextContent);
+            Assert.Contains("設備漏洞結果將標示為過期", outdatedDoc.Body.TextContent);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task OfflineImport_RequiresAdministratorAndAntiforgery_AndShowsProvenance() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {

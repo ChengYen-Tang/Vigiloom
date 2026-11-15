@@ -41,6 +41,8 @@ public sealed class InventoryCycle(InventoryStatusClient statusClient, TimeProvi
         if (status.Sources.Any(x => x.ActiveGeneration is not null)) return new(InventoryCycleKind.Waiting, source);
         if (source > InventorySource.HostVolumes && !status.SupportsProcessSources)
             return new(InventoryCycleKind.ServerUnsupported, source);
+        if (source == InventorySource.WindowsUpdate && !status.SupportsWindowsUpdate)
+            return new(InventoryCycleKind.ServerUnsupported, source);
         var read = await collect(source, token);
         if (!Enum.IsDefined(read.Status)) throw new InvalidDataException("Invalid inventory collection status.");
         var afterRead = await statusClient.ReadAsync(vault, server, token);
@@ -50,6 +52,20 @@ public sealed class InventoryCycle(InventoryStatusClient statusClient, TimeProvi
         if (afterRead.Sources.Any(x => x.ActiveGeneration is not null)) return new(InventoryCycleKind.Waiting, source);
         if (source > InventorySource.HostVolumes && !afterRead.SupportsProcessSources)
             return new(InventoryCycleKind.ServerUnsupported, source);
+        if (source == InventorySource.WindowsUpdate && !afterRead.SupportsWindowsUpdate)
+            return new(InventoryCycleKind.ServerUnsupported, source);
+        if (source == InventorySource.WindowsUpdate && !afterRead.SupportsWindowsUpdateRelationships &&
+            read.Items.Any(x => x.UpdateServerSelection is not null || x.UpdateServiceId is not null || x.UpdateSupersededIds is not null))
+            read = read with { Items = read.Items.Select(x => x with { UpdateServerSelection = null, UpdateServiceId = null, UpdateSupersededIds = null }).ToArray() };
+        if (source == InventorySource.HostSystem && !afterRead.SupportsWindowsUpdate && read.Items.Any(x => x.WindowsInstallationType is not null))
+            read = read with { Items = read.Items.Select(x => x with { WindowsInstallationType = null }).ToArray() };
+        // Only downgrade newly collected evidence; never rewrite a durable queued batch.
+        if (source == InventorySource.LinuxDpkg && !afterRead.SupportsDpkgSource &&
+            read.Items.Any(x => x.SourcePackageName is not null || x.SourcePackageVersion is not null))
+            read = read with { Items = read.Items.Select(x => x with { SourcePackageName = null, SourcePackageVersion = null }).ToArray() };
+        if (source == InventorySource.HostSystem && !afterRead.SupportsWindowsRelease &&
+            read.Items.Any(x => x.WindowsEdition is not null || x.WindowsRelease is not null || x.WindowsBuild is not null || x.WindowsRevision is not null))
+            read = read with { Items = read.Items.Select(x => x with { WindowsEdition = null, WindowsRelease = null, WindowsBuild = null, WindowsRevision = null, WindowsInstallationType = null }).ToArray() };
         var highWater = afterRead.Sources.SingleOrDefault(x => x.Source == source)?.HighWaterGeneration ?? 0;
         var generation = await queue.ReserveInventoryGenerationAsync(owner, source, highWater, token);
         var now = clock.GetUtcNow();

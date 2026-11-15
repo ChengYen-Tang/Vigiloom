@@ -38,11 +38,19 @@ internal static class InventoryChanges
     // estimate that can shift across Agent restarts; the stable key holds identity.
     private static bool SameContent(InventoryEntry left, InventoryEntry right) =>
         left.Name == right.Name && left.Version == right.Version && left.Architecture == right.Architecture &&
-        left.Supplier == right.Supplier && left.NumericId == right.NumericId && left.PrimaryGroupId == right.PrimaryGroupId &&
+        left.Supplier == right.Supplier && left.SourcePackageName == right.SourcePackageName &&
+        left.SourcePackageVersion == right.SourcePackageVersion && left.NumericId == right.NumericId && left.PrimaryGroupId == right.PrimaryGroupId &&
         SameMembers(left.Members, right.Members) && left.InstalledOn == right.InstalledOn &&
         left.OperatingSystem == right.OperatingSystem && left.ProcessArchitecture == right.ProcessArchitecture &&
         left.Runtime == right.Runtime && left.AvailableProcessorCount == right.AvailableProcessorCount &&
         left.OperatingSystemFamily == right.OperatingSystemFamily && left.DistributionId == right.DistributionId &&
+        left.WindowsEdition == right.WindowsEdition && left.WindowsRelease == right.WindowsRelease &&
+        left.WindowsBuild == right.WindowsBuild && left.WindowsRevision == right.WindowsRevision && left.WindowsInstallationType == right.WindowsInstallationType &&
+        left.UpdateId == right.UpdateId && left.UpdateRevision == right.UpdateRevision &&
+        left.UpdateInstalled == right.UpdateInstalled && left.UpdateRebootRequired == right.UpdateRebootRequired &&
+        SameMembers(left.UpdateCves, right.UpdateCves) && SameMembers(left.UpdateKbs, right.UpdateKbs) &&
+        left.UpdateServerSelection == right.UpdateServerSelection && left.UpdateServiceId == right.UpdateServiceId &&
+        SameMembers(left.UpdateSupersededIds, right.UpdateSupersededIds) &&
         left.DistributionVersion == right.DistributionVersion && left.BootedAt == right.BootedAt && left.AgentVersion == right.AgentVersion &&
         left.TotalMemoryBytes == right.TotalMemoryBytes && left.ResourceType == right.ResourceType &&
         left.ParentKey == right.ParentKey && left.Address == right.Address &&

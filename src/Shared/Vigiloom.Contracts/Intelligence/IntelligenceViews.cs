@@ -4,7 +4,7 @@ namespace Vigiloom.Contracts.Intelligence;
 public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,
     int MaximumBytes, int MaximumRecords, string Version, DateTimeOffset? LastCheckedAt, DateTimeOffset? LastSuccessfulCheckAt,
     string? LastError, bool IsStale, Guid? ActiveRevisionId, string ActivationVersion, bool HasCredential,
-    IntelligenceSourceDescription? Description, bool ActiveUnavailable = false);
+    IntelligenceSourceDescription? Description, bool ActiveUnavailable = false, bool ActiveVersionOutdated = false);
 
 /// <summary>Verified source identity and scope; a missing description means the source is unrecognized.</summary>
 public sealed record IntelligenceSourceDescription(string Name, string Category, string SourceUrl, string Coverage, string LicenseEvidence, string PlatformCoverage);
@@ -66,7 +66,8 @@ public static class IntelligencePolicyLimits
 
     public static bool ValidForSource(string key, int bytes, int records) => key switch
     {
-        "github-reviewed" => bytes <= 1073741824 && records <= 100000,
+        "github-reviewed" or "msrc-cvrf" => bytes <= 1073741824 && records <= 100000,
+        "debian-security" or "ubuntu-osv" => bytes <= 268435456 && records <= 1000000,
         "sigmahq-rules" or "signature-base" => bytes <= 67108864 && records <= 50000,
         _ => bytes <= 67108864
     };
