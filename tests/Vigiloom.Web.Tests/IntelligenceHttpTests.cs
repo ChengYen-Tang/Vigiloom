@@ -16,7 +16,10 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -26,6 +29,52 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class IntelligenceHttpTests(TestContext context)
 {
+    [TestMethod]
+    public Task SigmaSavedRule_AdministratorCanDisableWhenSourceIsUnavailable() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var source = new IntelligenceSource { Key = "sigmahq-rules", Enabled = false };
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test", RetrievedAt = DateTimeOffset.UtcNow,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+            var tested = new SigmaRuleTest { Id = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml",
+                Digest = new string('a', 64), ActivationVersion = "version", MatcherVersion = "1", SamplesJson = "[]",
+                Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = DateTimeOffset.UtcNow };
+            var activation = new SigmaRuleActivation { Id = Guid.CreateVersion7(), SourceId = source.Id, Path = tested.Path, TestId = tested.Id,
+                Enabled = true, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = DateTimeOffset.UtcNow };
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            {
+                db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision); db.SigmaRuleTests.Add(tested); db.SigmaRuleActivations.Add(activation);
+                await db.SaveChangesAsync(token);
+            }
+            using var admin = PingTestSite.Client(factory);
+            using var reader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            await PingTestSite.LoginAsync(reader, "reader", token);
+            using var list = await admin.GetAsync("/settings/sigma", token);
+            var listDoc = await new HtmlParser().ParseDocumentAsync(await list.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("規則來源無法使用", listDoc.Body!.TextContent);
+            var link = listDoc.QuerySelector("a[href^='/settings/sigma/saved?']")?.GetAttribute("href");
+            Assert.IsNotNull(link);
+            using var readOnly = await reader.GetAsync(link, token);
+            Assert.AreNotEqual(HttpStatusCode.OK, readOnly.StatusCode);
+            using var detail = await admin.GetAsync(link, token);
+            var detailDoc = await new HtmlParser().ParseDocumentAsync(await detail.Content.ReadAsStringAsync(token), token);
+            var form = detailDoc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "sigma-saved-disable");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            using var response = await admin.PostAsync(link, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.Contains("規則已停用", (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.IsFalse((await verify.SigmaRuleActivations.AsNoTracking().SingleAsync(token)).Enabled);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task OfflineImport_RequiresAdministratorAndAntiforgery_AndShowsProvenance() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -461,6 +510,49 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using (var result = await admin.GetAsync($"{path}{Guid.CreateVersion7():D}/revisions", token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
             var request = new IntelligenceActivationRequest(revision.Id, null, "", false);
             using (var result = await admin.PostAsJsonAsync($"{path}{source.Id:D}/activation", request, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            var sigmaSamples = new SigmaRuleTestRequest("rules/test.yml",
+                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), SigmaExpectedOutcome.Match),
+                 new(Guid.CreateVersion7(), Guid.CreateVersion7(), SigmaExpectedOutcome.NoMatch)]);
+            var sigmaState = new SigmaRuleStateRequest(Guid.CreateVersion7(), "rules/test.yml", null, false, "");
+            using (var result = await anonymous.GetAsync("/api/v1/admin/sigma/rules", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await reader.GetAsync("/api/v1/admin/sigma/rules", token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
+            using (var result = await admin.GetAsync("/api/v1/admin/sigma/rules", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+                Assert.IsTrue(result.Headers.CacheControl?.NoStore);
+                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaDetectionRulePage>(token));
+            }
+            using (var result = await admin.GetAsync("/api/v1/admin/sigma/rules?cursor=invalid", token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            using (var result = await reader.GetAsync("/api/v1/admin/sigma/states", token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
+            using (var result = await admin.GetAsync("/api/v1/admin/sigma/states", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaRuleStatePage>(token));
+            }
+            var historyFrom = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddHours(-1).ToString("O"));
+            var historyUntil = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddHours(1).ToString("O"));
+            var detectionPath = $"/api/v1/devices/{Guid.CreateVersion7():D}/sigma-detections?from={historyFrom}&until={historyUntil}";
+            using (var result = await anonymous.GetAsync(detectionPath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await reader.GetAsync(detectionPath, token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
+            var monitoredDevice = new Device("detection test", "127.0.0.1", true, DateTimeOffset.UtcNow);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            await using (var devices = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+            {
+                devices.Devices.Add(monitoredDevice);
+                await devices.SaveChangesAsync(token);
+            }
+            detectionPath = $"/api/v1/devices/{monitoredDevice.Id:D}/sigma-detections?from={historyFrom}&until={historyUntil}";
+            using (var result = await reader.GetAsync(detectionPath, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+                Assert.IsTrue(result.Headers.CacheControl?.NoStore);
+                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaDetectionEventPage>(token));
+            }
+            using (var result = await anonymous.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await reader.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
+            using (var result = await api.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
+            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state", sigmaState, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
             Assert.IsNotNull(advisoryProgress?.ImportId);
             Assert.IsNotNull(advisoryProgress.Version);
             var recovery = new AdvisoryImportRecoveryRequest(advisoryProgress.ImportId.Value, advisoryProgress.Version);
@@ -478,6 +570,12 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
             using (var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token)))
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state",
+                new { sigmaState.SourceId, sigmaState.Path, sigmaState.ExpectedVersion }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests",
+                new { sigmaSamples.Path, Samples = sigmaSamples.Samples.Select(x => new { x.AgentId, x.MessageId }) }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
+            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
+            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state", sigmaState, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery with { Version = Convert.ToBase64String(new byte[8]) }, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);

@@ -47,6 +47,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Description = "Anonymous published data only; private resources and network addresses are excluded.";
             }
             else if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("/api/v1/admin/sigma/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
             {

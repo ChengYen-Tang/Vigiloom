@@ -2,16 +2,18 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostMetricThresholds thresholds, HostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges) : IHostMonitoringClient
+    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -50,6 +52,16 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     {
         await AuthorizeAsync(token);
         return await logs.GetAsync(deviceId, from, until, cursor, null, token);
+    }
+    public async Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
+    {
+        await AuthorizeAsync(token);
+        return await detections.GetEventsAsync(deviceId, from, until, cursor, token);
+    }
+    public async Task<SigmaDetectionGapPage?> GetDetectionGapsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
+    {
+        await AuthorizeAsync(token);
+        return await detections.GetGapsAsync(deviceId, from, until, cursor, token);
     }
     public async Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token)
     {

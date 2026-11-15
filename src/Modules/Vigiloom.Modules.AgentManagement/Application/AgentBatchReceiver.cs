@@ -20,7 +20,8 @@ public readonly record struct BatchReceiptResult(BatchReceiptStatus Status, Time
 /// <summary>Commits a validated batch receipt and all supported observations atomically.</summary>
 public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContext> contexts, AgentIdentity identity, TimeProvider clock,
     long capacityBytes = AgentBatchReceiver.MaximumRetainedBytesPerAgent, int maximumBatches = AgentBatchReceiver.MaximumRetainedBatchesPerAgent,
-    IInventoryStageWriter? inventoryWriter = null, IIntegrityStageWriter? integrityWriter = null)
+    IInventoryStageWriter? inventoryWriter = null, IIntegrityStageWriter? integrityWriter = null,
+    IHostLogDispatchWriter? logDispatchWriter = null)
 {
     public const long MaximumRetainedBytesPerAgent = 4L * 1024 * 1024 * 1024;
     public const int MaximumRetainedBatchesPerAgent = 1_000_000;
@@ -210,6 +211,13 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             else if (!existingLogs.ContainsKey(logs!.Items[ordinal].MessageId)) db.HostLogs.Add(new HostLog(agent.Id, logs, ordinal, receivedAt));
         }
         await db.SaveChangesAsync(token);
+        if (logs is not null && logDispatchWriter is not null)
+        {
+            var newMessages = logs.Items.Where(x => !existingLogs.ContainsKey(x.MessageId)).Select(x => x.MessageId).ToArray();
+            if (newMessages.Length > 0)
+                await logDispatchWriter.StageAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                    new(agent.Id, agent.DeviceId, agent.DeviceGeneration, newMessages), token);
+        }
         await transaction.CommitAsync(token);
         return BatchReceiptStatus.Accepted;
     }

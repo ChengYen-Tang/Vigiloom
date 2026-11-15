@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Web.Client.Components;
 
 namespace Vigiloom.Web.Client.Components.HostMonitoring;
@@ -9,7 +10,7 @@ namespace Vigiloom.Web.Client.Components.HostMonitoring;
 public partial class HostDetails
 {
     [Parameter] public Guid DeviceId { get; set; }
-    private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("integrity", "檔案完整性")];
+    private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("detections", "行為偵測"), ("integrity", "檔案完整性")];
     private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = Enum.GetValues<AgentMetricKind>()
         .Where(kind => kind != AgentMetricKind.CollectionUnavailable).Select(kind => (kind, HostMetricUnits.Name(kind))).ToArray();
     private readonly CancellationTokenSource lifetime = new();
@@ -38,6 +39,11 @@ public partial class HostDetails
     private HostLogPage? logs;
     private readonly Stack<string?> logCursors = new();
     private string? logCursor;
+    private SigmaDetectionEventPage? detectionPage;
+    private SigmaDetectionGapPage? detectionGaps;
+    private readonly Stack<string?> detectionCursors = new();
+    private readonly Stack<string?> gapCursors = new();
+    private string? detectionCursor, gapCursor;
     private DeviceIntegrityView? integrity;
     private IntegrityChangePage? changes;
     private readonly Stack<string?> changeCursors = new();
@@ -79,6 +85,14 @@ public partial class HostDetails
                     logCursor = null; logCursors.Clear();
                     var firstLogs = await Monitoring.GetLogsAsync(DeviceId, from, until, null, token);
                     token.ThrowIfCancellationRequested(); logs = firstLogs ?? throw new InvalidOperationException("Device missing"); break;
+                case "detections":
+                    var firstDetections = await Monitoring.GetDetectionsAsync(DeviceId, from, until, null, token) ?? throw new InvalidOperationException("Device missing");
+                    token.ThrowIfCancellationRequested();
+                    var firstGaps = await Monitoring.GetDetectionGapsAsync(DeviceId, from, until, null, token) ?? throw new InvalidOperationException("Device missing");
+                    token.ThrowIfCancellationRequested();
+                    detectionCursor = gapCursor = null; detectionCursors.Clear(); gapCursors.Clear();
+                    detectionPage = firstDetections; detectionGaps = firstGaps;
+                    break;
                 case "integrity":
                     baseline = null; baselineScopeId = baselineSnapshotId = null;
                     changeCursor = null; changeCursors.Clear();
@@ -92,6 +106,24 @@ public partial class HostDetails
     {
         if (int.TryParse(args.Value?.ToString(), out var value) && value is 24 or 168 or 720) { rangeHours = value; await ReloadAsync(); }
     }
+    private Task NextDetectionsAsync() => detectionPage?.NextCursor is { } cursor ? NavigateDetectionsAsync(cursor, true) : Task.CompletedTask;
+    private Task PreviousDetectionsAsync() => detectionCursors.TryPeek(out var cursor) ? NavigateDetectionsAsync(cursor, false) : Task.CompletedTask;
+    private Task NavigateDetectionsAsync(string? cursor, bool forward) => RunAsync(async token =>
+    {
+        var page = await Monitoring.GetDetectionsAsync(DeviceId, from, until, cursor, token) ?? throw new InvalidOperationException("Device missing");
+        token.ThrowIfCancellationRequested(); detectionPage = page;
+        if (forward) detectionCursors.Push(detectionCursor); else detectionCursors.Pop();
+        detectionCursor = cursor;
+    });
+    private Task NextGapsAsync() => detectionGaps?.NextCursor is { } cursor ? NavigateGapsAsync(cursor, true) : Task.CompletedTask;
+    private Task PreviousGapsAsync() => gapCursors.TryPeek(out var cursor) ? NavigateGapsAsync(cursor, false) : Task.CompletedTask;
+    private Task NavigateGapsAsync(string? cursor, bool forward) => RunAsync(async token =>
+    {
+        var page = await Monitoring.GetDetectionGapsAsync(DeviceId, from, until, cursor, token) ?? throw new InvalidOperationException("Device missing");
+        token.ThrowIfCancellationRequested(); detectionGaps = page;
+        if (forward) gapCursors.Push(gapCursor); else gapCursors.Pop();
+        gapCursor = cursor;
+    });
     private async Task ChangeSourceAsync(ChangeEventArgs args)
     {
         if (!int.TryParse(args.Value?.ToString(), out var value)) return;
