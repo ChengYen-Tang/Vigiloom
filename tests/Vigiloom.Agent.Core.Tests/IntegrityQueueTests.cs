@@ -5,14 +5,94 @@ using System.Net.Http.Json;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Integrity;
+using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Inventory;
 
 namespace Vigiloom.Agent.Core.Tests;
 
 [TestClass]
 public sealed class IntegrityQueueTests(TestContext context)
 {
+    [TestMethod]
+    [DataRow(true, 7)]
+    [DataRow(false, 7)]
+    [DataRow(true, 9)]
+    [DataRow(false, 9)]
+    [DataRow(true, 10)]
+    [DataRow(false, 10)]
+    public async Task Queue_IntegrityAndNewInventoryKeepTheirVersionFences(bool integrityFirst, int schema)
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomIntegrityQueueTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = context.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { AgentId = id, Server = "https://example.test/",
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            var queue = new DurableBatchQueue(vault, id);
+            var now = DateTimeOffset.UtcNow;
+            var scope = Guid.CreateVersion7();
+            var setting = new IntegrityScope(scope, 1, IntegrityScopeKind.Directory, "/srv/app", true,
+                ImmutableArray<string>.Empty, 3600, 1000, 1048576, 10485760, 16);
+            var store = new AgentIntegritySettingsStore(vault, new Uri(owner.Server), id);
+            var saved = await store.SaveAsync(IntegritySettingsSnapshot.Create([setting], 1), null, now, token);
+            var integrityId = Guid.CreateVersion7();
+            var integrity = IntegrityChunkBuilder.Build(scope, 1, integrityId, 1, now, now, IntegrityScanOutcome.Complete, []);
+            var inventoryId = Guid.CreateVersion7();
+            var inventorySource = schema >= 9 ? InventorySource.WindowsUpdate : InventorySource.LinuxDpkg;
+            var inventoryOutcome = schema >= 9 ? InventoryOutcome.Partial : InventoryOutcome.Complete;
+            var updateId = Guid.Parse("11111111-1111-4111-8111-111111111111");
+            var entries = schema >= 9 ? new[] { new InventoryEntry($"{updateId:D}:1", "update", UpdateId: updateId, UpdateRevision: 1,
+                UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: [], UpdateKbs: [],
+                UpdateServerSelection: schema == 10 ? 0 : null, UpdateSupersededIds: schema == 10 ? [] : null) } : [];
+            var original = InventoryChunkBuilder.Build(inventoryId, 1, inventorySource, now, now, inventoryOutcome, entries);
+            Assert.IsTrue(InventoryChunkCodec.TryRead(original[0].Payload, out var parsed));
+            var inventory = schema >= 9 ? original[0] : original[0] with { Payload = InventoryChunkCodec.Serialize(parsed! with { SchemaVersion = InventoryChunkCodec.DpkgSourceSchemaVersion }) };
+            async Task EnqueueIntegrity() => Assert.AreEqual(EnqueueResult.Queued,
+                await queue.EnqueueIntegrityForOwnerAsync(integrity, owner, scope, 1, 1, integrityId, saved.SaveToken, null, token));
+            async Task EnqueueInventory() => Assert.AreEqual(EnqueueResult.Queued,
+                await queue.EnqueueInventoryForOwnerAsync([inventory], owner, inventorySource, 1, inventoryId, token));
+            if (integrityFirst) { await EnqueueIntegrity(); await EnqueueInventory(); }
+            else { await EnqueueInventory(); await EnqueueIntegrity(); }
+            Assert.AreEqual((long)schema, await Version());
+            Assert.IsTrue(await queue.BindLogSourceAsync(owner, Guid.CreateVersion7(), null, Guid.CreateVersion7(), false, token));
+            Assert.AreEqual((long)schema, await Version());
+            Assert.IsTrue(await queue.AcknowledgeAsync(inventory.BatchId, token));
+            Assert.AreEqual((long)schema, await Version());
+            var inventoryStatus = new InventoryStatusResult(InventoryStatusResultKind.Success,
+                [new(inventorySource, 1, null, 1, inventoryOutcome, InventoryCompletion.Rejected, InventoryRejectionReason.Capacity, inventoryId)], owner);
+            Assert.AreEqual(InventoryReconcileResult.Rejected, await queue.ReconcileInventoryAsync(owner,
+                new(inventorySource, 1, inventoryId), inventoryStatus, token));
+            Assert.AreEqual(6L, await Version());
+            Assert.IsTrue(await queue.AcknowledgeAsync(integrity[0].BatchId, token));
+            var status = new IntegrityScopeStatus(scope, true, 1, true, 1, null, false, 1, IntegrityScanOutcome.Complete,
+                IntegrityCompletion.Complete, integrityId, null, false);
+            Assert.AreEqual(IntegrityReconcileResult.Completed, await queue.ReconcileIntegrityAsync(owner,
+                new(scope, 1, 1, integrityId), new(IntegrityStatusResultKind.Success, status, owner), token));
+            Assert.AreEqual(3L, await Version());
+
+            async Task<long> Version()
+            {
+                await using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(root, "transport.db"), Pooling = false }.ToString());
+                await db.OpenAsync(token);
+                await using var command = db.CreateCommand(); command.CommandText = "PRAGMA user_version";
+                return (long)(await command.ExecuteScalarAsync(token))!;
+            }
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup escaped its temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
     [TestMethod]
     public async Task Cycle_RejectsOldPolicyIfChangedWhileWaitingToEnqueue()
     {

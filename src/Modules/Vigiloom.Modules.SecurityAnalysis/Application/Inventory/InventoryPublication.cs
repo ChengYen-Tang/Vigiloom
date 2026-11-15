@@ -117,7 +117,7 @@ internal static class InventoryPublication
                 return null;
             foreach (var item in chunk!.Items)
             {
-                members += item.Members?.Count ?? 0;
+                members += (item.Members?.Count ?? 0) + (item.UpdateCves?.Count ?? 0) + (item.UpdateKbs?.Count ?? 0) + (item.UpdateSupersededIds?.Count ?? 0);
                 if (members > InventoryChunkCodec.MaximumSnapshotMembers) return null;
             }
             chunks.Add(chunk);

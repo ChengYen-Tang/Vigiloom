@@ -21,11 +21,19 @@ public static class InventoryChunkBuilder
         var size = 2; // JSON array brackets.
         long completedBytes = 0;
         var memberCount = 0;
+        var hasSourcePackage = false;
+        var hasWindowsRelease = false;
+        var hasWindowsInstallationType = false;
+        var hasWindowsRelationships = false;
         foreach (var item in entries)
         {
             if (item is null || string.IsNullOrWhiteSpace(item.Key) || !keys.Add(item.Key))
                 throw new ArgumentException("Inventory keys must be present and unique within the source.", nameof(entries));
-            memberCount += item.Members?.Count ?? 0;
+            hasSourcePackage |= item.SourcePackageName is not null || item.SourcePackageVersion is not null;
+            hasWindowsRelease |= item.WindowsEdition is not null || item.WindowsRelease is not null || item.WindowsBuild is not null || item.WindowsRevision is not null;
+            hasWindowsInstallationType |= item.WindowsInstallationType is not null;
+            hasWindowsRelationships |= item.UpdateServerSelection is not null || item.UpdateServiceId is not null || item.UpdateSupersededIds is not null;
+            memberCount += (item.Members?.Count ?? 0) + (item.UpdateCves?.Count ?? 0) + (item.UpdateKbs?.Count ?? 0) + (item.UpdateSupersededIds?.Count ?? 0);
             if (memberCount > InventoryChunkCodec.MaximumSnapshotMembers)
                 throw new ArgumentException("Inventory snapshot has too many group members.", nameof(entries));
             var measured = InventoryDigest.MeasureEntry(item);
@@ -55,7 +63,11 @@ public static class InventoryChunkBuilder
         for (var index = 0; index < chunks.Count; index++)
         {
             var batchId = Guid.CreateVersion7();
-            var schema = source > InventorySource.HostVolumes ? InventoryChunkCodec.ProcessSchemaVersion : InventoryChunkCodec.SchemaVersion;
+            var schema = source == InventorySource.WindowsUpdate && hasWindowsRelationships ? InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion :
+                source == InventorySource.WindowsUpdate || source == InventorySource.HostSystem && hasWindowsInstallationType ? InventoryChunkCodec.WindowsUpdateSchemaVersion :
+                source == InventorySource.LinuxDpkg && hasSourcePackage ? InventoryChunkCodec.DpkgSourceSchemaVersion :
+                source == InventorySource.HostSystem && hasWindowsRelease ? InventoryChunkCodec.WindowsReleaseSchemaVersion :
+                source > InventorySource.HostVolumes ? InventoryChunkCodec.ProcessSchemaVersion : InventoryChunkCodec.SchemaVersion;
             var chunk = new InventoryChunk(schema, batchId, enqueuedAt, snapshotId, generation, source,
                 observedAt, outcome, index, chunks.Count, entries.Count, totalBytes, digest, chunks[index], partialReason);
             var bytes = InventoryChunkCodec.Serialize(chunk);

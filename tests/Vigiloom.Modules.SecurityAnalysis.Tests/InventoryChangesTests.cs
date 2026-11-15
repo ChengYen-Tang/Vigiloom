@@ -7,6 +7,17 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 public sealed class InventoryChangesTests
 {
     [TestMethod]
+    public void SourcePackageEvidenceChange_IsRecorded()
+    {
+        var previous = new InventoryEntry("libfoo:amd64", "libfoo", "1.0-1+b1", "amd64", SourcePackageName: "foo", SourcePackageVersion: "1.0-1");
+        var current = previous with { SourcePackageVersion = "1.0-2" };
+        var change = InventoryChanges.Compare([previous], [current]);
+        Assert.HasCount(1, change);
+        Assert.AreEqual(InventoryChangeKind.Modified, change[0].Kind);
+        Assert.AreEqual("1.0-1", change[0].Before!.SourcePackageVersion);
+        Assert.AreEqual("1.0-2", change[0].After!.SourcePackageVersion);
+    }
+    [TestMethod]
     public void Compare_ProcessKeepsStableIdentityDespiteEstimatedUtcDrift()
     {
         var now = DateTimeOffset.UtcNow;

@@ -8,6 +8,66 @@ namespace Vigiloom.Contracts.Tests;
 public sealed class InventoryChunkTests
 {
     [TestMethod]
+    public void Codec_WindowsRelationshipsAreVersionedAndPreserveOriginalGuidIdentity()
+    {
+        var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var replaced = "22222222-2222-4222-8222-222222222222";
+        var item = new InventoryEntry($"{id:D}:3", "security update", UpdateId: id, UpdateRevision: 3,
+            UpdateInstalled: false, UpdateRebootRequired: false, UpdateCves: [], UpdateKbs: [],
+            UpdateServerSelection: 0, UpdateServiceId: Guid.Empty, UpdateSupersededIds: [replaced]);
+        var chunk = Create() with { Source = InventorySource.WindowsUpdate, SchemaVersion = InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion,
+            Outcome = InventoryOutcome.Partial, Items = [item] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(chunk), out var parsed));
+        Assert.AreEqual(Guid.Empty, parsed!.Items[0].UpdateServiceId);
+        Assert.AreEqual(0, parsed.Items[0].UpdateServerSelection);
+        CollectionAssert.AreEqual(new[] { replaced }, parsed.Items[0].UpdateSupersededIds!.ToArray());
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { SchemaVersion = InventoryChunkCodec.WindowsUpdateSchemaVersion }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateSupersededIds = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateServerSelection = 4 }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateSupersededIds = ["not-a-guid"] }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateSupersededIds = [replaced, replaced.ToUpperInvariant()] }] }));
+    }
+
+    [TestMethod]
+    public void Codec_WindowsUpdateEvidenceRequiresItsOwnSchemaAndCompleteIdentity()
+    {
+        var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var item = new InventoryEntry($"{id:D}:3", "security update", UpdateId: id, UpdateRevision: 3,
+            UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: ["1234567"]);
+        var chunk = Create() with { Source = InventorySource.WindowsUpdate, SchemaVersion = InventoryChunkCodec.WindowsUpdateSchemaVersion,
+            Outcome = InventoryOutcome.Partial, Items = [item] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(chunk), out var parsed));
+        Assert.AreEqual(id, parsed!.Items[0].UpdateId);
+        CollectionAssert.AreEqual(new[] { "CVE-2025-1234" }, parsed.Items[0].UpdateCves!.ToArray());
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { SchemaVersion = InventoryChunkCodec.ProcessSchemaVersion }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateRevision = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateRebootRequired = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(chunk with { Items = [item with { UpdateCves = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(Create() with { Items = [item] }));
+    }
+    [TestMethod]
+    public void Codec_WindowsReleaseIsVersionedAndRequiresCompleteIdentity()
+    {
+        var baseChunk = Create();
+        var host = new InventoryEntry("host", "machine", "10.0.20348", "X64", OperatingSystem: "Windows",
+            ProcessArchitecture: "X64", Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows",
+            WindowsEdition: "ServerStandard", WindowsRelease: "21H2", WindowsBuild: 20348, WindowsRevision: 3000);
+        var current = baseChunk with { Source = InventorySource.HostSystem, SchemaVersion = InventoryChunkCodec.WindowsReleaseSchemaVersion, Items = [host] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(current), out var parsed));
+        Assert.AreEqual(20348, parsed!.Items[0].WindowsBuild);
+        Assert.AreEqual(3000, parsed.Items[0].WindowsRevision);
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with { SchemaVersion = InventoryChunkCodec.SchemaVersion }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with { Items = [host with { WindowsRevision = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with { Items = [host with { OperatingSystemFamily = "Linux" }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with { Source = InventorySource.LinuxDpkg }));
+        var core = host with { WindowsInstallationType = "Server Core" };
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with { Items = [core] }));
+        var extended = current with { SchemaVersion = InventoryChunkCodec.WindowsUpdateSchemaVersion, Items = [core] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(extended), out var parsedCore));
+        Assert.AreEqual("Server Core", parsedCore!.Items[0].WindowsInstallationType);
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(extended with { Source = InventorySource.WindowsUpdate }));
+    }
+    [TestMethod]
     public void Digest_Schema4InventoryEntry_MatchesPersistedWireRepresentation()
     {
         // This is the schema-4 representation already persisted in existing snapshots.
@@ -20,6 +80,19 @@ public sealed class InventoryChunkTests
     }
 
     [TestMethod]
+    public void Digest_Schema9WindowsUpdate_MatchesPersistedWireRepresentation()
+    {
+        const string persisted = "[{\"key\":\"11111111-1111-4111-8111-111111111111:1\",\"name\":\"update\",\"version\":null,\"architecture\":null,\"supplier\":null,\"numericId\":null,\"primaryGroupId\":null,\"members\":null,\"installedOn\":null,\"operatingSystem\":null,\"processArchitecture\":null,\"runtime\":null,\"availableProcessorCount\":null,\"operatingSystemFamily\":null,\"distributionId\":null,\"distributionVersion\":null,\"bootedAt\":null,\"agentVersion\":null,\"totalMemoryBytes\":null,\"resourceType\":null,\"parentKey\":null,\"address\":null,\"capacityBytes\":null,\"hardwareType\":null,\"updateId\":\"11111111-1111-4111-8111-111111111111\",\"updateRevision\":1,\"updateInstalled\":true,\"updateRebootRequired\":false,\"updateCves\":[\"CVE-2025-1234\"],\"updateKbs\":[\"1234567\"]}]";
+        var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var item = new InventoryEntry($"{id:D}:1", "update", UpdateId: id, UpdateRevision: 1, UpdateInstalled: true,
+            UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: ["1234567"]);
+        var expected = Encoding.UTF8.GetBytes(persisted);
+        var actual = InventoryDigest.MeasureChunk([item]);
+        Assert.AreEqual(expected.Length, actual.Bytes);
+        CollectionAssert.AreEqual(SHA256.HashData(expected), actual.Digest);
+    }
+
+    [TestMethod]
     public void Codec_Schema4RejectsFieldsIntroducedForProcessSnapshots()
     {
         var chunk = Create();
@@ -27,6 +100,33 @@ public sealed class InventoryChunkTests
             chunk with { Items = [chunk.Items[0] with { CommandLine = "sensitive" }] }));
         Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(
             chunk with { Source = InventorySource.HostProcesses }));
+    }
+
+    [TestMethod]
+    public void Codec_DpkgSourceFieldsRequireNewSchemaAndPairedValues()
+    {
+        var old = Create();
+        var item = old.Items[0] with { SourcePackageName = "source", SourcePackageVersion = "1:2.0-1" };
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(old with { Items = [item] }));
+        var current = old with { SchemaVersion = InventoryChunkCodec.DpkgSourceSchemaVersion, Items = [item] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(current), out var parsed));
+        Assert.AreEqual("source", parsed!.Items[0].SourcePackageName);
+        Assert.AreEqual("1:2.0-1", parsed.Items[0].SourcePackageVersion);
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with
+            { Items = [item with { SourcePackageVersion = null }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with
+            { Source = InventorySource.LinuxRpm }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with
+            { Items = [item with { SourcePackageName = new string('x', 2049) }] }));
+        Assert.ThrowsExactly<ArgumentException>(() => InventoryChunkCodec.Serialize(current with
+            { Items = [item with { SourcePackageVersion = "1\u0001" }] }));
+        var oldJson = Encoding.UTF8.GetString(InventoryChunkCodec.Serialize(old));
+        var injected = oldJson.Replace("\"name\":\"package\"", "\"name\":\"package\",\"sourcePackageName\":\"source\",\"sourcePackageVersion\":\"1\"");
+        Assert.IsFalse(InventoryChunkCodec.TryRead(Encoding.UTF8.GetBytes(injected), out _));
+        var empty = current with { TotalItems = 0, TotalBytes = 2, Items = [] };
+        Assert.IsTrue(InventoryChunkCodec.TryRead(InventoryChunkCodec.Serialize(empty), out var parsedEmpty));
+        Assert.IsEmpty(parsedEmpty!.Items);
+        CollectionAssert.AreNotEqual(InventoryDigest.MeasureChunk(old.Items).Digest, InventoryDigest.MeasureChunk(current.Items).Digest);
     }
 
     [TestMethod]

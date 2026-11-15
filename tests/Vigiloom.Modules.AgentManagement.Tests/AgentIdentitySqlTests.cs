@@ -31,6 +31,37 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public Task AgentOwnerFence_RejectsRevokedAndMismatchedOwners() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("finding owner", "127.0.0.1", true, clock.Now);
+        await using (var resourceDb = resources.CreateDbContext()) { resourceDb.Devices.Add(device); await resourceDb.SaveChangesAsync(token); }
+        var devices = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, devices, clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        await using var db = agents.CreateDbContext();
+        var agent = await db.Agents.AsNoTracking().SingleAsync(x => x.Id == registered.AgentId, token);
+        var owner = new InventoryOwner(agent.Id, agent.DeviceId, agent.DeviceGeneration);
+        var fence = new AgentOwnerFence(devices);
+        var resolver = new AgentOwnerResolver(agents, devices);
+        Assert.AreEqual(owner, await resolver.ResolveAsync(device.Id, token));
+        await using (var transaction = await db.Database.BeginTransactionAsync(token))
+        {
+            Assert.IsTrue(await fence.LockCurrentAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), owner, token));
+            Assert.IsFalse(await fence.LockCurrentAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), owner with { DeviceGeneration = owner.DeviceGeneration + 1 }, token));
+            await transaction.CommitAsync(token);
+        }
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(owner.AgentId, Guid.CreateVersion7(), token));
+        Assert.IsNull(await resolver.ResolveAsync(device.Id, token));
+        await using (var transaction = await db.Database.BeginTransactionAsync(token))
+        {
+            Assert.IsFalse(await fence.LockCurrentAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), owner, token));
+            await transaction.CommitAsync(token);
+        }
+    });
+
+    [TestMethod]
     public Task InventoryOwner_PrefersCurrentAgentWhenClockMovedBackwards() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
