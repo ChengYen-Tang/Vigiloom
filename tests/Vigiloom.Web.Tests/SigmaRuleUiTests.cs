@@ -2,12 +2,15 @@ using System.Net;
 using System.Text;
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -16,6 +19,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -46,7 +50,8 @@ public sealed class SigmaRuleUiTests(TestContext context)
             var otherDevice = new Device("Other server", "127.0.0.6", true, now);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             { db.Devices.AddRange(device, otherDevice); await db.SaveChangesAsync(token); }
-            var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
+            var secret = RandomNumberGenerator.GetBytes(32);
+            var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, device.AgentAuthorizationGeneration, SHA256.HashData(secret), now);
             var otherAgent = new Vigiloom.Modules.AgentManagement.Domain.Agent(otherDevice.Id, 1, new byte[32], now);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
             {
@@ -136,6 +141,25 @@ public sealed class SigmaRuleUiTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.OK, applied.StatusCode);
             var appliedDoc = await new HtmlParser().ParseDocumentAsync(await applied.Content.ReadAsStringAsync(token), token);
             Assert.Contains("EventID = 0", appliedDoc.Body!.TextContent);
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                var liveRecord = new AgentLogRecord(Guid.CreateVersion7(), DateTimeOffset.UtcNow,
+                    "<Event xmlns=\"http://schemas.microsoft.com/win/2004/08/events/event\"><System><EventID>4625</EventID><Channel>Security</Channel></System></Event>",
+                    null, null, null, null, null);
+                var liveBatch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), DateTimeOffset.UtcNow,
+                    Guid.CreateVersion7(), AgentLogSourceKind.WindowsEvent, "security", 1, [liveRecord]);
+                var credential = $"vla_{agent.Id:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
+                var receiver = scope.ServiceProvider.GetRequiredService<AgentBatchReceiver>();
+                var livePayload = AgentLogBatchCodec.Serialize(liveBatch);
+                Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, livePayload, token));
+                Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, livePayload, token));
+                var dispatcher = new OutboxDispatcher(database.ConnectionString, scope.ServiceProvider.GetServices<IOutboxHandler>(), NullLogger<OutboxDispatcher>.Instance);
+                await dispatcher.DispatchAsync(token);
+                await using var detections = await security.CreateDbContextAsync(token);
+                var match = await detections.SigmaDetectionResults.AsNoTracking().SingleAsync(x => x.MessageId == liveRecord.MessageId, token);
+                Assert.AreEqual((int)SigmaExpectedOutcome.Match, match.Result);
+                Assert.AreEqual(agent.Id, match.AgentId);
+            }
             await using var check = await security.CreateDbContextAsync(token);
             Assert.IsTrue((await check.SigmaRuleActivations.AsNoTracking().SingleAsync(token)).Enabled);
         }, context.CancellationToken);

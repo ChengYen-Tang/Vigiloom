@@ -39,7 +39,7 @@ public sealed class AdvisoryCredentialTests(TestContext context)
             var previous = db.Database.GetMigrations().Single(x => x.EndsWith("_AdvisoryFailureStatus", StringComparison.Ordinal));
             var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous, token));
             Assert.AreEqual(51000, error.Number);
-            Assert.AreEqual(encrypted, (await db.IntelligenceSources.AsNoTracking().SingleAsync(token)).ProtectedCredential);
+            Assert.AreEqual(encrypted, await db.IntelligenceSources.AsNoTracking().Select(x => x.ProtectedCredential).SingleAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

@@ -120,9 +120,9 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
     private static InventorySource[] Sources() => OperatingSystem.IsWindows()
         ? Environment.Is64BitOperatingSystem
             ? [InventorySource.HostSystem, InventorySource.HostNetwork, InventorySource.HostVolumes, InventorySource.WindowsSoftware32, InventorySource.WindowsSoftware64,
-                InventorySource.WindowsAccounts, InventorySource.WindowsGroups, InventorySource.WindowsQuickFix]
+                InventorySource.WindowsAccounts, InventorySource.WindowsGroups, InventorySource.WindowsQuickFix, InventorySource.WindowsUpdate]
             : [InventorySource.HostSystem, InventorySource.HostNetwork, InventorySource.HostVolumes, InventorySource.WindowsSoftware32, InventorySource.WindowsAccounts,
-                InventorySource.WindowsGroups, InventorySource.WindowsQuickFix]
+                InventorySource.WindowsGroups, InventorySource.WindowsQuickFix, InventorySource.WindowsUpdate]
         : OperatingSystem.IsLinux()
             ? [InventorySource.HostSystem, InventorySource.HostNetwork, InventorySource.HostVolumes, InventorySource.LinuxDpkg, InventorySource.LinuxRpm,
                 InventorySource.LinuxAccounts, InventorySource.LinuxGroups]

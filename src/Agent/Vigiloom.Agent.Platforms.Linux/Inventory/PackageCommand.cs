@@ -84,7 +84,7 @@ internal static class PackageCommand
     internal static async Task<(bool Partial, bool Exceeded)> ReadRowsAsync(TextReader reader, List<InstalledSoftware> items,
         Func<string, (LineStatus Status, InstalledSoftware? Item)> parse, CancellationToken token)
     {
-        const int maximumLine = 5 * MaximumTextLength + 8;
+        const int maximumLine = 7 * MaximumTextLength + 8;
         const int maximumOutput = 32 * 1024 * 1024;
         const int maximumRetainedCharacters = 4_000_000;
         var buffer = new char[4096];
@@ -103,7 +103,8 @@ internal static class PackageCommand
                 else if (status == LineStatus.Installed && item is not null)
                 {
                     var size = item.SourceKey.Length + item.Name.Length + (item.Version?.Length ?? 0) +
-                        (item.Supplier?.Length ?? 0) + (item.Architecture?.Length ?? 0);
+                        (item.Supplier?.Length ?? 0) + (item.Architecture?.Length ?? 0) +
+                        (item.SourcePackageName?.Length ?? 0) + (item.SourcePackageVersion?.Length ?? 0);
                     if (items.Count >= MaximumEntries || size > maximumRetainedCharacters - retained) partial = true;
                     else { items.Add(item); retained += size; }
                 }

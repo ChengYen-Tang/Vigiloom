@@ -88,7 +88,20 @@ internal static class AgentEndpoints
                 if (contract is not (null or 5)) return Results.BadRequest();
                 var status = await inventory.GetAsync(Bearer(context), token);
                 if (status is null) return Results.Unauthorized();
-                if (contract == 5) context.Response.Headers["Vigiloom-Inventory-Contract"] = "5";
+                if (contract == 5)
+                {
+                    context.Response.Headers["Vigiloom-Inventory-Contract"] = "5";
+                    context.Response.Headers["Vigiloom-Inventory-Schemas"] = "4, 5, 7, 8, 9, 10";
+                }
+                var supportsWindowsUpdate = contract == 5 && context.Request.Headers.TryGetValue("Vigiloom-Windows-Update-Contract", out var updateContract) &&
+                    updateContract.Count == 1 && updateContract[0] == "9";
+                if (supportsWindowsUpdate) context.Response.Headers["Vigiloom-Windows-Update-Contract"] = "9";
+                else if (contract == 5)
+                {
+                    if (status.Any(x => x.Source == InventorySource.WindowsUpdate && x.ActiveGeneration is not null))
+                        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                    status = status.Where(x => x.Source != InventorySource.WindowsUpdate).ToArray();
+                }
                 if (contract is null)
                 {
                     // Legacy clients cannot decode later sources; an active newer generation

@@ -30,6 +30,7 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         var advisorySource = new IntelligenceSource { Key = "github-reviewed", Enabled = true };
         var sigmaSource = new IntelligenceSource { Key = "sigmahq-rules", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
         var signatureSource = new IntelligenceSource { Key = "signature-base", Enabled = true, LastSuccessfulCheckAt = DateTimeOffset.UtcNow };
+        var msrcSource = new IntelligenceSource { Key = "msrc-cvrf", Enabled = true, LastError = "Automatic intelligence activation failed." };
         var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "test-catalog-v1", ReleasedAt = DateTimeOffset.UtcNow.AddDays(-1),
             RetrievedAt = DateTimeOffset.UtcNow, Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test",
             LicenseEvidence = "test", RecordCount = 1, Normalized = true };
@@ -42,7 +43,7 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
         {
             await db.Database.MigrateAsync(token);
-            db.IntelligenceSources.AddRange(source, advisorySource, sigmaSource, signatureSource);
+            db.IntelligenceSources.AddRange(source, advisorySource, sigmaSource, signatureSource, msrcSource);
             db.IntelligenceRevisions.AddRange(revision, sigmaRevision, signatureRevision);
             db.SigmaRules.Add(new SigmaRule { RevisionId = sigmaRevision.Id, Path = "rules/windows/example.yml", Title = "Example rule",
                 Author = "Example author", Product = "windows", Digest = new byte[32], Content = [1] });
@@ -122,6 +123,10 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         Assert.Contains("rule sample", await page.Locator("main").InnerTextAsync());
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "signature-mobile.png"), FullPage = true });
+        await page.GotoAsync(url + "/settings/intelligence");
+        await page.Locator(".intelligence-source").Filter(new() { HasText = "Microsoft Security Update Guide" }).ClickAsync();
+        await page.GetByText("啟用來源後，符合條件的新版本會自動選用", new() { Exact = false }).WaitForAsync();
+        await page.GetByText("自動啟用尚未完成", new() { Exact = false }).WaitForAsync();
         Assert.IsEmpty(errors);
         await using var check = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
         var current = await check.IntelligenceSources.SingleAsync(x => x.Id == source.Id, token);
