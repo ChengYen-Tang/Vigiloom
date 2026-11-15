@@ -30,7 +30,7 @@ public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObs
         var service = await db.Services.FromSqlInterpolated($"SELECT * FROM [service].[Services] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {serviceId}")
             .SingleOrDefaultAsync(token);
         if (service is null || source is null) return ServiceCollectionStatus.NotFound;
-        if (!service.Version.AsSpan().SequenceEqual(expected) || (service.RevokedAt is not null) == stopped) return ServiceCollectionStatus.Conflict;
+        if (service.ArchivedAt is not null || !service.Version.AsSpan().SequenceEqual(expected) || (service.RevokedAt is not null) == stopped) return ServiceCollectionStatus.Conflict;
         if (!stopped && source.RevokedAt is not null) return ServiceCollectionStatus.SourceUnavailable;
         var now = await DiscoveryTransaction.NowAsync(db, token);
         await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
@@ -38,6 +38,30 @@ public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObs
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
             new OperationAudit(actor, serviceId, now, new ServiceCollectionChanged(stopped ? ServiceCollectionAction.Stopped : ServiceCollectionAction.Resumed)), token);
+        await tx.CommitAsync(token);
+        return ServiceCollectionStatus.Updated;
+    }
+
+    /// <summary>Archives a service and revokes publication atomically; restoration leaves collection stopped and publication private.</summary>
+    public async Task<ServiceCollectionStatus> SetArchivedAsync(Guid serviceId, string version, bool archived, Guid actor, CancellationToken token)
+    {
+        if (serviceId.Version != 7 || actor == Guid.Empty) throw new ArgumentException("A service and administrator are required.");
+        byte[] expected;
+        try { expected = Convert.FromBase64String(version ?? ""); }
+        catch (FormatException) { return ServiceCollectionStatus.Conflict; }
+        if (expected.Length != 8) return ServiceCollectionStatus.Conflict;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var tx = await db.Database.BeginTransactionAsync(token);
+        var service = await HealthPublicationCoordinator.LockServiceAsync(db, serviceId, token);
+        if (service is null) return ServiceCollectionStatus.NotFound;
+        if (!service.Version.AsSpan().SequenceEqual(expected) || (service.ArchivedAt is not null) == archived)
+            return ServiceCollectionStatus.Conflict;
+        var now = await DiscoveryTransaction.NowAsync(db, token);
+        await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
+        if (archived) service.Archive(now); else service.Restore(now);
+        await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
+            new OperationAudit(actor, serviceId, now, new ServiceCollectionChanged(archived ? ServiceCollectionAction.Archived : ServiceCollectionAction.Restored)), token);
         await tx.CommitAsync(token);
         return ServiceCollectionStatus.Updated;
     }

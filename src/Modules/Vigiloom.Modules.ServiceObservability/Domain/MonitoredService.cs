@@ -36,6 +36,7 @@ public sealed class MonitoredService
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
+    public DateTimeOffset? ArchivedAt { get; private set; }
     public bool IsPublic { get; private set; }
     public DateTimeOffset? PublicSince { get; private set; }
     public string? PublicDisplayName { get; private set; }
@@ -49,6 +50,7 @@ public sealed class MonitoredService
 
     public void Resume(DateTimeOffset now)
     {
+        if (ArchivedAt is not null) throw new InvalidOperationException("An archived service cannot resume collection.");
         if (RevokedAt is null) return;
         RevokedAt = null;
         ApprovedAt = UpdatedAt = now.ToUniversalTime();
@@ -56,12 +58,28 @@ public sealed class MonitoredService
 
     public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
     {
+        if (isPublic && ArchivedAt is not null) throw new InvalidOperationException("An archived service cannot be published.");
         if (isPublic && (policyVersion is not (PublicationPolicy.BaselineVersion or PublicationPolicy.ServiceHistoryVersion or PublicationPolicy.ServiceHistoryDetailsVersion) || !PublicationPolicy.TryValidateName(displayName, out _)))
             throw new ArgumentException("An approved publication policy and public name are required.");
         if (isPublic && (!IsPublic || policyVersion != PublicPolicyVersion)) PublicSince = PendingPublicSince;
         if (!isPublic) PublicSince = null;
         IsPublic = isPublic;
         if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
+        UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Archive(DateTimeOffset now)
+    {
+        if (ArchivedAt is not null) return;
+        Revoke(now);
+        SetPublication(false, null, null, now);
+        ArchivedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Restore(DateTimeOffset now)
+    {
+        if (ArchivedAt is null) return;
+        ArchivedAt = null;
         UpdatedAt = now.ToUniversalTime();
     }
 

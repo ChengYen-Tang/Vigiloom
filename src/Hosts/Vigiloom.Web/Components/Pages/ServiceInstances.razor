@@ -37,14 +37,26 @@
                 <ul>
                 @foreach (var service in services)
                 {
-                    <li><a href="@ServiceUrl(service.Id, servicePage, 1)">@service.Name（@service.Environment）</a> — @(service.StoppedAt is null ? "已核准" : "已停收")
+                    <li><a href="@ServiceUrl(service.Id, servicePage, 1)">@service.Name（@service.Environment）</a> — @(service.ArchivedAt is not null ? "已封存" : service.StoppedAt is null ? "已核准" : "已停收")
                         <details><summary>來源識別碼</summary><small>@service.SourceId</small></details>
+                        @if (service.ArchivedAt is null)
+                        {
                         <details><summary>@(service.StoppedAt is null ? "停止收集" : "恢復收集")</summary>
                             <p>@(service.StoppedAt is null ? "停止後立即拒絕此服務的新資料，並保留既有資料。" : "恢復只接受新授權期間的資料，來源必須仍可使用。")</p>
                             <label><input type="checkbox" name="@($"service-confirm-{service.Id:N}")" value="true" /> 我已確認影響</label>
                             <input type="hidden" name="@($"service-version-{service.Id:N}")" value="@service.Version" />
                             <input type="hidden" name="@($"service-stop-{service.Id:N}")" value="@(service.StoppedAt is null ? "true" : "false")" />
                             <button type="submit" name="ServiceForm.Id" value="@service.Id">@(service.StoppedAt is null ? "確認停收" : "確認恢復收集")</button>
+                        </details>
+                        }
+                        <details><summary>@(service.ArchivedAt is null ? "封存服務" : "恢復服務")</summary>
+                            <p>@(service.ArchivedAt is null ? "封存會停止收集並撤回公開，保留服務身分和歷史資料。" : "恢復後仍為私人且停止收集；如有需要，請再手動恢復收集與公開設定。")</p>
+                            <div class="archive-confirmation">
+                            <label><input type="checkbox" name="@($"archive-confirm-{service.Id:N}")" value="true" /> 我已確認影響</label>
+                            <input type="hidden" name="@($"archive-version-{service.Id:N}")" value="@service.Version" />
+                            <input type="hidden" name="@($"archive-value-{service.Id:N}")" value="@(service.ArchivedAt is null ? "true" : "false")" />
+                            <button type="submit" name="ServiceForm.ArchiveId" value="@service.Id">@(service.ArchivedAt is null ? "確認封存" : "確認恢復服務")</button>
+                            </div>
                         </details>
                     </li>
                 }
@@ -167,6 +179,22 @@
     private async Task ChangeServiceAsync()
     {
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
+        if (Guid.TryParse(form["ServiceForm.ArchiveId"], out var archiveId))
+        {
+            if (archiveId.Version != 7 || form[$"archive-confirm-{archiveId:N}"] != "true" ||
+                !bool.TryParse(form[$"archive-value-{archiveId:N}"], out var archived) || Actor() is not { } archiveActor)
+            { error = "請確認操作影響。"; return; }
+            try
+            {
+                var result = await Collections.SetArchivedAsync(archiveId, form[$"archive-version-{archiveId:N}"].ToString(), archived, archiveActor, HttpContext.RequestAborted);
+                if (result == ServiceCollectionStatus.Updated) message = archived ? "服務已封存並撤回公開。" : "服務已恢復，維持私人及停止收集。";
+                else error = "服務已變更或無法操作，請重新整理後再試。";
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            { Logger.LogWarning("Cannot change service archive: {ExceptionType}", ex.GetType().Name); error = "無法確認操作結果，請重新整理後檢查。"; }
+            await LoadAsync();
+            return;
+        }
         if (!Guid.TryParse(form["ServiceForm.Id"], out var id) || id.Version != 7 || form[$"service-confirm-{id:N}"] != "true" ||
             !bool.TryParse(form[$"service-stop-{id:N}"], out var stopped) || Actor() is not { } actor)
         { error = "請確認操作影響。"; return; }
@@ -182,5 +210,5 @@
     }
 
     private sealed class PolicyInput { public int PerService { get; set; } public int Total { get; set; } public string Version { get; set; } = ""; }
-    private sealed class ActionInput { public Guid Id { get; set; } }
+    private sealed class ActionInput { public Guid Id { get; set; } public Guid ArchiveId { get; set; } }
 }
