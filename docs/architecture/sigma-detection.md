@@ -1,0 +1,29 @@
+# Host log detection and Sigma compatibility
+
+REQ-33 evaluates committed host logs against selected, versioned Sigma rules. The event flow follows the established decode → rule match → finding approach used by [Wazuh](https://documentation.wazuh.com/current/user-manual/ruleset/). Rules are interpreted according to the [Sigma rule specification](https://sigmahq.io/sigma-specification/specification/sigma-rules-specification.html) and [correlation specification](https://sigmahq.io/sigma-specification/specification/sigma-correlation-rules-specification.html). The MIT-licensed [SigmaHQ engine](https://github.com/SigmaHQ/sigma_engine) provides a reference implementation for rule parsing and matching; adapt supported behavior to the existing .NET worker and verify it with upstream-compatible rule examples.
+
+## Existing input
+
+REQ-29 stores authenticated `HostLog` records with Agent, source, message identity, source kind, parser version, occurrence and receipt times, content, provider, event ID, level, user, process and explicit collection-gap information. The same committed message ID identifies an event across retries. Gap records are collection-status evidence, not ordinary log events.
+
+- Windows Event Log content is the original event XML. `System` supplies event ID, provider and channel where present; named `EventData` fields are exposed under their actual names. `Security/UserID` is a SID and `Execution/ProcessID` is a numeric process ID: neither is a user name or process image. A rule requiring an absent field is not treated as covered merely because an unrelated field has a similar name.
+- systemd journal content is the collected JSON array of fields, retaining the original field names and explicit UTF-8 or binary encoding. Text fields may be matched as text; a binary value does not become an invented string field. Journal metadata such as `SYSLOG_IDENTIFIER`, `_UID`, and `_PID` has the meaning reported by journald, not an inferred executable path or account name.
+- Text-file records retain their original text. They can support rules whose log source and fields are actually established by an applicable decoder; a file name or free-form message alone does not establish a Windows event, auditd event, or process-creation schema.
+
+Map Sigma log sources using observed OS, source kind and actual channel/provider or an explicitly supported decoder. `HostLogSource.Name` is administrator-supplied display text and is not a trustworthy channel identity. Preserve the original event and distinguish an absent field, explicit null, malformed payload, collection gap and unsupported source. No event match is not evidence that an uncollected source is safe.
+
+## Rule contract
+
+The first engine supports single-event Sigma field selections with scalar equality and lists; condition expressions support selection names, parentheses, `and`, `or`, `not`, and `1 of` / `all of` selection patterns. Support the `contains`, `startswith`, `endswith`, `all`, and `exists` modifiers. The explicit `exists: false` test checks field absence as specified; an unavailable source or malformed event is still not a successful field-absence observation. Wildcard and case behavior must follow Sigma semantics; a literal wildcard must remain literal when escaped. Values and list combinations use Sigma's defined AND/OR behavior. Unsupported modifiers, condition forms, ambiguous field mappings, correlation types or log sources are rejected with a visible reason rather than silently ignored.
+
+For frequency-based rules, support Sigma event-count correlation only when the referenced base rule, group fields, event time and window are available. Keep rule/revision identity, group key and event time with the result; handle late arrivals and repeated message IDs without counting a retransmission twice. Other correlation types remain explicitly unsupported until implemented and tested; they must not be reported as active coverage.
+
+Stored upstream rules retain source revision, ID, content digest and per-rule license status from REQ-32. Local enablement, test results and exceptions are separate from the upstream file. A rule must pass matching and non-matching examples before activation; edits do not overwrite the retained source. Rule diagnostics identify which syntax or input capability is missing.
+
+Administrators can test exact field-value exclusions alongside a rule. Exclusions match any decoded value using case-insensitive equality and do not apply when the field is missing or the event is indeterminate. For event-count rules they filter base events before counting. The tested exclusions are stored with the immutable test evidence; applying a changed set selects a new successful test and isolates correlation state using the existing activation version. The page distinguishes the active exclusions from those being tested.
+
+## Engine selection and verification
+
+`EventViewerX.Detection` 4.2.1 is an MIT-licensed .NET Sigma compiler, but its own project explicitly marks the package and core engine as Windows-only; it cannot establish the required Linux-hosted central worker support. SigmaHQ's `sigma_engine` is MIT-licensed and implements both matching and correlation, but is a Rust library with no existing .NET package or C ABI. The initial .NET implementation should follow the upstream engine's supported behavior and examples rather than importing a Windows-only dependency or requiring an additional service on every monitored host.
+
+Verify actual collected Windows XML, journal fields and text messages alongside upstream-derived rules: matching, non-matching, missing field, unsupported operator, escaped wildcard, duplicate event and late-event cases. A source is marked supported only when its decoder and required fields have been verified. Results retain the raw event reference, evaluated rule and version; alert and event-center integration belongs to REQ-15 and REQ-37 respectively.

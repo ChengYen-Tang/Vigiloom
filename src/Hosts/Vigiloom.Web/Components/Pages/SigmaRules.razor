@@ -1,0 +1,90 @@
+@page "/settings/sigma"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Modules.SecurityAnalysis.Application.Detection
+@inject SigmaRuleInventory Inventory
+@inject ILogger<SigmaRules> Logger
+
+<PageTitle>行為規則 - Vigiloom</PageTitle>
+<main class="device-page sigma-page">
+    <header class="device-heading"><div><h1>行為規則</h1><p>試跑規則後再啟用；規則支援不代表設備已收集所需日誌。</p></div></header>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    else if (page is null) { <p role="status">正在載入規則…</p> }
+    else if (page.Source.Availability != SigmaAvailability.Ready)
+    {
+        <section class="device-panel"><h2>規則來源無法使用</h2><p>請確認情報來源已啟用、已選用版本且資料未過期。</p><a href="/settings/intelligence">前往情報來源</a></section>
+    }
+    else
+    {
+        <section class="device-panel">
+            <h2>目前來源的規則</h2>
+            <p>來源版本：@(page.Source.Commit)</p>
+            @if (page.Items.Count == 0) { <p>此頁沒有規則。</p> }
+            else
+            {
+                <p class="sigma-scroll-hint">左右滑動查看完整規則資訊。</p>
+                <div class="sigma-table-wrap" role="region" tabindex="0" aria-label="行為規則清單，可左右捲動">
+                    <table class="sigma-table"><thead><tr><th>規則</th><th>支援狀態</th><th>最近試跑</th><th>啟用狀態</th><th>操作</th></tr></thead><tbody>
+                    @foreach (var item in page.Items)
+                    {
+                        <tr @key="item.Source.Path">
+                            <td><strong>@item.Source.Title</strong><br /><small>@item.Source.Path</small></td>
+                            <td>@(item.Supported ? "支援試跑" : "不支援") @if (!item.Supported && item.UnsupportedReason is not null) { <details><summary>查看原因</summary><small>@item.UnsupportedReason</small></details> }</td>
+                            <td>@(item.LatestTestPassed switch { true => "通過", false => "未通過", _ => "尚未試跑" })</td>
+                            <td>@(item.EnabledForCurrentSource ? "已啟用" : item.Enabled ? "設定已啟用，來源不可用或版本已變更" : "未啟用")</td>
+                            <td><a href="@RuleUrl(item.Source.Path)">查看與管理</a></td>
+                        </tr>
+                    }
+                    </tbody></table>
+                </div>
+            }
+            <nav aria-label="規則分頁">@if (Cursor is not null) { <a href="/settings/sigma">回到第一頁</a> } @if (page.NextCursor is not null) { <a href="@($"/settings/sigma?cursor={Uri.EscapeDataString(page.NextCursor)}")">下一頁</a> }</nav>
+        </section>
+    }
+    @if (states is not null)
+    {
+        <section class="device-panel">
+            <h2>已儲存的規則設定</h2>
+            <p>即使來源暫時無法使用，仍可查看或停用已啟用的設定。</p>
+            @if (states.Items.Count == 0) { <p>尚無規則設定。</p> }
+            else
+            {
+                <ul>@foreach (var state in states.Items) { <li @key="(state.SourceId, state.Path)">@state.Path · @(state.Enabled ? "已設定啟用" : "已停用") @if (state.Enabled) { <a href="@SavedUrl(state)">停用</a> }</li> }</ul>
+            }
+            <nav aria-label="已儲存設定分頁">
+                @if (states.Page > 1) { <a href="@StatePageUrl(states.Page - 1)">上一頁</a> }
+                <span>第 @states.Page 頁</span>
+                @if (states.HasMore) { <a href="@StatePageUrl(states.Page + 1)">下一頁</a> }
+            </nav>
+        </section>
+    }
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "cursor")] private string? Cursor { get; set; }
+    [SupplyParameterFromQuery(Name = "statePage")] private int? StatePage { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private SigmaDetectionRulePage? page;
+    private SigmaRuleStatePage? states;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpContext.Response.Headers.CacheControl = "no-store";
+        try { states = await Inventory.GetStatesAsync(Math.Clamp(StatePage ?? 1, 1, 1000), HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Could not load Sigma settings: {ErrorType}", ex.GetType().Name); }
+        try { page = await Inventory.GetAsync(Cursor, HttpContext.RequestAborted); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning("Could not load Sigma rules: {ErrorType}", ex.GetType().Name);
+            error = "無法讀取規則，請重新整理。";
+        }
+    }
+
+    private string RuleUrl(string path) => $"/settings/sigma/rule?path={Uri.EscapeDataString(path)}" +
+        (Cursor is null ? "" : $"&cursor={Uri.EscapeDataString(Cursor)}");
+    private string SavedUrl(SigmaRuleStateItem state) => $"/settings/sigma/saved?source={state.SourceId:D}&path={Uri.EscapeDataString(state.Path)}&page={states?.Page ?? 1}";
+    private string StatePageUrl(int number) => $"/settings/sigma?statePage={number}" +
+        (Cursor is null ? "" : $"&cursor={Uri.EscapeDataString(Cursor)}");
+}

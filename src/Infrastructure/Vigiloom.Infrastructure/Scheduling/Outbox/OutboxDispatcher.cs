@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
@@ -7,14 +8,15 @@ namespace Vigiloom.Infrastructure.Scheduling.Outbox;
 /// <summary>Claims bounded work with expiring SQL leases and commits each local effect with its acknowledgement.</summary>
 public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutboxHandler> handlers, ILogger<OutboxDispatcher> logger, TimeSpan? handlerTimeout = null)
 {
-    private const int BatchSize = 32;
+    private static readonly TimeSpan DispatchBudget = TimeSpan.FromSeconds(30);
     private const int MaxAttempts = 10;
     private const int LeaseSeconds = 120;
     private readonly Dictionary<string, IOutboxHandler> handlersByType = handlers.ToDictionary(handler => handler.MessageType, StringComparer.Ordinal);
 
     public async Task DispatchAsync(CancellationToken cancellationToken = default)
     {
-        for (var index = 0; index < BatchSize; index++)
+        var started = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(started) < DispatchBudget)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var leaseId = Guid.CreateVersion7();

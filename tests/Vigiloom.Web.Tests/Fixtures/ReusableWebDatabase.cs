@@ -12,6 +12,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests.Fixtures;
@@ -38,17 +39,20 @@ internal static class ReusableWebDatabase
             await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<DeploymentLinksDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
         }
         await using var initial = new SqlConnection(database.ConnectionString);
         await initial.OpenAsync(token);
         var seed = await ReadSeedAsync(initial, token);
         var respawner = await Respawner.CreateAsync(initial, new RespawnerOptions
         {
-            SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota", "security", "publishing"],
+            SchemasToInclude = ["identity", "resources", "network", "operations", "agent", "service", "logquota", "security", "publishing", "scheduling"],
             TablesToIgnore = [new Table("identity", "__EFMigrationsHistory"), new Table("resources", "__EFMigrationsHistory"), new Table("resources", DeploymentLinksDbContext.MigrationHistory),
                 new Table("network", "__EFMigrationsHistory"), new Table("operations", "__EFMigrationsHistory"),
                 new Table("agent", "__EFMigrationsHistory"), new Table("service", "__EFMigrationsHistory"),
-                new Table("logquota", "__EFMigrationsHistory"), new Table("security", "__EFMigrationsHistory"), new Table("publishing", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),
+                new Table("logquota", "__EFMigrationsHistory"), new Table("security", "__EFMigrationsHistory"), new Table("publishing", "__EFMigrationsHistory"), new Table("scheduling", "__EFMigrationsHistory"), new Table("service", "ReceptionRejections"), new Table("agent", "ReplayPolicies"),
                 new Table("operations", "WorkerDiagnosticSlots")],
             CommandTimeout = 30
         });
