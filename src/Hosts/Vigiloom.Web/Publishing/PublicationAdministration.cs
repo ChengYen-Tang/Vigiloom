@@ -74,7 +74,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             await using var tx = await db.Database.BeginTransactionAsync(token);
             var row = await HealthPublicationCoordinator.LockServiceAsync(db, id, token);
             if (row is null) return new(PublicationChangeStatus.NotFound);
-            if (!row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
+            if (row.ArchivedAt is not null || !row.Version.AsSpan().SequenceEqual(version)) return new(PublicationChangeStatus.Conflict);
             var previous = row.IsPublic; var changedName = change.Public && row.PublicDisplayName != name;
             var changedPolicy = previous && change.Public && row.PublicPolicyVersion != change.PolicyVersion;
             if (previous == change.Public && !changedName && (!change.Public || row.PublicPolicyVersion == change.PolicyVersion))
@@ -176,7 +176,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             var afterCommit = await db.Database.SqlQueryRaw<DateTimeOffset>(
                 "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
             var row = await HealthPublicationCoordinator.LockServiceAsync(db, id, token);
-            if (row is null || !row.IsPublic || row.PublicSince != MonitoredService.PendingPublicSince ||
+            if (row is null || row.ArchivedAt is not null || !row.IsPublic || row.PublicSince != MonitoredService.PendingPublicSince ||
                 !row.Version.AsSpan().SequenceEqual(publishedVersion)) return null;
             // This time is obtained after the publication transaction committed. The rowversion
             // ensures a delayed confirmation cannot authorize history for a later publication.

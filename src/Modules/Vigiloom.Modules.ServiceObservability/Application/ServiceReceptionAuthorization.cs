@@ -48,7 +48,7 @@ public static class ServiceReceptionAuthorization
         }
         await using var service = connection.CreateCommand();
         service.Transaction = transaction;
-        service.CommandText = "SELECT [Id], [ApprovedAt] FROM [service].[Services] WITH (HOLDLOCK) WHERE [SourceId] = @source AND [ServiceNamespaceBytes] = @namespace AND [ServiceKey] = @key AND [Environment] = @environment AND [RevokedAt] IS NULL";
+        service.CommandText = "SELECT [Id], [ApprovedAt] FROM [service].[Services] WITH (HOLDLOCK) WHERE [SourceId] = @source AND [ServiceNamespaceBytes] = @namespace AND [ServiceKey] = @key AND [Environment] = @environment AND [RevokedAt] IS NULL AND [ArchivedAt] IS NULL";
         Add(service, "@source", DbType.Guid, authenticatedSourceId);
         Add(service, "@namespace", DbType.Binary, namespaceBytes, 256);
         Add(service, "@key", DbType.String, serviceKey, 128);

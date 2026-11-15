@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -181,6 +182,36 @@ public sealed class PublicationHttpTests(TestContext context)
         }
         using (var hiddenService = await anonymous.GetAsync($"/api/v1/public/services/{privateServiceId:D}", token))
             Assert.AreEqual(HttpStatusCode.NotFound, hiddenService.StatusCode);
+
+        var serviceSettings = await Settings("services", serviceId);
+        var archivePath = $"/api/v1/service-discovery/services/{serviceId:D}/archive";
+        using (var denied = await reader.PostAsJsonAsync(archivePath, new ServiceInstanceUpdate(serviceSettings.Version), token))
+            Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var request = new HttpRequestMessage(HttpMethod.Post, archivePath) { Content = JsonContent.Create(new ServiceInstanceUpdate(serviceSettings.Version)) })
+        {
+            request.Headers.Add("RequestVerificationToken", csrf);
+            using var archived = await admin.SendAsync(request, token);
+            Assert.AreEqual(HttpStatusCode.NoContent, archived.StatusCode);
+        }
+        using (var afterArchive = await anonymous.GetAsync($"/api/v1/public/services/{serviceId:D}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, afterArchive.StatusCode);
+        Assert.DoesNotContain("Order service", await anonymous.GetStringAsync("/api/v1/public/services", token));
+        var archivedGroup = await anonymous.GetFromJsonAsync<PublicGroup>($"/api/v1/public/groups/{group.Id:D}", token);
+        Assert.IsNotNull(archivedGroup); Assert.AreEqual(0, archivedGroup.ServiceCount);
+        serviceSettings = await Settings("services", serviceId);
+        Assert.IsFalse(serviceSettings.Public);
+        using (var blocked = await Put("services", serviceId, new(true, "Order service", PublicationPolicy.BaselineVersion, serviceSettings.Version)))
+            Assert.AreEqual(HttpStatusCode.Conflict, blocked.StatusCode);
+        using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/service-discovery/services/{serviceId:D}/restore") { Content = JsonContent.Create(new ServiceInstanceUpdate(serviceSettings.Version)) })
+        {
+            request.Headers.Add("RequestVerificationToken", csrf);
+            using var restored = await admin.SendAsync(request, token);
+            Assert.AreEqual(HttpStatusCode.NoContent, restored.StatusCode);
+        }
+        Assert.IsFalse((await Settings("services", serviceId)).Public);
+        using (var afterRestore = await anonymous.GetAsync($"/api/v1/public/services/{serviceId:D}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, afterRestore.StatusCode);
+        await Publish("services", serviceId, "Order service");
 
         // Unknown policy identifiers must fail closed even under SQL Server's case-insensitive,
         // trailing-space-insensitive comparison rules.

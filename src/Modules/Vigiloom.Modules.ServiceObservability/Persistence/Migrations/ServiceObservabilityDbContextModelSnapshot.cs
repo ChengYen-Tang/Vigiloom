@@ -506,6 +506,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<DateTimeOffset>("ApprovedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid?>("CandidateId")
                         .HasColumnType("uniqueidentifier");
 
@@ -598,6 +601,8 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.ToTable("Services", "service", t =>
                         {
+                            t.HasCheckConstraint("CK_Services_Archived", "[ArchivedAt] IS NULL OR ([IsPublic] = 0 AND [RevokedAt] IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_Services_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
                         });
                 });

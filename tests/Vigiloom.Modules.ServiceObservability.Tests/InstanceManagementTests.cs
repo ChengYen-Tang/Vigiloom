@@ -23,6 +23,135 @@ public sealed class InstanceManagementTests(TestContext context)
 {
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task Migration_RefusesToDiscardArchivedServiceState() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            service.Archive(now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+                await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261114003446_ServicePublicationPeriod", token));
+            }
+            await using var check = new ServiceObservabilityDbContext(options);
+            Assert.IsNotNull((await check.Services.SingleAsync(x => x.Id == service.Id, token)).ArchivedAt);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServiceArchive_InFlightReceptionCannotPassCommit(bool snapshot) =>
+        Fixtures.ReusableServiceDatabase.ExecuteForReadModeAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
+            }
+            var factory = new Factory(options);
+            var current = await new ServiceInstanceAdministration(factory, new OperationAuditWriter()).GetServiceAsync(service.Id, token);
+            Assert.IsNotNull(current);
+            var barrier = new BlockingAudit();
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(token);
+            await using var receiver = new ServiceObservabilityDbContext(options);
+            await using var tx = await receiver.Database.BeginTransactionAsync(token);
+            Task<ServiceReceptionBinding?>? receive = null;
+            var archive = new ServiceCollectionAdministration(factory, barrier).SetArchivedAsync(service.Id, current.Version, true, Guid.CreateVersion7(), cancel.Token);
+            try
+            {
+                await barrier.Locked.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                receive = ServiceReceptionAuthorization.LockAsync(receiver.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", cancel.Token);
+                Assert.AreNotSame(receive, await Task.WhenAny(receive, Task.Delay(200, token)));
+                barrier.Release.TrySetResult();
+                Assert.AreEqual(ServiceCollectionStatus.Updated, await archive.WaitAsync(TimeSpan.FromSeconds(10), token));
+                Assert.IsNull(await receive.WaitAsync(TimeSpan.FromSeconds(10), token));
+            }
+            finally
+            {
+                barrier.Release.TrySetResult();
+                try { cancel.Cancel(); } catch (AggregateException) { /* Observe the operations before releasing the fixture. */ }
+                try { await archive; } catch (Exception) { /* Preserve the original test failure. */ }
+                if (receive is not null) try { await receive; } catch (Exception) { /* Observe the operation before disposing its transaction. */ }
+            }
+        }, snapshot, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ServiceArchive_RevokesPublicationAndReceptionAtomicallyAndRestoresPrivate() =>
+        Fixtures.ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow.AddMinutes(-1);
+            var source = new ServiceSource("source", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "orders", "prod", "Orders", now), now);
+            service.SetPublication(true, "Orders", Vigiloom.Contracts.Publishing.PublicationPolicy.BaselineVersion, now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                db.Sources.Add(source); db.Services.Add(service);
+                await db.SaveChangesAsync(token);
+            }
+            var factory = new Factory(options);
+            var actor = Guid.CreateVersion7();
+            var list = new ServiceInstanceAdministration(factory, new OperationAuditWriter());
+            var initial = await list.GetServiceAsync(service.Id, token);
+            Assert.IsNotNull(initial);
+            var failing = new ServiceCollectionAdministration(factory, new FailAudit());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.SetArchivedAsync(service.Id, initial.Version, true, actor, token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                var unchanged = await db.Services.SingleAsync(x => x.Id == service.Id, token);
+                Assert.IsTrue(unchanged.IsPublic);
+                Assert.IsNull(unchanged.ArchivedAt);
+                Assert.IsNull(unchanged.RevokedAt);
+            }
+            var admin = new ServiceCollectionAdministration(factory, new OperationAuditWriter());
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetArchivedAsync(service.Id, initial.Version, true, actor, token));
+            var archived = await list.GetServiceAsync(service.Id, token);
+            Assert.IsNotNull(archived);
+            Assert.IsNotNull(archived.ArchivedAt);
+            Assert.IsNotNull(archived.StoppedAt);
+            await using (var db = new ServiceObservabilityDbContext(options))
+                await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[Services] SET [RevokedAt] = NULL WHERE [Id] = {service.Id}", token));
+            Assert.AreEqual(ServiceCollectionStatus.Conflict, await admin.SetStoppedAsync(service.Id, archived.Version, false, actor, token));
+            Assert.AreEqual(ServiceCollectionStatus.Conflict, await admin.SetArchivedAsync(service.Id, initial.Version, false, actor, token));
+            await using (var db = new ServiceObservabilityDbContext(options))
+            await using (var tx = await db.Database.BeginTransactionAsync(token))
+            {
+                var stored = await db.Services.SingleAsync(x => x.Id == service.Id, token);
+                Assert.IsFalse(stored.IsPublic);
+                Assert.IsNull(stored.PublicSince);
+                Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), source.Id, "orders", "prod", token));
+            }
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetArchivedAsync(service.Id, archived.Version, false, actor, token));
+            var restored = await list.GetServiceAsync(service.Id, token);
+            Assert.IsNotNull(restored);
+            Assert.IsNull(restored.ArchivedAt);
+            Assert.IsNotNull(restored.StoppedAt);
+            await using (var db = new ServiceObservabilityDbContext(options))
+                Assert.IsFalse((await db.Services.SingleAsync(x => x.Id == service.Id, token)).IsPublic);
+            Assert.AreEqual(ServiceCollectionStatus.Updated, await admin.SetStoppedAsync(service.Id, restored.Version, false, actor, token));
+            var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            var entries = (await new OperationAuditQueryService(new OperationsFactory(operations))
+                .QueryServiceCollectionsAsync(new(now.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token)).Items;
+            Assert.HasCount(3, entries);
+            Assert.IsTrue(entries.Any(x => x.ResourceId == service.Id && x.ServiceCollection?.Action == ServiceCollectionAction.Archived));
+            Assert.IsTrue(entries.Any(x => x.ResourceId == service.Id && x.ServiceCollection?.Action == ServiceCollectionAction.Restored));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task Migration_ServiceNamespacePreservesExistingIdentityAndRejectsUnsafeRollback() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

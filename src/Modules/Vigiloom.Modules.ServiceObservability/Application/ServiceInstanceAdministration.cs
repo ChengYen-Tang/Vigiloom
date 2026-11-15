@@ -21,9 +21,9 @@ public sealed class ServiceInstanceAdministration(IDbContextFactory<ServiceObser
         var rows = await (from service in db.Services.AsNoTracking()
                           join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
                           orderby service.RowId
-                          select new { service.Id, service.DisplayName, service.Environment, service.SourceId, service.RevokedAt, service.Version, SourceName = source.Name })
+                          select new { service.Id, service.DisplayName, service.Environment, service.SourceId, service.RevokedAt, service.ArchivedAt, service.Version, SourceName = source.Name })
             .Skip((page - 1) * 50).Take(50).ToArrayAsync(token);
-        return rows.Select(x => new ManagedServiceSummary(x.Id, x.DisplayName, x.Environment, x.SourceId, x.RevokedAt, Convert.ToBase64String(x.Version), x.SourceName)).ToArray();
+        return rows.Select(x => new ManagedServiceSummary(x.Id, x.DisplayName, x.Environment, x.SourceId, x.RevokedAt, Convert.ToBase64String(x.Version), x.SourceName, x.ArchivedAt)).ToArray();
     }
 
     public async Task<ManagedServiceSummary?> GetServiceAsync(Guid serviceId, CancellationToken token)
@@ -33,8 +33,8 @@ public sealed class ServiceInstanceAdministration(IDbContextFactory<ServiceObser
         var row = await (from service in db.Services.AsNoTracking()
                          join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
                          where service.Id == serviceId
-                         select new { service.Id, service.DisplayName, service.Environment, service.SourceId, service.RevokedAt, service.Version, SourceName = source.Name }).SingleOrDefaultAsync(token);
-        return row is null ? null : new(row.Id, row.DisplayName, row.Environment, row.SourceId, row.RevokedAt, Convert.ToBase64String(row.Version), row.SourceName);
+                         select new { service.Id, service.DisplayName, service.Environment, service.SourceId, service.RevokedAt, service.ArchivedAt, service.Version, SourceName = source.Name }).SingleOrDefaultAsync(token);
+        return row is null ? null : new(row.Id, row.DisplayName, row.Environment, row.SourceId, row.RevokedAt, Convert.ToBase64String(row.Version), row.SourceName, row.ArchivedAt);
     }
 
     public async Task<IReadOnlyList<ServiceInstanceSummary>> GetInstancesAsync(Guid serviceId, IReadOnlyCollection<Guid> ids, CancellationToken token)

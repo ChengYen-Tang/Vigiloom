@@ -353,6 +353,8 @@
         _ when entry.DeploymentLink?.Action == DeploymentLinkAction.Ended => "結束部署關聯",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Stopped => "停止收集",
         _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Resumed => "恢復收集",
+        _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Archived => "封存服務",
+        _ when entry.ServiceCollection?.Action == ServiceCollectionAction.Restored => "恢復服務",
         _ when entry.Publication is not null => "變更公開設定",
         _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Created => "建立公開範本",
         _ when entry.PublicationTemplate?.Action == PublicationTemplateAction.Updated => "修改公開範本",

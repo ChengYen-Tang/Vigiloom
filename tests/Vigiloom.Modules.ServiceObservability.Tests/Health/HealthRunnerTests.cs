@@ -11,6 +11,7 @@ using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.AlertingOperations.Application;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 
@@ -527,6 +528,7 @@ public sealed class HealthRunnerTests(TestContext context)
     [DataRow(1)]
     [DataRow(2)]
     [DataRow(3)]
+    [DataRow(4)]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task RunOnce_RejectsObservationAfterAuthorizationOrSettingsChange(int change) =>
         ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
@@ -551,7 +553,13 @@ public sealed class HealthRunnerTests(TestContext context)
                 await requestReceived.Task.WaitAsync(cancellation.Token);
                 await using (var db = new ServiceObservabilityDbContext(options))
                 {
-                    if (change == 1) (await db.HealthNetworkPolicies.SingleAsync(token)).ReplaceNetworks([], DateTimeOffset.UtcNow);
+                    if (change == 4)
+                    {
+                        var service = await db.Services.SingleAsync(token);
+                        var manager = new ServiceCollectionAdministration(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), new OperationAuditWriter());
+                        Assert.AreEqual(ServiceCollectionStatus.Updated, await manager.SetArchivedAsync(service.Id, Convert.ToBase64String(service.Version), true, Guid.CreateVersion7(), token));
+                    }
+                    else if (change == 1) (await db.HealthNetworkPolicies.SingleAsync(token)).ReplaceNetworks([], DateTimeOffset.UtcNow);
                     else if (change == 3) (await db.Sources.SingleAsync(token)).Revoke(DateTimeOffset.UtcNow);
                     else if (change == 2)
                     {
