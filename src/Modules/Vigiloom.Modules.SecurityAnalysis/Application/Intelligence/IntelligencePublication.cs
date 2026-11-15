@@ -7,6 +7,7 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
@@ -34,8 +35,11 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
     internal Task<IntelligencePublicationResult> ActivateScheduledAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
         string expectedVersion, CancellationToken token) => ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, false, false, null, token);
 
+    internal Task<IntelligencePublicationResult> ActivateLatestScheduledAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
+        string expectedVersion, CancellationToken token) => ActivateCoreAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, false, false, null, token, true);
+
     private async Task<IntelligencePublicationResult> ActivateCoreAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
-        string expectedVersion, bool confirmLargeReduction, bool confirmOfflineSource, Guid? actorId, CancellationToken token)
+        string expectedVersion, bool confirmLargeReduction, bool confirmOfflineSource, Guid? actorId, CancellationToken token, bool requireLatest = false)
     {
         if (sourceId == Guid.Empty || revisionId == Guid.Empty || expectedActiveRevisionId == Guid.Empty)
             throw new ArgumentException("Invalid source or revision identity.");
@@ -51,7 +55,9 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             .SingleOrDefaultAsync(token);
         if (source is null) return IntelligencePublicationResult.NotFound;
         var now = clock.GetUtcNow().ToUniversalTime();
-        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base")) return IntelligencePublicationResult.Unavailable;
+        if (!source.Enabled || source.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss")) return IntelligencePublicationResult.Unavailable;
+        if (requireLatest && source.LastObservedRevisionId != revisionId)
+            return IntelligencePublicationResult.Conflict;
         var active = await db.IntelligenceActivations.SingleOrDefaultAsync(x => x.SourceId == sourceId, token);
         if (active?.RevisionId != expectedActiveRevisionId || (active is null ? version.Length != 0 : !active.Version.AsSpan().SequenceEqual(version)))
             return IntelligencePublicationResult.Conflict;
@@ -74,6 +80,15 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
                  source.LastSuccessfulCheckAt < now.AddSeconds(-source.StaleAfterSeconds)) return IntelligencePublicationResult.Unavailable;
         if (source.Key == "github-reviewed" && !await AdvisoryRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, token))
             return IntelligencePublicationResult.Unavailable;
+        if (source.Key == UbuntuRevisionStage.SourceKey && !await UbuntuRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, now, token))
+            return IntelligencePublicationResult.Unavailable;
+        if (source.Key == DebianRevisionStage.SourceKey && !await DebianRevisionEligibility.IsEligibleAsync(db, sourceId, revisionId, token))
+            return IntelligencePublicationResult.Unavailable;
+        if (source.Key == EpssSnapshotStage.SourceKey && !await EpssRevisionEligibility.IsPublishableAsync(db, sourceId, revisionId, now, source.StaleAfterSeconds, token))
+            return IntelligencePublicationResult.Unavailable;
+        int? msrcCount = null;
+        if (source.Key == MsrcSnapshotStage.SourceKey && (msrcCount = await MsrcRevisionEligibility.AssociationCountAsync(db, sourceId, revisionId, token)) is null)
+            return IntelligencePublicationResult.Unavailable;
         int? sigmaCount = null;
         if (source.Key == SigmaRefresh.SourceKey && (sigmaCount = await SigmaRevisionEligibility.IncludedCountAsync(db, sourceId, revisionId, token)) is null)
             return IntelligencePublicationResult.Unavailable;
@@ -82,11 +97,26 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             return IntelligencePublicationResult.Unavailable;
         if (await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == sourceId && x.Digest == candidate.Digest && x.Revoked, token))
             return IntelligencePublicationResult.Unavailable;
-        if (active?.RevisionId == candidate.Id) return IntelligencePublicationResult.Unchanged;
+        if (active?.RevisionId == candidate.Id)
+        {
+            if (VendorRefreshStatus.HasPublicationError(source.LastError))
+            {
+                source.LastError = null;
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
+            }
+            return IntelligencePublicationResult.Unchanged;
+        }
         int? previousCount = null;
+        var previousMsrcUnknown = false;
         var previousIocUnknown = false;
         var iocCategoryReduction = false;
-        if (active is not null && sigmaCount is not null)
+        if (active is not null && msrcCount is not null)
+        {
+            previousCount = await MsrcRevisionEligibility.AssociationCountAsync(db, sourceId, active.RevisionId, token);
+            previousMsrcUnknown = previousCount is null;
+        }
+        else if (active is not null && sigmaCount is not null)
             previousCount = await db.SigmaManifests.Where(x => x.RevisionId == active.RevisionId).Select(x => (int?)x.IncludedCount).SingleOrDefaultAsync(token);
         else if (active is not null && iocAssessment is not null)
         {
@@ -100,8 +130,8 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         else if (active is not null)
             previousCount = await db.IntelligenceRevisions.Where(x => x.SourceId == sourceId && x.Id == active.RevisionId)
                 .Select(x => (int?)x.RecordCount).SingleAsync(token);
-        var candidateCount = sigmaCount ?? iocAssessment?.ValidCount ?? candidate.RecordCount;
-        var largeReduction = previousIocUnknown || iocCategoryReduction || candidateCount == 0 || previousCount is > 0 && (long)candidateCount * 10 < (long)previousCount * 9;
+        var candidateCount = msrcCount ?? sigmaCount ?? iocAssessment?.ValidCount ?? candidate.RecordCount;
+        var largeReduction = previousMsrcUnknown || previousIocUnknown || iocCategoryReduction || candidateCount == 0 || previousCount is > 0 && (long)candidateCount * 10 < (long)previousCount * 9;
         if (largeReduction && !confirmLargeReduction) return IntelligencePublicationResult.ConfirmationRequired;
         var previous = active?.RevisionId;
         if (active is null)
@@ -111,6 +141,7 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
         }
         active.RevisionId = candidate.Id;
         active.ActivatedAt = now;
+        if (VendorRefreshStatus.HasPublicationError(source.LastError)) source.LastError = null;
         db.IntelligenceActivationEvents.Add(new IntelligenceActivationEvent
         {
             SourceId = sourceId, PreviousRevisionId = previous, RevisionId = candidate.Id, OccurredAt = now,

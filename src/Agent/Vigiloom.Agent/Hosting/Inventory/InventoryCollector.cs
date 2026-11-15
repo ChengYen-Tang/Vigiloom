@@ -114,6 +114,7 @@ internal sealed class InventoryCollector(TimeProvider clock)
         {
             var host = HostSystemReader.Read(clock);
             string? distribution = null, distributionVersion = null;
+            Windows.WindowsRelease? windowsRelease = null;
             DateTimeOffset? boot = null;
             ulong? memory = null;
             var complete = true;
@@ -128,6 +129,8 @@ internal sealed class InventoryCollector(TimeProvider clock)
             else if (OperatingSystem.IsWindows())
             {
                 boot = Windows.BootTimeReader.Read(token);
+                var release = Windows.WindowsReleaseReader.Read(token);
+                if (release.Status == InventoryReadStatus.Complete) windowsRelease = release.Items.Single();
                 complete = boot is not null;
                 try { memory = Vigiloom.Agent.Platforms.Windows.Metrics.MemoryReader.Read().TotalBytes; }
                 catch (Win32Exception) { }
@@ -140,7 +143,10 @@ internal sealed class InventoryCollector(TimeProvider clock)
                     OperatingSystem: host.OperatingSystem, ProcessArchitecture: host.ProcessArchitecture,
                     Runtime: host.RuntimeVersion, AvailableProcessorCount: host.AvailableProcessorCount,
                     OperatingSystemFamily: family, DistributionId: distribution, DistributionVersion: distributionVersion,
-                    BootedAt: boot, AgentVersion: agentVersion, TotalMemoryBytes: memory)]);
+                    BootedAt: boot, AgentVersion: agentVersion, TotalMemoryBytes: memory,
+                    WindowsEdition: windowsRelease?.Edition, WindowsRelease: windowsRelease?.Release,
+                    WindowsBuild: windowsRelease?.Build, WindowsRevision: windowsRelease?.Revision,
+                    WindowsInstallationType: windowsRelease?.InstallationType)]);
         }
         if (OperatingSystem.IsLinux())
         {
@@ -162,6 +168,8 @@ internal sealed class InventoryCollector(TimeProvider clock)
                 case InventorySource.WindowsQuickFix:
                     var patches = Windows.QuickFixReader.Read(token);
                     return new(patches.Status, patches.Items.Select(x => new InventoryEntry(x.SourceKey, x.Description ?? x.SourceKey, InstalledOn: x.InstalledOn)).ToArray());
+                case InventorySource.WindowsUpdate:
+                    return WindowsUpdates(await Windows.WindowsUpdateReader.ReadAsync(token));
                 case InventorySource.WindowsAccounts:
                     return WindowsPrincipals(Windows.LocalPrincipalReader.ReadAccounts(token));
                 case InventorySource.WindowsGroups:
@@ -171,8 +179,28 @@ internal sealed class InventoryCollector(TimeProvider clock)
         return new(InventoryReadStatus.Unsupported, []);
     }
 
-    private static InventoryReadResult<InventoryEntry> Software(InventoryReadResult<InstalledSoftware> source) =>
-        new(source.Status, source.Items.Select(x => new InventoryEntry(x.SourceKey, x.Name, x.Version, x.Architecture, x.Supplier)).ToArray());
+    internal static InventoryReadResult<InventoryEntry> Software(InventoryReadResult<InstalledSoftware> source) =>
+        new(source.Status, source.Items.Select(x => new InventoryEntry(x.SourceKey, x.Name, x.Version, x.Architecture, x.Supplier,
+            SourcePackageName: x.SourcePackageName is not null && x.SourcePackageVersion is not null ? x.SourcePackageName : null,
+            SourcePackageVersion: x.SourcePackageName is not null && x.SourcePackageVersion is not null ? x.SourcePackageVersion : null)).ToArray());
+
+    internal static InventoryReadResult<InventoryEntry> WindowsUpdates(InventoryReadResult<Windows.WindowsUpdateObservation> source)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var entries = new List<InventoryEntry>(source.Items.Count);
+        foreach (var update in source.Items)
+        {
+            var key = $"{update.UpdateId:D}:{update.Revision}";
+            if (!keys.Add(key) || update.Cves.Any(x => x.Length > InventoryChunkCodec.MaximumMemberLength) ||
+                update.KnowledgeBaseIds.Any(x => x.Length > InventoryChunkCodec.MaximumMemberLength))
+                return new(InventoryReadStatus.Partial, []);
+            entries.Add(new(key, update.Title, UpdateId: update.UpdateId, UpdateRevision: update.Revision,
+                UpdateInstalled: update.Installed, UpdateRebootRequired: update.RebootRequired,
+                UpdateCves: update.Cves, UpdateKbs: update.KnowledgeBaseIds, UpdateServerSelection: update.ServerSelection,
+                UpdateServiceId: update.ServiceId, UpdateSupersededIds: update.SupersededUpdateIds));
+        }
+        return new(source.Status, entries);
+    }
 
     private static InventoryReadResult<InventoryEntry> Principals(InventoryReadResult<LocalPrincipal> source, bool groups) =>
         new(source.Status, source.Items.Select(x => new InventoryEntry(x.Name, x.Name, NumericId: x.Id,

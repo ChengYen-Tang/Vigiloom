@@ -18,6 +18,225 @@ public sealed class InventoryPublicationTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    public Task WindowsRelationships_DowngradeProtectsSnapshotsHistoryAndWindowsUpdateSources(int kind) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            var migrations = db.Database.GetMigrations().ToArray();
+            var fence = Array.FindIndex(migrations, x => x.EndsWith("_VulnerabilityAssessment", StringComparison.Ordinal));
+            Assert.IsGreaterThan(0, fence);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+            var item = new InventoryEntry($"{id:D}:1", "update", UpdateId: id, UpdateRevision: 1, UpdateInstalled: true,
+                UpdateRebootRequired: false, UpdateCves: [], UpdateKbs: [], UpdateServerSelection: 0, UpdateSupersededIds: []);
+            var measured = InventoryDigest.MeasureChunk([item]);
+            var chunk = new InventoryChunk(InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), 1, InventorySource.WindowsUpdate, now, InventoryOutcome.Partial, 0, 1, 1,
+                measured.Bytes, InventoryDigest.Combine([measured.Digest]), [item]);
+            var snapshot = new InventorySnapshot(owner, chunk, now);
+            if (kind == 0) db.InventorySnapshots.Add(snapshot);
+            if (kind is 1 or 2)
+            {
+                // Even an empty relationship array is new-schema evidence that older readers cannot understand.
+                const string json = "{\"UpdateSupersededIds\":[]}";
+                db.InventoryChanges.Add(new InventoryChangeRecord(snapshot, now, kind == 1 ? 3 : 1, item.Key, kind == 1 ? json : null, kind == 2 ? json : null));
+            }
+            if (kind is 0 or 3) db.InventorySources.Add(new InventorySourceState(owner, InventorySource.WindowsUpdate));
+            await db.SaveChangesAsync(token);
+            var migrator = db.GetService<IMigrator>();
+            await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(migrations[fence - 1], token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    public Task WindowsUpdate_MigrationBlocksDowngradeForRetainedEvidence(int kind) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            var migrations = db.Database.GetMigrations().ToArray();
+            var fence = Array.FindIndex(migrations, x => x.EndsWith("_VulnerabilityAssessment", StringComparison.Ordinal));
+            Assert.IsGreaterThan(0, fence);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+            var item = kind == 3 ? new InventoryEntry("host", "machine", "10", "X64", OperatingSystem: "Windows", ProcessArchitecture: "X64",
+                Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows", WindowsEdition: "ServerStandard",
+                WindowsBuild: 20348, WindowsRevision: 1, WindowsInstallationType: "Server Core") :
+                new InventoryEntry($"{id:D}:1", "update", UpdateId: id, UpdateRevision: 1,
+                    UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: []);
+            var measured = InventoryDigest.MeasureChunk([item]);
+            var chunk = new InventoryChunk(InventoryChunkCodec.WindowsUpdateSchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), 1, kind == 3 ? InventorySource.HostSystem : InventorySource.WindowsUpdate,
+                now, kind == 3 ? InventoryOutcome.Complete : InventoryOutcome.Partial, 0, 1, 1,
+                measured.Bytes, InventoryDigest.Combine([measured.Digest]), [item]);
+            var snapshot = new InventorySnapshot(owner, chunk, now);
+            if (kind is 0 or 1) db.InventorySources.Add(new InventorySourceState(owner, InventorySource.WindowsUpdate));
+            if (kind == 1) db.InventorySnapshots.Add(snapshot);
+            if (kind is 2 or 3) db.InventoryChanges.Add(new InventoryChangeRecord(snapshot, now, 1, item.Key, null, System.Text.Json.JsonSerializer.Serialize(item)));
+            await db.SaveChangesAsync(token);
+            var migrator = db.GetService<IMigrator>();
+            await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(migrations[fence - 1], token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task WindowsUpdate_PartialSnapshotPersistsWithoutCompleteCoverage() =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var id = Guid.Parse("11111111-1111-4111-8111-111111111111");
+            var item = new InventoryEntry($"{id:D}:1", "update", UpdateId: id, UpdateRevision: 1,
+                UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: []);
+            var measured = InventoryDigest.MeasureChunk([item]);
+            var chunk = new InventoryChunk(InventoryChunkCodec.WindowsUpdateSchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), 1, InventorySource.WindowsUpdate, now, InventoryOutcome.Partial, 0, 1, 1,
+                measured.Bytes, InventoryDigest.Combine([measured.Digest]), [item]);
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            var staged = await InventoryStaging.StoreAsync(db, owner, chunk, now, token);
+            Assert.AreEqual(InventoryStaging.Disposition.Ready, staged.Disposition);
+            await InventoryPublication.FinishAsync(db, staged.State!, staged.Snapshot!, now, token);
+            await transaction.CommitAsync(token);
+            db.ChangeTracker.Clear();
+            var state = await db.InventorySources.AsNoTracking().SingleAsync(x => x.AgentId == owner.AgentId, token);
+            Assert.IsNull(state.CurrentGeneration);
+            Assert.AreEqual(InventorySnapshotStatus.Partial, state.LastStatus);
+            Assert.AreEqual(1, await db.InventoryChunks.CountAsync(x => x.AgentId == owner.AgentId, token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task WindowsRelease_PublishesAndQueriesVersionChanges() =>
+        Fixtures.ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var item = new InventoryEntry("host", "machine", "10.0.20348", "X64", OperatingSystem: "Windows", ProcessArchitecture: "X64",
+                Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows", WindowsEdition: "ServerStandard", WindowsBuild: 20348, WindowsRevision: 3000);
+            var first = await Publish(1, item);
+            var second = await Publish(2, item with { WindowsRevision = 3001 });
+            var query = new InventoryQuery(new TestFactory(options));
+            var view = await query.GetAsync(owner.DeviceId, owner.AgentId, token);
+            Assert.AreEqual(second, view.Sources.Single().CurrentSnapshotId);
+            var payload = await query.GetChunkAsync(owner.DeviceId, owner.AgentId, InventorySource.HostSystem, second, 0, token);
+            Assert.IsNotNull(payload);
+            Assert.AreEqual(3001, payload.Items.Single().WindowsRevision);
+            var change = await db.InventoryChanges.AsNoTracking().SingleAsync(token);
+            Assert.Contains("3000", change.BeforeJson!);
+            Assert.Contains("3001", change.AfterJson!);
+            Assert.AreNotEqual(first, second);
+
+            async Task<Guid> Publish(long generation, InventoryEntry entry)
+            {
+                var measured = InventoryDigest.MeasureChunk([entry]);
+                var chunk = new InventoryChunk(InventoryChunkCodec.WindowsReleaseSchemaVersion, Guid.CreateVersion7(), now,
+                    Guid.CreateVersion7(), generation, InventorySource.HostSystem, now, InventoryOutcome.Complete, 0, 1, 1,
+                    measured.Bytes, InventoryDigest.Combine([measured.Digest]), [entry]);
+                await using var transaction = await db.Database.BeginTransactionAsync(token);
+                var staged = await InventoryStaging.StoreAsync(db, owner, chunk, now, token);
+                Assert.AreEqual(InventoryStaging.Disposition.Ready, staged.Disposition);
+                await InventoryPublication.FinishAsync(db, staged.State!, staged.Snapshot!, now, token);
+                await transaction.CommitAsync(token);
+                db.ChangeTracker.Clear();
+                return chunk.SnapshotId;
+            }
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Migration_WindowsReleasePreventsDataLossOnDowngrade(bool historyOnly) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            var migrations = db.Database.GetMigrations().ToArray();
+            var fence = Array.FindIndex(migrations, x => x.EndsWith("_VulnerabilityAssessment", StringComparison.Ordinal));
+            Assert.IsGreaterThan(0, fence);
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync(migrations[fence - 1], token);
+            await migrator.MigrateAsync(null, token);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var item = new InventoryEntry("host", "machine", "10.0.20348", "X64", OperatingSystem: "Windows", ProcessArchitecture: "X64",
+                Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows", WindowsEdition: "ServerStandard", WindowsBuild: 20348, WindowsRevision: 3000);
+            var measured = InventoryDigest.MeasureChunk([item]);
+            var chunk = new InventoryChunk(InventoryChunkCodec.WindowsReleaseSchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), 1, InventorySource.HostSystem, now, InventoryOutcome.Complete, 0, 1, 1,
+                measured.Bytes, InventoryDigest.Combine([measured.Digest]), [item]);
+            var snapshot = new InventorySnapshot(owner, chunk, now);
+            if (historyOnly)
+                db.InventoryChanges.Add(new InventoryChangeRecord(snapshot, now, 1, item.Key, null, System.Text.Json.JsonSerializer.Serialize(item)));
+            else
+            {
+                db.InventorySources.Add(new InventorySourceState(owner, chunk.Source));
+                db.InventorySnapshots.Add(snapshot);
+            }
+            await db.SaveChangesAsync(token);
+            await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(migrations[fence - 1], token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task Migration_DpkgSourceSchemaPreventsDataLossOnDowngrade(bool historyOnly) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+                .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.MigrateAsync(token);
+            var migrations = db.Database.GetMigrations().ToArray();
+            var fence = Array.FindIndex(migrations, x => x.EndsWith("_VulnerabilityAssessment", StringComparison.Ordinal));
+            Assert.IsGreaterThan(0, fence);
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync(migrations[fence - 1], token);
+            await migrator.MigrateAsync(null, token);
+            var now = DateTimeOffset.UtcNow;
+            var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var item = new InventoryEntry("foo", "foo", "1.0-1", "amd64", SourcePackageName: "foo-source", SourcePackageVersion: "1.0-1");
+            var measured = InventoryDigest.MeasureChunk([item]);
+            var chunk = new InventoryChunk(InventoryChunkCodec.DpkgSourceSchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), 1, InventorySource.LinuxDpkg, now, InventoryOutcome.Complete, 0, 1, 1,
+                measured.Bytes, InventoryDigest.Combine([measured.Digest]), [item]);
+            var snapshot = new InventorySnapshot(owner, chunk, now);
+            if (historyOnly)
+                db.InventoryChanges.Add(new InventoryChangeRecord(snapshot, now, 1, item.Key, null, System.Text.Json.JsonSerializer.Serialize(item)));
+            else
+            {
+                db.InventorySources.Add(new InventorySourceState(owner, chunk.Source));
+                db.InventorySnapshots.Add(snapshot);
+            }
+            await db.SaveChangesAsync(token);
+            await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(migrations[fence - 1], token));
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task Finish_ProcessPartialRemainsQueryableWithoutReplacingCompleteBaseline() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

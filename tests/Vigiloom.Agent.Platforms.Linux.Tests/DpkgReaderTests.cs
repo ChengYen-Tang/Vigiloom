@@ -13,27 +13,55 @@ public sealed class DpkgReaderTests
     [DataRow("hi ")]
     public void ParseLine_PreservesInstalledAndHeldPackages(string status)
     {
-        var (result, item) = DpkgReader.Parse($"{status}\tlibfoo:amd64\t1:2.3-4\tamd64\tExample maintainer");
+        var (result, item) = DpkgReader.Parse($"{status}\tlibfoo:amd64\t1:2.3-4+b1\tamd64\tExample maintainer\tfoo\t1:2.3-4");
         Assert.AreEqual(PackageCommand.LineStatus.Installed, result);
         Assert.IsNotNull(item);
         Assert.AreEqual("libfoo:amd64", item.SourceKey);
-        Assert.AreEqual("1:2.3-4", item.Version);
+        Assert.AreEqual("1:2.3-4+b1", item.Version);
         Assert.AreEqual("amd64", item.Architecture);
+        Assert.AreEqual("foo", item.SourcePackageName);
+        Assert.AreEqual("1:2.3-4", item.SourcePackageVersion);
     }
 
     [TestMethod]
     public void ParseLine_DistinguishesRemovedFromMalformed()
     {
-        Assert.AreEqual(PackageCommand.LineStatus.NotInstalled, DpkgReader.Parse("rc \tfoo\t1\tamd64\t").Status);
-        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("ii \tfoo\t\tamd64\t").Status);
-        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("iiR\tfoo\t1\tamd64\t").Status);
-        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("iU \tfoo\t1\tamd64\t").Status);
+        Assert.AreEqual(PackageCommand.LineStatus.NotInstalled, DpkgReader.Parse("rc \tfoo\t1\tamd64\t\tfoo\t1").Status);
+        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("ii \tfoo\t\tamd64\t\tfoo\t1").Status);
+        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("iiR\tfoo\t1\tamd64\t\tfoo\t1").Status);
+        Assert.AreEqual(PackageCommand.LineStatus.Invalid, DpkgReader.Parse("iU \tfoo\t1\tamd64\t\tfoo\t1").Status);
+        var (status, missing) = DpkgReader.Parse("ii \tfoo\t1\tamd64\t\t\t");
+        Assert.AreEqual(PackageCommand.LineStatus.Installed, status);
+        Assert.IsNull(missing!.SourcePackageName);
+        Assert.IsNull(missing.SourcePackageVersion);
+    }
+
+    [TestMethod]
+    public void ParseLine_RejectsInvalidSourceFields()
+    {
+        Assert.AreEqual(PackageCommand.LineStatus.Invalid,
+            DpkgReader.Parse($"ii \tfoo\t1\tamd64\tmaintainer\t{new string('x', 2049)}\t1").Status);
+        Assert.AreEqual(PackageCommand.LineStatus.Invalid,
+            DpkgReader.Parse("ii \tfoo\t1\tamd64\tmaintainer\tfoo\t1\u0001").Status);
+    }
+
+    [TestMethod]
+    public async Task ReadRows_SourceFieldsCountTowardsRetainedLimit()
+    {
+        var source = new string('s', 2000);
+        using var reader = new StringReader(string.Concat(Enumerable.Range(0, 2100)
+            .Select(i => $"ii \tpkg{i}\t1\tamd64\tmaintainer\t{source}\t1\n")));
+        var items = new List<InstalledSoftware>();
+        var result = await PackageCommand.ReadRowsAsync(reader, items, DpkgReader.Parse, CancellationToken.None);
+        Assert.IsTrue(result.Partial);
+        Assert.IsFalse(result.Exceeded);
+        Assert.IsLessThan(2100, items.Count);
     }
 
     [TestMethod]
     public async Task ReadRows_ReportsOversizedRowWithoutLosingOtherPackages()
     {
-        using var reader = new StringReader($"ii \tfoo\t1\tamd64\tmaintainer\n{new string('x', 20_000)}\nii \tbar\t2\tall\t\n");
+        using var reader = new StringReader($"ii \tfoo\t1\tamd64\tmaintainer\tfoo\t1\n{new string('x', 20_000)}\nii \tbar\t2\tall\t\tbar\t2\n");
         var items = new List<InstalledSoftware>();
         var result = await PackageCommand.ReadRowsAsync(reader, items, DpkgReader.Parse, CancellationToken.None);
         Assert.IsTrue(result.Partial);

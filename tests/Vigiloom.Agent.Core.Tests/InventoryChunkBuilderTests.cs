@@ -8,6 +8,46 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class InventoryChunkBuilderTests
 {
     [TestMethod]
+    public void Build_WindowsUpdateUsesVersionedPartialSnapshot()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var item = new InventoryEntry("11111111-1111-4111-8111-111111111111:1", "security update", UpdateId: Guid.Parse("11111111-1111-4111-8111-111111111111"),
+            UpdateRevision: 1, UpdateInstalled: true, UpdateRebootRequired: false, UpdateCves: ["CVE-2025-1234"], UpdateKbs: []);
+        var batch = InventoryChunkBuilder.Build(Guid.CreateVersion7(), 1, InventorySource.WindowsUpdate, now, now, InventoryOutcome.Partial, [item]).Single();
+        Assert.IsTrue(InventoryChunkCodec.TryRead(batch.Payload, out var chunk));
+        Assert.AreEqual(InventoryChunkCodec.WindowsUpdateSchemaVersion, chunk!.SchemaVersion);
+        Assert.AreEqual(InventoryOutcome.Partial, chunk.Outcome);
+    }
+    [TestMethod]
+    public void Build_WindowsReleaseUsesVersionedHostSnapshot()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var host = new InventoryEntry("host", "machine", "10.0.20348", "X64", OperatingSystem: "Windows",
+            ProcessArchitecture: "X64", Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Windows",
+            WindowsEdition: "ServerStandard", WindowsBuild: 20348, WindowsRevision: 3000);
+        var batch = InventoryChunkBuilder.Build(Guid.CreateVersion7(), 1, InventorySource.HostSystem, now, now, InventoryOutcome.Complete, [host]).Single();
+        Assert.IsTrue(InventoryChunkCodec.TryRead(batch.Payload, out var chunk));
+        Assert.AreEqual(InventoryChunkCodec.WindowsReleaseSchemaVersion, chunk!.SchemaVersion);
+        Assert.AreEqual(3000, chunk.Items[0].WindowsRevision);
+    }
+    [TestMethod]
+    public void Build_DpkgSourceEvidenceUsesOneVersionAcrossAllChunks()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var entries = Enumerable.Range(0, 105).Select(i => new InventoryEntry($"package-{i}", $"package-{i}", "1.0-1", "amd64",
+            SourcePackageName: i == 104 ? "source-package" : null, SourcePackageVersion: i == 104 ? "1.0-1" : null)).ToArray();
+        var batches = InventoryChunkBuilder.Build(Guid.CreateVersion7(), 1, InventorySource.LinuxDpkg, now, now, InventoryOutcome.Complete, entries);
+        Assert.HasCount(2, batches);
+        foreach (var batch in batches)
+        {
+            Assert.IsTrue(InventoryChunkCodec.TryRead(batch.Payload, out var chunk));
+            Assert.AreEqual(InventoryChunkCodec.DpkgSourceSchemaVersion, chunk!.SchemaVersion);
+        }
+        Assert.IsTrue(InventoryChunkCodec.TryRead(batches[1].Payload, out var last));
+        Assert.AreEqual("source-package", last!.Items[^1].SourcePackageName);
+    }
+
+    [TestMethod]
     public void Build_SplitsAndProtectsACompleteSnapshot()
     {
         var now = DateTimeOffset.UtcNow;

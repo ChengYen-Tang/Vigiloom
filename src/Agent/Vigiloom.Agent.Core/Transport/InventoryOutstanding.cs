@@ -7,7 +7,7 @@ namespace Vigiloom.Agent.Core.Transport;
 
 public sealed record InventoryOutstanding(InventorySource Source, long Generation, Guid SnapshotId);
 public enum InventoryReconcileResult { Pending, Completed, Rejected, OwnerChanged, OutstandingChanged }
-internal sealed record InventoryQueueMarker(InventorySource Source, long Generation, Guid SnapshotId, byte[] Fingerprint);
+internal sealed record InventoryQueueMarker(InventorySource Source, long Generation, Guid SnapshotId, byte[] Fingerprint, int SchemaVersion);
 
 public sealed partial class DurableBatchQueue
 {
@@ -23,6 +23,10 @@ public sealed partial class DurableBatchQueue
             CREATE TABLE IF NOT EXISTS inventory_outstanding_batches (batch_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS inventory_retained_batches (batch_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS inventory_retained_v5 (batch_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS inventory_retained_v7 (batch_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS inventory_retained_v8 (batch_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS inventory_retained_v9 (batch_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS inventory_retained_v10 (batch_id TEXT PRIMARY KEY);
             """;
         command.ExecuteNonQuery();
     }
@@ -131,6 +135,47 @@ public sealed partial class DurableBatchQueue
         command.Transaction = transaction;
         command.CommandText = "PRAGMA user_version";
         var version = Convert.ToInt64(command.ExecuteScalar());
+        if (version == 10)
+        {
+            command.CommandText = "DELETE FROM inventory_retained_v10 WHERE batch_id NOT IN (SELECT batch_id FROM batches) AND batch_id NOT IN (SELECT batch_id FROM inventory_outstanding_batches); SELECT EXISTS(SELECT 1 FROM inventory_retained_v10)";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v9')";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent update inventory version fence is incomplete.");
+            version = 9;
+            command.CommandText = "PRAGMA user_version = 9";
+            command.ExecuteNonQuery();
+        }
+        if (version == 9)
+        {
+            command.CommandText = "DELETE FROM inventory_retained_v9 WHERE batch_id NOT IN (SELECT batch_id FROM batches) AND batch_id NOT IN (SELECT batch_id FROM inventory_outstanding_batches); SELECT EXISTS(SELECT 1 FROM inventory_retained_v9)";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v8')";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent Windows inventory version fence is incomplete.");
+            version = 8;
+            command.CommandText = "PRAGMA user_version = 8";
+            command.ExecuteNonQuery();
+        }
+        if (version == 8)
+        {
+            command.CommandText = "DELETE FROM inventory_retained_v8 WHERE batch_id NOT IN (SELECT batch_id FROM batches) AND batch_id NOT IN (SELECT batch_id FROM inventory_outstanding_batches); SELECT EXISTS(SELECT 1 FROM inventory_retained_v8)";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inventory_retained_v7')";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 1) throw new InvalidDataException("The Agent inventory version fence is incomplete.");
+            version = 7;
+            command.CommandText = "PRAGMA user_version = 7";
+            command.ExecuteNonQuery();
+        }
+        if (version == 7)
+        {
+            command.CommandText = "DELETE FROM inventory_retained_v7 WHERE batch_id NOT IN (SELECT batch_id FROM batches) AND batch_id NOT IN (SELECT batch_id FROM inventory_outstanding_batches); SELECT EXISTS(SELECT 1 FROM inventory_retained_v7)";
+            if (Convert.ToInt32(command.ExecuteScalar()) != 0) return;
+            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('integrity_outstanding', 'integrity_outstanding_batches', 'integrity_retained_v6', 'integrity_generations', 'integrity_gap_state')";
+            var integrityTables = Convert.ToInt32(command.ExecuteScalar());
+            if (integrityTables != 5) throw new InvalidDataException("The Agent integrity queue format is incomplete.");
+            version = 6;
+            command.CommandText = $"PRAGMA user_version = {version}";
+            command.ExecuteNonQuery();
+        }
         if (version is not (4 or 5 or 6)) return;
         if (version == 6)
         {

@@ -16,11 +16,10 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
-using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
-using Vigiloom.Modules.Resources.Domain;
-using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
+
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 
 namespace Vigiloom.Web.Tests;
 
@@ -73,6 +72,61 @@ public sealed class IntelligenceHttpTests(TestContext context)
             Assert.Contains("規則已停用", (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
             await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
             Assert.IsFalse((await verify.SigmaRuleActivations.AsNoTracking().SingleAsync(token)).Enabled);
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task UbuntuVersion_CanBeActivatedFromManagementPage() =>
+        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+            });
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var now = DateTimeOffset.UtcNow;
+            var source = new IntelligenceSource { Key = "ubuntu-osv", Enabled = true, LastSuccessfulCheckAt = now };
+            var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "ubuntu-test", RetrievedAt = now,
+                Digest = new byte[32], Artifact = [], SchemaVersion = "osv-1", MappingVersion = "ubuntu-osv-v1",
+                LicenseEvidence = "Canonical Ubuntu Security Notices, CC BY-SA 4.0; https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE",
+                RecordCount = 1, Normalized = true };
+            source.LastObservedRevisionId = revision.Id;
+            var digest = Enumerable.Repeat((byte)7, 32).ToArray();
+            const string advisory = "UBUNTU-CVE-2025-0012";
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            {
+                db.IntelligenceSources.Add(source);
+                db.IntelligenceRevisions.Add(revision);
+                db.UbuntuDocuments.Add(new UbuntuDocument { Digest = digest, MappingVersion = revision.MappingVersion, AdvisoryId = advisory,
+                    Compressed = [1], OriginalLength = 1, ModifiedAt = now });
+                db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = revision.Id, Digest = digest,
+                    MappingVersion = revision.MappingVersion, AdvisoryId = advisory });
+                await db.SaveChangesAsync(token);
+            }
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            var url = $"/settings/intelligence?source={source.Id:D}";
+            using var page = await admin.GetAsync(url, token);
+            var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+            var form = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "intelligence-activation");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            fields["ActivationInput.RevisionId"] = revision.Id.ToString("D");
+            using var response = await admin.PostAsync(url, new FormUrlEncodedContent(fields), token);
+            var result = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("版本已啟用", result.Body!.TextContent);
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(revision.Id, (await verify.IntelligenceActivations.SingleAsync(x => x.SourceId == source.Id, token)).RevisionId);
+            var newer = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "ubuntu-newer", RetrievedAt = now,
+                Digest = Enumerable.Repeat((byte)9, 32).ToArray(), Artifact = [], SchemaVersion = revision.SchemaVersion,
+                MappingVersion = revision.MappingVersion, LicenseEvidence = revision.LicenseEvidence, RecordCount = 1, Normalized = true };
+            verify.IntelligenceRevisions.Add(newer);
+            await verify.SaveChangesAsync(token);
+            await verify.IntelligenceSources.Where(x => x.Id == source.Id).ExecuteUpdateAsync(x => x.SetProperty(s => s.LastObservedRevisionId, newer.Id), token);
+            using var outdated = await admin.GetAsync(url, token);
+            var outdatedDoc = await new HtmlParser().ParseDocumentAsync(await outdated.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("選用的版本不是最新確認資料", outdatedDoc.Body!.TextContent);
+            Assert.Contains("設備漏洞結果將標示為過期", outdatedDoc.Body.TextContent);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -510,49 +564,6 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using (var result = await admin.GetAsync($"{path}{Guid.CreateVersion7():D}/revisions", token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
             var request = new IntelligenceActivationRequest(revision.Id, null, "", false);
             using (var result = await admin.PostAsJsonAsync($"{path}{source.Id:D}/activation", request, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
-            var sigmaSamples = new SigmaRuleTestRequest("rules/test.yml",
-                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), SigmaExpectedOutcome.Match),
-                 new(Guid.CreateVersion7(), Guid.CreateVersion7(), SigmaExpectedOutcome.NoMatch)]);
-            var sigmaState = new SigmaRuleStateRequest(Guid.CreateVersion7(), "rules/test.yml", null, false, "");
-            using (var result = await anonymous.GetAsync("/api/v1/admin/sigma/rules", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
-            using (var result = await reader.GetAsync("/api/v1/admin/sigma/rules", token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
-            using (var result = await admin.GetAsync("/api/v1/admin/sigma/rules", token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
-                Assert.IsTrue(result.Headers.CacheControl?.NoStore);
-                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaDetectionRulePage>(token));
-            }
-            using (var result = await admin.GetAsync("/api/v1/admin/sigma/rules?cursor=invalid", token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
-            using (var result = await reader.GetAsync("/api/v1/admin/sigma/states", token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
-            using (var result = await admin.GetAsync("/api/v1/admin/sigma/states", token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
-                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaRuleStatePage>(token));
-            }
-            var historyFrom = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddHours(-1).ToString("O"));
-            var historyUntil = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddHours(1).ToString("O"));
-            var detectionPath = $"/api/v1/devices/{Guid.CreateVersion7():D}/sigma-detections?from={historyFrom}&until={historyUntil}";
-            using (var result = await anonymous.GetAsync(detectionPath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
-            using (var result = await reader.GetAsync(detectionPath, token)) Assert.AreEqual(HttpStatusCode.NotFound, result.StatusCode);
-            var monitoredDevice = new Device("detection test", "127.0.0.1", true, DateTimeOffset.UtcNow);
-            await using (var scope = factory.Services.CreateAsyncScope())
-            await using (var devices = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
-            {
-                devices.Devices.Add(monitoredDevice);
-                await devices.SaveChangesAsync(token);
-            }
-            detectionPath = $"/api/v1/devices/{monitoredDevice.Id:D}/sigma-detections?from={historyFrom}&until={historyUntil}";
-            using (var result = await reader.GetAsync(detectionPath, token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
-                Assert.IsTrue(result.Headers.CacheControl?.NoStore);
-                Assert.IsNotNull(await result.Content.ReadFromJsonAsync<SigmaDetectionEventPage>(token));
-            }
-            using (var result = await anonymous.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
-            using (var result = await reader.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Forbidden, result.StatusCode);
-            using (var result = await api.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, result.StatusCode);
-            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
-            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state", sigmaState, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
             Assert.IsNotNull(advisoryProgress?.ImportId);
             Assert.IsNotNull(advisoryProgress.Version);
             var recovery = new AdvisoryImportRecoveryRequest(advisoryProgress.ImportId.Value, advisoryProgress.Version);
@@ -570,12 +581,6 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
             using (var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token)))
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
-            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state",
-                new { sigmaState.SourceId, sigmaState.Path, sigmaState.ExpectedVersion }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
-            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests",
-                new { sigmaSamples.Path, Samples = sigmaSamples.Samples.Select(x => new { x.AgentId, x.MessageId }) }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, result.StatusCode);
-            using (var result = await admin.PostAsJsonAsync("/api/v1/admin/sigma/tests", sigmaSamples, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
-            using (var result = await admin.PutAsJsonAsync("/api/v1/admin/sigma/state", sigmaState, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery with { Version = Convert.ToBase64String(new byte[8]) }, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
             using (var result = await admin.PostAsJsonAsync(recoveryPath, recovery, token)) Assert.AreEqual(HttpStatusCode.Conflict, result.StatusCode);

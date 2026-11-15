@@ -26,7 +26,7 @@ public enum InventorySource
     WindowsSoftware32 = 1, WindowsSoftware64 = 2, LinuxDpkg = 3, LinuxRpm = 4,
     LinuxAccounts = 5, LinuxGroups = 6, WindowsQuickFix = 7, HostSystem = 8,
     WindowsAccounts = 9, WindowsGroups = 10, HostNetwork = 11, HostVolumes = 12,
-    HostProcesses = 13, HostServices = 14, HostListeners = 15
+    HostProcesses = 13, HostServices = 14, HostListeners = 15, WindowsUpdate = 16
 }
 
 public enum InventoryOutcome { Complete = 1, Partial = 2, PermissionDenied = 3, Unsupported = 4, Error = 5 }
@@ -70,13 +70,33 @@ public sealed record InventoryEntry(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Protocol = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Port = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? OwningProcessId = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? OwningProcessStartedAt = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? OwningProcessStartedAt = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourcePackageName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourcePackageVersion = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? WindowsEdition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? WindowsRelease = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? WindowsBuild = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? WindowsRevision = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? UpdateId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? UpdateRevision = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? UpdateInstalled = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? UpdateRebootRequired = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? UpdateCves = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? UpdateKbs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? WindowsInstallationType = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? UpdateServerSelection = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? UpdateServiceId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? UpdateSupersededIds = null);
 
 /// <summary>Bounds the uncompressed snapshot envelope before staging or durable queueing.</summary>
 public static class InventoryChunkCodec
 {
     public const int SchemaVersion = 4;
     public const int ProcessSchemaVersion = 5;
+    public const int DpkgSourceSchemaVersion = 7;
+    public const int WindowsReleaseSchemaVersion = 8;
+    public const int WindowsUpdateSchemaVersion = 9;
+    public const int WindowsUpdateRelationshipsSchemaVersion = 10;
     public const string MaskedArgumentsSuffix = " [arguments hidden]";
     public const int MaximumItemsPerChunk = 100;
     public const int MaximumChunks = 1024;
@@ -150,15 +170,35 @@ public static class InventoryChunkCodec
                 !ValidText(item.RunAs, 256, true) || !ValidText(item.ExecutablePath, 2048, true) ||
                 !ValidText(item.CommandLine, 2048, true) || !ValidText(item.ServiceStatus, 128, true) ||
                 !ValidText(item.StartupMode, 128, true) || !ValidText(item.Protocol, 16, true) ||
+                !ValidText(item.SourcePackageName, 2048, true) || !ValidText(item.SourcePackageVersion, 2048, true) ||
+                !ValidText(item.WindowsEdition, 256, true) || !ValidText(item.WindowsRelease, 256, true) ||
+                !ValidText(item.WindowsInstallationType, 256, true) ||
+                item.WindowsInstallationType is not null && (chunk.SchemaVersion != WindowsUpdateSchemaVersion || chunk.Source != InventorySource.HostSystem) ||
+                item.WindowsBuild is <= 0 || item.WindowsRevision is < 0 ||
+                ((item.WindowsEdition is null) != (item.WindowsBuild is null)) || ((item.WindowsBuild is null) != (item.WindowsRevision is null)) ||
+                chunk.SchemaVersion is not (WindowsReleaseSchemaVersion or WindowsUpdateSchemaVersion) && (item.WindowsEdition is not null || item.WindowsRelease is not null || item.WindowsBuild is not null || item.WindowsRevision is not null) ||
+                chunk.Source == InventorySource.HostSystem && (chunk.SchemaVersion is WindowsReleaseSchemaVersion or WindowsUpdateSchemaVersion) && (item.OperatingSystemFamily != "Windows" || item.WindowsEdition is null) ||
+                chunk.Source != InventorySource.HostSystem && (item.WindowsEdition is not null || item.WindowsRelease is not null || item.WindowsBuild is not null || item.WindowsRevision is not null) ||
+                (item.SourcePackageName is null) != (item.SourcePackageVersion is null) ||
+                chunk.SchemaVersion != DpkgSourceSchemaVersion && item.SourcePackageName is not null ||
                 item.ParentProcessId is < 0 || item.OwningProcessId is < 0 || item.Port is < 0 or > 65535 ||
                 item.ProcessStartedAt is { } processStart && (processStart == default || processStart.Offset != TimeSpan.Zero) ||
                 item.OwningProcessStartedAt is { } ownerStart && (ownerStart == default || ownerStart.Offset != TimeSpan.Zero) ||
-                chunk.SchemaVersion == SchemaVersion && HasProcessFields(item) ||
+                chunk.SchemaVersion != ProcessSchemaVersion && HasProcessFields(item) ||
                 chunk.Source != InventorySource.HostProcesses && (item.CommandLine is not null || item.ExecutablePath is not null) ||
                 item.BootedAt is { } boot && (boot == default || boot.Offset != TimeSpan.Zero) ||
                 item.Members is { Count: > MaximumMembers } || item.Members?.Any(member => !ValidText(member, MaximumMemberLength, false)) == true ||
+                chunk.Source != InventorySource.WindowsUpdate && HasWindowsUpdateFields(item) ||
+                chunk.SchemaVersion != WindowsUpdateRelationshipsSchemaVersion && (item.UpdateServerSelection is not null || item.UpdateServiceId is not null || item.UpdateSupersededIds is not null) ||
+                chunk.SchemaVersion == WindowsUpdateRelationshipsSchemaVersion && (item.UpdateServerSelection is not (>= 0 and <= 3) || item.UpdateSupersededIds is null) ||
+                item.UpdateSupersededIds is { Count: > MaximumMembers } ||
+                item.UpdateSupersededIds?.Any(member => !Guid.TryParseExact(member, "D", out var id) || id == Guid.Empty) == true ||
+                item.UpdateSupersededIds is { } superseded && superseded.Distinct(StringComparer.OrdinalIgnoreCase).Count() != superseded.Count ||
+                item.UpdateCves is { Count: > MaximumMembers } || item.UpdateKbs is { Count: > MaximumMembers } ||
+                item.UpdateCves?.Any(member => !ValidText(member, MaximumMemberLength, false)) == true ||
+                item.UpdateKbs?.Any(member => !ValidText(member, MaximumMemberLength, false)) == true ||
                 !ValidForSource(chunk.Source, item)) return false;
-            memberCount += item.Members?.Count ?? 0;
+            memberCount += (item.Members?.Count ?? 0) + (item.UpdateCves?.Count ?? 0) + (item.UpdateKbs?.Count ?? 0) + (item.UpdateSupersededIds?.Count ?? 0);
             if (memberCount > MaximumSnapshotMembers) return false;
         }
         return true;
@@ -169,6 +209,9 @@ public static class InventoryChunkCodec
 
     private static bool VersionMatchesSource(int version, InventorySource source) => source switch
     {
+        InventorySource.LinuxDpkg => version is SchemaVersion or DpkgSourceSchemaVersion,
+        InventorySource.HostSystem => version is SchemaVersion or WindowsReleaseSchemaVersion or WindowsUpdateSchemaVersion,
+        InventorySource.WindowsUpdate => version is WindowsUpdateSchemaVersion or WindowsUpdateRelationshipsSchemaVersion,
         >= InventorySource.HostProcesses and <= InventorySource.HostListeners => version == ProcessSchemaVersion,
         _ => version == SchemaVersion
     };
@@ -177,6 +220,10 @@ public static class InventoryChunkCodec
         item.RunAs is not null || item.ExecutablePath is not null || item.CommandLine is not null || item.ServiceStatus is not null ||
         item.StartupMode is not null || item.Protocol is not null || item.Port is not null || item.OwningProcessId is not null ||
         item.OwningProcessStartedAt is not null;
+
+    private static bool HasWindowsUpdateFields(InventoryEntry item) => item.UpdateId is not null || item.UpdateRevision is not null ||
+        item.UpdateInstalled is not null || item.UpdateRebootRequired is not null || item.UpdateCves is not null || item.UpdateKbs is not null ||
+        item.UpdateServerSelection is not null || item.UpdateServiceId is not null || item.UpdateSupersededIds is not null;
 
     private static bool ValidForSource(InventorySource source, InventoryEntry item) => source switch
     {
@@ -196,6 +243,9 @@ public static class InventoryChunkCodec
             (item.CommandLine is null || item.ExecutablePath is not null && item.CommandLine == item.ExecutablePath + MaskedArgumentsSuffix),
         InventorySource.HostServices => item.ServiceStatus is not null,
         InventorySource.HostListeners => item.Address is not null && item.Port is > 0 && item.Protocol is "tcp" or "udp",
+        InventorySource.WindowsUpdate => item.UpdateId is { } id && id != Guid.Empty && item.UpdateRevision is > 0 &&
+            item.Key == $"{id:D}:{item.UpdateRevision.Value}" && item.UpdateInstalled is not null && item.UpdateRebootRequired is not null &&
+            item.UpdateCves is not null && item.UpdateKbs is not null,
         _ => true
     };
 

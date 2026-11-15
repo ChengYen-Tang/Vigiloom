@@ -16,6 +16,10 @@
             <button type="button" disabled="@(!RendererInfo.IsInteractive)" class="@(tab == item.Key ? "active" : "")" aria-current="@(tab == item.Key ? "page" : null)" @onclick="() => ChangeTabAsync(item.Key)">@item.Label</button>
         }
     </nav>
+    @if (tab == "vulnerabilities")
+    {
+        <VulnerabilityPanel DeviceId="DeviceId" />
+    }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
         <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></div>

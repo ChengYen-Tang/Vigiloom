@@ -15,6 +15,7 @@ public sealed class IntelligenceSource
     public int MaximumRecords { get; set; } = 50_000;
     public DateTimeOffset? LastCheckedAt { get; set; }
     public DateTimeOffset? LastSuccessfulCheckAt { get; set; }
+    public Guid? LastObservedRevisionId { get; set; }
     public string? LastError { get; set; }
     public string? ProtectedCredential { get; set; }
     public byte[] Version { get; private set; } = [];

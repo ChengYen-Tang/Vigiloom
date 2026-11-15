@@ -9,7 +9,8 @@ public enum InventoryReadStatus { Complete = 1, Partial = 2, PermissionDenied = 
 public sealed record InventoryReadResult<T>(InventoryReadStatus Status, IReadOnlyList<T> Items, InventoryPartialReason? PartialReason = null);
 
 /// <summary>A source-native installed software entry; registry view is not executable architecture.</summary>
-public sealed record InstalledSoftware(string SourceKey, string Name, string? Version, string? Supplier, string? Architecture = null);
+public sealed record InstalledSoftware(string SourceKey, string Name, string? Version, string? Supplier, string? Architecture = null,
+    string? SourcePackageName = null, string? SourcePackageVersion = null);
 
 /// <summary>Locally configured principal; credentials and password fields are never collected.</summary>
 public sealed record LocalPrincipal(string Name, uint Id, uint? PrimaryGroupId, IReadOnlyList<string> Members);
