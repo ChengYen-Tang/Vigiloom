@@ -55,7 +55,9 @@
                             <details><summary>查看來源授權依據</summary><p>@description.LicenseEvidence</p></details>
                         }
                         else { <p>無法辨識此來源，無法確認資料範圍或授權。</p> }
-                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
+                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
+                        @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。</p> }
+                        @if (selected.ActiveVersionOutdated) { <p>目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。</p> }
                         <p>最後成功更新（UTC）：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
                         @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">最近更新失敗：@ErrorText(selected.LastError)</p> }
                         @if (progress is not null)
@@ -118,10 +120,10 @@
                         {
                             <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
                             <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? "下載未完成" : selected.Key == "msrc-cvrf" && !revision.Normalized ? "已下載，尚未支援比對" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
-                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "sigmahq-rules" or "signature-base"))
+                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base"))
                             { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {

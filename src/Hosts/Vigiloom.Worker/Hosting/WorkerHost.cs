@@ -51,6 +51,9 @@ public static class WorkerHost
         builder.Services.AddSingleton<WorkerDiagnostics>();
         builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
         builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
+        builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Agent.Inventory.IAgentOwnerFence, AgentOwnerFence>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Agent.Inventory.IAgentOwnerResolver, AgentOwnerResolver>();
         builder.Services.AddScoped<PingSettings>();
         builder.Services.AddScoped<PingStore>();
         builder.Services.AddScoped<IPingProbe, SystemPingProbe>();
@@ -69,6 +72,20 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
         builder.Services.AddScoped<IntelligenceRefresh>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.DebianRefresh>();
+        builder.Services.AddScoped<DebianRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.UbuntuRefresh>();
+        builder.Services.AddScoped<UbuntuRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.MsrcRefresh>();
+        builder.Services.AddScoped<MsrcRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.EpssRefresh>();
+        builder.Services.AddScoped<EpssRefreshJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.LinuxReassessment>();
+        builder.Services.AddScoped<LinuxReassessmentJob>();
+        builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.WindowsReassessment>();
+        builder.Services.AddSingleton<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.MicrosoftCatalogCache>();
+        builder.Services.AddScoped<WindowsReassessmentJob>();
         builder.Services.AddScoped<AdvisoryRefresh>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaRefresh>();
         builder.Services.AddScoped<SigmaRefreshJob>();
@@ -87,6 +104,16 @@ public static class WorkerHost
             .ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
         builder.Services.AddHttpClient(IntelligenceHttp.KevClientName)
             .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.DebianClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateDebianHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.UbuntuClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.MsrcClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.EpssClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+        builder.Services.AddHttpClient(IntelligenceHttp.MicrosoftCatalogClientName)
+            .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateMicrosoftCatalogHandler);
         builder.Services.AddHttpClient(IntelligenceHttp.AdvisoryClientName)
             .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
         builder.Services.AddHttpClient(IntelligenceHttp.RepositoryClientName)
@@ -99,6 +126,12 @@ public static class WorkerHost
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         builder.Services.AddHostedService<InventoryExpirySchedule>();
         builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
+        builder.Services.AddHostedService<DebianRefreshSchedule>();
+        builder.Services.AddHostedService<UbuntuRefreshSchedule>();
+        builder.Services.AddHostedService<MsrcRefreshSchedule>();
+        builder.Services.AddHostedService<EpssRefreshSchedule>();
+        builder.Services.AddHostedService<LinuxReassessmentSchedule>();
+        builder.Services.AddHostedService<WindowsReassessmentSchedule>();
         builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
         builder.Services.AddHostedService<SigmaRefreshSchedule>();
         builder.Services.AddHostedService<SignatureRefreshSchedule>();

@@ -27,6 +27,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Agent;
 using System.Security.Cryptography;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -34,6 +35,43 @@ namespace Vigiloom.Worker.Tests;
 [DoNotParallelize]
 public sealed class HostLifecycleTests(TestContext testContext)
 {
+    [TestMethod]
+    public async Task MsrcNamedHttpClient_DoesNotFollowRedirect()
+    {
+        var builder = WorkerHost.CreateBuilder([]);
+        using var host = builder.Build();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(testContext.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        var server = Task.Run(async () =>
+        {
+            using var socket = await listener.AcceptTcpClientAsync(deadline.Token);
+            await using var stream = socket.GetStream();
+            var buffer = new byte[2048];
+            Assert.IsGreaterThan(0, await stream.ReadAsync(buffer, deadline.Token));
+            await stream.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{port}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), deadline.Token);
+        }, deadline.Token);
+        var failures = new List<Exception>();
+        try
+        {
+            using var client = host.Services.GetRequiredService<IHttpClientFactory>().CreateClient(IntelligenceHttp.MsrcClientName);
+            using var response = await client.GetAsync($"http://127.0.0.1:{port}/original", deadline.Token);
+            Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+            await server;
+            Assert.IsFalse(listener.Pending());
+        }
+        catch (Exception error) { failures.Add(error); }
+        finally
+        {
+            try { await deadline.CancelAsync(); } catch (Exception error) { failures.Add(error); }
+            try { listener.Stop(); } catch (Exception error) { failures.Add(error); }
+            try { await server; } catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
+            catch (SocketException) when (deadline.IsCancellationRequested) { } catch (Exception error) { failures.Add(error); }
+        }
+        if (failures.Count != 0) throw new AggregateException(failures);
+    }
     [TestMethod]
     [TestCategory("Integration")]
     [TestCategory("Database")]
@@ -80,6 +118,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<AdvisoryRefreshJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<SigmaRefreshJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<SignatureRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<UbuntuRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<MsrcRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<EpssRefreshJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<LinuxReassessmentJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<WindowsReassessmentJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
@@ -109,6 +152,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-sigma-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-signature-refresh'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-ubuntu-osv-refresh'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-linux-reassessment'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-windows-reassessment'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         }
         finally { await host.StopAsync(CancellationToken.None); }

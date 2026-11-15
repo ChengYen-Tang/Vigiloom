@@ -55,6 +55,18 @@ internal static partial class RegistryRead
         return true;
     }
 
+    internal static unsafe bool Dword(SafeRegistryHandle key, string valueName, out int? value)
+    {
+        uint data = 0;
+        uint bytes = sizeof(uint);
+        var status = RegQueryValueEx(key, valueName, null, out var type, (byte*)&data, &bytes);
+        value = null;
+        if (status == NotFound) return true;
+        if (status != Success || type != 4 || bytes != sizeof(uint) || data > int.MaxValue) return false;
+        value = (int)data;
+        return true;
+    }
+
     [LibraryImport("advapi32.dll", EntryPoint = "RegEnumKeyExW")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
     private static unsafe partial int RegEnumKeyEx(SafeRegistryHandle key, uint index, char* name, uint* length,

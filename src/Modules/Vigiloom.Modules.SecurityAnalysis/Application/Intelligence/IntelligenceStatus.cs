@@ -7,6 +7,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
@@ -79,6 +80,14 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         var sigmaUnavailable = sigma is not null && await SigmaRevisionEligibility.IncludedCountAsync(db, sigma.Source.Id, sigma.ActiveId!.Value, token) is null;
         var signature = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "signature-base" && x.ActiveId != null && !x.ActiveUnavailable);
         var iocUnavailable = signature is not null && !await IocSourceEligibility.IsEligibleAsync(db, signature.Source.Id, signature.ActiveId!.Value, token);
+        var debian = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == DebianRevisionStage.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
+        var debianUnavailable = debian is not null && !await DebianRevisionEligibility.IsEligibleAsync(db, debian.Source.Id, debian.ActiveId!.Value, token);
+        var ubuntu = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == UbuntuRevisionStage.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
+        var ubuntuUnavailable = ubuntu is not null && !await UbuntuRevisionEligibility.IsPublishableAsync(db, ubuntu.Source.Id, ubuntu.ActiveId!.Value, now, token);
+        var msrc = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == MsrcSnapshotStage.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
+        var msrcUnavailable = msrc is not null && !await MsrcRevisionEligibility.IsPublishableAsync(db, msrc.Source.Id, msrc.ActiveId!.Value, token);
+        var epss = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == EpssSnapshotStage.SourceKey && x.ActiveId != null && !x.ActiveUnavailable);
+        var epssUnavailable = epss is not null && !await EpssRevisionEligibility.IsPublishableAsync(db, epss.Source.Id, epss.ActiveId!.Value, now, epss.Source.StaleAfterSeconds, token);
         var kev = rows.Take(PageSize).FirstOrDefault(x => x.Source.Key == "cisa-kev" && x.ActiveId != null && !x.ActiveUnavailable);
         bool? kevFresh = null;
         if (kev is not null)
@@ -94,7 +103,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable)).ToArray();
+            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
+            row.Source.Key is UbuntuRevisionStage.SourceKey or DebianRevisionStage.SourceKey && row.ActiveId != null && row.Source.LastObservedRevisionId != row.ActiveId)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 
@@ -108,6 +118,21 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             "https://api.github.com/advisories",
             "GitHub-reviewed package advisories; excludes unreviewed and malware advisories and does not establish asset applicability.",
             AdvisoryRevisionBuilder.LicenseEvidence, "Open-source package ecosystems reported by each advisory; asset applicability is not determined here."),
+        "debian-security" => new("Debian Security Tracker", "distribution-advisories",
+            "https://security-tracker.debian.org/tracker/data/json",
+            "Debian source package vulnerability status by release; inventory matching relies on stated origin assumptions.",
+            DebianRefresh.LicenseEvidence, "Debian releases represented by the selected source revision."),
+        "ubuntu-osv" => new("Canonical Ubuntu OSV", "distribution-advisories",
+            "https://security-metadata.canonical.com/osv/osv-all.tar.xz",
+            "Canonical Ubuntu CVE data in OSV format; staging does not establish device applicability.",
+            UbuntuRevisionStage.LicenseEvidence, "Ubuntu ecosystems and releases represented by the selected source revision."),
+        "msrc-cvrf" => new("Microsoft Security Update Guide", "vendor-advisories",
+            "https://www.microsoft.com/en-us/msrc/faqs-security-update-guide",
+            "MSRC CVRF advisories support Windows vulnerability assessment using the available host and update inventory.",
+            MsrcRefresh.LicenseEvidence, "Microsoft products represented by the retained CVRF documents."),
+        "first-epss" => new("FIRST EPSS", "exploit-prediction", "https://www.first.org/epss/data",
+            "Estimated probability of observed exploitation in the next 30 days; not proof that an asset is affected or compromised.",
+            EpssRefresh.LicenseEvidence, "CVEs represented in the selected daily EPSS snapshot."),
         "sigmahq-rules" => new("SigmaHQ 規則", "behavioral-rules", "https://github.com/SigmaHQ/sigma",
             "A source subset may be selected after attribution and license checks; detection and deployment require a verified consumer.", SigmaRefresh.LicenseEvidence,
             "Platform and event-source requirements vary by rule; compatible collection and detection are not yet verified."),

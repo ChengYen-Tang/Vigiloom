@@ -45,6 +45,14 @@ public sealed class InventoryStatusClientTests
             Assert.AreEqual(InventoryStatusResultKind.Success, extended.Kind);
             Assert.IsTrue(extended.SupportsProcessSources);
             Assert.AreEqual(InventorySource.HostProcesses, extended.Sources![0].Source);
+            handler.Body = "[{\"source\":16,\"highWaterGeneration\":1}]";
+            Assert.AreEqual(InventoryStatusResultKind.Invalid, (await client.ReadAsync(vault, server, token)).Kind);
+            handler.AdvertiseWindowsUpdates = true;
+            var windows = await client.ReadAsync(vault, server, token);
+            Assert.AreEqual(InventoryStatusResultKind.Success, windows.Kind);
+            Assert.IsTrue(windows.SupportsWindowsUpdate);
+            Assert.AreEqual(InventorySource.WindowsUpdate, windows.Sources![0].Source);
+            handler.AdvertiseWindowsUpdates = false;
             handler.AdvertiseProcessSources = false;
 
             handler.Body = "[{\"source\":3,\"highWaterGeneration\":7,\"activeGeneration\":7,\"lastAttemptGeneration\":6,\"lastOutcome\":1,\"lastStatus\":2}]";
@@ -94,6 +102,7 @@ public sealed class InventoryStatusClientTests
         public string? Query { get; private set; }
         public string? Bearer { get; private set; }
         public bool AdvertiseProcessSources { get; set; }
+        public bool AdvertiseWindowsUpdates { get; set; }
         public Func<Task>? BeforeResponse { get; set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -103,6 +112,7 @@ public sealed class InventoryStatusClientTests
             if (BeforeResponse is not null) await BeforeResponse();
             var response = new HttpResponseMessage(Status) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
             if (AdvertiseProcessSources) response.Headers.Add("Vigiloom-Inventory-Contract", "5");
+            if (AdvertiseWindowsUpdates) response.Headers.Add("Vigiloom-Windows-Update-Contract", "9");
             return response;
         }
     }

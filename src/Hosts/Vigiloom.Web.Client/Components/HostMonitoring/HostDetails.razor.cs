@@ -9,7 +9,7 @@ namespace Vigiloom.Web.Client.Components.HostMonitoring;
 public partial class HostDetails
 {
     [Parameter] public Guid DeviceId { get; set; }
-    private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("integrity", "檔案完整性")];
+    private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("vulnerabilities", "漏洞"), ("integrity", "檔案完整性")];
     private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = Enum.GetValues<AgentMetricKind>()
         .Where(kind => kind != AgentMetricKind.CollectionUnavailable).Select(kind => (kind, HostMetricUnits.Name(kind))).ToArray();
     private readonly CancellationTokenSource lifetime = new();
@@ -70,7 +70,7 @@ public partial class HostDetails
                     var inventory = await Monitoring.GetInventoryAsync(DeviceId, token);
                     token.ThrowIfCancellationRequested();
                     if (inventory is null) throw new InvalidOperationException("Device missing");
-                    sources = inventory.Sources.Where(x => tab == "process" ? x.Source >= InventorySource.HostProcesses : x.Source < InventorySource.HostProcesses).ToArray();
+                    sources = inventory.Sources.Where(x => tab == "process" ? x.Source is >= InventorySource.HostProcesses and <= InventorySource.HostListeners : x.Source is < InventorySource.HostProcesses or > InventorySource.HostListeners).ToArray();
                     selected = sources.FirstOrDefault();
                     if (selected is not null) { selectedSource = selected.Source; usePartial = true; await LoadSelectedAsync(token); }
                     break;
@@ -234,13 +234,14 @@ public partial class HostDetails
     private static string IntegrityOutcomeName(IntegrityScanOutcome? value) => value switch { IntegrityScanOutcome.Complete => "完整", IntegrityScanOutcome.Partial => "部分", IntegrityScanOutcome.PermissionDenied => "權限不足", IntegrityScanOutcome.Unsupported => "不支援", IntegrityScanOutcome.Error => "掃描失敗", _ => "尚無回報" };
     private static string InventoryStatusName(InventoryCompletion? value) => value switch { InventoryCompletion.Complete => "已接受完整資料", InventoryCompletion.Partial => "部分資料", InventoryCompletion.Expired => "接收逾期", InventoryCompletion.Rejected => "已拒收", _ => "尚未完成" };
     private static string IntegrityStatusName(IntegrityCompletion? value) => value switch { IntegrityCompletion.Complete => "已接受完整資料", IntegrityCompletion.Partial => "部分資料", IntegrityCompletion.Expired => "接收逾期", IntegrityCompletion.Rejected => "已拒收", _ => "尚未完成" };
-    internal static string SourceName(InventorySource source) => source switch { InventorySource.WindowsSoftware32 => "Windows 軟體（32 位元登錄檢視）", InventorySource.WindowsSoftware64 => "Windows 軟體（64 位元登錄檢視）", InventorySource.LinuxDpkg => "Debian 軟體", InventorySource.LinuxRpm => "RPM 軟體", InventorySource.LinuxAccounts => "Linux 帳號", InventorySource.WindowsAccounts => "Windows 帳號", InventorySource.LinuxGroups => "Linux 群組", InventorySource.WindowsGroups => "Windows 群組", InventorySource.WindowsQuickFix => "Windows 修補程式", InventorySource.HostSystem => "系統資訊", InventorySource.HostNetwork => "網路介面", InventorySource.HostVolumes => "磁碟空間", InventorySource.HostProcesses => "程序", InventorySource.HostServices => "作業系統服務", InventorySource.HostListeners => "監聽連線", _ => source.ToString() };
+    internal static string SourceName(InventorySource source) => source switch { InventorySource.WindowsSoftware32 => "Windows 軟體（32 位元登錄檢視）", InventorySource.WindowsSoftware64 => "Windows 軟體（64 位元登錄檢視）", InventorySource.LinuxDpkg => "Debian 軟體", InventorySource.LinuxRpm => "RPM 軟體", InventorySource.LinuxAccounts => "Linux 帳號", InventorySource.WindowsAccounts => "Windows 帳號", InventorySource.LinuxGroups => "Linux 群組", InventorySource.WindowsGroups => "Windows 群組", InventorySource.WindowsQuickFix => "Windows 修補程式", InventorySource.WindowsUpdate => "Windows Update 快取觀察", InventorySource.HostSystem => "系統資訊", InventorySource.HostNetwork => "網路介面", InventorySource.HostVolumes => "磁碟空間", InventorySource.HostProcesses => "程序", InventorySource.HostServices => "作業系統服務", InventorySource.HostListeners => "監聽連線", _ => source.ToString() };
     internal static string EntryDetails(InventoryEntry entry, InventorySource source)
     {
         var fields = new List<string> { $"識別：{entry.Key}" };
         void Add(string name, object? value) { if (value is not null && !string.IsNullOrWhiteSpace(value.ToString())) fields.Add($"{name}：{value}"); }
         Add("版本", entry.Version); Add("作業系統", entry.OperatingSystem); Add("架構", entry.Architecture);
         Add("作業系統系列", entry.OperatingSystemFamily); Add("發行版", entry.DistributionId); Add("發行版版本", entry.DistributionVersion);
+        Add("Windows 安裝類型", entry.WindowsInstallationType);
         Add("程序架構", entry.ProcessArchitecture); Add("執行階段", entry.Runtime); Add("Agent 版本", entry.AgentVersion); Add("可用處理器數", entry.AvailableProcessorCount);
         Add("供應商", entry.Supplier); Add("安裝日期", entry.InstalledOn); Add(source == InventorySource.HostProcesses ? "程序 ID" : "帳號／群組 ID", entry.NumericId); Add("主要群組 ID", entry.PrimaryGroupId);
         Add("啟動時間（UTC）", entry.BootedAt?.ToUniversalTime().ToString("u")); Add("記憶體（bytes）", entry.TotalMemoryBytes);
@@ -248,6 +249,14 @@ public partial class HostDetails
         Add("狀態", entry.ServiceStatus); Add("啟動模式", entry.StartupMode); Add("執行身分", entry.RunAs);
         Add("執行檔", entry.ExecutablePath); Add("命令列", entry.CommandLine); Add("父程序 ID", entry.ParentProcessId);
         Add("程序啟動時間（UTC）", entry.ProcessStartedAt?.ToUniversalTime().ToString("u")); Add("擁有程序 ID", entry.OwningProcessId);
+        if (source == InventorySource.WindowsUpdate)
+        {
+            Add("更新 ID", entry.UpdateId); Add("更新修訂", entry.UpdateRevision);
+            Add("已安裝", entry.UpdateInstalled is null ? null : entry.UpdateInstalled.Value ? "是" : "否");
+            Add("需要重新啟動", entry.UpdateRebootRequired is null ? null : entry.UpdateRebootRequired.Value ? "是" : "否");
+            if (entry.UpdateCves is { } cves) Add("CVE", $"{cves.Count} 筆{(cves.Count == 0 ? "" : "：" + string.Join("、", cves.Take(5)) + (cves.Count > 5 ? "…" : ""))}");
+            if (entry.UpdateKbs is { } kbs) Add("KB", $"{kbs.Count} 筆{(kbs.Count == 0 ? "" : "：" + string.Join("、", kbs.Take(5)) + (kbs.Count > 5 ? "…" : ""))}");
+        }
         return string.Join(" · ", fields);
     }
     private static string SeriesName(HostMetricValue item) => $"{item.Source}{(item.Dimension is null ? "" : " · " + item.Dimension)} · Agent {item.AgentId:D}";

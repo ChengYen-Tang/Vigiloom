@@ -17,6 +17,9 @@ internal static class SnapshotVerification
         long bytes = 0;
         var count = 0;
         var memberCount = 0;
+        int? updateServerSelection = null;
+        Guid? updateServiceId = null;
+        var updateSourceSeen = false;
         for (var index = 0; index < ordered.Length; index++)
         {
             var chunk = ordered[index];
@@ -27,7 +30,14 @@ internal static class SnapshotVerification
             foreach (var item in chunk.Items)
             {
                 if (!keys.Add(item.Key)) return false;
-                memberCount += item.Members?.Count ?? 0;
+                if (manifest.SchemaVersion == InventoryChunkCodec.WindowsUpdateRelationshipsSchemaVersion)
+                {
+                    if (updateSourceSeen && (updateServerSelection != item.UpdateServerSelection || updateServiceId != item.UpdateServiceId)) return false;
+                    updateServerSelection = item.UpdateServerSelection;
+                    updateServiceId = item.UpdateServiceId;
+                    updateSourceSeen = true;
+                }
+                memberCount += (item.Members?.Count ?? 0) + (item.UpdateCves?.Count ?? 0) + (item.UpdateKbs?.Count ?? 0) + (item.UpdateSupersededIds?.Count ?? 0);
                 if (memberCount > InventoryChunkCodec.MaximumSnapshotMembers) return false;
             }
             var measured = InventoryDigest.MeasureChunk(chunk.Items);

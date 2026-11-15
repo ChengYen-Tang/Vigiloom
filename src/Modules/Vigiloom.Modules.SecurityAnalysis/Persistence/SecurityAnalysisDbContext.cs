@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -26,6 +27,21 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<IntelligenceCache> IntelligenceCaches => Set<IntelligenceCache>();
     public DbSet<IntelligenceActivationEvent> IntelligenceActivationEvents => Set<IntelligenceActivationEvent>();
     public DbSet<KevRecord> KevRecords => Set<KevRecord>();
+    public DbSet<DebianAdvisory> DebianAdvisories => Set<DebianAdvisory>();
+    public DbSet<UbuntuDocument> UbuntuDocuments => Set<UbuntuDocument>();
+    public DbSet<UbuntuScope> UbuntuScopes => Set<UbuntuScope>();
+    public DbSet<UbuntuRevisionDocument> UbuntuRevisionDocuments => Set<UbuntuRevisionDocument>();
+    public DbSet<MsrcDocument> MsrcDocuments => Set<MsrcDocument>();
+    public DbSet<MsrcArtifact> MsrcArtifacts => Set<MsrcArtifact>();
+    public DbSet<MsrcCveIndex> MsrcCveIndexes => Set<MsrcCveIndex>();
+    public DbSet<MsrcProductIndex> MsrcProductIndexes => Set<MsrcProductIndex>();
+    public DbSet<EpssScoreRecord> EpssScores => Set<EpssScoreRecord>();
+    public DbSet<VulnerabilityFinding> VulnerabilityFindings => Set<VulnerabilityFinding>();
+    public DbSet<VulnerabilityUnknownPackage> VulnerabilityUnknownPackages => Set<VulnerabilityUnknownPackage>();
+    public DbSet<VulnerabilityEvaluation> VulnerabilityEvaluations => Set<VulnerabilityEvaluation>();
+    public DbSet<VulnerabilityCoverage> VulnerabilityCoverage => Set<VulnerabilityCoverage>();
+    public DbSet<VulnerabilityRun> VulnerabilityRuns => Set<VulnerabilityRun>();
+    public DbSet<VulnerabilityInventoryEvidence> VulnerabilityInventoryEvidence => Set<VulnerabilityInventoryEvidence>();
     public DbSet<AdvisoryImport> AdvisoryImports => Set<AdvisoryImport>();
     public DbSet<AdvisoryImportPage> AdvisoryImportPages => Set<AdvisoryImportPage>();
     public DbSet<AdvisoryImportEntry> AdvisoryImportEntries => Set<AdvisoryImportEntry>();
@@ -40,10 +56,11 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     {
         modelBuilder.HasDefaultSchema("security");
         IntelligenceModel.Configure(modelBuilder);
+        VulnerabilityModel.Configure(modelBuilder);
         var source = modelBuilder.Entity<InventorySourceState>();
         source.ToTable("InventorySources", table =>
         {
-            table.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 15");
+            table.HasCheckConstraint("CK_InventorySources_Source", "[Source] BETWEEN 1 AND 16");
             table.HasCheckConstraint("CK_InventorySources_Generations", "[ClosedGeneration] >= 0 AND ([ActiveGeneration] IS NULL OR [ActiveGeneration] > [ClosedGeneration]) AND ([CurrentGeneration] IS NULL OR ([CurrentGeneration] > 0 AND [CurrentGeneration] <= [ClosedGeneration]))");
             table.HasCheckConstraint("CK_InventorySources_DeviceGeneration", "[DeviceGeneration] >= 0");
             table.HasCheckConstraint("CK_InventorySources_Ids", "[AgentId] <> '00000000-0000-0000-0000-000000000000' AND [DeviceId] <> '00000000-0000-0000-0000-000000000000'");
@@ -90,7 +107,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
         var change = modelBuilder.Entity<InventoryChangeRecord>();
         change.ToTable("InventoryChanges", table =>
         {
-            table.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 15 AND [Kind] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_InventoryChanges_Values", "[Generation] > 0 AND [Source] BETWEEN 1 AND 16 AND [Kind] BETWEEN 1 AND 5");
             table.HasCheckConstraint("CK_InventoryChanges_Content", "([Kind] IN (1, 4) AND [BeforeJson] IS NULL AND [AfterJson] IS NOT NULL) OR ([Kind] IN (2, 5) AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NOT NULL) OR ([Kind] = 3 AND [BeforeJson] IS NOT NULL AND [AfterJson] IS NULL)");
         });
         change.HasKey(x => x.RowId).IsClustered();

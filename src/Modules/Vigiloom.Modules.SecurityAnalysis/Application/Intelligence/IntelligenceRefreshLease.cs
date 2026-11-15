@@ -1,12 +1,40 @@
 using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 /// <summary>Session-owned lock prevents duplicate downloads across refresh entry points.</summary>
-internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context, string resource) : IAsyncDisposable
+internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context, string resource, int sessionId) : IAsyncDisposable
 {
+    internal int SessionId => sessionId;
+    internal bool IsFor(Guid sourceId) => string.Equals(resource, $"Vigiloom.Intelligence.Refresh.{sourceId:D}", StringComparison.Ordinal);
+    internal async Task<bool> VerifyHeldAsync(CancellationToken token)
+    {
+        var connection = context.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open) return false;
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT CASE WHEN @@SPID = @session THEN APPLOCK_MODE('public', @name, 'Session') ELSE 'NoLock' END";
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@name";
+            parameter.DbType = DbType.String;
+            parameter.Size = 255;
+            parameter.Value = resource;
+            command.Parameters.Add(parameter);
+            var sessionParameter = command.CreateParameter();
+            sessionParameter.ParameterName = "@session";
+            sessionParameter.DbType = DbType.Int32;
+            sessionParameter.Value = sessionId;
+            command.Parameters.Add(sessionParameter);
+            return string.Equals(await command.ExecuteScalarAsync(token) as string, "Exclusive", StringComparison.Ordinal);
+        }
+        catch (DbException) { token.ThrowIfCancellationRequested(); return false; }
+        catch (InvalidOperationException) { token.ThrowIfCancellationRequested(); return false; }
+    }
+
     internal static async Task<IntelligenceRefreshLease?> TryAcquireAsync(IDbContextFactory<SecurityAnalysisDbContext> contexts, Guid sourceId, CancellationToken token)
     {
         var context = await contexts.CreateDbContextAsync(token);
@@ -23,7 +51,11 @@ internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context
             parameter.Value = resource;
             command.Parameters.Add(parameter);
             var result = Convert.ToInt32(await command.ExecuteScalarAsync(token));
-            if (result >= 0) return new(context, resource);
+            if (result >= 0)
+            {
+                command.CommandText = "SELECT @@SPID";
+                return new(context, resource, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+            }
             if (result == -1)
             {
                 await context.DisposeAsync();

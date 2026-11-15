@@ -14,6 +14,12 @@ internal static class RepositoryTarPreflight
     internal static async Task ValidateAsync(Stream archive, CancellationToken token)
     {
         using var gzip = new GZipStream(archive, CompressionMode.Decompress, leaveOpen: true);
+        await ValidateTarAsync(gzip, MaximumExpandedBytes, token);
+    }
+
+    internal static async Task ValidateTarAsync(Stream tar, long maximumExpandedBytes, CancellationToken token)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumExpandedBytes);
         var buffer = ArrayPool<byte>.Shared.Rent(65536);
         try
         {
@@ -21,9 +27,9 @@ internal static class RepositoryTarPreflight
             var zeroBlocks = 0;
             while (true)
             {
-                await gzip.ReadExactlyAsync(buffer.AsMemory(0, BlockSize), token);
+                await tar.ReadExactlyAsync(buffer.AsMemory(0, BlockSize), token);
                 total += BlockSize;
-                if (total > MaximumExpandedBytes) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
+                if (total > maximumExpandedBytes) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
                 if (buffer.AsSpan(0, BlockSize).IndexOfAnyExcept((byte)0) < 0)
                 {
                     if (++zeroBlocks == 2) return;
@@ -35,10 +41,10 @@ internal static class RepositoryTarPreflight
                 if (kind is (byte)'x' or (byte)'g' or (byte)'L' or (byte)'K' && size > MaximumMetadataBytes)
                     throw new InvalidDataException("Repository TAR metadata exceeds the limit.");
                 var remaining = checked((size + BlockSize - 1) / BlockSize * BlockSize);
-                if (remaining > MaximumExpandedBytes - total) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
+                if (remaining > maximumExpandedBytes - total) throw new InvalidDataException("Repository archive exceeds the expanded size limit.");
                 if (kind is (byte)'x' or (byte)'g')
                 {
-                    await gzip.ReadExactlyAsync(buffer.AsMemory(0, (int)size), token);
+                    await tar.ReadExactlyAsync(buffer.AsMemory(0, (int)size), token);
                     ValidatePax(buffer.AsSpan(0, (int)size));
                     total += size;
                     remaining -= size;
@@ -46,7 +52,7 @@ internal static class RepositoryTarPreflight
                 while (remaining > 0)
                 {
                     var count = (int)Math.Min(remaining, buffer.Length);
-                    await gzip.ReadExactlyAsync(buffer.AsMemory(0, count), token);
+                    await tar.ReadExactlyAsync(buffer.AsMemory(0, count), token);
                     remaining -= count;
                     total += count;
                 }

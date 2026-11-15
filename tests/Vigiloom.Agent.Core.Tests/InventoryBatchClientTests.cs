@@ -17,6 +17,10 @@ public sealed class InventoryBatchClientTests
     [DataRow(4, true)]
     [DataRow(5, false)]
     [DataRow(5, true)]
+    [DataRow(7, false)]
+    [DataRow(7, true)]
+    [DataRow(10, false)]
+    [DataRow(10, true)]
     public async Task EmptyInventory_StaysQueuedUntilServerUnderstandsSchema(int schema, bool advertisesInventory)
     {
         var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryBatchTests");
@@ -33,7 +37,8 @@ public sealed class InventoryBatchClientTests
             var now = DateTimeOffset.UtcNow;
             var measured = InventoryDigest.MeasureChunk([]);
             var chunk = new InventoryChunk(schema, Guid.CreateVersion7(), now,
-                Guid.CreateVersion7(), 1, schema == 5 ? InventorySource.HostProcesses : InventorySource.LinuxDpkg, now, InventoryOutcome.Complete,
+                Guid.CreateVersion7(), 1, schema == 10 ? InventorySource.WindowsUpdate : schema == 5 ? InventorySource.HostProcesses : InventorySource.LinuxDpkg, now,
+                schema == 10 ? InventoryOutcome.Partial : InventoryOutcome.Complete,
                 0, 1, 0, measured.Bytes, InventoryDigest.Combine([measured.Digest]), []);
             var bytes = InventoryChunkCodec.Serialize(chunk);
             var queue = new DurableBatchQueue(vault, agentId);
@@ -76,6 +81,8 @@ public sealed class InventoryBatchClientTests
         {
             var response = new HttpResponseMessage(HttpStatusCode.BadRequest);
             response.Headers.Add(AgentMetricBatchCodec.SupportedSchemaHeader,
+                schema == 10 ? (advertised ? "1, 2, 3, 4, 5, 6, 7, 8, 9, 10" : "1, 2, 3, 4, 5, 6, 7, 8, 9") :
+                schema == 7 ? (advertised ? "1, 2, 3, 4, 5, 6, 7" : "1, 2, 3, 4, 5, 6") :
                 schema == 5 ? (advertised ? "1, 2, 3, 4, 5" : "1, 2, 3, 4") : (advertised ? "1, 2, 3, 4" : "1, 2, 3"));
             return Task.FromResult(response);
         }

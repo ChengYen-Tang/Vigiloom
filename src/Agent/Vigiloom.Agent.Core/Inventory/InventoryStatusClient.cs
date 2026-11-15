@@ -10,7 +10,8 @@ namespace Vigiloom.Agent.Core.Inventory;
 
 public enum InventoryStatusResultKind { Success, NotRegistered, ServerMismatch, Unauthorized, Unavailable, Invalid, OwnerChanged }
 public sealed record InventoryStatusResult(InventoryStatusResultKind Kind, IReadOnlyList<InventorySourceStatus>? Sources = null,
-    AgentSettingsOwner? Owner = null, bool SupportsProcessSources = false);
+    AgentSettingsOwner? Owner = null, bool SupportsProcessSources = false, bool SupportsWindowsUpdate = false,
+    bool SupportsDpkgSource = false, bool SupportsWindowsRelease = false, bool SupportsWindowsUpdateRelationships = false);
 
 /// <summary>Reads an authenticated central generation fence before allocating new inventory work.</summary>
 public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
@@ -27,6 +28,7 @@ public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(expected, "api/v1/agent/inventory/status?contract=5"));
+            request.Headers.Add("Vigiloom-Windows-Update-Contract", "9");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{identity.AgentId!.Value:D}.{identity.MachineSecret}");
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) return new(InventoryStatusResultKind.Unauthorized);
@@ -55,10 +57,17 @@ public sealed class InventoryStatusClient(HttpClient http, TimeProvider clock)
             if (current?.AgentId != identity.AgentId) return new(InventoryStatusResultKind.OwnerChanged);
             var supportsProcessSources = response.Headers.TryGetValues("Vigiloom-Inventory-Contract", out var advertised) &&
                 advertised.SequenceEqual(["5"], StringComparer.Ordinal);
+            var supportsWindowsUpdate = supportsProcessSources && response.Headers.TryGetValues("Vigiloom-Windows-Update-Contract", out var updateContract) &&
+                updateContract.SequenceEqual(["9"], StringComparer.Ordinal);
+            var schemas = response.Headers.TryGetValues("Vigiloom-Inventory-Schemas", out var schemaHeaders)
+                ? schemaHeaders.SelectMany(x => x.Split(',')).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal) : [];
             if (!supportsProcessSources && sources.Any(x => x.Source > InventorySource.HostVolumes))
                 return new(InventoryStatusResultKind.Invalid);
+            if (!supportsWindowsUpdate && sources.Any(x => x.Source == InventorySource.WindowsUpdate))
+                return new(InventoryStatusResultKind.Invalid);
             return new(InventoryStatusResultKind.Success, sources,
-                new AgentSettingsOwner(identity.AgentId!.Value, expected.AbsoluteUri, vault.StateDirectory), supportsProcessSources);
+                new AgentSettingsOwner(identity.AgentId!.Value, expected.AbsoluteUri, vault.StateDirectory), supportsProcessSources, supportsWindowsUpdate,
+                schemas.Contains("7"), schemas.Contains("8"), supportsWindowsUpdate && schemas.Contains("10"));
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(InventoryStatusResultKind.Unavailable); }
         catch (HttpRequestException) { return new(InventoryStatusResultKind.Unavailable); }
