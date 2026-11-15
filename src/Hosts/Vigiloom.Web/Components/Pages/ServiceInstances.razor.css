@@ -4,6 +4,7 @@
 .instance-management ul { padding-left: 1.3rem; }
 .instance-management li { margin: .6rem 0; overflow-wrap: anywhere; }
 .instance-management li details { margin-top: .2rem; }
+.instance-management .archive-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
 .instance-management summary { cursor: pointer; }
 .instance-management small { overflow-wrap: anywhere; }
 .table-scroll { max-width: 100%; overflow-x: auto; }
