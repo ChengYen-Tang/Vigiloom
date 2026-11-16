@@ -89,7 +89,9 @@ namespace Vigiloom.Setup {
             var manager = OpenSCManager(null, null, 2);
             if (manager == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
             try {
-                var service = CreateService(manager, name, name, 0xF01FF, 0x10, 2, 1, binary, null, IntPtr.Zero, null, account, null);
+                // Windows PowerShell converts a null string argument to an empty string.
+                var service = CreateService(manager, name, name, 0xF01FF, 0x10, 2, 1, binary, null, IntPtr.Zero, null,
+                    string.IsNullOrEmpty(account) ? null : account, null);
                 if (service == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
                 try {
                     if (serviceSid) { var info = new ServiceSidInfo { Type = 1 }; Check(ChangeServiceConfig2(service, 5, ref info)); }
