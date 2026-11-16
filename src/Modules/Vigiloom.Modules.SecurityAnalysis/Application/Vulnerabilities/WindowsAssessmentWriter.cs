@@ -4,7 +4,10 @@ using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -13,7 +16,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 internal enum WindowsWriteResult { Written, AlreadyWritten, Conflict, Changed }
 
 /// <summary>Publishes product candidates and their observed update evidence atomically.</summary>
-internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock)
+internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock,
+    INotificationWriter? notifications = null, IDevicePingSource? devices = null)
 {
     internal const string MatcherVersion = "windows-msrc-v5";
 
@@ -40,6 +44,7 @@ internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysis
             return receipt.DeviceId == owner.DeviceId && receipt.SourceId == sourceId && CryptographicOperations.FixedTimeEquals(receipt.Digest, digest)
                 ? WindowsWriteResult.AlreadyWritten : WindowsWriteResult.Conflict;
         var now = clock.GetUtcNow().ToUniversalTime();
+        var alertSummary = notifications is null ? null : new VulnerabilityNotificationSummary();
         db.VulnerabilityRuns.Add(new VulnerabilityRun { RunId = runId, DeviceId = owner.DeviceId, SourceId = sourceId, Digest = digest, CompletedAt = now,
             RevisionId = revisionId, AgentId = owner.AgentId, DeviceGeneration = owner.DeviceGeneration, HostSnapshotId = hostId,
             MatcherVersion = MatcherVersion, Ecosystem = product, ProductDiscoveryComplete = assessment.CoverageComplete,
@@ -76,6 +81,7 @@ internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysis
                 var detail = JsonSerializer.Serialize(cve);
                 if (detail.Length > 8192) throw new InvalidDataException("Windows evidence exceeds the supported size.");
                 var state = WindowsPatchCorrelation.Classify(cve);
+                alertSummary?.Observe(finding, state);
                 finding.CurrentState = (int)state;
                 finding.LastEvaluatedAt = now;
                 finding.LastPackageSnapshotId = null;
@@ -100,6 +106,11 @@ internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysis
         coverage.PackageSnapshotId = null; coverage.EvaluatedAt = now; coverage.PackageCount = 1; coverage.UnknownPackageCount = 1;
         await db.SaveChangesAsync(token);
         if (!await WindowsAssessmentFence.LockCurrentAsync(db, contexts, owners, owner, assessment, clock, maximumAge, token)) return WindowsWriteResult.Changed;
+        if (notifications is not null && alertSummary is { HasChanges: true })
+        {
+            var context = devices is null ? null : await devices.GetContextAsync(owner.DeviceId, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            await notifications.WriteAsync(alertSummary.Create(runId, owner.DeviceId, revisionId, now, context), db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+        }
         await transaction.CommitAsync(token);
         return WindowsWriteResult.Written;
 

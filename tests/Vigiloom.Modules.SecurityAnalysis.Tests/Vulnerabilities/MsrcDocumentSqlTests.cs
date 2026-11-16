@@ -11,6 +11,8 @@ using Vigiloom.Testing.SqlServer;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Domain;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.BuildingBlocks.Operations;
@@ -377,6 +379,28 @@ public sealed class MsrcDocumentSqlTests(TestContext context)
             Assert.IsNotNull(updatedHistory);
             Assert.IsTrue(updatedHistory.Items.Any(x => x.State == (int)MatchState.Fixed));
             Assert.IsTrue(updatedHistory.Items.Any(x => x.State == (int)MatchState.Unknown));
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var operations = new OperationsDbContext(operationOptions)) await operations.Database.MigrateAsync(token);
+            var notifyingWriter = new WindowsAssessmentWriter(factory, new OwnerFence(true), TimeProvider.System, new NotificationWriter());
+            var affected = withRelation with { RunId = Guid.CreateVersion7(), Cves = withRelation.Cves!.Select(x => x with
+                { ObservedKbs = [], SupersedingKbs = [], VendorKnownAffected = true, RebootObserved = false, AmbiguousProduct = false }).ToArray() };
+            Assert.AreEqual(WindowsWriteResult.Written, await notifyingWriter.WriteAsync(owner, affected, TimeSpan.FromDays(14), token));
+            Assert.AreEqual(WindowsWriteResult.AlreadyWritten, await notifyingWriter.WriteAsync(owner, affected, TimeSpan.FromDays(14), token));
+            var unknownAlert = affected with { RunId = Guid.CreateVersion7(), Cves = affected.Cves!.Select(x => x with { RebootObserved = true }).ToArray() };
+            Assert.AreEqual(WindowsWriteResult.Written, await notifyingWriter.WriteAsync(owner, unknownAlert, TimeSpan.FromDays(14), token));
+            var affectedAgain = affected with { RunId = Guid.CreateVersion7() };
+            Assert.AreEqual(WindowsWriteResult.Written, await notifyingWriter.WriteAsync(owner, affectedAgain, TimeSpan.FromDays(14), token));
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(1, await operations.Set<Notification>().CountAsync(token));
+            var fixedRun = withRelation with { RunId = Guid.CreateVersion7() };
+            Assert.AreEqual(WindowsWriteResult.Written, await notifyingWriter.WriteAsync(owner, fixedRun, TimeSpan.FromDays(14), token));
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
+            Assert.AreEqual(WindowsWriteResult.Written, await notifyingWriter.WriteAsync(owner,
+                affected with { RunId = Guid.CreateVersion7() }, TimeSpan.FromDays(14), token));
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
             await PublishHost(new InventoryEntry("host", "machine", "6.8", "X64", OperatingSystem: "Linux",
                 ProcessArchitecture: "X64", Runtime: ".NET", AvailableProcessorCount: 2, OperatingSystemFamily: "Linux", DistributionId: "ubuntu", DistributionVersion: "24.04"), 3, InventoryChunkCodec.SchemaVersion);
             Assert.IsNull(await new WindowsVulnerabilityEvidence(factory, TimeProvider.System, NullLogger.Instance).GetAsync(owner, 1, token));

@@ -15,6 +15,7 @@ using Vigiloom.Contracts.Resources;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
@@ -221,7 +222,7 @@ public sealed class SigmaRefreshTests(TestContext context)
                 await management.SetAsync(sourceId, "rules/example.yml", olderTest.TestId, true, version, actor, token));
             var device = Guid.CreateVersion7();
             var dispatch = new HostLogDispatch(agent, device, 1, [oldMatch.MessageId, newMatch.MessageId]);
-            var handler = new HostLogDispatchHandler(contexts, enabledRules, catalog, reader, clock);
+            var handler = new HostLogDispatchHandler(contexts, enabledRules, catalog, reader, clock, new NotificationWriter());
             await using (var connection = new SqlConnection(database.ConnectionString))
             {
                 await connection.OpenAsync(token);
@@ -235,6 +236,17 @@ public sealed class SigmaRefreshTests(TestContext context)
                 var result = await db.SigmaDetectionResults.AsNoTracking().SingleAsync(token);
                 Assert.AreEqual(oldMatch.MessageId, result.MessageId);
                 Assert.AreEqual(olderTest.TestId, result.TestId);
+            }
+            await using (var db = new OperationsDbContext(operations))
+            {
+                var notification = await db.Set<Notification>().SingleAsync(token);
+                Assert.AreEqual("sigma", notification.Source);
+                Assert.AreEqual(device, notification.ResourceId);
+                Assert.AreEqual(agent, notification.EvidenceOwnerId);
+                Assert.AreEqual(oldMatch.MessageId, notification.EvidenceId);
+                Assert.AreEqual(olderTest.TestId, notification.RuleTestId);
+                Assert.Contains(oldMatch.MessageId.ToString("D"), notification.Detail);
+                Assert.Contains(olderTest.TestId!.Value.ToString("D"), notification.Detail);
             }
             var secondRuleTest = await testing.RunAsync("rules/second.yml",
                 [new(agent, oldMatch.MessageId, SigmaMatch.Yes), new(agent, newMatch.MessageId, SigmaMatch.No)], actor, token);
@@ -256,6 +268,8 @@ public sealed class SigmaRefreshTests(TestContext context)
                 Assert.IsTrue(results.All(x => x.MessageId == oldMatch.MessageId));
                 CollectionAssert.AreEquivalent(new[] { olderTest.TestId!.Value, secondRuleTest.TestId!.Value }, results.Select(x => x.TestId).ToArray());
             }
+            await using (var db = new OperationsDbContext(operations))
+                Assert.AreEqual(2, await db.Set<Notification>().CountAsync(token));
             Assert.AreEqual(IntelligenceRevocationResult.Revoked, await new IntelligenceRevocation(contexts, new OperationAuditWriter(), clock)
                 .RevokeAsync(sourceId, secondId, actor, token));
             await using (var db = contexts.CreateDbContext()) version = Convert.ToBase64String((await db.IntelligenceActivations.SingleAsync(token)).Version);
@@ -512,7 +526,7 @@ public sealed class SigmaRefreshTests(TestContext context)
             var enabled = new SigmaEnabledRules(contexts, new SigmaRuleSetLoader(new SigmaCatalog(contexts, clock)));
             Assert.HasCount(1, (await enabled.LoadAsync(token)).Rules.Correlations);
             var handler = new HostLogDispatchHandler(contexts, enabled, new SigmaCatalog(contexts, clock),
-                new ReplayLogReader([first, second, third, missing]), clock);
+                new ReplayLogReader([first, second, third, missing]), clock, new NotificationWriter());
             var earlierAnchor = new OutboxMessage(Guid.CreateVersion7(), HostLogDispatch.MessageType,
                 JsonSerializer.Serialize(new HostLogDispatch(agent, device, 1, [third.MessageId])));
             var delayedBatch = new OutboxMessage(Guid.CreateVersion7(), HostLogDispatch.MessageType,
@@ -533,6 +547,8 @@ public sealed class SigmaRefreshTests(TestContext context)
                 var before = (await db.SigmaDetectionResults.AsNoTracking().Where(x => x.MessageId == third.MessageId).ToArrayAsync(token))
                     .Single(x => x.ActivationVersion.AsSpan().SequenceEqual(activeVersion));
                 Assert.AreEqual((int)SigmaMatch.Unknown, before.Result);
+                await using (var notificationDb = new OperationsDbContext(operations))
+                    Assert.AreEqual(0, await notificationDb.Set<Notification>().CountAsync(token));
                 for (var i = 0; i < 2; i++)
                 {
                     await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
@@ -546,6 +562,12 @@ public sealed class SigmaRefreshTests(TestContext context)
             Assert.AreEqual(3, after.CorrelationCount);
             Assert.AreEqual(first.OccurredAt, after.CorrelationFirstAt);
             Assert.AreEqual(third.OccurredAt, after.CorrelationLastAt);
+            await using (var notificationDb = new OperationsDbContext(operations))
+            {
+                var notification = await notificationDb.Set<Notification>().SingleAsync(token);
+                Assert.AreEqual("sigma", notification.Source);
+                Assert.Contains(third.MessageId.ToString("D"), notification.Detail);
+            }
             var history = await new SigmaDetectionHistory(contexts, new DetectionDeviceSource(device)).GetEventsAsync(device,
                 clock.GetUtcNow().AddMinutes(-1), clock.GetUtcNow().AddMinutes(1), null, token);
             Assert.IsNotNull(history);

@@ -12,6 +12,13 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Domain;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Contracts.Services;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 
@@ -20,6 +27,124 @@ namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 [TestCategory("Database")]
 public sealed class HealthRunnerTests(TestContext context)
 {
+    [TestMethod]
+    public Task ConfirmedHealthChanges_CreateAlertsWithoutTreatingUnknownAsRecovery() =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = Options(database.ConnectionString);
+            var targetId = await SeedAsync(options, 12345, token);
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups())]);
+            async Task Observe(HealthObservationKind kind)
+            {
+                await using (var db = new ServiceObservabilityDbContext(options))
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [DueAt] = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {targetId}", token);
+                var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+                var work = await store.LoadAsync(lease, token);
+                var network = await store.NetworkAsync(token);
+                Assert.IsNotNull(work);
+                Assert.IsNotNull(network);
+                Assert.IsTrue(await store.CommitAsync(work, network, kind, await store.NowAsync(token), token));
+            }
+            await Observe(HealthObservationKind.Degraded);
+            await Observe(HealthObservationKind.Degraded);
+            for (var i = 0; i < 3; i++) await Observe(HealthObservationKind.Unhealthy);
+            for (var i = 0; i < 3; i++) await Observe(HealthObservationKind.Timeout);
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString).Options;
+            await using var operations = new OperationsDbContext(operationOptions);
+            Assert.AreEqual(1, await operations.Set<ServiceHealthAlert>().CountAsync(x => x.RecoveredAt == null, token));
+            Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
+            await Observe(HealthObservationKind.Healthy);
+            Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
+            await Observe(HealthObservationKind.Healthy);
+            Assert.AreEqual(1, await operations.Set<ServiceHealthAlert>().CountAsync(x => x.RecoveredAt != null, token));
+            Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
+            Assert.IsTrue(await operations.Set<Notification>().AllAsync(x => x.Source == "service-health" && x.Detail.Contains("Operations"), token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task AlertFailure_RollsBackHealthObservationAndNotification() =>
+        ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var options = Options(database.ConnectionString);
+            await SeedAsync(options, 12345, token);
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups()), new FailingHealthSink()]);
+            var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+            var work = await store.LoadAsync(lease, token);
+            var network = await store.NetworkAsync(token);
+            Assert.IsNotNull(work);
+            Assert.IsNotNull(network);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.CommitAsync(work, network,
+                HealthObservationKind.Degraded, DateTimeOffset.UtcNow, token));
+            await using var db = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(0, await db.HealthObservations.CountAsync(token));
+            Assert.AreEqual(1, await db.HealthStateIntervals.CountAsync(token));
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString).Options;
+            await using var operations = new OperationsDbContext(operationOptions);
+            Assert.AreEqual(0, await operations.Set<ServiceHealthAlert>().CountAsync(token));
+            Assert.AreEqual(0, await operations.Set<Notification>().CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task ServiceAlert_UsesActualResourceGroups() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = Options(database.ConnectionString);
+            await SeedAsync(options, 12345, token);
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var operations = new OperationsDbContext(operationOptions)) await operations.Database.MigrateAsync(token);
+            var resourcesOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+            Guid serviceId;
+            await using (var serviceDb = new ServiceObservabilityDbContext(options))
+                serviceId = await serviceDb.Services.Select(x => x.Id).SingleAsync(token);
+            await using (var resources = new ResourcesDbContext(resourcesOptions))
+            {
+                await resources.Database.MigrateAsync(token);
+                var group = new Group("Real service group", DateTimeOffset.UtcNow);
+                resources.Groups.Add(group);
+                resources.ServiceGroups.Add(new ServiceGroup(group.Id, serviceId));
+                await resources.SaveChangesAsync(token);
+            }
+            var store = new HealthStore(new PooledDbContextFactory<ServiceObservabilityDbContext>(options),
+                [new ServiceHealthAlertSink(new ServiceGroupSource())]);
+            var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+            var work = await store.LoadAsync(lease, token);
+            var network = await store.NetworkAsync(token);
+            Assert.IsNotNull(work);
+            Assert.IsNotNull(network);
+            Assert.IsTrue(await store.CommitAsync(work, network, HealthObservationKind.Degraded, await store.NowAsync(token), token));
+            await using var verify = new OperationsDbContext(operationOptions);
+            var notification = await verify.Set<Notification>().SingleAsync(token);
+            Assert.Contains("Real service group", notification.Detail);
+        }, context.CancellationToken);
+
+    private sealed class TestGroups : IServiceGroupSource
+    {
+        public Task<IReadOnlyList<ResourceGroupSnapshot>> ReadAsync(Guid serviceId, System.Data.Common.DbConnection connection,
+            System.Data.Common.DbTransaction transaction, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<ResourceGroupSnapshot>>([new(Guid.CreateVersion7(), "Operations")]);
+    }
+
+    private sealed class RecordingHealthSink : IHealthTransitionSink
+    {
+        public ServiceHealthState? LastState { get; private set; }
+        public Task RecordAsync(HealthTransition transition, System.Data.Common.DbConnection connection,
+            System.Data.Common.DbTransaction transaction, CancellationToken token)
+        {
+            LastState = transition.State;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FailingHealthSink : IHealthTransitionSink
+    {
+        public Task RecordAsync(HealthTransition transition, System.Data.Common.DbConnection connection,
+            System.Data.Common.DbTransaction transaction, CancellationToken token) => throw new InvalidOperationException("Simulated failure");
+    }
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task RunOnce_ProbesAllowedEndpointAndSavesObservation() =>
@@ -429,7 +554,8 @@ public sealed class HealthRunnerTests(TestContext context)
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
-            var store = new HealthStore(factory);
+            var sink = new RecordingHealthSink();
+            var store = new HealthStore(factory, [sink]);
             var observedAt = (await store.NowAsync(token)).AddSeconds(-100);
             await using (var db = new ServiceObservabilityDbContext(options))
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthStateIntervals] SET [StartedAt] = {observedAt.AddSeconds(-10)} WHERE [TargetId] = {targetId}", token);
@@ -447,6 +573,7 @@ public sealed class HealthRunnerTests(TestContext context)
             Assert.AreEqual(observedAt.AddSeconds(65), intervals[1].EndedAt);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, intervals[2].State);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, (await verify.HealthSchedules.SingleAsync(token)).State);
+            Assert.IsNull(sink.LastState);
         }, context.CancellationToken);
 
     [TestMethod]

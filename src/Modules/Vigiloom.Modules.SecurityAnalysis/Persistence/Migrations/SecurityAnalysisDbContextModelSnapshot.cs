@@ -2516,6 +2516,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasColumnType("varchar(128)")
                         .UseCollation("Latin1_General_100_BIN2");
 
+                    b.Property<bool>("AlertOpen")
+                        .HasColumnType("bit");
+
                     b.Property<int>("CurrentState")
                         .HasColumnType("int");
 
