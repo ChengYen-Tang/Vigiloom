@@ -1,0 +1,122 @@
+@using Vigiloom.Contracts.Agent.Baseline
+@using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Modules.SecurityAnalysis.Application.Baseline
+@inject BaselineQuery Query
+@inject ILogger<BaselinePanel> Logger
+
+<section class="baseline-panel" aria-labelledby="baseline-title">
+    <h2 id="baseline-title">安全設定基準</h2>
+    <p class="baseline-intro">唯讀檢查已選用的安全設定，不會自動修改設備；檢查結果不代表設備沒有其他風險。</p>
+    @if (error)
+    {
+        <p class="baseline-error" role="alert">無法載入基準檢查結果，請稍後重新整理。</p>
+    }
+    else if (view is null)
+    {
+        <p>目前沒有基準檢查資料。</p>
+    }
+    else
+    {
+        <p class="baseline-meta">檢查間隔與盤點設定相同：@view.ScanIntervalSeconds 秒。@if (view.AgentId is null) { <span>此設備尚無可用 Agent。</span> }</p>
+        <p class="baseline-scroll-hint">左右滑動查看完整檢查資訊。</p>
+        <div class="baseline-table" tabindex="0" role="region" aria-label="基準檢查，可左右捲動">
+            <table>
+                <thead><tr><th scope="col">檢查項目</th><th scope="col">狀態</th><th scope="col">上次檢查（UTC）</th><th scope="col">目前選用版本</th></tr></thead>
+                <tbody>
+                @foreach (var check in view.Checks)
+                {
+                    <tr>
+                        <td>
+                            <strong>@Title(check)</strong><div class="baseline-detail">@Source(check) · @check.CheckId</div>
+                            @if (check.Latest is { } latest)
+                            {
+                                <details><summary>查看最近紀錄</summary>
+                                    <p>結果：@Outcome(latest.Outcome)@if (!latest.Current) { <span>（非目前有效結果）</span> }</p>
+                                    <p>作業系統：@latest.OperatingSystem</p>
+                                    @if (!string.IsNullOrWhiteSpace(latest.Evidence)) { <p>@latest.Evidence</p> }
+                                    <p>預期：@Expected(check)</p>
+                                    @if (latest.Outcome == BaselineOutcome.Fail) { <p>建議：@Guidance(check)</p> }
+                                    <p>來源版本 ID：@latest.RevisionId</p>
+                                </details>
+                            }
+                        </td>
+                        <td><span class="baseline-status @StatusClass(check)">@Status(check, view.AgentId)</span></td>
+                        <td>@(check.Latest?.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無紀錄")</td>
+                        <td>@if (check.UpstreamVersion is { } version) { <span title="@version">@ShortVersion(version)</span> } else { <span>—</span> }</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid DeviceId { get; set; }
+    private DeviceBaselineView? view;
+    private bool error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        error = false;
+        try { view = await Query.GetAsync(DeviceId, CancellationToken.None); }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            Logger.LogWarning("Unable to load baseline results: {ErrorType}.", ex.GetType().Name);
+            error = true;
+        }
+    }
+
+    private static string Title(BaselineCheckView check) => check.SourceKey switch
+    {
+        BaselineSources.LinuxShadow => "密碼檔案權限",
+        BaselineSources.WindowsNetworkSelection => "登入畫面網路選擇",
+        _ => check.Title
+    };
+
+    private static string Source(BaselineCheckView check) => check.SourceKey switch
+    {
+        BaselineSources.LinuxShadow => "ComplianceAsCode",
+        BaselineSources.WindowsNetworkSelection => "PowerSTIG",
+        _ => check.SourceKey
+    };
+
+    private static string ShortVersion(string value) => value.Length > 12 ? value[..12] : value;
+
+    private static string Expected(BaselineCheckView check) => check.SourceKey switch
+    {
+        BaselineSources.LinuxShadow => "/etc/shadow 為一般檔案，權限不寬於 0640，且沒有額外 ACL。",
+        BaselineSources.WindowsNetworkSelection => "64 位元登錄檢視中的 DontDisplayNetworkSelectionUI 為 DWORD 1。",
+        _ => "請參考此檢查的來源文件。"
+    };
+
+    private static string Guidance(BaselineCheckView check) => check.SourceKey switch
+    {
+        BaselineSources.LinuxShadow => "請由主機管理員檢查檔案權限與 ACL，確認影響後依組織政策調整。",
+        BaselineSources.WindowsNetworkSelection => "請由主機管理員檢查登入畫面網路選擇的群組原則設定。",
+        _ => "請由主機管理員參考來源文件檢查設定。"
+    };
+
+    private static string Status(BaselineCheckView check, Guid? agentId)
+    {
+        if (agentId is null) return "尚無 Agent";
+        if (check.SourceAvailability != BaselineSourceAvailability.Ready) return check.SourceAvailability switch
+        {
+            BaselineSourceAvailability.Disabled => "來源未啟用",
+            BaselineSourceAvailability.NoActiveRevision => "來源尚未發布",
+            BaselineSourceAvailability.Stale => "來源已過期",
+            _ => "來源無法使用"
+        };
+        if (check.Latest is null) return "尚未評估";
+        return check.Latest.Current ? Outcome(check.Latest.Outcome) : "結果過期或版本已變更";
+    }
+
+    private static string StatusClass(BaselineCheckView check) => check.Latest is { Current: true } latest && check.SourceAvailability == BaselineSourceAvailability.Ready
+        ? latest.Outcome switch { BaselineOutcome.Pass => "pass", BaselineOutcome.Fail => "fail", _ => "neutral" } : "neutral";
+
+    private static string Outcome(BaselineOutcome outcome) => outcome switch
+    {
+        BaselineOutcome.Pass => "通過", BaselineOutcome.Fail => "未通過", BaselineOutcome.NotApplicable => "不適用",
+        BaselineOutcome.PermissionDenied => "權限不足", BaselineOutcome.Error => "檢查錯誤", _ => "無法判斷"
+    };
+}

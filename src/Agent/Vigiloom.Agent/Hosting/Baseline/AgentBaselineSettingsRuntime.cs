@@ -11,6 +11,7 @@ internal sealed class AgentBaselineSettingsRuntime
     private AgentSettingsOwner? owner;
     private AgentSavedBaselineSettings? saved;
     private AgentConfigurationFailure? failure;
+    private bool unsupported;
 
     public void Bind(AgentSettingsOwner? value)
     {
@@ -20,6 +21,7 @@ internal sealed class AgentBaselineSettingsRuntime
             owner = value;
             saved = null;
             failure = null;
+            unsupported = false;
         }
     }
 
@@ -37,6 +39,7 @@ internal sealed class AgentBaselineSettingsRuntime
             if (!Matches(value, policy)) return;
             saved = policy;
             failure = null;
+            unsupported = false;
         }
     }
 
@@ -47,7 +50,12 @@ internal sealed class AgentBaselineSettingsRuntime
 
     public AgentSavedBaselineSettings? ForOwner(AgentSettingsOwner value)
     {
-        lock (gate) return owner == value && failure != AgentConfigurationFailure.Unauthorized ? saved : null;
+        lock (gate) return owner == value && !unsupported && failure != AgentConfigurationFailure.Unauthorized ? saved : null;
+    }
+
+    public void MarkUnsupported(AgentSettingsOwner? value)
+    {
+        lock (gate) if (owner == value) { unsupported = true; failure = AgentConfigurationFailure.Unavailable; }
     }
 
     private bool Matches(AgentSettingsOwner? value, AgentSavedBaselineSettings policy) => value is not null && owner == value &&

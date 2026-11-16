@@ -6,7 +6,14 @@ using Vigiloom.Contracts.Intelligence;
 namespace Vigiloom.Contracts.Agent.Baseline;
 
 /// <summary>Identifies the published source revision used for one reviewed check.</summary>
-public sealed record BaselineSelection(Guid SourceId, Guid RevisionId, string ActivationVersion, BaselineCheck Check);
+public sealed record BaselineSelection(Guid SourceId, Guid RevisionId, string ActivationVersion, BaselineCheck Check)
+{
+    public static bool IsActivationVersionValid(string? value)
+    {
+        Span<byte> bytes = stackalloc byte[8];
+        return value is { Length: <= 64 } && Convert.TryFromBase64String(value, bytes, out var written) && written == bytes.Length;
+    }
+}
 
 /// <summary>Versioned policy sent to an authenticated Agent.</summary>
 public sealed record BaselineSettingsSnapshot(int SchemaVersion, string Revision, int ScanIntervalSeconds,
@@ -32,7 +39,7 @@ public sealed record BaselineSettingsSnapshot(int SchemaVersion, string Revision
         foreach (var selection in Checks)
         {
             if (selection is null || selection.SourceId.Version != 7 || selection.RevisionId.Version != 7 ||
-                !Text(selection.ActivationVersion, 64) || selection.Check is not { } check || !Text(check.Id, 128) ||
+                !BaselineSelection.IsActivationVersionValid(selection.ActivationVersion) || selection.Check is not { } check || !Text(check.Id, 128) ||
                 !Text(check.Title, 256) || !Text(check.Platform, 32) || !Text(check.Operation, 128) ||
                 !Text(check.Target, 1024) || !Text(check.Expected, 256) || !Text(check.SourceUrl, 2048) ||
                 !Text(check.License, 256) || check.Versions is not { Length: > 0 and <= 32 } ||

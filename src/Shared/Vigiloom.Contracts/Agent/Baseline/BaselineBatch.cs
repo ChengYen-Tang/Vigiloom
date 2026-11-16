@@ -45,7 +45,7 @@ public static class BaselineBatchCodec
         batch is { SchemaVersion: SchemaVersion, Items.Count: > 0 and <= MaximumResults } &&
         batch.BatchId.Version == 7 && batch.EnqueuedAt != default && batch.EnqueuedAt.Offset == TimeSpan.Zero &&
         batch.Items.All(item => item is not null && item.SourceId.Version == 7 && item.RevisionId.Version == 7 &&
-            Text(item.ActivationVersion, 64) && Text(item.CheckId, 128) && Text(item.OperatingSystem, 128) &&
+            BaselineSelection.IsActivationVersionValid(item.ActivationVersion) && Text(item.CheckId, 128) && Text(item.OperatingSystem, 128) &&
             item.ObservedAt != default && item.ObservedAt.Offset == TimeSpan.Zero && Enum.IsDefined(item.Outcome) &&
             (item.Evidence is null || item.Evidence.Length <= 512 && !item.Evidence.Any(char.IsControl)));
 

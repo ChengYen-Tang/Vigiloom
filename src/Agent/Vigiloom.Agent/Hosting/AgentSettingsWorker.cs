@@ -226,6 +226,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         var result = await baselineClient.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
                         if (result.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) baseline.Bind(null);
+                        else if (result.Status == AgentSettingsSyncStatus.Unsupported) baseline.MarkUnsupported(owner);
                         else if (result.Settings is not null) baseline.Publish(owner, result.Settings);
                         else
                         {

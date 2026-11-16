@@ -90,7 +90,7 @@
         else if (inventoryCurrent is null) { <p role="alert">找不到此設備。</p> }
         else
         {
-            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點。</p>
+            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點；安全基準檢查也使用此間隔。</p>
             @if (inventoryMessage is not null) { <p class="agent-settings-status" role="status">@inventoryMessage</p> }
             <EditForm Model="InventoryInput" FormName="agent-inventory" method="post" OnSubmit="SaveInventoryAsync">
                 <DataAnnotationsValidator /><ValidationSummary />

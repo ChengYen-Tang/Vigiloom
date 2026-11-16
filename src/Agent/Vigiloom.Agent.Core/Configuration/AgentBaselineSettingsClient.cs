@@ -37,6 +37,7 @@ public sealed class AgentBaselineSettingsClient(HttpClient http, TimeProvider cl
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{id:D}.{identity.MachineSecret}");
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) return new(AgentSettingsSyncStatus.Unauthorized);
+            if (response.StatusCode == HttpStatusCode.NotFound) return new(AgentSettingsSyncStatus.Unsupported);
             if (response.StatusCode != HttpStatusCode.OK) return new(AgentSettingsSyncStatus.Unavailable);
             await response.Content.LoadIntoBufferAsync(MaximumResponseBytes, timeout.Token);
             var snapshot = await response.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: timeout.Token);

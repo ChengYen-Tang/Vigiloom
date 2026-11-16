@@ -51,6 +51,9 @@ public sealed class IdentityVault(string directory)
     /// <summary>Allow one producer to sequence integrity generations for this Agent.</summary>
     public IAsyncDisposable AcquireIntegrityOwnership() => AcquireWorkerOwnership("integrity.lock");
 
+    /// <summary>Allow one baseline producer for an Agent state directory.</summary>
+    public IAsyncDisposable AcquireBaselineOwnership() => AcquireWorkerOwnership("baseline.lock");
+
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
 

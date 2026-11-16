@@ -27,15 +27,15 @@ internal static class BaselineDefinitions
             $"https://raw.githubusercontent.com/ComplianceAsCode/content/{LinuxCommit}/{LinuxPath}",
             "cb9219e6304fe195c0b95333a73fc0740b365649149563b1f8cd92276791e048",
             $"ComplianceAsCode BSD-3-Clause; ComplianceAsCode/content@{LinuxCommit}",
-            new("file_permissions_etc_shadow", "/etc/shadow permissions", "linux", ["ubuntu:22.04", "ubuntu:24.04", "debian:12"],
-                "file-permissions-no-extended-acl", "/etc/shadow", "0640-or-stricter",
+            new(BaselineSources.LinuxShadowCheck, "/etc/shadow permissions", "linux", ["ubuntu:22.04", "ubuntu:24.04", "debian:12"],
+                BaselineSources.LinuxShadowOperation, BaselineSources.LinuxShadowTarget, "0640-or-stricter",
                 $"https://github.com/ComplianceAsCode/content/blob/{LinuxCommit}/{LinuxPath}", "BSD-3-Clause")),
         new(BaselineSources.WindowsNetworkSelection, "PowerSTIG network selection", WindowsCommit,
             $"https://raw.githubusercontent.com/microsoft/PowerStig/{WindowsCommit}/{WindowsPath}",
             "f1674431abe94c25969c4bb10db5ace83ede126a0ff6e57e6d060c911eac7c36",
             $"Microsoft PowerSTIG MIT; originating DISA STIG; microsoft/PowerStig@{WindowsCommit}",
-            new("V-254348", "Network selection UI", "windows", ["server:2022:member"],
-                "registry-dword-64", @"HKLM\SOFTWARE\Policies\Microsoft\Windows\System\DontDisplayNetworkSelectionUI", "1",
+            new(BaselineSources.WindowsNetworkSelectionCheck, "Network selection UI", "windows", ["server:2022:member"],
+                BaselineSources.WindowsRegistryOperation, BaselineSources.WindowsNetworkSelectionTarget, "1",
                 $"https://github.com/microsoft/PowerStig/blob/{WindowsCommit}/{WindowsPath}", "MIT"))
     ];
 
