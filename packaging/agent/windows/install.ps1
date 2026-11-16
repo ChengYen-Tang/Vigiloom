@@ -150,8 +150,20 @@ $updaterCreated = $false
 $programCreated = $false
 $stateCreated = $false
 $activated = $false
+$createdEventSources = [Collections.Generic.List[string]]::new()
 try {
     [Vigiloom.Setup.Native]::EnableRestorePrivilege()
+    # The low-privilege Agent cannot register its own Windows event source.
+    foreach ($source in @('Vigiloom.Agent', 'Vigiloom.Updater')) {
+        if ([Diagnostics.EventLog]::SourceExists($source)) {
+            if ([Diagnostics.EventLog]::LogNameFromSourceName($source, '.') -ne 'Application') {
+                throw "Windows event source $source is already registered to a different log."
+            }
+        } else {
+            [Diagnostics.EventLog]::CreateEventSource($source, 'Application')
+            $createdEventSources.Add($source)
+        }
+    }
     [Vigiloom.Setup.Native]::Create($agentName, ('"' + (Join-Path $agentRoot 'Vigiloom.Agent.exe') + '"'), 'NT SERVICE\Vigiloom Agent', $true)
     $agentCreated = $true
     [Vigiloom.Setup.Native]::Create($updaterName, ('"' + (Join-Path $updaterRoot 'Vigiloom.Updater.exe') + '"'), $null, $false)
@@ -201,6 +213,10 @@ catch {
         if ($agentCreated) { [Vigiloom.Setup.Native]::Delete($agentName) }
         if ($programCreated) { Remove-Item -LiteralPath $programRoot -Recurse -Force }
         if ($stateCreated) { Remove-Item -LiteralPath $stateRoot -Recurse -Force }
+        foreach ($source in $createdEventSources) {
+            try { [Diagnostics.EventLog]::DeleteEventSource($source) }
+            catch { Write-Warning "Could not remove newly created event source $source." }
+        }
         Write-Warning 'Installation failed before Agent startup; newly created installation files were removed.'
     }
     throw
