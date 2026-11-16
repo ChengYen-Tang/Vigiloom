@@ -22,7 +22,7 @@
             <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
             <li>行為規則：保存 Sigma 原始規則；支援的規則可在<a href="/settings/sigma">行為規則</a>試跑及啟用。</li>
             <li>IOC／YARA：保存來源檔案與 IOC 分類；比對、執行及發布尚未啟用。</li>
-            <li>安全設定基準（SCA）：尚無已核實並可發布的基準來源。</li>
+            <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；設備端的實際檢查尚未接入。</li>
         </ul>
         <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
     </section>
@@ -123,12 +123,13 @@
                                 @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? "下載未完成" : selected.Key == "msrc-cvrf" && !revision.Normalized ? "已下載，尚未支援比對" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
-                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base"))
+                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base" or "compliance-as-code-shadow" or "powerstig-network-selection"))
                             { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
                             @if (selected.Key == "sigmahq-rules") { <p>僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。</p> }
                             @if (selected.Key == "signature-base") { <p>僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。</p> }
+                            @if (selected.Key is "compliance-as-code-shadow" or "powerstig-network-selection") { <p>僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。</p> }
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
                                 <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
