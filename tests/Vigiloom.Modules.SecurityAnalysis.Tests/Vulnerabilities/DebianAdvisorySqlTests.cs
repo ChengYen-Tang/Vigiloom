@@ -83,7 +83,8 @@ public sealed class DebianAdvisorySqlTests(TestContext context)
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
                 .UseSqlServer(database.ConnectionString, sql => sql.UseCompatibilityLevel(150)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
-            var lease = await IntelligenceRefreshLease.TryAcquireAsync(new TestFactory(options), Guid.CreateVersion7(), token);
+            var sourceId = Guid.CreateVersion7();
+            var lease = await IntelligenceRefreshLease.TryAcquireAsync(new TestFactory(options), sourceId, token);
             Assert.IsNotNull(lease);
             try
             {
@@ -98,6 +99,9 @@ public sealed class DebianAdvisorySqlTests(TestContext context)
                 Assert.IsFalse(await lease.VerifyHeldAsync(token));
             }
             finally { await lease.DisposeAsync(); }
+            await using var replacement = await IntelligenceRefreshLease.TryAcquireAsync(new TestFactory(options), sourceId, token);
+            Assert.IsNotNull(replacement);
+            Assert.IsTrue(await replacement.VerifyHeldAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

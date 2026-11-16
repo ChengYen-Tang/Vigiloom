@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -14,7 +15,8 @@ internal sealed record HealthWork(HealthLease Lease, Guid SourceId, Guid Service
 internal sealed record HealthNetworkSnapshot(Guid Id, long Generation, byte[] Version, IReadOnlyList<string> Networks, long TransportGeneration = 0);
 
 /// <summary>Claims bounded work and fences result writes against current authorization and settings.</summary>
-internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContext> contexts,
+    IEnumerable<IHealthTransitionSink>? transitionSinks = null)
 {
     internal async Task<HealthNetworkSnapshot?> NetworkAsync(CancellationToken token)
     {
@@ -177,7 +179,15 @@ internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContex
         if (schedule is null) return false;
         var receivedAt = await DiscoveryTransaction.NowAsync(db, token);
         if (observedAt > receivedAt) observedAt = receivedAt;
+        var previousState = schedule.State;
         if (!await ApplyEvaluationAsync(db, schedule, work, network, kind, observedAt, receivedAt, token)) return false;
+        if (transitionSinks is not null && previousState != schedule.State)
+        {
+            var transition = new HealthTransition(work.Lease.TargetId, work.ServiceId, work.InstanceId, work.Lease.Generation,
+                (ServiceHealthState)schedule.State, observedAt, service.DisplayName, service.Environment);
+            foreach (var sink in transitionSinks)
+                await sink.RecordAsync(transition, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+        }
         db.HealthObservations.Add(new HealthObservation(lease.TargetId, lease.Generation, network.Generation,
             work.SourceVersion, work.ServiceVersion, work.InstanceVersion, work.TargetVersion, network.Version, kind, observedAt, receivedAt));
         await db.SaveChangesAsync(token);

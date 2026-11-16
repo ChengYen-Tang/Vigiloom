@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection.Correlation;
 
 /// <summary>Persists correlation state and results inside the caller's fenced Outbox transaction.</summary>
-internal sealed class CorrelationDispatch(IHostLogReader logs)
+internal sealed class CorrelationDispatch(IHostLogReader logs, INotificationWriter? notifications = null)
 {
     internal async Task HandleAsync(SecurityAnalysisDbContext db, SigmaCorrelationEntry rule, SigmaEnabledRuleVersion version,
         HostLogDispatch dispatch, IReadOnlyList<HostLogEntry> incoming, DateTimeOffset now, CancellationToken token)
@@ -36,6 +38,7 @@ internal sealed class CorrelationDispatch(IHostLogReader logs)
         }
 
         var existing = new Dictionary<(Guid Agent, Guid Message), SigmaDetectionResult>();
+        var pendingNotifications = new List<NotificationRequest>();
         foreach (var group in observations.GroupBy(x => x.Event.AgentId))
         {
             foreach (var chunk in group.Select(x => x.Event.MessageId).Chunk(AgentLogBatchCodec.MaximumItems))
@@ -60,6 +63,8 @@ internal sealed class CorrelationDispatch(IHostLogReader logs)
                     previous.CorrelationCount = observation.Match!.Count;
                     previous.CorrelationFirstAt = observation.Match.FirstEventAt;
                     previous.CorrelationLastAt = observation.Match.LastEventAt;
+                    if (notifications is not null)
+                        pendingNotifications.Add(SigmaNotification.Create(previous.DeviceId, log, rule.Source, version));
                 }
                 continue;
             }
@@ -69,8 +74,13 @@ internal sealed class CorrelationDispatch(IHostLogReader logs)
                 ActivationVersion = version.Version, Result = (int)observation.Result, OccurredAt = log.OccurredAt,
                 ReceivedAt = log.ReceivedAt, EvaluatedAt = now, CorrelationCount = observation.Match?.Count,
                 CorrelationFirstAt = observation.Match?.FirstEventAt, CorrelationLastAt = observation.Match?.LastEventAt });
+            if (notifications is not null && observation.Result == SigmaMatch.Yes)
+                pendingNotifications.Add(SigmaNotification.Create(device.Device, log, rule.Source, version));
         }
         await db.SaveChangesAsync(token);
+        if (notifications is not null && pendingNotifications.Count != 0)
+            foreach (var batch in pendingNotifications.Chunk(200))
+                await notifications.WriteBatchAsync(batch, db.Database.GetDbConnection(), db.Database.CurrentTransaction!.GetDbTransaction(), token);
         db.ChangeTracker.Clear();
     }
 }

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Infrastructure.Persistence;
 
 namespace Vigiloom.Modules.Resources.Application;
 
@@ -41,6 +42,22 @@ public sealed class DevicePingSource(IDbContextFactory<ResourcesDbContext> conte
         Add(command, "@version", DbType.Binary, version);
         Add(command, "@target", DbType.String, target);
         return Convert.ToInt32(await command.ExecuteScalarAsync(token)) == 1;
+    }
+
+    public async Task<PingDeviceContext> GetContextAsync(Guid id, DbConnection connection, DbTransaction transaction, CancellationToken token)
+    {
+        var options = new DbContextOptionsBuilder<ResourcesDbContext>()
+            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                .MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        await using var db = new ResourcesDbContext(options);
+        await db.Database.UseTransactionAsync(transaction, token);
+        var name = await db.Devices.AsNoTracking().Where(x => x.Id == id).Select(x => x.Name).SingleAsync(token);
+        var groups = await (from member in db.DeviceGroups.AsNoTracking()
+                            join item in db.Groups.AsNoTracking() on member.GroupId equals item.Id
+                            where member.DeviceId == id
+                            orderby item.Name
+                            select new ResourceGroupSnapshot(item.Id, item.Name)).ToArrayAsync(token);
+        return new(name, groups);
     }
 
     private static void Add(DbCommand command, string name, DbType type, object value)
