@@ -42,6 +42,7 @@
         @if (device.DeepMonitoring)
         {
             <Vigiloom.Web.Client.Components.HostMonitoring.HostDetails DeviceId="Id" @rendermode="InteractiveAuto" />
+            <BaselinePanel DeviceId="Id" />
             <section class="device-panel">
                 <h2>Agent 本機傳送佇列</h2>
                 @if (capacityError) { <p class="device-alert" role="alert">無法讀取佇列容量設定狀態。</p> }

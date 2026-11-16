@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Time.Testing;
+using System.Text.Json;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
@@ -13,6 +15,117 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentBatchClientTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task Sender_RestoresValidBaselineQuarantinedByOlderAgent()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBaselineUpgradeTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", "check", now, "ubuntu:24.04", BaselineOutcome.Pass, null)]);
+            var bytes = BaselineBatchCodec.Serialize(batch);
+            var mismatch = Guid.CreateVersion7();
+            var rejected = Guid.CreateVersion7();
+            var rejectedBytes = BaselineBatchCodec.Serialize(batch with { BatchId = rejected });
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, 1, bytes, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(mismatch, now, 1, bytes, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(rejected, now, 1, rejectedBytes, token));
+            Assert.IsTrue(await queue.QuarantineAsync(batch.BatchId, QueueRejection.InvalidLocalBatch, token));
+            Assert.IsTrue(await queue.QuarantineAsync(mismatch, QueueRejection.InvalidLocalBatch, token));
+            Assert.IsTrue(await queue.QuarantineAsync(rejected, QueueRejection.BadRequest, token));
+            var handler = new BaselineCompatibilityHandler { SupportsBaseline = true };
+            using var http = new HttpClient(handler);
+            var sender = new AgentBatchClient(http, TimeProvider.System);
+            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            CollectionAssert.AreEqual(bytes, handler.LastBaseline!);
+            Assert.AreEqual(2L, (await queue.GetStatusAsync(token)).QuarantinedBatches);
+            Assert.AreEqual(BatchSendResult.NoPendingBatch, (await sender.SendNextAsync(vault, server, token)).Status);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Sender_DefersUnsupportedBaselineWithoutBlockingOtherBatches()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBaselineDeferralTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var clock = new FakeTimeProvider();
+            var now = clock.GetUtcNow();
+            var baseline = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", "check", now, "ubuntu:24.04", BaselineOutcome.Pass, null)]);
+            var bytes = BaselineBatchCodec.Serialize(baseline);
+            var metric = new AgentMetricBatch(AgentMetricBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "host", null, 1024)]);
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(baseline.BatchId, now, 1, bytes, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(metric.BatchId, now, 1, AgentMetricBatchCodec.Serialize(metric), token));
+            var handler = new BaselineCompatibilityHandler();
+            using var http = new HttpClient(handler);
+            var client = new AgentBatchClient(http, clock);
+
+            Assert.AreEqual(BatchSendResult.Retry, (await client.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Delivered, (await client.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Deferred, (await client.SendNextAsync(vault, server, token)).Status);
+            CollectionAssert.AreEqual(bytes, (await queue.PeekAsync(token))!.Payload);
+            Assert.AreEqual(1, (await queue.GetStatusAsync(token)).TotalBatches);
+            handler.SupportsBaseline = true;
+            clock.Advance(TimeSpan.FromMinutes(5));
+            Assert.AreEqual(BatchSendResult.Delivered, (await client.SendNextAsync(vault, server, token)).Status);
+            Assert.IsNull(await queue.PeekAsync(token));
+            CollectionAssert.AreEqual(bytes, handler.LastBaseline!);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class BaselineCompatibilityHandler : HttpMessageHandler
+    {
+        public bool SupportsBaseline { get; set; }
+        public byte[]? LastBaseline { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var bytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            using var json = JsonDocument.Parse(bytes);
+            var schema = json.RootElement.GetProperty("schemaVersion").GetInt32();
+            if (schema == BaselineBatchCodec.SchemaVersion)
+            {
+                LastBaseline = bytes;
+                if (!SupportsBaseline) return new(HttpStatusCode.BadRequest);
+            }
+            return new(HttpStatusCode.NoContent);
+        }
+    }
 
     [TestMethod]
     public async Task Sender_BaselineBatchWaitsForCompatibleServerAndKeepsBytes()
@@ -30,7 +143,7 @@ public sealed class AgentBatchClientTests
                     MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
             var now = DateTimeOffset.UtcNow;
             var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
-                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), "AQID", "check", now, "ubuntu:24.04", BaselineOutcome.Pass, null)]);
+                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", "check", now, "ubuntu:24.04", BaselineOutcome.Pass, null)]);
             var bytes = BaselineBatchCodec.Serialize(batch);
             var queue = new DurableBatchQueue(vault, id);
             Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, batch.Items.Count, bytes, token));

@@ -3,6 +3,8 @@ using System.Security;
 using Microsoft.Win32;
 using Vigiloom.Agent.Core.Baseline;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Agent.Core.Inventory;
+using Vigiloom.Agent.Platforms.Windows.Inventory;
 
 namespace Vigiloom.Agent.Platforms.Windows.Baseline;
 
@@ -13,7 +15,18 @@ public static class NetworkSelection
     private const string Path = @"SOFTWARE\Policies\Microsoft\Windows\System";
     private const string ValueName = "DontDisplayNetworkSelectionUI";
 
-    public static BaselineObservation Read(int? build, string? installationType, int? domainRole)
+    public static (string OperatingSystem, BaselineObservation Result) ReadCurrent(CancellationToken token)
+    {
+        var release = WindowsReleaseReader.Read(token);
+        if (release.Status == InventoryReadStatus.PermissionDenied) return ("windows:unknown", new(BaselineOutcome.PermissionDenied));
+        var details = release.Items.FirstOrDefault();
+        if (details is null) return ("windows:unknown", new(BaselineOutcome.Unknown));
+        var role = MachineRole.Read();
+        if (role.PermissionDenied) return ($"windows:{details.Build}", new(BaselineOutcome.PermissionDenied));
+        return ($"windows:{details.Build}", Read(details.Build, details.InstallationType, role.Role));
+    }
+
+    internal static BaselineObservation Read(int? build, string? installationType, int? domainRole)
     {
         if (build is null || installationType is null || domainRole is null) return new(BaselineOutcome.Unknown);
         if (build != 20348 || !installationType.Contains("Server", StringComparison.OrdinalIgnoreCase) || domainRole != 3)

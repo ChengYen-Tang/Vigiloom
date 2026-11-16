@@ -48,6 +48,7 @@ public static class AgentHost
         builder.Services.AddHostedService<LogWorker>();
         builder.Services.AddHostedService<InventoryWorker>();
         builder.Services.AddHostedService<Vigiloom.Agent.Hosting.Integrity.IntegrityWorker>();
+        builder.Services.AddHostedService<Vigiloom.Agent.Hosting.Baseline.BaselineWorker>();
         return builder;
     }
 

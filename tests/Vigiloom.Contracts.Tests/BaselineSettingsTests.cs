@@ -11,8 +11,8 @@ public sealed class BaselineSettingsTests
     {
         var check = new BaselineCheck("shadow", "Shadow permissions", "linux", ["ubuntu:24.04"],
             "file-permissions-no-extended-acl", "/etc/shadow", "0640-or-stricter", "https://example.test/rule", "BSD-3-Clause");
-        var first = new BaselineSelection(Guid.CreateVersion7(), Guid.CreateVersion7(), "AQID", check);
-        var second = new BaselineSelection(Guid.CreateVersion7(), Guid.CreateVersion7(), "AQID", check with { Id = "other" });
+        var first = new BaselineSelection(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", check);
+        var second = new BaselineSelection(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", check with { Id = "other" });
         var original = BaselineSettingsSnapshot.Create(21600, [first, second]);
         var reordered = BaselineSettingsSnapshot.Create(21600, [second, first]);
         var updated = BaselineSettingsSnapshot.Create(21600, [first with { RevisionId = Guid.CreateVersion7() }, second]);

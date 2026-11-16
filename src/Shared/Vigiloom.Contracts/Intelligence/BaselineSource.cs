@@ -4,6 +4,12 @@ public static class BaselineSources
 {
     public const string LinuxShadow = "compliance-as-code-shadow";
     public const string WindowsNetworkSelection = "powerstig-network-selection";
+    public const string LinuxShadowCheck = "file_permissions_etc_shadow";
+    public const string WindowsNetworkSelectionCheck = "V-254348";
+    public const string LinuxShadowOperation = "file-permissions-no-extended-acl";
+    public const string WindowsRegistryOperation = "registry-dword-64";
+    public const string LinuxShadowTarget = "/etc/shadow";
+    public const string WindowsNetworkSelectionTarget = @"HKLM\SOFTWARE\Policies\Microsoft\Windows\System\DontDisplayNetworkSelectionUI";
 }
 
 /// <summary>A reviewed, read-only baseline check selected by the central platform.</summary>

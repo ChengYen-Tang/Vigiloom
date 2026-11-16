@@ -193,9 +193,8 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
                 };
         }
 
-        if (baseline is not null)
-            await baselineWriter!.WriteAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
-                agent.Id, agent.DeviceId, agent.DeviceGeneration, baseline, policyTime, token);
+        if (baseline is not null && !await baselineWriter!.WriteAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                agent.Id, agent.DeviceId, agent.DeviceGeneration, baseline, policyTime, token)) return BatchReceiptStatus.Invalid;
 
         var receivedAt = clock.GetUtcNow();
         agent.AdvanceReplayClock(policyTime);

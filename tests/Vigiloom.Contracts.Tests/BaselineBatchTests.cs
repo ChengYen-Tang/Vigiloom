@@ -12,7 +12,7 @@ public sealed class BaselineBatchTests
         var sourceId = Guid.CreateVersion7();
         var revisionId = Guid.CreateVersion7();
         var items = Enum.GetValues<BaselineOutcome>().Select(outcome =>
-            new BaselineResult(sourceId, revisionId, "AQID", $"check-{outcome}", now, "ubuntu:24.04", outcome, null)).ToArray();
+            new BaselineResult(sourceId, revisionId, "AAAAAAAAAAA=", $"check-{outcome}", now, "ubuntu:24.04", outcome, null)).ToArray();
         var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, items);
 
         Assert.IsTrue(BaselineBatchCodec.TryRead(BaselineBatchCodec.Serialize(batch), out var decoded));
@@ -25,7 +25,7 @@ public sealed class BaselineBatchTests
     public void Serialize_RejectsInvalidOutcomeAndOversizedEvidence()
     {
         var now = DateTimeOffset.UtcNow;
-        var item = new BaselineResult(Guid.CreateVersion7(), Guid.CreateVersion7(), "AQID", "check", now,
+        var item = new BaselineResult(Guid.CreateVersion7(), Guid.CreateVersion7(), "AAAAAAAAAAA=", "check", now,
             "ubuntu:24.04", BaselineOutcome.Pass, null);
         var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, [item]);
 
