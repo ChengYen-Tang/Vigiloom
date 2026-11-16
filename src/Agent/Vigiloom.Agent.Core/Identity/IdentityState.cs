@@ -22,3 +22,4 @@ public sealed record AgentSavedMetricSettings(Vigiloom.Contracts.Agent.AgentMetr
 public sealed record AgentSavedInventorySettings(Vigiloom.Contracts.Agent.Inventory.InventorySettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);
 public sealed record AgentSavedLogSettings(Vigiloom.Contracts.Agent.AgentLogSettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);
 public sealed record AgentSavedIntegritySettings(Vigiloom.Contracts.Agent.Integrity.IntegritySettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);
+public sealed record AgentSavedBaselineSettings(Vigiloom.Contracts.Agent.Baseline.BaselineSettingsSnapshot Snapshot, DateTimeOffset SavedAt, Guid SaveToken, Guid AgentId, string Server);

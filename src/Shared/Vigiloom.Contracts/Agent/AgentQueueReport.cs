@@ -12,17 +12,29 @@ public sealed record AgentHeartbeatReport([property: JsonRequired] int Version, 
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentMetricLossReport? MetricLoss = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AgentLogStatusReport? LogStatus = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InventorySettingsReport? InventoryConfiguration = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IntegritySettingsReport? IntegrityConfiguration = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IntegritySettingsReport? IntegrityConfiguration = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BaselineSettingsReport? BaselineConfiguration = null)
 {
     public bool IsValid() => Version == 1 && Epoch.Version == 7 && Sequence >= 1 &&
         (Queue is null || Queue.IsValid()) && (Configuration is null || Configuration.IsValid()) &&
         (Quarantine is null || Queue is not null && Quarantine.IsValid(Queue.QuarantinedBatches)) && (MetricLoss is null || MetricLoss.IsValid()) &&
         (LogStatus is null || LogStatus.IsValid()) && (InventoryConfiguration is null || InventoryConfiguration.IsValid()) &&
-        (IntegrityConfiguration is null || IntegrityConfiguration.IsValid()) &&
+        (IntegrityConfiguration is null || IntegrityConfiguration.IsValid()) && (BaselineConfiguration is null || BaselineConfiguration.IsValid()) &&
         (CapacityConfiguration is null || CapacityConfiguration.IsValid() &&
             (CapacityConfiguration.Applied is null || Queue is not null &&
                 Queue.CapacityBytes == CapacityConfiguration.Applied.Capacity.PayloadBytes &&
                 Queue.CapacityBatches == CapacityConfiguration.Applied.Capacity.BatchCount));
+}
+
+/// <summary>The baseline policy actually observed by the worker and its most recent sync failure.</summary>
+public sealed record BaselineSettingsReport([property: JsonRequired] string? AppliedRevision,
+    [property: JsonRequired] DateTimeOffset? AppliedAt, [property: JsonRequired] DateTimeOffset? LastSyncedAt,
+    [property: JsonRequired] AgentConfigurationFailure? Failure)
+{
+    public bool IsValid() => (Failure is null || Enum.IsDefined(Failure.Value)) && (LastSyncedAt is null || LastSyncedAt != default && LastSyncedAt.Value.Offset == TimeSpan.Zero) &&
+        (AppliedRevision is null ? AppliedAt is null : AppliedRevision.Length == 64 &&
+            AppliedRevision.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') &&
+            AppliedAt is { } time && time != default && time.Offset == TimeSpan.Zero);
 }
 
 /// <summary>The integrity policy revision observed by the worker, without transmitting monitored paths.</summary>

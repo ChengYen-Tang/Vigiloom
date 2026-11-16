@@ -5,24 +5,27 @@
 @using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories
+@using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines
 @inject IntelligenceStatus Status
 @inject IntelligencePolicy Policy
 @inject IntelligencePublication Publication
 @inject IntelligenceRevocation Revocation
 @inject AdvisoryCredentials Credentials
 @inject AdvisoryRecovery Recovery
+@inject CustomBaselineStage CustomBaselines
 @inject ILogger<Intelligence> Logger
 
 <PageTitle>情報來源 - Vigiloom</PageTitle>
 <main class="device-page intelligence-page">
     <header class="device-heading"><div><h1>情報來源</h1><p>管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。</p></div></header>
+    <p><a href="/settings/baseline-checks">建立自訂安全基準</a></p>
     <section class="device-panel" aria-labelledby="intelligence-coverage-title">
         <h2 id="intelligence-coverage-title">情報類型與目前範圍</h2>
         <ul>
             <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
             <li>行為規則：保存 Sigma 原始規則；支援的規則可在<a href="/settings/sigma">行為規則</a>試跑及啟用。</li>
             <li>IOC／YARA：保存來源檔案與 IOC 分類；比對、執行及發布尚未啟用。</li>
-            <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；設備端的實際檢查尚未接入。</li>
+            <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。</li>
         </ul>
         <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
     </section>
@@ -51,14 +54,14 @@
                         {
                             <p>@Coverage(selected)</p><p>類別：@Category(selected)</p>
                             <p>適用平台與範圍：@PlatformCoverage(selected)</p>
-                            <p>來源：<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">官方資料來源</a></p>
+                            <p>來源：<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "Vigiloom 自訂檢查" : "官方資料來源")</a></p>
                             <details><summary>查看來源授權依據</summary><p>@description.LicenseEvidence</p></details>
                         }
                         else { <p>無法辨識此來源，無法確認資料範圍或授權。</p> }
                         <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
                         @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。</p> }
                         @if (selected.ActiveVersionOutdated) { <p>目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。</p> }
-                        <p>最後成功更新（UTC）：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
+                        <p>@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "最近儲存草稿（UTC）" : "最後成功更新（UTC）")：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
                         @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">最近更新失敗：@ErrorText(selected.LastError)</p> }
                         @if (progress is not null)
                         {
@@ -78,11 +81,13 @@
                         <details open="@policyOpen"><summary><h2>更新設定</h2></summary>
                         <EditForm Model="PolicyInput" FormName="intelligence-policy" method="post" OnValidSubmit="SavePolicyAsync" OnInvalidSubmit="InvalidPolicy" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                             <input type="hidden" name="PolicyInput.SourceId" value="@PolicyInput.SourceId" /><InputHidden @bind-Value="PolicyInput.Version" />
-                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> 啟用自動更新</label>
+                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "啟用此檢查" : "啟用自動更新")</label>
+                            <div hidden="@selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal)">
                             <label for="interval">更新間隔（秒）</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>例如：3,600 秒是 1 小時。</small>
                             <label for="stale">資料過期期限（秒）</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>例如：86,400 秒是 1 天。</small>
                             <label for="mib">匯入容量上限（MiB）</label><InputNumber id="mib" step="any" @bind-Value="PolicyInput.MiB" />
                             <label for="records">紀錄數上限</label><InputNumber id="records" @bind-Value="PolicyInput.Records" />
+                            </div>
                             <div><button type="submit">儲存設定</button></div>
                         </EditForm>
                         @if (selected.Key == "github-reviewed")
@@ -123,7 +128,24 @@
                                 @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? "下載未完成" : selected.Key == "msrc-cvrf" && !revision.Normalized ? "已下載，尚未支援比對" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td><a href="@RulesUrl(revision.Id, 1)">查看來源資料</a></td> }</tr> }
                             </tbody></table></div>
                             <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
-                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base" or "compliance-as-code-shadow" or "powerstig-network-selection"))
+                            @if (selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
+                            {
+                                <h3>審核檢查內容</h3>
+                                <p>請核對目標、預期值及適用系統，再選擇要啟用的版本。</p>
+                                @foreach (var revision in revisions.Items)
+                                {
+                                    @if (localVersions.TryGetValue(revision.Id, out var check))
+                                    {
+                                        <details><summary>@revision.UpstreamVersion @(revision.Active ? "（目前使用）" : "")</summary>
+                                            <p>名稱：@check.Title</p><p>作業系統：@string.Join("、", check.Versions)</p>
+                                            <p>目標：@check.Target</p><p>預期值：@check.Expected</p><p>參考：@(string.IsNullOrWhiteSpace(check.SourceUrl) ? "未提供" : check.SourceUrl)</p>
+                                            <p>來源與使用條件：@check.License</p><p class="baseline-guidance">處理建議：@(check.Guidance ?? "未提供")</p>
+                                            <p><a href="@($"/settings/baseline-checks?source={selected.Id:D}&revision={revision.Id:D}")">以此版本編輯草稿</a></p>
+                                        </details>
+                                    }
+                                }
+                            }
+                            @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base" or "compliance-as-code-shadow" or "powerstig-network-selection") && !selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
                             { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {

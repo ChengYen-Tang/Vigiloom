@@ -31,3 +31,4 @@
 .intelligence-page nav { display: flex; gap: 16px; margin-top: 16px; }
 .intelligence-message { padding: 12px; border-radius: 6px; background: #eaf3ff; color: var(--vigiloom-ink); }
 @media (max-width: 760px) { .intelligence-layout { grid-template-columns: minmax(0, 1fr); } .intelligence-scroll-hint { display: block; font-weight: 600; } }
+.baseline-guidance { white-space: pre-line; }

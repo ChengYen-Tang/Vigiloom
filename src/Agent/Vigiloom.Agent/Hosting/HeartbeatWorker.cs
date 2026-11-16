@@ -6,11 +6,12 @@ using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Agent.Hosting.Logs;
 using Vigiloom.Agent.Hosting.Inventory;
 using Vigiloom.Agent.Hosting.Integrity;
+using Vigiloom.Agent.Hosting.Baseline;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Runs the initial heartbeat schedule; configuration synchronization will supply its effective interval.</summary>
-internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null) : BackgroundService
+internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null, AgentBaselineSettingsRuntime? baseline = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -31,6 +32,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                     logs.Bind(null);
                     inventory?.Bind(null);
                     integrity?.Bind(null);
+                    baseline?.Bind(null);
                     status = "NotConfigured";
                 }
                 else
@@ -46,6 +48,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         logs.Bind(null);
                         inventory?.Bind(null);
                         integrity?.Bind(null);
+                        baseline?.Bind(null);
                         status = "ConfigurationChanged";
                     }
                     else
@@ -56,11 +59,12 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         logs.Bind(owner);
                         inventory?.Bind(owner);
                         integrity?.Bind(owner);
+                        baseline?.Bind(owner);
                         var initialPeriod = TimeSpan.FromSeconds(settings.Current.HeartbeatSeconds);
                         if (timer.Period != initialPeriod) timer.Period = initialPeriod;
                         var logReport = logStatus?.ForOwner(owner);
                         if (owner is null || logs.ForOwner(owner)?.Revision != logReport?.Report.Revision) logReport = null;
-                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), stoppingToken)).ToString();
+                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken)).ToString();
                     }
                 }
             }

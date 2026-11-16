@@ -51,6 +51,9 @@ public sealed class IdentityVault(string directory)
     /// <summary>Allow one producer to sequence integrity generations for this Agent.</summary>
     public IAsyncDisposable AcquireIntegrityOwnership() => AcquireWorkerOwnership("integrity.lock");
 
+    /// <summary>Allow one baseline producer for an Agent state directory.</summary>
+    public IAsyncDisposable AcquireBaselineOwnership() => AcquireWorkerOwnership("baseline.lock");
+
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
 
@@ -187,6 +190,8 @@ public sealed class IdentityVault(string directory)
             ReadFileAsync<AgentSavedLogSettings>("log-settings.dat", token, MaximumLogSettingsBytes);
         internal Task<AgentSavedIntegritySettings?> ReadIntegritySettingsAsync(CancellationToken token) =>
             ReadFileAsync<AgentSavedIntegritySettings>("integrity-settings.dat", token, MaximumIntegritySettingsBytes);
+        internal Task<AgentSavedBaselineSettings?> ReadBaselineSettingsAsync(CancellationToken token) =>
+            ReadFileAsync<AgentSavedBaselineSettings>("baseline-settings.dat", token, MaximumIntegritySettingsBytes);
 
         private async Task<T?> ReadFileAsync<T>(string fileName, CancellationToken token, int maximumBytes = MaximumBytes) where T : class
         {
@@ -225,6 +230,8 @@ public sealed class IdentityVault(string directory)
             WriteFileAsync("log-settings.dat", settings, token, MaximumLogSettingsBytes);
         internal Task WriteIntegritySettingsAsync(AgentSavedIntegritySettings settings, CancellationToken token) =>
             WriteFileAsync("integrity-settings.dat", settings, token, MaximumIntegritySettingsBytes);
+        internal Task WriteBaselineSettingsAsync(AgentSavedBaselineSettings settings, CancellationToken token) =>
+            WriteFileAsync("baseline-settings.dat", settings, token, MaximumIntegritySettingsBytes);
 
         private async Task WriteFileAsync<T>(string fileName, T state, CancellationToken token, int maximumBytes = MaximumBytes)
         {
