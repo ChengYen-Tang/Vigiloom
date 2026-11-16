@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
@@ -97,13 +98,17 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             if (activeRevision is not null)
                 kevFresh = await KevFreshness.IsFreshAsync(db, kev.Source, activeRevision.Id, activeRevision.MappingVersion, activeRevision.ReleasedAt, now, token);
         }
+        var unavailableBaselines = new HashSet<Guid>();
+        foreach (var row in rows.Take(PageSize).Where(x => x.ActiveId != null && !x.ActiveUnavailable && BaselineDefinitions.Find(x.Source.Key) is not null))
+            if (!await BaselineEligibility.IsEligibleAsync(db, row.Source.Key, row.Source.Id, row.ActiveId!.Value, token))
+                unavailableBaselines.Add(row.Source.Id);
         var items = rows.Take(PageSize).Select(row => new IntelligenceSourceView(row.Source.Id, row.Source.Key, row.Source.Enabled,
             row.Source.UpdateIntervalSeconds, row.Source.StaleAfterSeconds, row.Source.MaximumBytes, row.Source.MaximumRecords,
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
             row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key), row.ActiveUnavailable || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
+            Describe(row.Source.Key), row.ActiveUnavailable || unavailableBaselines.Contains(row.Source.Id) || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
             row.Source.Key is UbuntuRevisionStage.SourceKey or DebianRevisionStage.SourceKey && row.ActiveId != null && row.Source.LastObservedRevisionId != row.ActiveId)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
@@ -139,8 +144,17 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
         "signature-base" => new("Signature-Base", "IOC / YARA", "https://github.com/Neo23x0/signature-base",
             "Two reviewed IOC files may be selected as source material. YARA, interpretation and detection require separate verification.", SignatureRefresh.LicenseEvidence,
             "Platform and dependency requirements vary by file and rule; consumer compatibility has not been verified."),
+        "compliance-as-code-shadow" or "powerstig-network-selection" => DescribeBaseline(key),
         _ => null
     };
+
+    private static IntelligenceSourceDescription DescribeBaseline(string key)
+    {
+        var definition = BaselineDefinitions.Find(key)!;
+        return new(definition.Name, "security-configuration-assessment", definition.Check.SourceUrl,
+            "One reviewed read-only check from a pinned upstream version; new upstream versions require review.",
+            definition.LicenseEvidence, string.Join(", ", definition.Check.Versions));
+    }
 
     public async Task<IntelligenceRevisionPage?> GetRevisionsAsync(Guid sourceId, int page, CancellationToken token)
     {

@@ -12,6 +12,8 @@ REQ-35 selects and executes a verified subset of actual upstream configuration c
 
 Selecting a software engine's license does not establish the license of every rule, benchmark or derived document. Source and rule provenance must remain visible through REQ-32. Unverified content is not a selectable or published source.
 
+The notices for the selected source material are retained in [ComplianceAsCode.txt](../licenses/ComplianceAsCode.txt) and [PowerSTIG.txt](../licenses/PowerSTIG.txt). The source refresh checks the pinned files against their reviewed hashes; it does not automatically accept newer upstream commits. New versions require a reviewed mapping and corresponding notices before publication.
+
 ## First selected checks
 
 These selected checks are starting cases for T02, not a claim that the entire upstream profile is implemented. They become available only after their source publication, conversion and actual target execution are verified.
