@@ -4,6 +4,7 @@ using Vigiloom.Agent.Platforms.Linux.Inventory;
 using Vigiloom.Agent.Platforms.Windows.Baseline;
 using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Intelligence;
+using System.Globalization;
 
 namespace Vigiloom.Agent.Hosting.Baseline;
 
@@ -26,6 +27,25 @@ internal static class BaselineCollector
         {
             if (!OperatingSystem.IsWindows()) return (SystemName(), new(BaselineOutcome.NotApplicable));
             return NetworkSelection.ReadCurrent(token);
+        }
+        if (CustomBaselineCheck.IsValid(check))
+        {
+            if (check.Platform == "linux")
+            {
+                if (!OperatingSystem.IsLinux()) return (SystemName(), new(BaselineOutcome.NotApplicable));
+                var system = await SystemDetailsReader.ReadAsync(token);
+                if (system.DistributionId is null || system.DistributionVersion is null) return ("linux:unknown", new(BaselineOutcome.Unknown));
+                var name = $"{system.DistributionId}:{system.DistributionVersion}";
+                if (!check.Versions.Contains(name, StringComparer.Ordinal)) return (name, new(BaselineOutcome.NotApplicable));
+                CustomBaselineCheck.TryMode(check.Expected, out var allowed);
+                return (name, ShadowPermissions.ReadMode(check.Target, allowed));
+            }
+            if (!OperatingSystem.IsWindows()) return (SystemName(), new(BaselineOutcome.NotApplicable));
+            var separator = check.Target.LastIndexOf('\\');
+            var path = check.Target[5..separator];
+            var value = check.Target[(separator + 1)..];
+            var expected = uint.Parse(check.Expected, NumberStyles.None, CultureInfo.InvariantCulture);
+            return NetworkSelection.ReadCurrent(path, value, expected, token);
         }
         return (SystemName(), new(BaselineOutcome.Unknown, "Unsupported baseline check"));
     }

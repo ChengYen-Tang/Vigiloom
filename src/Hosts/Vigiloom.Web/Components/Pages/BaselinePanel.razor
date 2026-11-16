@@ -44,8 +44,8 @@
                                     <p>結果：@Outcome(latest.Outcome)@if (!latest.Current) { <span>（非目前有效結果）</span> }</p>
                                     <p>作業系統：@latest.OperatingSystem</p>
                                     @if (!string.IsNullOrWhiteSpace(latest.Evidence)) { <p>@latest.Evidence</p> }
-                                    <p>預期：@Expected(check)</p>
-                                    @if (latest.Outcome == BaselineOutcome.Fail) { <p>建議：@Guidance(check)</p> }
+                                    <p>當時預期：@Expected(check, latest.Definition)</p>
+                                    @if (latest.Outcome == BaselineOutcome.Fail) { <p class="baseline-guidance">建議：@Guidance(check, latest.Definition)</p> }
                                     <p>來源版本 ID：@latest.RevisionId</p>
                                 </details>
                             }
@@ -88,6 +88,7 @@
     {
         BaselineSources.LinuxShadow => "ComplianceAsCode",
         BaselineSources.WindowsNetworkSelection => "PowerSTIG",
+        _ when check.SourceKey.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) => "本機自訂",
         _ => check.SourceKey
     };
 
@@ -108,18 +109,21 @@
         _ => "暫時無法取得設定，稍後會重試"
     };
 
-    private static string Expected(BaselineCheckView check) => check.SourceKey switch
+    private static string Expected(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
     {
         BaselineSources.LinuxShadow => "/etc/shadow 為一般檔案，權限不寬於 0640，且沒有額外 ACL。",
         BaselineSources.WindowsNetworkSelection => "64 位元登錄檢視中的 DontDisplayNetworkSelectionUI 為 DWORD 1。",
-        _ => "請參考此檢查的來源文件。"
+        _ when definition is { Operation: BaselineSources.LinuxShadowOperation } => $"{definition.Target} 權限不寬於 {definition.Expected}，且沒有額外 ACL。",
+        _ when definition is { Operation: BaselineSources.WindowsRegistryOperation } => $"{definition.Target} 的 DWORD 值為 {definition.Expected}。",
+        _ => "無法取得此紀錄當時的檢查定義。"
     };
 
-    private static string Guidance(BaselineCheckView check) => check.SourceKey switch
+    private static string Guidance(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
     {
         BaselineSources.LinuxShadow => "請由主機管理員檢查檔案權限與 ACL，確認影響後依組織政策調整。",
         BaselineSources.WindowsNetworkSelection => "請由主機管理員檢查登入畫面網路選擇的群組原則設定。",
-        _ => "請由主機管理員參考來源文件檢查設定。"
+        _ when !string.IsNullOrWhiteSpace(definition?.Guidance) => definition.Guidance!,
+        _ => "請由主機管理員參考此紀錄的來源版本。"
     };
 
     private static string Status(BaselineCheckView check, Guid? agentId)

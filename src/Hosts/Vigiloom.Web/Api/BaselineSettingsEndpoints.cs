@@ -22,11 +22,14 @@ internal static class BaselineSettingsEndpoints
         {
             var inventoryPolicy = await inventory.GetAsync(AgentEndpoints.Bearer(context), token);
             if (inventoryPolicy is null) return Results.Unauthorized();
-            var snapshots = await Task.WhenAll(sources.GetActiveAsync(BaselineSources.LinuxShadow, token),
-                sources.GetActiveAsync(BaselineSources.WindowsNetworkSelection, token));
-            var checks = snapshots.Where(x => x is { Availability: BaselineSourceAvailability.Ready, SourceId: not null,
-                    RevisionId: not null, ActivationVersion: not null, Check: not null })
-                .Select(x => new BaselineSelection(x.SourceId!.Value, x.RevisionId!.Value, x.ActivationVersion!, x.Check!)).ToArray();
+            var checks = new List<BaselineSelection>();
+            foreach (var key in await sources.GetKeysAsync(token))
+            {
+                var selected = await sources.GetActiveAsync(key, token);
+                if (selected is { Availability: BaselineSourceAvailability.Ready, SourceId: not null,
+                        RevisionId: not null, ActivationVersion: not null, Check: not null })
+                    checks.Add(new(selected.SourceId.Value, selected.RevisionId.Value, selected.ActivationVersion, selected.Check));
+            }
             context.Response.Headers.CacheControl = "private, no-store";
             return Results.Ok(BaselineSettingsSnapshot.Create(inventoryPolicy.Settings.ScanIntervalSeconds, checks));
         }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)

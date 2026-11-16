@@ -21,3 +21,4 @@ summary:focus-visible, .baseline-table:focus-visible { outline: 3px solid #075ff
 .baseline-error { color: #a32d20; }
 @media (max-width: 520px) { .baseline-panel { padding: 16px; } }
 @media (min-width: 1100px) { .baseline-scroll-hint { display: none; } }
+.baseline-guidance { white-space: pre-line; }

@@ -3,6 +3,7 @@ using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -17,15 +18,17 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
         var settings = await inventory.GetAsync(deviceId, token);
         if (settings is null) return null;
         var owner = await owners.ResolveAsync(deviceId, token);
-        var entries = new List<BaselineCheckView>(2);
-        var selections = new List<BaselineSelection>(2);
+        var entries = new List<BaselineCheckView>();
+        var selections = new List<BaselineSelection>();
         await using var db = await contexts.CreateDbContextAsync(token);
-        foreach (var (key, checkId, title) in new[]
+        foreach (var key in await sources.GetKeysAsync(token))
         {
-            (BaselineSources.LinuxShadow, BaselineSources.LinuxShadowCheck, "/etc/shadow permissions"),
-            (BaselineSources.WindowsNetworkSelection, BaselineSources.WindowsNetworkSelectionCheck, "Network selection UI")
-        })
-        {
+            var (checkId, title) = key switch
+            {
+                BaselineSources.LinuxShadow => (BaselineSources.LinuxShadowCheck, "/etc/shadow permissions"),
+                BaselineSources.WindowsNetworkSelection => (BaselineSources.WindowsNetworkSelectionCheck, "Network selection UI"),
+                _ => ($"{CustomBaselineCheck.Prefix}{key[BaselineSources.LocalPrefix.Length..]}", "自訂檢查")
+            };
             var selected = await sources.GetActiveAsync(key, token);
             if (selected is { Availability: BaselineSourceAvailability.Ready, SourceId: not null, RevisionId: not null,
                     ActivationVersion: not null, Check: not null })
@@ -45,9 +48,20 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
             var current = observation is not null && selected.Availability == BaselineSourceAvailability.Ready &&
                 observation.RevisionId == selected.RevisionId && observation.ActivationVersion == selected.ActivationVersion &&
                 observation.ObservedAt <= now && observation.ObservedAt >= now.AddSeconds(-2L * interval);
+            BaselineCheck? observedDefinition = null;
+            if (observation is not null)
+            {
+                observedDefinition = observation.RevisionId == selected.RevisionId ? selected.Check : null;
+                observedDefinition ??= BaselineDefinitions.Find(key)?.Check;
+                if (observedDefinition is null && selected.SourceId is { } historicalSourceId && BaselineEligibility.IsCustomKey(key, historicalSourceId))
+                {
+                    var revision = await db.IntelligenceRevisions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == observation.RevisionId && x.SourceId == historicalSourceId, token);
+                    if (revision is not null) observedDefinition = BaselineEligibility.ReadCustom(revision, historicalSourceId);
+                }
+            }
             var evidence = observation is null ? null : new BaselineEvidence(observation.RevisionId, observation.ObservedAt,
-                observation.OperatingSystem, observation.Outcome, observation.Evidence, current);
-            entries.Add(new(key, checkId, selected.Check?.Title ?? title, selected.Availability, selected.UpstreamVersion, evidence));
+                observation.OperatingSystem, observation.Outcome, observation.Evidence, current, observedDefinition);
+            entries.Add(new(key, checkId, selected.Check?.Title ?? title, selected.Availability, selected.UpstreamVersion, evidence, selected.Check));
         }
         var desired = BaselineSettingsSnapshot.Create(settings.Effective.Settings.ScanIntervalSeconds, selections);
         var observed = await synchronization.GetAsync(deviceId, token);

@@ -4,10 +4,10 @@ using Vigiloom.Contracts.Agent;
 namespace Vigiloom.Contracts.Agent.Baseline;
 
 public sealed record BaselineEvidence(Guid RevisionId, DateTimeOffset ObservedAt, string OperatingSystem,
-    BaselineOutcome Outcome, string? Evidence, bool Current);
+    BaselineOutcome Outcome, string? Evidence, bool Current, BaselineCheck? Definition = null);
 
 public sealed record BaselineCheckView(string SourceKey, string CheckId, string Title,
-    BaselineSourceAvailability SourceAvailability, string? UpstreamVersion, BaselineEvidence? Latest);
+    BaselineSourceAvailability SourceAvailability, string? UpstreamVersion, BaselineEvidence? Latest, BaselineCheck? Definition = null);
 
 /// <summary>Private baseline state for one device and its currently enrolled Agent.</summary>
 public sealed record DeviceBaselineView(Guid DeviceId, Guid? AgentId, int ScanIntervalSeconds,

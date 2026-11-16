@@ -1,7 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace Vigiloom.Contracts.Intelligence;
 
 public static class BaselineSources
 {
+    public const string LocalPrefix = "local-baseline-";
     public const string LinuxShadow = "compliance-as-code-shadow";
     public const string WindowsNetworkSelection = "powerstig-network-selection";
     public const string LinuxShadowCheck = "file_permissions_etc_shadow";
@@ -14,7 +17,8 @@ public static class BaselineSources
 
 /// <summary>A reviewed, read-only baseline check selected by the central platform.</summary>
 public sealed record BaselineCheck(string Id, string Title, string Platform, string[] Versions,
-    string Operation, string Target, string Expected, string SourceUrl, string License);
+    string Operation, string Target, string Expected, string SourceUrl, string License,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Guidance = null);
 
 public enum BaselineSourceAvailability { Ready, Disabled, Stale, NoActiveRevision, Unavailable }
 
@@ -24,5 +28,6 @@ public sealed record BaselineSourceSnapshot(BaselineSourceAvailability Availabil
 
 public interface IBaselineSource
 {
+    Task<IReadOnlyList<string>> GetKeysAsync(CancellationToken cancellationToken);
     Task<BaselineSourceSnapshot> GetActiveAsync(string sourceKey, CancellationToken cancellationToken);
 }

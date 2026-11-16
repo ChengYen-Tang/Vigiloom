@@ -99,16 +99,23 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
                 kevFresh = await KevFreshness.IsFreshAsync(db, kev.Source, activeRevision.Id, activeRevision.MappingVersion, activeRevision.ReleasedAt, now, token);
         }
         var unavailableBaselines = new HashSet<Guid>();
-        foreach (var row in rows.Take(PageSize).Where(x => x.ActiveId != null && !x.ActiveUnavailable && BaselineDefinitions.Find(x.Source.Key) is not null))
+        foreach (var row in rows.Take(PageSize).Where(x => x.ActiveId != null && !x.ActiveUnavailable &&
+                     (BaselineDefinitions.Find(x.Source.Key) is not null || BaselineEligibility.IsCustomKey(x.Source.Key, x.Source.Id))))
             if (!await BaselineEligibility.IsEligibleAsync(db, row.Source.Key, row.Source.Id, row.ActiveId!.Value, token))
                 unavailableBaselines.Add(row.Source.Id);
+        var localRevisionIds = rows.Take(PageSize).Where(x => BaselineEligibility.IsCustomKey(x.Source.Key, x.Source.Id))
+            .Select(x => x.ActiveId ?? x.Source.LastObservedRevisionId).Where(x => x is not null).Select(x => x!.Value).ToArray();
+        var localRevisions = await db.IntelligenceRevisions.AsNoTracking().Where(x => localRevisionIds.Contains(x.Id)).ToArrayAsync(token);
+        var localNames = localRevisions.Select(x => (x.SourceId, Check: BaselineEligibility.ReadCustom(x, x.SourceId)))
+            .Where(x => x.Check is not null).ToDictionary(x => x.SourceId, x => x.Check!.Title);
         var items = rows.Take(PageSize).Select(row => new IntelligenceSourceView(row.Source.Id, row.Source.Key, row.Source.Enabled,
             row.Source.UpdateIntervalSeconds, row.Source.StaleAfterSeconds, row.Source.MaximumBytes, row.Source.MaximumRecords,
             Convert.ToBase64String(row.Source.Version), row.Source.LastCheckedAt, row.Source.LastSuccessfulCheckAt, row.Source.LastError,
-            row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
+            BaselineEligibility.IsCustomKey(row.Source.Key, row.Source.Id) ? false : row.Source.Key == "cisa-kev" && kevFresh is { } fresh ? !fresh : row.Source.LastSuccessfulCheckAt is null || row.Source.LastSuccessfulCheckAt > now ||
             row.Source.LastSuccessfulCheckAt < now.AddSeconds(-row.Source.StaleAfterSeconds), row.ActiveId,
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
-            Describe(row.Source.Key), row.ActiveUnavailable || unavailableBaselines.Contains(row.Source.Id) || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
+            Describe(row.Source.Key) is { } description && localNames.TryGetValue(row.Source.Id, out var localName) ? description with { Name = localName } : Describe(row.Source.Key),
+            row.ActiveUnavailable || unavailableBaselines.Contains(row.Source.Id) || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
             row.Source.Key is UbuntuRevisionStage.SourceKey or DebianRevisionStage.SourceKey && row.ActiveId != null && row.Source.LastObservedRevisionId != row.ActiveId)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
@@ -145,6 +152,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             "Two reviewed IOC files may be selected as source material. YARA, interpretation and detection require separate verification.", SignatureRefresh.LicenseEvidence,
             "Platform and dependency requirements vary by file and rule; consumer compatibility has not been verified."),
         "compliance-as-code-shadow" or "powerstig-network-selection" => DescribeBaseline(key),
+        _ when key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) => new("本機自訂安全基準", "security-configuration-assessment",
+            "https://github.com/ChengYen-Tang/Vigiloom", "由管理員建立及審核的唯讀檢查。", "由管理員記錄於各版本。", "依檢查版本設定的作業系統。"),
         _ => null
     };
 

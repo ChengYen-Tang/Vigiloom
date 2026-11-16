@@ -225,5 +225,34 @@ public sealed class BaselineHttpTests(TestContext context)
                 Assert.Contains("來源尚未發布", text);
                 Assert.Contains("非目前有效結果", text);
             }
+            db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = revision.Id, ActivatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(token);
+            BaselineSelection reactivated;
+            using (var response = await client.GetAsync("/api/v1/agent/baseline-settings", token))
+            {
+                var policy = await response.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token);
+                reactivated = policy!.Checks.Single();
+                Assert.AreNotEqual(selected.ActivationVersion, reactivated.ActivationVersion);
+            }
+            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
+            {
+                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                Assert.IsFalse(view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow).Latest!.Current);
+            }
+            var latest = batch with { BatchId = Guid.CreateVersion7(), Items = [batch.Items[0] with
+                { ActivationVersion = reactivated.ActivationVersion, ObservedAt = DateTimeOffset.UtcNow, Outcome = BaselineOutcome.Pass }] };
+            using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agent/batches") { Content = new ByteArrayContent(BaselineBatchCodec.Serialize(latest)) })
+            {
+                request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using var response = await client.SendAsync(request, token);
+                Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            }
+            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
+            {
+                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var observation = view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow).Latest!;
+                Assert.IsTrue(observation.Current);
+                Assert.AreEqual(BaselineOutcome.Pass, observation.Outcome);
+            }
         }, context.CancellationToken);
 }
