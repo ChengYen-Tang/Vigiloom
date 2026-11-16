@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using Vigiloom.Contracts.Agent;
@@ -43,6 +45,49 @@ public sealed class PackageStagerTests(TestContext context)
             if (OperatingSystem.IsLinux()) Assert.AreNotEqual((UnixFileMode)0, File.GetUnixFileMode(executable) & UnixFileMode.UserExecute);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux)]
+    [SupportedOSPlatform("linux")]
+    [Timeout(15000, CooperativeCancellation = true)]
+    public async Task LinuxPackageIsAccessibleToUnprivilegedAgent()
+    {
+        if (Environment.GetEnvironmentVariable("VIGILOOM_RUN_ROOT_IPC_TESTS") != "1")
+            Assert.Inconclusive("This test requires an isolated Linux root test environment.");
+        var root = Path.Combine("/run", $"vigiloom-staging-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        try
+        {
+            using var archive = Archive(("Vigiloom.Agent", "binary"), ("runtimes/native.dll", "library"));
+            var manifest = Manifest(archive, "linux-x64");
+            var prepared = await PackageStager.PrepareAsync(archive, manifest, Target(manifest), root,
+                "linux-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken);
+            Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", Path.Combine(prepared, "Vigiloom.Agent")));
+            Assert.AreEqual(0, await TestAsUnprivilegedAsync("-r", Path.Combine(prepared, "runtimes", "native.dll")));
+            Assert.AreNotEqual(0, await TestAsUnprivilegedAsync("-w", Path.Combine(prepared, "Vigiloom.Agent")));
+            Assert.AreNotEqual(0, await TestAsUnprivilegedAsync("-w", Path.Combine(prepared, "runtimes", "native.dll")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private async Task<int> TestAsUnprivilegedAsync(string mode, string path)
+    {
+        var start = new ProcessStartInfo("/usr/sbin/setpriv")
+        {
+            UseShellExecute = false,
+            ArgumentList = { "--reuid=65534", "--regid=65534", "--clear-groups", "/usr/bin/test", mode, path }
+        };
+        using var process = Process.Start(start)!;
+        try { await process.WaitForExitAsync(context.CancellationToken); return process.ExitCode; }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync(cleanupTimeout.Token);
+        }
     }
 
     [TestMethod]

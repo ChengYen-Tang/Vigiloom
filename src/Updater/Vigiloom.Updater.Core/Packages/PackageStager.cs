@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Runtime.Versioning;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.UpdateSecurity;
 
@@ -36,6 +37,7 @@ public static class PackageStager
         Directory.CreateDirectory(root);
         var stagingRoot = Path.Combine(root, "staging");
         Directory.CreateDirectory(stagingRoot);
+        if (OperatingSystem.IsLinux()) File.SetUnixFileMode(stagingRoot, LinuxDirectoryMode);
         if ((ulong)totalBytes > DiskSpace.Available(stagingRoot)) throw new IOException("There is not enough space to prepare the Agent package.");
         var destination = Path.Combine(stagingRoot, Guid.CreateVersion7().ToString("N"));
         try
@@ -44,7 +46,7 @@ public static class PackageStager
             token.ThrowIfCancellationRequested();
             var executable = Path.Combine(destination, runtimeIdentifier.StartsWith("win-", StringComparison.Ordinal) ? "Vigiloom.Agent.exe" : "Vigiloom.Agent");
             if (!File.Exists(executable)) throw new InvalidDataException("The Agent executable is missing from the package.");
-            if (OperatingSystem.IsLinux()) File.SetUnixFileMode(executable, File.GetUnixFileMode(executable) | UnixFileMode.UserExecute);
+            if (OperatingSystem.IsLinux()) PrepareLinuxPermissions(destination, executable);
             if (manifest.Expires <= clock.GetUtcNow()) throw new InvalidDataException("The package authorization expired during preparation.");
             return destination;
         }
@@ -52,6 +54,26 @@ public static class PackageStager
         {
             if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
             throw;
+        }
+    }
+
+    private const UnixFileMode LinuxDirectoryMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+        UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+    private const UnixFileMode LinuxFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+    private const UnixFileMode ExecuteBits = UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
+
+    [SupportedOSPlatform("linux")]
+    private static void PrepareLinuxPermissions(string directory, string executable)
+    {
+        // The Updater is root, while the Agent uses a separate account. Version files contain
+        // no state or credentials, and must be readable/traversable but not writable by it.
+        var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        File.SetUnixFileMode(directory, LinuxDirectoryMode);
+        foreach (var child in Directory.EnumerateDirectories(directory, "*", options)) File.SetUnixFileMode(child, LinuxDirectoryMode);
+        foreach (var file in Directory.EnumerateFiles(directory, "*", options))
+        {
+            var runnable = file == executable || (File.GetUnixFileMode(file) & ExecuteBits) != 0;
+            File.SetUnixFileMode(file, LinuxFileMode | (runnable ? ExecuteBits : 0));
         }
     }
 }
