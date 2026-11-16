@@ -2,6 +2,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
 @attribute [ExcludeFromInteractiveRouting]
 @using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
 @using Vigiloom.Modules.AlertingOperations.Application.Line
 @inject LineChannel Channel
 @inject LineDeliveryStatus DeliveryStatus
@@ -18,7 +19,7 @@
         <section class="device-panel line-panel">
             <h2>連線設定</h2>
             <p>憑證已設定後不會再次顯示。留空可保留目前的值。</p>
-            <EditForm Model="Input" FormName="line-settings" method="post" OnValidSubmit="SaveAsync" class="line-form">
+            <div class="line-form"><EditForm Model="Input" FormName="line-settings" method="post" OnValidSubmit="SaveAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
                 <label for="line-token">Channel access token <span>@(view.HasAccessToken ? "已設定" : "尚未設定")</span></label>
                 <InputText id="line-token" type="password" autocomplete="new-password" @bind-Value="Input.AccessToken" />
@@ -26,12 +27,13 @@
                 <InputText id="line-secret" type="password" autocomplete="new-password" @bind-Value="Input.ChannelSecret" />
                 <label class="line-toggle"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用 LINE 通知</label>
                 <button type="submit">儲存設定</button>
-            </EditForm>
+            </EditForm></div>
             <p><strong>Webhook URL：</strong><span class="line-url">@Navigation.ToAbsoluteUri("/api/v1/line/webhook")</span></p>
+            <p>LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。</p>
         </section>
         <section class="device-panel line-panel">
             <h2>加入 LINE 群組</h2>
-            <ol><li>在 LINE Developers 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。</li><li>邀請官方帳號加入要接收通知的 LINE 群組。</li><li>重新整理此頁，為候選群組命名並確認啟用。</li></ol>
+            <ol><li>在 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。</li><li>一次邀請官方帳號加入一個 LINE 群組。</li><li>重新整理此頁，為最新的候選群組命名並確認啟用。</li></ol>
             <p>LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。</p>
         </section>
         <section class="device-panel line-panel">
@@ -44,9 +46,14 @@
                     <article class="line-group">
                         <div><strong>@(group.Name ?? "未命名群組")</strong><span class="line-badge">@(group.Approved ? "已啟用" : "待確認")</span><p class="line-id">@group.ExternalId</p></div>
                         <form method="post" action="/settings/line/group" class="line-group-form">
-                            <AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" /><input type="hidden" name="approved" value="@(!group.Approved ? "true" : "false")" />
+                            <AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" />
                             <label for="@($"line-name-{group.Id:N}")">群組名稱</label><input id="@($"line-name-{group.Id:N}")" name="name" maxlength="256" value="@group.Name" placeholder="例如：維運通知" />
-                            <button type="submit">@(group.Approved ? "停用" : "確認啟用")</button>
+                            @if (group.Approved)
+                            {
+                                <button type="submit" name="approved" value="true">儲存名稱</button>
+                                <button type="submit" name="approved" value="false">停用</button>
+                            }
+                            else { <button type="submit" name="approved" value="true">確認啟用</button> }
                         </form>
                         @if (group.Approved)
                         {
@@ -62,6 +69,19 @@
                 @if (test.Status == "pending") { <a href="@($"/settings/line?test={test.Id:D}")">重新整理結果</a> }
             </section>
         }
+        <section class="device-panel line-panel">
+            <div class="line-heading"><div><h2>最近派送</h2><p>顯示最近 20 筆；LINE 已受理不代表訊息已送達。</p></div><a href="/settings/line">重新整理</a></div>
+            @if (recent.Count == 0) { <p>尚無派送紀錄。</p> }
+            else
+            {
+                <ul class="line-recent">
+                    @foreach (var item in recent)
+                    {
+                        <li><strong>@item.GroupName</strong> · @item.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @DeliveryMessage(item)</li>
+                    }
+                </ul>
+            }
+        </section>
     }
 </main>
 
@@ -72,6 +92,7 @@
     [SupplyParameterFromQuery(Name = "test")] private Guid? TestId { get; set; }
     private LineChannelView? view;
     private LineDeliveryView? test;
+    private IReadOnlyList<LineDeliverySummary> recent = [];
     private string? error;
     private string? message;
 
@@ -81,6 +102,7 @@
         try
         {
             view = await Channel.GetAsync(HttpContext.RequestAborted);
+            recent = await DeliveryStatus.GetRecentAsync(HttpContext.RequestAborted);
             if (HttpMethods.IsGet(HttpContext.Request.Method)) Input.Enabled = view.Enabled;
             if (TestId is { } id) test = await DeliveryStatus.GetAsync(id, HttpContext.RequestAborted);
             if (Saved is "group" or "channel") message = "設定已儲存。";
@@ -96,7 +118,8 @@
     {
         try
         {
-            if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret), HttpContext.RequestAborted))
+            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "登入已失效，請重新登入。"; return; }
+            if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret), actor, HttpContext.RequestAborted))
             { Navigation.NavigateTo("/settings/line?saved=channel"); return; }
             error = "請先設定 Channel access token 與 Channel secret，再啟用通知。";
         }
@@ -113,6 +136,14 @@
         "failed" => "測試通知未完成，請檢查憑證、群組設定與背景工作後重試。",
         "pending" => "測試通知已排入，等待背景工作處理。",
         _ => "目前無法確認測試通知狀態。"
+    };
+
+    private static string DeliveryMessage(LineDeliverySummary value) => value.Status switch
+    {
+        "accepted" => "LINE 已受理",
+        "failed" => "派送失敗，請檢查群組、憑證與背景工作",
+        "pending" => "等待處理",
+        _ => "狀態無法確認"
     };
 
     private sealed class ChannelForm

@@ -80,7 +80,11 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
         var lineSettings = modelBuilder.Entity<LineSettings>();
         lineSettings.ToTable("LineSettings", table => table.HasCheckConstraint("CK_LineSettings_Slot", "[Slot] = 1"));
-        lineSettings.HasKey(x => x.Slot).IsClustered();
+        lineSettings.HasKey(x => x.Id).IsClustered(false);
+        lineSettings.Property(x => x.Id).ValueGeneratedNever();
+        lineSettings.Property(x => x.RowId).UseIdentityColumn();
+        lineSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        lineSettings.HasIndex(x => x.Slot).IsUnique();
         lineSettings.Property(x => x.Slot).ValueGeneratedNever();
 
         var lineGroup = modelBuilder.Entity<LineGroup>();
