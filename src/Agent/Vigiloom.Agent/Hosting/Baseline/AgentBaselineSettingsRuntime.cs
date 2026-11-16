@@ -12,6 +12,9 @@ internal sealed class AgentBaselineSettingsRuntime
     private AgentSavedBaselineSettings? saved;
     private AgentConfigurationFailure? failure;
     private bool unsupported;
+    private string? appliedRevision;
+    private DateTimeOffset? appliedAt;
+    private DateTimeOffset? lastSyncedAt;
 
     public void Bind(AgentSettingsOwner? value)
     {
@@ -22,6 +25,9 @@ internal sealed class AgentBaselineSettingsRuntime
             saved = null;
             failure = null;
             unsupported = false;
+            appliedRevision = null;
+            appliedAt = null;
+            lastSyncedAt = null;
         }
     }
 
@@ -32,12 +38,13 @@ internal sealed class AgentBaselineSettingsRuntime
         lock (gate) if (saved is null && Matches(value, policy)) saved = policy;
     }
 
-    public void Publish(AgentSettingsOwner? value, AgentSavedBaselineSettings policy)
+    public void Publish(AgentSettingsOwner? value, AgentSavedBaselineSettings policy, DateTimeOffset? syncedAt = null)
     {
         lock (gate)
         {
             if (!Matches(value, policy)) return;
             saved = policy;
+            lastSyncedAt = syncedAt?.ToUniversalTime() ?? lastSyncedAt;
             failure = null;
             unsupported = false;
         }
@@ -51,6 +58,26 @@ internal sealed class AgentBaselineSettingsRuntime
     public AgentSavedBaselineSettings? ForOwner(AgentSettingsOwner value)
     {
         lock (gate) return owner == value && !unsupported && failure != AgentConfigurationFailure.Unauthorized ? saved : null;
+    }
+
+    public AgentSavedBaselineSettings? ApplyForOwner(AgentSettingsOwner value, DateTimeOffset now)
+    {
+        lock (gate)
+        {
+            if (owner != value || unsupported || failure == AgentConfigurationFailure.Unauthorized || saved is null) return null;
+            if (appliedRevision != saved.Snapshot.Revision)
+            {
+                appliedRevision = saved.Snapshot.Revision;
+                appliedAt = now.ToUniversalTime();
+            }
+            return saved;
+        }
+    }
+
+    public (AgentSettingsOwner Owner, BaselineSettingsReport Report)? Report(AgentSettingsOwner? value)
+    {
+        lock (gate) return value is not null && owner == value
+            ? (value, new(appliedRevision, appliedAt, lastSyncedAt, failure)) : null;
     }
 
     public void MarkUnsupported(AgentSettingsOwner? value)

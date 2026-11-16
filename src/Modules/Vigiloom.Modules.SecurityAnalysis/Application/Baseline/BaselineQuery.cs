@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 
 /// <summary>Returns private observations for the active Agent and selected source revisions.</summary>
 public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerResolver owners,
-    InventoryConfiguration inventory, IBaselineSource sources, TimeProvider clock)
+    InventoryConfiguration inventory, IBaselineSource sources, IAgentBaselineSyncReader synchronization, TimeProvider clock)
 {
     public async Task<DeviceBaselineView?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -18,6 +18,7 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
         if (settings is null) return null;
         var owner = await owners.ResolveAsync(deviceId, token);
         var entries = new List<BaselineCheckView>(2);
+        var selections = new List<BaselineSelection>(2);
         await using var db = await contexts.CreateDbContextAsync(token);
         foreach (var (key, checkId, title) in new[]
         {
@@ -26,6 +27,9 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
         })
         {
             var selected = await sources.GetActiveAsync(key, token);
+            if (selected is { Availability: BaselineSourceAvailability.Ready, SourceId: not null, RevisionId: not null,
+                    ActivationVersion: not null, Check: not null })
+                selections.Add(new(selected.SourceId.Value, selected.RevisionId.Value, selected.ActivationVersion, selected.Check));
             BaselineObservation? observation = null;
             if (owner is not null && selected.SourceId is { } sourceId)
             {
@@ -45,6 +49,18 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
                 observation.OperatingSystem, observation.Outcome, observation.Evidence, current);
             entries.Add(new(key, checkId, selected.Check?.Title ?? title, selected.Availability, selected.UpstreamVersion, evidence));
         }
-        return new(deviceId, owner?.AgentId, settings.Effective.Settings.ScanIntervalSeconds, entries);
+        var desired = BaselineSettingsSnapshot.Create(settings.Effective.Settings.ScanIntervalSeconds, selections);
+        var observed = await synchronization.GetAsync(deviceId, token);
+        var nowUtc = clock.GetUtcNow();
+        var report = owner?.AgentId == observed?.AgentId ? observed?.Report : null;
+        var reportedAt = report is null ? null : observed?.ReportedAt;
+        var state = observed is null || owner?.AgentId != observed.AgentId ? BaselineSyncState.Waiting
+            : observed.LastHeartbeatAt is not { } heartbeat || heartbeat > nowUtc || nowUtc - heartbeat >= TimeSpan.FromSeconds(observed.OfflineAfterSeconds) ? BaselineSyncState.Offline
+            : reportedAt is not { } reported || reported > nowUtc || nowUtc - reported >= TimeSpan.FromSeconds(observed.OfflineAfterSeconds) ? BaselineSyncState.Waiting
+            : report!.Failure is not null ? BaselineSyncState.Failed
+            : report.AppliedRevision is null ? BaselineSyncState.Waiting
+            : report.AppliedRevision == desired.Revision ? BaselineSyncState.Applied : BaselineSyncState.Pending;
+        return new(deviceId, owner?.AgentId, settings.Effective.Settings.ScanIntervalSeconds, entries,
+            new(state, desired.Revision, report?.AppliedRevision, report?.AppliedAt, report?.LastSyncedAt, reportedAt, report?.Failure));
     }
 }

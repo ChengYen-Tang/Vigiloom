@@ -8,6 +8,21 @@ namespace Vigiloom.Agent.Platforms.Windows.Tests;
 public sealed class NetworkSelectionTests
 {
     [TestMethod]
+    public void Read_Uses64BitRegistryViewOn64BitWindows()
+    {
+        if (!OperatingSystem.IsWindows() || !Environment.Is64BitOperatingSystem)
+        {
+            Assert.Inconclusive("Requires 64-bit Windows.");
+            return;
+        }
+        using var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        var expected = NetworkSelection.ReadValue(root, @"SOFTWARE\Policies\Microsoft\Windows\System");
+        var actual = NetworkSelection.Read(20348, "Server", 3);
+        Assert.AreEqual(expected.Outcome, actual.Outcome);
+        Assert.AreEqual(expected.Evidence, actual.Evidence);
+    }
+
+    [TestMethod]
     public void MachineRole_ReadsLocalRole()
     {
         if (!OperatingSystem.IsWindows()) { Assert.Inconclusive("Requires Windows."); return; }
