@@ -63,6 +63,8 @@ public sealed class ShadowPermissionsTests
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             var secure = ShadowPermissions.Read("ubuntu", "24.04", path);
             Assert.AreEqual(BaselineOutcome.Pass, secure.Outcome);
+            Assert.AreEqual(BaselineOutcome.Fail, ShadowPermissions.ReadMode(path, UnixFileMode.UserRead).Outcome);
+            Assert.AreEqual(BaselineOutcome.Pass, ShadowPermissions.ReadMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite).Outcome);
             Assert.DoesNotContain("test content", secure.Evidence!);
 
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);

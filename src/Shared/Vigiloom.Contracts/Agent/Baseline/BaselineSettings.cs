@@ -41,8 +41,10 @@ public sealed record BaselineSettingsSnapshot(int SchemaVersion, string Revision
             if (selection is null || selection.SourceId.Version != 7 || selection.RevisionId.Version != 7 ||
                 !BaselineSelection.IsActivationVersionValid(selection.ActivationVersion) || selection.Check is not { } check || !Text(check.Id, 128) ||
                 !Text(check.Title, 256) || !Text(check.Platform, 32) || !Text(check.Operation, 128) ||
-                !Text(check.Target, 1024) || !Text(check.Expected, 256) || !Text(check.SourceUrl, 2048) ||
+                !Text(check.Target, 1024) || !Text(check.Expected, 256) ||
+                (!Text(check.SourceUrl, 2048) && !(check.SourceUrl == "" && CustomBaselineCheck.IsValid(check))) ||
                 !Text(check.License, 256) || check.Versions is not { Length: > 0 and <= 32 } ||
+                check.Guidance is { } guidance && (guidance.Length > 1024 || guidance.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t'))) ||
                 check.Versions.Any(x => !Text(x, 128)) || !seen.Add((selection.SourceId, check.Id))) return false;
         }
         return true;

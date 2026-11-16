@@ -1,0 +1,11 @@
+.custom-baseline-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 1fr); gap: 1rem; align-items: start; }
+.custom-baseline-page ::deep .custom-baseline-form { display: grid; gap: .3rem; }
+.custom-baseline-page ::deep .custom-baseline-form label { font-weight: 600; margin-top: .25rem; }
+.custom-baseline-page ::deep .custom-baseline-form input, .custom-baseline-page ::deep .custom-baseline-form select, .custom-baseline-page ::deep .custom-baseline-form textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.custom-hint { margin: 0; color: #52657d; font-size: .9rem; }
+.custom-preview { display: grid; grid-template-columns: minmax(7rem, auto) minmax(0, 1fr); gap: 0; border: 1px solid #d9e4f2; border-radius: .35rem; overflow: hidden; }
+.custom-preview dt, .custom-preview dd { padding: .45rem .6rem; border-bottom: 1px solid #e4ebf5; }
+.custom-preview dt { font-weight: 600; background: #edf4fc; }
+.custom-preview dd { margin: 0; overflow-wrap: anywhere; }
+.custom-guidance { white-space: pre-line; }
+@media (max-width: 800px) { .custom-baseline-layout { grid-template-columns: 1fr; } }

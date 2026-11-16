@@ -179,6 +179,7 @@ builder.Services.AddScoped<AgentInventoryStatus>();
 builder.Services.AddScoped<DeviceInventoryAgent>();
 builder.Services.AddScoped<IAgentOwnerResolver, AgentOwnerResolver>();
 builder.Services.AddScoped<IAgentBaselineSyncReader, AgentBaselineSyncReader>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.CustomBaselineStage>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.VulnerabilityMonitoring>();
 builder.Services.AddScoped<InventoryQuery>();
 builder.Services.AddScoped<IntegrityQuery>();

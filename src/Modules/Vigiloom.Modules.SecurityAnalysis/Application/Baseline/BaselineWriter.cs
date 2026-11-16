@@ -27,11 +27,18 @@ public sealed class BaselineWriter : IBaselineWriter
             .Where(x => sourceIds.Contains(x.SourceId) && revisionIds.Contains(x.RevisionId))
             .Select(x => new { x.SourceId, x.RevisionId }).Distinct().ToArrayAsync(cancellationToken);
         var publishedPairs = published.Select(x => (x.SourceId, x.RevisionId)).ToHashSet();
+        var revisions = await db.IntelligenceRevisions.AsNoTracking().Where(x => revisionIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
         foreach (var item in batch.Items)
         {
-            if (!sources.TryGetValue(item.SourceId, out var source) ||
-                BaselineDefinitions.Find(source.Key) is not { } definition || definition.Check.Id != item.CheckId ||
-                !publishedPairs.Contains((item.SourceId, item.RevisionId))) return false;
+            if (!sources.TryGetValue(item.SourceId, out var source) || !publishedPairs.Contains((item.SourceId, item.RevisionId))) return false;
+            var definition = BaselineDefinitions.Find(source.Key);
+            if (definition is not null)
+            {
+                if (definition.Check.Id != item.CheckId) return false;
+            }
+            else if (!BaselineEligibility.IsCustomKey(source.Key, source.Id) || !revisions.TryGetValue(item.RevisionId, out var revision) ||
+                     BaselineEligibility.ReadCustom(revision, source.Id)?.Id != item.CheckId) return false;
         }
         foreach (var item in batch.Items)
             db.Set<BaselineObservation>().Add(new BaselineObservation

@@ -44,8 +44,12 @@ public sealed class NetworkSelectionTests
                 Assert.AreEqual(BaselineOutcome.Fail, NetworkSelection.ReadValue(Registry.CurrentUser, path).Outcome);
                 key.SetValue("DontDisplayNetworkSelectionUI", "1", RegistryValueKind.String);
                 Assert.AreEqual(BaselineOutcome.Fail, NetworkSelection.ReadValue(Registry.CurrentUser, path).Outcome);
+                key.SetValue("DontDisplayNetworkSelectionUI", new byte[] { 1, 0, 0, 0 }, RegistryValueKind.Binary);
+                Assert.AreEqual(BaselineOutcome.Fail, NetworkSelection.ReadValue(Registry.CurrentUser, path).Outcome);
                 key.SetValue("DontDisplayNetworkSelectionUI", 1, RegistryValueKind.DWord);
                 Assert.AreEqual(BaselineOutcome.Pass, NetworkSelection.ReadValue(Registry.CurrentUser, path).Outcome);
+                Assert.AreEqual(BaselineOutcome.Fail, NetworkSelection.ReadValue(Registry.CurrentUser, path, "DontDisplayNetworkSelectionUI", 2).Outcome);
+                Assert.AreEqual(BaselineOutcome.Pass, NetworkSelection.ReadValue(Registry.CurrentUser, path, "DontDisplayNetworkSelectionUI", 1).Outcome);
                 key.SetValue("DontDisplayNetworkSelectionUI", 0, RegistryValueKind.DWord);
                 Assert.AreEqual(BaselineOutcome.Fail, NetworkSelection.ReadValue(Registry.CurrentUser, path).Outcome);
             }

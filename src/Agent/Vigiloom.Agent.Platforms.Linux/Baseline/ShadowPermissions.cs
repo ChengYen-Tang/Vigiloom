@@ -16,6 +16,12 @@ public static partial class ShadowPermissions
         if (string.IsNullOrWhiteSpace(distribution) || string.IsNullOrWhiteSpace(version)) return new(BaselineOutcome.Unknown);
         if (!((distribution == "ubuntu" && version is "22.04" or "24.04") || (distribution == "debian" && version == "12")))
             return new(BaselineOutcome.NotApplicable);
+        const UnixFileMode allowed = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        return ReadMode(path, allowed);
+    }
+
+    public static BaselineObservation ReadMode(string path, UnixFileMode allowed)
+    {
         try
         {
             if (Statx(-100, path, 0x100, 3, out var info) != 0)
@@ -31,7 +37,6 @@ public static partial class ShadowPermissions
                 var error = Marshal.GetLastPInvokeError();
                 return new(error is 1 or 13 ? BaselineOutcome.PermissionDenied : BaselineOutcome.Unknown);
             }
-            const UnixFileMode allowed = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
             var passed = acl == 0 && (mode & ~allowed) == 0;
             return new(passed ? BaselineOutcome.Pass : BaselineOutcome.Fail,
                 $"Mode {Convert.ToString((int)mode, 8)}; extended ACL {(acl == 0 ? "absent" : "present")}");
