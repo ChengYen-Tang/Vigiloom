@@ -8,11 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -113,6 +115,22 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
                 Assert.IsTrue(view!.Checks.Single(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}").Latest!.Current);
             }
+            var noteUrl = $"/api/v1/admin/devices/{device.Id:D}/baseline-exceptions";
+            var note = new BaselineExceptionInput($"{BaselineSources.LocalPrefix}{sourceId:D}", firstRevision, "Approved temporary operational exception");
+            using (var denied = await reader.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await anonymous.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var response = await admin.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
+            {
+                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var check = view!.Checks.Single(x => x.SourceKey == note.SourceKey);
+                Assert.AreEqual(BaselineOutcome.Fail, check.Latest!.Outcome);
+                Assert.AreEqual(note.Reason, check.Notes!.Single().Reason);
+                Assert.AreEqual(firstRevision, check.Notes!.Single().RevisionId);
+            }
+            var audit = serviceScope.ServiceProvider.GetRequiredService<OperationAuditQueryService>();
+            var auditPage = await audit.QueryIntelligenceAsync(new OperationAuditQuery(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddMinutes(5)), token);
+            Assert.IsTrue(auditPage.Items.Any(x => x.ResourceId == device.Id && x.BaselineException?.Reason == note.Reason));
             var sourceVersion = (await stage.ReadDraftAsync(sourceId, firstRevision, token))!.SourceVersion;
             CustomBaselineStageResult changed;
             using (var response = await admin.PostAsJsonAsync($"/api/v1/admin/intelligence/sources/{sourceId:D}/baseline-revisions",
@@ -138,7 +156,10 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 Assert.IsFalse(check.Latest!.Current);
                 Assert.AreEqual("0600", check.Latest.Definition!.Expected);
                 Assert.AreEqual("0640", check.Definition!.Expected);
+                Assert.AreEqual(firstRevision, check.Notes!.Single().RevisionId);
+                Assert.AreEqual(secondRevision, check.ActiveRevisionId);
             }
+            using (var response = await admin.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
             using (var response = await admin.PostAsJsonAsync(activation, new IntelligenceActivationRequest(firstRevision, secondRevision, second.ActivationVersion!, false), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             var restored = await sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{sourceId:D}", token);

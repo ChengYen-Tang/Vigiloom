@@ -10,6 +10,22 @@ internal static class BaselineSettingsEndpoints
 {
     public static void MapBaselineSettingsEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/v1/admin/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionInput input,
+            BaselineExceptions exceptions, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => (await exceptions.RecordAsync(deviceId, input.SourceKey,
+                input.RevisionId, input.Reason, actor, token)) switch
+            {
+                BaselineExceptionStatus.Recorded => Results.NoContent(),
+                BaselineExceptionStatus.NotFound => Results.NotFound(),
+                BaselineExceptionStatus.VersionChanged => Results.Problem(statusCode: 409, title: "The selected baseline revision is no longer active."),
+                _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = ["Invalid baseline exception explanation."] })
+            }, allowApiCredential: false);
+        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Record an administrator explanation for a baseline revision");
+
         app.MapGet("/api/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

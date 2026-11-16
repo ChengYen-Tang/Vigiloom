@@ -37,6 +37,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             IntelligenceRevisionActivated change when IsValid(change) => (AuditKinds.IntelligenceRevisionActivatedV1, JsonSerializer.Serialize(change)),
             IntelligenceRevisionRevoked change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceRevisionRevokedV1, JsonSerializer.Serialize(change)),
             SigmaRuleStateChanged change when change.TestId.Version == 7 => (AuditKinds.SigmaRuleStateChangedV1, JsonSerializer.Serialize(change)),
+            BaselineExceptionRecorded change when IsValid(change) => (AuditKinds.BaselineExceptionRecordedV1, JsonSerializer.Serialize(change)),
             IntelligenceOfflineImported change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceOfflineImportedV1, JsonSerializer.Serialize(change)),
             IntelligencePolicyChanged change when IsValid(change) => (AuditKinds.IntelligencePolicyChangedV1, JsonSerializer.Serialize(change)),
             AdvisoryImportAbandoned change when IsValid(change) => (AuditKinds.AdvisoryImportAbandonedV1, JsonSerializer.Serialize(change)),
@@ -68,6 +69,11 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         Add(command, "@details", DbType.String, details, 2048);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    internal static bool IsValid(BaselineExceptionRecorded change) => change.SourceId.Version == 7 && change.RevisionId.Version == 7 &&
+        change.CheckId is { Length: > 0 and <= 128 } && change.CheckId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') &&
+        !string.IsNullOrWhiteSpace(change.Reason) && change.Reason.Length <= 200 &&
+        !change.Reason.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t'));
 
     internal static bool IsValid(SpeedSettingsChanged change) =>
         change.Previous is not null && change.Current is not null &&

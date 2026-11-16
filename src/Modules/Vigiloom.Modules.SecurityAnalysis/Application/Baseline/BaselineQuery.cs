@@ -11,13 +11,14 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 
 /// <summary>Returns private observations for the active Agent and selected source revisions.</summary>
 public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerResolver owners,
-    InventoryConfiguration inventory, IBaselineSource sources, IAgentBaselineSyncReader synchronization, TimeProvider clock)
+    InventoryConfiguration inventory, IBaselineSource sources, IAgentBaselineSyncReader synchronization, IBaselineExceptionReader exceptions, TimeProvider clock)
 {
     public async Task<DeviceBaselineView?> GetAsync(Guid deviceId, CancellationToken token)
     {
         var settings = await inventory.GetAsync(deviceId, token);
         if (settings is null) return null;
         var owner = await owners.ResolveAsync(deviceId, token);
+        var notes = await exceptions.GetRecentAsync(deviceId, token);
         var entries = new List<BaselineCheckView>();
         var selections = new List<BaselineSelection>();
         await using var db = await contexts.CreateDbContextAsync(token);
@@ -61,7 +62,9 @@ public sealed class BaselineQuery(IDbContextFactory<SecurityAnalysisDbContext> c
             }
             var evidence = observation is null ? null : new BaselineEvidence(observation.RevisionId, observation.ObservedAt,
                 observation.OperatingSystem, observation.Outcome, observation.Evidence, current, observedDefinition);
-            entries.Add(new(key, checkId, selected.Check?.Title ?? title, selected.Availability, selected.UpstreamVersion, evidence, selected.Check));
+            var checkNotes = selected.SourceId is { } noteSource ? notes.Where(x => x.SourceId == noteSource && x.CheckId == checkId).ToArray() : [];
+            entries.Add(new(key, checkId, selected.Check?.Title ?? title, selected.Availability, selected.UpstreamVersion, evidence,
+                selected.Check, selected.SourceId, selected.RevisionId, checkNotes));
         }
         var desired = BaselineSettingsSnapshot.Create(settings.Effective.Settings.ScanIntervalSeconds, selections);
         var observed = await synchronization.GetAsync(deviceId, token);

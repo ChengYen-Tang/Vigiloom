@@ -1,4 +1,5 @@
 @using Vigiloom.Contracts.Agent.Baseline
+@using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Modules.SecurityAnalysis.Application.Baseline
 @inject BaselineQuery Query
@@ -48,6 +49,19 @@
                                     @if (latest.Outcome == BaselineOutcome.Fail) { <p class="baseline-guidance">建議：@Guidance(check, latest.Definition)</p> }
                                     <p>來源版本 ID：@latest.RevisionId</p>
                                 </details>
+                            }
+                            @if (check.Notes is { Count: > 0 } notes)
+                            {
+                                <details><summary>最近的例外說明（@notes.Count）</summary>
+                                    @foreach (var note in notes)
+                                    {
+                                        <p class="baseline-guidance">@(note.RevisionId == check.ActiveRevisionId ? "目前版本" : "其他版本") · @note.RecordedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @note.ActorId<br />版本：@note.RevisionId<br />@note.Reason</p>
+                                    }
+                                </details>
+                            }
+                            @if (check.ActiveRevisionId is { } revision && check.SourceAvailability == BaselineSourceAvailability.Ready)
+                            {
+                                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{DeviceId:D}/baseline-exception?source={Uri.EscapeDataString(check.SourceKey)}&revision={revision:D}")">新增例外說明</a></Authorized></AuthorizeView>
                             }
                         </td>
                         <td><span class="baseline-status @StatusClass(check)">@Status(check, view.AgentId)</span></td>

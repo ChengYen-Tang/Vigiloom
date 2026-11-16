@@ -2,7 +2,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Contracts.Operations;
 
-/// <summary>Versioned, allow-listed audit details; never include arbitrary request data.</summary>
+/// <summary>Versioned, allow-listed audit details; only explicitly approved fields are recorded.</summary>
 public abstract record OperationAuditDetails;
 
 /// <summary>Non-secret values in a central speed-test setting version.</summary>
@@ -43,6 +43,8 @@ public sealed record AgentPackageTrustInitialized(int RootVersion, string Sha256
 /// <summary>Records an administrator's revision selection without copying source contents.</summary>
 public sealed record IntelligenceRevisionActivated(Guid? PreviousRevisionId, Guid RevisionId, bool LargeReductionConfirmed, bool OfflineSourceConfirmed = false) : OperationAuditDetails;
 public sealed record IntelligenceRevisionRevoked(Guid RevisionId) : OperationAuditDetails;
+/// <summary>An administrator's bounded explanation for a baseline result; it does not change the result.</summary>
+public sealed record BaselineExceptionRecorded(Guid SourceId, Guid RevisionId, string CheckId, string Reason) : OperationAuditDetails;
 /// <summary>Records the rule test used for a change without retaining event content.</summary>
 public sealed record SigmaRuleStateChanged(Guid TestId, bool Enabled) : OperationAuditDetails;
 /// <summary>Records a manually supplied source snapshot without asserting its upstream authenticity.</summary>
@@ -111,7 +113,7 @@ public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffse
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null, IntelligenceRevisionActivated? IntelligenceRevision = null, IntelligencePolicyChanged? IntelligencePolicy = null, AdvisoryImportAbandoned? AdvisoryImport = null, AdvisoryCredentialChanged? AdvisoryCredential = null, IntelligenceRevisionRevoked? IntelligenceRevocation = null, IntelligenceOfflineImported? IntelligenceOfflineImport = null, SigmaRuleStateChanged? SigmaRuleState = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null, IntelligenceRevisionActivated? IntelligenceRevision = null, IntelligencePolicyChanged? IntelligencePolicy = null, AdvisoryImportAbandoned? AdvisoryImport = null, AdvisoryCredentialChanged? AdvisoryCredential = null, IntelligenceRevisionRevoked? IntelligenceRevocation = null, IntelligenceOfflineImported? IntelligenceOfflineImport = null, SigmaRuleStateChanged? SigmaRuleState = null, BaselineExceptionRecorded? BaselineException = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);

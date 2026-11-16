@@ -7,7 +7,17 @@ public sealed record BaselineEvidence(Guid RevisionId, DateTimeOffset ObservedAt
     BaselineOutcome Outcome, string? Evidence, bool Current, BaselineCheck? Definition = null);
 
 public sealed record BaselineCheckView(string SourceKey, string CheckId, string Title,
-    BaselineSourceAvailability SourceAvailability, string? UpstreamVersion, BaselineEvidence? Latest, BaselineCheck? Definition = null);
+    BaselineSourceAvailability SourceAvailability, string? UpstreamVersion, BaselineEvidence? Latest, BaselineCheck? Definition = null,
+    Guid? SourceId = null, Guid? ActiveRevisionId = null, IReadOnlyList<BaselineExceptionNote>? Notes = null);
+
+public sealed record BaselineExceptionNote(Guid SourceId, Guid RevisionId, string CheckId, string Reason, Guid ActorId, DateTimeOffset RecordedAt);
+/// <summary>Administrator explanation for a specific active baseline revision.</summary>
+public sealed record BaselineExceptionInput(string SourceKey, Guid RevisionId, string Reason);
+
+public interface IBaselineExceptionReader
+{
+    Task<IReadOnlyList<BaselineExceptionNote>> GetRecentAsync(Guid deviceId, CancellationToken cancellationToken);
+}
 
 /// <summary>Private baseline state for one device and its currently enrolled Agent.</summary>
 public sealed record DeviceBaselineView(Guid DeviceId, Guid? AgentId, int ScanIntervalSeconds,
