@@ -74,6 +74,10 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
         builder.Services.AddScoped<IntelligenceRefresh>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingTransitionSink, Vigiloom.Modules.AlertingOperations.Application.PingAlertSink>();
+        builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationWriter, Vigiloom.Modules.AlertingOperations.Application.NotificationWriter>();
+        builder.Services.AddSingleton<Vigiloom.Contracts.Resources.IServiceGroupSource, Vigiloom.Modules.Resources.Application.ServiceGroupSource>();
+        builder.Services.AddSingleton<Vigiloom.Contracts.Services.IHealthTransitionSink, Vigiloom.Modules.AlertingOperations.Application.ServiceHealthAlertSink>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.DebianRefresh>();
         builder.Services.AddScoped<DebianRefreshJob>();

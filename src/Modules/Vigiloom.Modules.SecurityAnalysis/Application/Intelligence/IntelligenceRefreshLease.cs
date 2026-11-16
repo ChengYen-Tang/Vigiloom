@@ -8,12 +8,13 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 /// <summary>Session-owned lock prevents duplicate downloads across refresh entry points.</summary>
 internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context, string resource, int sessionId) : IAsyncDisposable
 {
+    private bool leaseLost;
     internal int SessionId => sessionId;
     internal bool IsFor(Guid sourceId) => string.Equals(resource, $"Vigiloom.Intelligence.Refresh.{sourceId:D}", StringComparison.Ordinal);
     internal async Task<bool> VerifyHeldAsync(CancellationToken token)
     {
         var connection = context.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open) return false;
+        if (connection.State != ConnectionState.Open) { leaseLost = true; return false; }
         try
         {
             await using var command = connection.CreateCommand();
@@ -29,10 +30,12 @@ internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context
             sessionParameter.DbType = DbType.Int32;
             sessionParameter.Value = sessionId;
             command.Parameters.Add(sessionParameter);
-            return string.Equals(await command.ExecuteScalarAsync(token) as string, "Exclusive", StringComparison.Ordinal);
+            var held = string.Equals(await command.ExecuteScalarAsync(token) as string, "Exclusive", StringComparison.Ordinal);
+            if (!held) leaseLost = true;
+            return held;
         }
-        catch (DbException) { token.ThrowIfCancellationRequested(); return false; }
-        catch (InvalidOperationException) { token.ThrowIfCancellationRequested(); return false; }
+        catch (DbException) { leaseLost = true; token.ThrowIfCancellationRequested(); return false; }
+        catch (InvalidOperationException) { leaseLost = true; token.ThrowIfCancellationRequested(); return false; }
     }
 
     internal static async Task<IntelligenceRefreshLease?> TryAcquireAsync(IDbContextFactory<SecurityAnalysisDbContext> contexts, Guid sourceId, CancellationToken token)
@@ -78,6 +81,9 @@ internal sealed class IntelligenceRefreshLease(SecurityAnalysisDbContext context
             if (context.Database.GetDbConnection().State == ConnectionState.Open)
                 await context.Database.ExecuteSqlInterpolatedAsync($"EXEC sys.sp_releaseapplock @Resource = {resource}, @LockOwner = 'Session';");
         }
+        // A lost session no longer holds its lock; SqlClient can briefly still report it as open.
+        catch (DbException) when (leaseLost) { }
+        catch (InvalidOperationException) when (leaseLost) { }
         finally { await context.DisposeAsync(); }
     }
 }

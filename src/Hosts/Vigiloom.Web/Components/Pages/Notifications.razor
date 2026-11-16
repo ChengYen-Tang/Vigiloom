@@ -1,0 +1,66 @@
+@page "/notifications"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Globalization
+@using Vigiloom.Contracts.Notifications
+@inject INotificationReader Reader
+@inject ILogger<Notifications> Logger
+
+<PageTitle>通知紀錄 - Vigiloom</PageTitle>
+<main class="notifications-page">
+    <header class="notifications-heading">
+        <h1>通知紀錄</h1>
+        <p>查看 Ping、服務健康、行為規則與漏洞評估產生的通知。</p>
+    </header>
+    <section class="delivery-notice" aria-label="通知派送狀態">
+        <strong>通知派送尚未接入</strong>
+        <p>目前保留系統產生的通知紀錄，尚未透過通知管道送出。</p>
+    </section>
+    <section class="notifications-panel" aria-label="篩選通知">
+        <form method="get" action="/notifications">
+            <div class="filter-field"><label for="notification-source">來源</label><select id="notification-source" name="source">
+                <option value="" selected="@(string.IsNullOrEmpty(Source))">全部來源</option>
+                <option value="ping" selected="@(Source == "ping")">Ping</option>
+                <option value="service-health" selected="@(Source == "service-health")">服務健康</option>
+                <option value="sigma" selected="@(Source == "sigma")">行為規則</option>
+                <option value="vulnerability" selected="@(Source == "vulnerability")">漏洞評估</option>
+            </select></div>
+            <div class="filter-field"><label for="notification-from">開始日期（UTC）</label><input id="notification-from" type="date" name="from" value="@From" /></div>
+            <div class="filter-field"><label for="notification-to">結束日期（UTC）</label><input id="notification-to" type="date" name="to" value="@To" /></div>
+            <button type="submit">查詢</button><a href="/notifications">清除篩選</a>
+        </form>
+        @if (error is not null) { <p class="notification-error" role="alert">@error</p> }
+    </section>
+    @if (result is not null)
+    {
+        <section class="notifications-panel" aria-labelledby="notifications-results">
+            <h2 id="notifications-results">通知紀錄</h2>
+            @if (result.Items.Count == 0) { <p>沒有符合條件的通知紀錄。</p> }
+            else
+            {
+                <p class="scroll-hint">左右滑動查看完整通知。</p>
+                <div class="notifications-table" role="region" aria-label="通知紀錄，可左右捲動" tabindex="0">
+                    <table><thead><tr><th>時間（UTC）</th><th>來源</th><th>通知內容</th><th>相關對象</th></tr></thead><tbody>
+                    @foreach (var entry in result.Items)
+                    {
+                        <tr @key="entry.Id">
+                            <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
+                            <td><span class="source-badge">@SourceLabel(entry.Source)</span></td>
+                            <td><strong>@entry.Title</strong><div>@entry.Detail</div></td>
+                            <td>@if (ResourceLink(entry) is { } link) { <a href="@link">@(entry.Source == "service-health" ? "查看服務" : "查看設備")</a> } else { <span>—</span> }</td>
+                        </tr>
+                    }
+                    </tbody></table>
+                </div>
+                @if (result.Page > 1 || result.HasMore)
+                {
+                    <nav class="notification-pages" aria-label="通知紀錄分頁">
+                        @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
+                        <span>第 @result.Page 頁</span>
+                        @if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+                    </nav>
+                }
+            }
+        </section>
+    }
+</main>
