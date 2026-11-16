@@ -1,0 +1,155 @@
+@page "/settings/line"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Vigiloom.Modules.AlertingOperations.Application.Line
+@inject LineChannel Channel
+@inject LineDeliveryStatus DeliveryStatus
+@inject NavigationManager Navigation
+@inject ILogger<LineSettings> Logger
+
+<PageTitle>LINE 通知設定 - Vigiloom</PageTitle>
+<main class="device-page line-page">
+    <header class="device-heading"><div><h1>LINE 通知設定</h1><p>設定 LINE 官方帳號，將監控通知傳送至已確認的 LINE 群組。</p></div></header>
+    @if (message is not null) { <p class="line-message" role="status">@message</p> }
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (view is not null)
+    {
+        <section class="device-panel line-panel">
+            <h2>連線設定</h2>
+            <p>憑證已設定後不會再次顯示。留空可保留目前的值。</p>
+            <div class="line-form"><EditForm Model="Input" FormName="line-settings" method="post" OnValidSubmit="SaveAsync">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <label for="line-token">Channel access token <span>@(view.HasAccessToken ? "已設定" : "尚未設定")</span></label>
+                <InputText id="line-token" type="password" autocomplete="new-password" @bind-Value="Input.AccessToken" />
+                <label for="line-secret">Channel secret <span>@(view.HasChannelSecret ? "已設定" : "尚未設定")</span></label>
+                <InputText id="line-secret" type="password" autocomplete="new-password" @bind-Value="Input.ChannelSecret" />
+                <label class="line-toggle"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用 LINE 通知</label>
+                <button type="submit">儲存設定</button>
+            </EditForm></div>
+            <p><strong>Webhook URL：</strong><span class="line-url">@Navigation.ToAbsoluteUri("/api/v1/line/webhook")</span></p>
+            <p>LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。</p>
+        </section>
+        <section class="device-panel line-panel">
+            <h2>加入 LINE 群組</h2>
+            <ol><li>在 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。</li><li>一次邀請官方帳號加入一個 LINE 群組。</li><li>重新整理此頁，為最新的候選群組命名並確認啟用。</li></ol>
+            <p>LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。</p>
+        </section>
+        <section class="device-panel line-panel">
+            <div class="line-heading"><div><h2>LINE 接收群組</h2><p>僅已確認的群組會收到監控通知。</p></div><a href="/settings/line">重新整理</a></div>
+            @if (view.Groups.Count == 0) { <p>尚未收到群組資訊。邀請官方帳號加入群組後，重新整理此頁。</p> }
+            else
+            {
+                @foreach (var group in view.Groups)
+                {
+                    <article class="line-group">
+                        <div><strong>@(group.Name ?? "未命名群組")</strong><span class="line-badge">@(group.Approved ? "已啟用" : "待確認")</span><p class="line-id">@group.ExternalId</p></div>
+                        <form method="post" action="/settings/line/group" class="line-group-form">
+                            <AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" />
+                            <label for="@($"line-name-{group.Id:N}")">群組名稱</label><input id="@($"line-name-{group.Id:N}")" name="name" maxlength="256" value="@group.Name" placeholder="例如：維運通知" />
+                            @if (group.Approved)
+                            {
+                                <button type="submit" name="approved" value="true">儲存名稱</button>
+                                <button type="submit" name="approved" value="false">停用</button>
+                            }
+                            else { <button type="submit" name="approved" value="true">確認啟用</button> }
+                        </form>
+                        @if (group.Approved)
+                        {
+                            <form method="post" action="/settings/line/test"><AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" /><button class="line-secondary" type="submit">發送測試通知</button></form>
+                        }
+                    </article>
+                }
+            }
+        </section>
+        @if (test is not null)
+        {
+            <section class="device-panel line-panel" aria-live="polite"><h2>測試通知</h2><p>@TestMessage(test)</p>
+                @if (test.Status == "pending") { <a href="@($"/settings/line?test={test.Id:D}")">重新整理結果</a> }
+            </section>
+        }
+        <section class="device-panel line-panel">
+            <div class="line-heading"><div><h2>最近派送</h2><p>顯示最近 20 筆；LINE 已受理不代表訊息已送達。</p></div><a href="/settings/line">重新整理</a></div>
+            @if (recent.Count == 0) { <p>尚無派送紀錄。</p> }
+            else
+            {
+                <ul class="line-recent">
+                    @foreach (var item in recent)
+                    {
+                        <li><strong>@item.GroupName</strong> · @item.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @DeliveryMessage(item)</li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "line-settings")] private ChannelForm Input { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "saved")] private string? Saved { get; set; }
+    [SupplyParameterFromQuery(Name = "test")] private Guid? TestId { get; set; }
+    private LineChannelView? view;
+    private LineDeliveryView? test;
+    private IReadOnlyList<LineDeliverySummary> recent = [];
+    private string? error;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        try
+        {
+            view = await Channel.GetAsync(HttpContext.RequestAborted);
+            recent = await DeliveryStatus.GetRecentAsync(HttpContext.RequestAborted);
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input.Enabled = view.Enabled;
+            if (TestId is { } id) test = await DeliveryStatus.GetAsync(id, HttpContext.RequestAborted);
+            if (Saved is "group" or "channel") message = "設定已儲存。";
+        }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            Logger.LogWarning("Unable to load LINE settings: {ErrorType}", ex.GetType().Name);
+            error = "目前無法載入設定，請稍後再試。";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "登入已失效，請重新登入。"; return; }
+            if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret), actor, HttpContext.RequestAborted))
+            { Navigation.NavigateTo("/settings/line?saved=channel"); return; }
+            error = "請先設定 Channel access token 與 Channel secret，再啟用通知。";
+        }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            Logger.LogWarning("Unable to save LINE settings: {ErrorType}", ex.GetType().Name);
+            error = "無法儲存設定，請稍後再試。";
+        }
+    }
+
+    private static string TestMessage(LineDeliveryView value) => value.Status switch
+    {
+        "accepted" => "LINE 已受理測試通知。請至群組確認是否收到。",
+        "failed" => "測試通知未完成，請檢查憑證、群組設定與背景工作後重試。",
+        "pending" => "測試通知已排入，等待背景工作處理。",
+        _ => "目前無法確認測試通知狀態。"
+    };
+
+    private static string DeliveryMessage(LineDeliverySummary value) => value.Status switch
+    {
+        "accepted" => "LINE 已受理",
+        "failed" => "派送失敗，請檢查群組、憑證與背景工作",
+        "pending" => "等待處理",
+        _ => "狀態無法確認"
+    };
+
+    private sealed class ChannelForm
+    {
+        [StringLength(4096)] public string? AccessToken { get; set; }
+        [StringLength(4096)] public string? ChannelSecret { get; set; }
+        public bool Enabled { get; set; }
+    }
+}
