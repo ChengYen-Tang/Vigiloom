@@ -1,12 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
@@ -20,6 +22,7 @@ using Vigiloom.Testing.SqlServer;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Tests.Fixtures;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Tests;
@@ -34,6 +37,125 @@ public sealed class PingSqlTests
     {
         await ReusableNetworkDatabase.DisposeAsync();
         SqlTestDatabase.CompleteRun();
+    }
+
+    [TestMethod]
+    public Task PingAlertsFollowConfirmedTargetTransitions() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        Guid groupId;
+        await using (var db = resources.CreateDbContext())
+        {
+            var group = new Group("Original group", clock.Now);
+            groupId = group.Id;
+            db.Groups.Add(group);
+            db.DeviceGroups.Add(new DeviceGroup(group.Id, device.Id));
+            await db.SaveChangesAsync(token);
+        }
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock, [new PingAlertSink()]);
+        await store.ReconcileAsync(policy, token);
+        for (var round = 0; round < 4; round++)
+        {
+            await DueAsync(network, token);
+            foreach (var lease in await store.ClaimAsync(policy, token))
+                Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.Timeout, lease.Target, null), clock.Now, "central", token));
+        }
+        await using var networkDb = network.CreateDbContext();
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(networkDb.Database.GetConnectionString()).Options;
+        await using var operations = new OperationsDbContext(options);
+        Assert.AreEqual(3, await operations.Set<PingAlert>().CountAsync(token));
+        Assert.AreEqual(3, await operations.Set<PingAlertEvent>().CountAsync(token));
+        Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
+        await using (var db = resources.CreateDbContext())
+        {
+            var group = await db.Groups.SingleAsync(x => x.Id == groupId, token);
+            group.Update("Renamed group", null, clock.Now);
+            await db.SaveChangesAsync(token);
+        }
+        var alert = await operations.Set<PingAlert>().AsNoTracking().SingleAsync(x => x.DeviceId == device.Id, token);
+        var original = await operations.Set<PingAlertEvent>().AsNoTracking().SingleAsync(x => x.AlertId == alert.Id && !x.IsRecovery, token);
+        Assert.AreEqual(device.Name, original.DeviceName);
+        Assert.Contains("Original group", original.GroupsJson);
+        var notification = await operations.Set<Notification>().SingleAsync(x => x.MessageId == original.MessageId, token);
+        Assert.AreEqual(device.Id, notification.ResourceId);
+        Assert.Contains("Original group", notification.Detail);
+        await DueAsync(network, token);
+        foreach (var lease in await store.ClaimAsync(policy, token))
+            Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.MonitorError, null, null), clock.Now, "central", token));
+        Assert.AreEqual(3, await operations.Set<PingAlert>().CountAsync(x => x.RecoveredAt == null, token));
+        for (var round = 0; round < 2; round++)
+        {
+            await DueAsync(network, token);
+            foreach (var lease in await store.ClaimAsync(policy, token))
+                Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.Success, lease.Target, 1), clock.Now, "central", token));
+        }
+        Assert.AreEqual(3, await operations.Set<PingAlert>().CountAsync(x => x.RecoveredAt != null, token));
+        Assert.AreEqual(3, await operations.Set<PingAlertEvent>().CountAsync(x => x.IsRecovery, token));
+        Assert.AreEqual(6, await operations.Set<Notification>().CountAsync(token));
+        var recovery = await operations.Set<PingAlertEvent>().AsNoTracking().SingleAsync(x => x.AlertId == alert.Id && x.IsRecovery, token);
+        Assert.Contains("Renamed group", recovery.GroupsJson);
+    });
+
+    [TestMethod]
+    public Task PingAlertFailureRollsBackTransitionAndSample() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var source = new DevicePingSource(resources);
+        var store = new PingStore(network, source, clock, [new PingAlertSink(), new FailingTransitionSink()]);
+        await store.ReconcileAsync(policy, token);
+        for (var round = 0; round < 2; round++)
+        {
+            await DueAsync(network, token);
+            var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+            Assert.IsTrue(await store.CommitAsync(lease, policy, new(PingOutcome.Timeout, lease.Target, null), clock.Now, "central", token));
+        }
+        await DueAsync(network, token);
+        var final = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.CommitAsync(final, policy,
+            new(PingOutcome.Timeout, final.Target, null), clock.Now, "central", token));
+        await using var networkDb = network.CreateDbContext();
+        Assert.AreEqual(2, await networkDb.PingSamples.CountAsync(x => x.DeviceId == device.Id, token));
+        Assert.AreEqual(0, await networkDb.PingStateEvents.CountAsync(x => x.DeviceId == device.Id, token));
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(networkDb.Database.GetConnectionString()).Options;
+        await using var operations = new OperationsDbContext(options);
+        Assert.AreEqual(0, await operations.Set<PingAlert>().CountAsync(token));
+        Assert.AreEqual(0, await operations.Set<Notification>().CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task NotificationRequestRetryIsIdempotentAndRejectsDifferentContent() => WithReusableDatabase(async (_, network, token) =>
+    {
+        await using var db = network.CreateDbContext();
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var writer = new NotificationWriter();
+        var request = new NotificationRequest(Guid.CreateVersion7(), "ping", DateTimeOffset.UtcNow, "Ping 無法連線", "device");
+        await writer.WriteAsync(request, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+        await writer.WriteAsync(request, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.WriteAsync(request with { Detail = "other" },
+            db.Database.GetDbConnection(), transaction.GetDbTransaction(), token));
+        await transaction.CommitAsync(token);
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(db.Database.GetConnectionString()).Options;
+        await using var operations = new OperationsDbContext(options);
+        Assert.AreEqual(1, await operations.Set<Notification>().CountAsync(token));
+        var reader = new NotificationReader(new Factory<OperationsDbContext>(() => new OperationsDbContext(options)));
+        var day = DateOnly.FromDateTime(request.OccurredAt.UtcDateTime);
+        Assert.HasCount(1, (await reader.GetRecentAsync(new NotificationQuery(1, "ping", day, day), token)).Items);
+        Assert.IsEmpty((await reader.GetRecentAsync(new NotificationQuery(1, "sigma", day, day), token)).Items);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => reader.GetRecentAsync(new NotificationQuery(1, Start: day, End: day.AddDays(-1)), token));
+    });
+
+    private sealed class FailingTransitionSink : IPingTransitionSink
+    {
+        public Task RecordAsync(PingTransition transition, System.Data.Common.DbConnection connection,
+            System.Data.Common.DbTransaction transaction, CancellationToken token) => throw new InvalidOperationException("Simulated failure");
     }
 
     [TestMethod]

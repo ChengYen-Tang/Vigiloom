@@ -12,11 +12,15 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Vulnerabilities;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Domain;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Tests.Vulnerabilities;
 
@@ -25,6 +29,13 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Vulnerabilities;
 [TestCategory("Database")]
 public sealed class LinuxInventorySqlTests(TestContext context)
 {
+    private sealed class FailingNotificationWriter : INotificationWriter
+    {
+        public Task WriteAsync(NotificationRequest request, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
+            throw new InvalidOperationException("Simulated notification failure");
+        public Task WriteBatchAsync(IReadOnlyList<NotificationRequest> requests, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
+            throw new InvalidOperationException("Simulated notification failure");
+    }
     [TestMethod]
     public Task Debian_TracksPackageFixAndReappearance() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -34,6 +45,9 @@ public sealed class LinuxInventorySqlTests(TestContext context)
                     .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using var db = new SecurityAnalysisDbContext(options);
             await db.Database.MigrateAsync(token);
+            var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var operations = new OperationsDbContext(operationOptions)) await operations.Database.MigrateAsync(token);
             var now = DateTimeOffset.UtcNow;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             await Publish(InventorySource.HostSystem, InventoryChunkCodec.SchemaVersion,
@@ -53,18 +67,31 @@ public sealed class LinuxInventorySqlTests(TestContext context)
             await db.SaveChangesAsync(token);
             db.ChangeTracker.Clear();
             var evaluator = new DebianPackageEvaluation(new Factory(options), TimeProvider.System);
-            var writer = new LinuxAssessmentWriter(new Factory(options), new OwnerFence(true), TimeProvider.System);
+            var writer = new LinuxAssessmentWriter(new Factory(options), new OwnerFence(true), TimeProvider.System, new NotificationWriter());
             var first = await evaluator.EvaluateAsync(owner, TimeSpan.FromHours(1), token);
             Assert.AreEqual(LinuxEvaluationStatus.Ready, first.Status);
             Assert.AreEqual(MatchState.Affected, first.Findings!.Single().State);
+            var failing = new LinuxAssessmentWriter(new Factory(options), new OwnerFence(true), TimeProvider.System, new FailingNotificationWriter());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => failing.WriteAsync(owner, first, TimeSpan.FromHours(1), token));
+            Assert.AreEqual(0, await db.VulnerabilityRuns.CountAsync(token));
+            Assert.AreEqual(0, await db.VulnerabilityFindings.CountAsync(token));
+            Assert.AreEqual(0, await db.VulnerabilityEvaluations.CountAsync(token));
+            Assert.AreEqual(0, await db.VulnerabilityCoverage.CountAsync(token));
             Assert.AreEqual(LinuxWriteResult.Written, await writer.WriteAsync(owner, first, TimeSpan.FromHours(1), token));
+            Assert.AreEqual(LinuxWriteResult.AlreadyWritten, await writer.WriteAsync(owner, first, TimeSpan.FromHours(1), token));
+            var unknown = first with { RunId = Guid.CreateVersion7(), Findings = first.Findings!.Select(x => x with { State = MatchState.Unknown }).ToArray() };
+            Assert.AreEqual(LinuxWriteResult.Written, await writer.WriteAsync(owner, unknown, TimeSpan.FromHours(1), token));
+            var sameAffected = first with { RunId = Guid.CreateVersion7() };
+            Assert.AreEqual(LinuxWriteResult.Written, await writer.WriteAsync(owner, sameAffected, TimeSpan.FromHours(1), token));
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(1, await operations.Set<Notification>().CountAsync(token));
             var current = await new VulnerabilityCurrent(new Factory(options), TimeProvider.System)
                 .GetAsync(owner, 1, TimeSpan.FromHours(1), token, debian: true);
             Assert.AreEqual(VulnerabilityCoverageStatus.Current, current.Status);
             Assert.AreEqual("debian-security", current.SourceProvider);
             Assert.AreEqual("CVE-2025-1234", current.Items.Single().AdvisoryId);
             var findingId = current.Items.Single().Id;
-            var scheduled = new LinuxReassessment(new Factory(options), new OwnerResolver(owner), new OwnerFence(true), TimeProvider.System, NullLogger<LinuxReassessment>.Instance);
+            var scheduled = new LinuxReassessment(new Factory(options), new OwnerResolver(owner), new OwnerFence(true), TimeProvider.System, NullLogger<LinuxReassessment>.Instance, new NotificationWriter());
             await PublishPackage("2.0-1", 2);
             var fixedAssessment = await evaluator.EvaluateAsync(owner, TimeSpan.FromHours(1), token);
             Assert.AreEqual(MatchState.Fixed, fixedAssessment.Findings!.Single().State);
@@ -72,6 +99,8 @@ public sealed class LinuxInventorySqlTests(TestContext context)
             var afterFix = await new VulnerabilityCurrent(new Factory(options), TimeProvider.System)
                 .GetAsync(owner, 1, TimeSpan.FromHours(1), token, debian: true);
             Assert.AreEqual((int)MatchState.Fixed, afterFix.Items.Single().State);
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
             await PublishPackage("1.0-1", 3);
             var resurfaced = await evaluator.EvaluateAsync(owner, TimeSpan.FromHours(1), token);
             Assert.AreEqual(MatchState.Affected, resurfaced.Findings!.Single().State);
@@ -82,10 +111,12 @@ public sealed class LinuxInventorySqlTests(TestContext context)
             Assert.IsNotNull(afterReturn);
             Assert.AreEqual("debian-security", afterReturn.SourceProvider);
             Assert.AreEqual((int)MatchState.Affected, afterReturn.Items.Single().State);
+            await using (var operations = new OperationsDbContext(operationOptions))
+                Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
             var history = await new VulnerabilityHistory(new Factory(options)).GetAsync(owner.DeviceId, findingId, now.AddMinutes(-1), now.AddMinutes(1), null, token);
             Assert.IsNotNull(history);
-            Assert.HasCount(3, history.Items);
-            CollectionAssert.AreEquivalent(new[] { (int)MatchState.Affected, (int)MatchState.Fixed, (int)MatchState.Affected }, history.Items.Select(x => x.State).ToArray());
+            Assert.HasCount(5, history.Items);
+            CollectionAssert.AreEquivalent(new[] { (int)MatchState.Affected, (int)MatchState.Unknown, (int)MatchState.Affected, (int)MatchState.Fixed, (int)MatchState.Affected }, history.Items.Select(x => x.State).ToArray());
 
             Task PublishPackage(string version, long generation) => Publish(InventorySource.LinuxDpkg, InventoryChunkCodec.DpkgSourceSchemaVersion,
                 new InventoryEntry("openssl:amd64", "openssl", version, "amd64", SourcePackageName: "openssl", SourcePackageVersion: version), generation);

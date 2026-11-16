@@ -1,15 +1,17 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Health;
 
 /// <summary>Runs a bounded group of centrally leased application health checks.</summary>
-public sealed class HealthRunner(IDbContextFactory<ServiceObservabilityDbContext> contexts, TimeProvider clock) : IDisposable
+public sealed class HealthRunner(IDbContextFactory<ServiceObservabilityDbContext> contexts, TimeProvider clock,
+    IEnumerable<IHealthTransitionSink>? transitionSinks = null) : IDisposable
 {
     private const int Concurrency = 16;
-    private readonly HealthStore store = new(contexts);
+    private readonly HealthStore store = new(contexts, transitionSinks);
     private readonly HealthTransportPool transport = new();
     private readonly SemaphoreSlim policyGate = new(1, 1);
     private Guid? policyId;
