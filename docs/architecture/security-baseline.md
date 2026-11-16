@@ -12,6 +12,8 @@ REQ-35 selects and executes a verified subset of actual upstream configuration c
 
 Selecting a software engine's license does not establish the license of every rule, benchmark or derived document. Source and rule provenance must remain visible through REQ-32. Unverified content is not a selectable or published source.
 
+CIS benchmark PDFs are not distributed or used as an authorized data source here. The inspected Wazuh SCA policy is GPL-2.0 and is not copied into the product. No SCAP content is imported or distributed; its format does not grant a license to a particular content bundle, so any future bundle requires its own terms review.
+
 The notices for the selected source material are retained in [ComplianceAsCode.txt](../licenses/ComplianceAsCode.txt) and [PowerSTIG.txt](../licenses/PowerSTIG.txt). The source refresh checks the pinned files against their reviewed hashes; it does not automatically accept newer upstream commits. New versions require a reviewed mapping and corresponding notices before publication.
 
 ## First selected checks
