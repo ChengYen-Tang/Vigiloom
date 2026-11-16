@@ -13,7 +13,8 @@ public enum AuditFeedAction
     EnrollmentIssued, EnrollmentRevoked, AgentEnrolled, AgentRevoked, RotationStarted, RotationFinished,
     AgentSettingsChanged, ScheduleSettingsChanged, JobDeleteRequested, JobRequeueRequested, JobEnqueueRequested,
     RecurringJobRemoveRequested, RecurringJobTriggerRequested, AgentQueueCapacityChanged, AgentMetricSettingsChanged,
-    HostLogSourceCreated, HostLogSourceUpdated, HostLogSourceRetired, InventorySettingsChanged, HostMetricThresholdChanged
+    HostLogSourceCreated, HostLogSourceUpdated, HostLogSourceRetired, InventorySettingsChanged, HostMetricThresholdChanged,
+    AgentVersionAssigned, AgentVersionAssignmentCancelled
 }
 
 public enum AuditFeedOutcome { Unknown, Recorded, Started, Accepted, Pending, Rejected }
@@ -31,10 +32,12 @@ public sealed record HostLogSourceAuditDetails(Guid SourceId, Guid Generation, b
 public sealed record HostMetricThresholdAuditDetails(Guid ThresholdId, Guid AgentId, int Kind, string Source, string? Dimension, bool Enabled, int Comparison, double Value, int FreshnessSeconds, string Version);
 public sealed record InventorySettingsAuditDetails(int? ScanIntervalSeconds, int EffectiveScanIntervalSeconds, string Revision, string Version,
     bool? CollectCommandLine = null, bool EffectiveCollectCommandLine = false);
+public sealed record AgentVersionAuditDetails(Guid? PreviousPackageId, Guid? PackageId);
 public sealed record AuditFeedEntry(DateTimeOffset OccurredAt, Guid? ActorId, Guid? SubjectId, AuditFeedAction Action, AuditFeedOutcome Outcome,
     AgentSettingsAuditDetails? AgentSettings = null, string? Reference = null, Guid? AgentId = null, AgentQueueCapacityAuditDetails? QueueCapacity = null,
     AgentMetricSettingsAuditDetails? MetricSettings = null, HostLogSourceAuditDetails? HostLogSource = null,
-    InventorySettingsAuditDetails? InventorySettings = null, HostMetricThresholdAuditDetails? MetricThreshold = null);
+    InventorySettingsAuditDetails? InventorySettings = null, HostMetricThresholdAuditDetails? MetricThreshold = null,
+    AgentVersionAuditDetails? AgentVersion = null);
 public sealed record AuditFeedPage(AuditFeedSource Source, IReadOnlyList<AuditFeedEntry> Items, int Page, bool HasMore, bool LimitReached);
 
 public static class AuditFeedLimits

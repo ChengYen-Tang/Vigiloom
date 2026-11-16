@@ -216,6 +216,7 @@
                         <td>@(entry.SubjectId?.ToString("D") ?? (feedResult.Source is AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.InventorySettings ? "平台設定" : "—"))</td>
                         <td>
                             @if (entry.AgentId is { } agentId) { <div>Agent：@agentId</div> }
+                            @if (entry.AgentVersion is { } agentVersion) { <div>原套件：@(agentVersion.PreviousPackageId?.ToString() ?? "無")</div><div>新套件：@(agentVersion.PackageId?.ToString() ?? "無")</div> }
                             @if (entry.Reference is { } reference) { <div>工作：@reference</div> }
                             @if (entry.MetricThreshold is { } threshold) { <div>閾值 ID：@threshold.ThresholdId</div><div>Agent：@threshold.AgentId · 指標：@((Vigiloom.Contracts.Agent.AgentMetricKind)threshold.Kind) · 來源：@threshold.Source @(threshold.Dimension is null ? "" : $"· {threshold.Dimension}")</div><div>@(threshold.Enabled ? "啟用" : "停用") · @(threshold.Comparison == 1 ? "大於等於" : "小於等於") @threshold.Value · 有效時間 @threshold.FreshnessSeconds 秒</div><details><summary>設定版本</summary>@threshold.Version</details> }
                             @if (entry.HostLogSource is { } logSource) { <div>來源：@logSource.SourceId</div><div>設定：@(logSource.Enabled ? "啟用" : "停用")</div><details><summary>來源版本</summary><div>代次：@logSource.Generation</div><div>版本：@logSource.Version</div></details> }
@@ -399,6 +400,7 @@
         AuditFeedAction.ApiCredentialIssued => "核發 API 憑證", AuditFeedAction.ApiCredentialRevoked => "撤銷 API 憑證",
         AuditFeedAction.DeviceCreated => "建立設備", AuditFeedAction.DeviceUpdated => "更新設備", AuditFeedAction.DeviceArchived => "封存設備", AuditFeedAction.DeviceRestored => "還原設備",
         AuditFeedAction.EnrollmentIssued => "核發 Agent 註冊", AuditFeedAction.EnrollmentRevoked => "撤銷 Agent 註冊", AuditFeedAction.AgentEnrolled => "Agent 加入", AuditFeedAction.AgentRevoked => "撤銷 Agent", AuditFeedAction.RotationStarted => "開始憑證輪替", AuditFeedAction.RotationFinished => "完成憑證輪替",
+        AuditFeedAction.AgentVersionAssigned => "指派 Agent 版本", AuditFeedAction.AgentVersionAssignmentCancelled => "取消 Agent 版本指派",
         AuditFeedAction.HostMetricThresholdChanged => "變更主機效能閾值", AuditFeedAction.AgentSettingsChanged => "變更 Agent 設定", AuditFeedAction.AgentQueueCapacityChanged => "變更 Agent 佇列容量", AuditFeedAction.AgentMetricSettingsChanged => "變更 Agent 指標設定", AuditFeedAction.InventorySettingsChanged => "變更主機盤點設定", AuditFeedAction.HostLogSourceCreated => "新增主機日誌來源", AuditFeedAction.HostLogSourceUpdated => "更新主機日誌來源", AuditFeedAction.HostLogSourceRetired => "移除主機日誌來源", AuditFeedAction.ScheduleSettingsChanged => "變更排程設定", AuditFeedAction.JobDeleteRequested => "刪除工作", AuditFeedAction.JobRequeueRequested => "重新排入工作", AuditFeedAction.JobEnqueueRequested => "排入工作", AuditFeedAction.RecurringJobRemoveRequested => "移除週期工作", AuditFeedAction.RecurringJobTriggerRequested => "觸發週期工作",
         _ => "未支援的紀錄"
     };

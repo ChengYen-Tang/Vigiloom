@@ -1,0 +1,141 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Contracts.Agent
+@using Vigiloom.Contracts.Agent.Inventory
+@implements IAsyncDisposable
+@inject IAgentVersionClient Client
+@inject IHostMonitoringClient Monitoring
+@inject TimeProvider Clock
+@inject ILogger<VersionAssignment> Logger
+
+<div class="version-assignment" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
+    @if (loading) { <p role="status">正在讀取 Agent 版本…</p> }
+    else if (error is not null) { <section class="version-panel"><p role="alert">@error</p><button @onclick="ReloadAsync">重新載入</button></section> }
+    else if (current is null) { <section class="version-panel"><p role="alert">此 Agent 已無法管理，請重新整理設備頁面。</p></section> }
+    else
+    {
+        <section class="version-panel">
+            <h2>Agent 版本資訊</h2>
+            <dl class="version-summary">
+                <div><dt>指定版本</dt><dd>@(current?.PackageVersion ?? "尚未指派")</dd></div>
+                <div><dt>上次盤點的 Agent 版本</dt><dd>@(inventoryError ? "無法讀取" : observedVersion ?? "尚無盤點資料")</dd></div>
+                <div><dt>指派時間（UTC）</dt><dd>@(current?.PackageId is null ? "—" : current.AssignedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"))</dd></div>
+                <div><dt>版本盤點時間（UTC）</dt><dd>@(observedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
+            </dl>
+            @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
+            <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>
+        </section>
+        <AuthorizeView Roles="Administrator">
+            <Authorized>
+                <section class="version-panel">
+                    <h2>指派 Agent 套件</h2>
+                    <p>選擇與設備作業系統及架構相符的套件。</p>
+                    <fieldset disabled="@(saving || paging || !RendererInfo.IsInteractive)">
+                        <legend>選擇受信任的套件</legend>
+                        <p class="version-scroll-hint">左右滑動查看套件資訊</p>
+                        <div class="version-table-wrap"><table><thead><tr><th>選擇</th><th>版本</th><th>平台</th><th>狀態</th></tr></thead><tbody>
+                            @foreach (var package in packages.Items)
+                            {
+                                <tr @key="package.Id"><td><input type="radio" name="agent-version-package" value="@package.Id" checked="@(selected == package.Id.ToString())" @onchange="() => selected = package.Id.ToString()" disabled="@(!Available(package))" aria-label="@($"{package.Version} {package.RuntimeIdentifier}")" /></td>
+                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(Available(package) ? "可指派" : "不可用")</td></tr>
+                            }
+                        </tbody></table></div>
+                    </fieldset>
+                    @if (packages.Items.Count == 0) { <p>目前沒有套件，請先至套件管理設定來源並更新清單。</p> }
+                    @if (packages.Page > 1 || packages.HasMore) { <div class="version-pagination">
+                        <button type="button" @onclick="PreviousAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || packages.Page <= 1)">上一頁</button>
+                        <span>第 @packages.Page 頁</span>
+                        <button type="button" @onclick="NextAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || !packages.HasMore)">下一頁</button>
+                    </div> }
+                    @if (message is not null) { <p role="@(success ? "status" : "alert")">@message</p> }
+                    <div class="version-actions">
+                        <button type="button" @onclick="AssignAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || string.IsNullOrEmpty(selected))">@(saving ? "處理中…" : "指派版本")</button>
+                        <button type="button" @onclick="CancelAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || current?.PackageId is null)">取消指派</button>
+                        <a href="/settings/agent-packages">管理套件</a>
+                    </div>
+                </section>
+            </Authorized>
+            <NotAuthorized><p>只有管理員可以變更版本指派。</p></NotAuthorized>
+        </AuthorizeView>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid AgentId { get; set; }
+    [Parameter, EditorRequired] public Guid DeviceId { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private AgentVersionAssignmentView? current;
+    private AgentPackagePage packages = new([], 1, false);
+    private string selected = "";
+    private string? error;
+    private string? message;
+    private string? observedVersion;
+    private DateTimeOffset? observedAt;
+    private bool inventoryError;
+    private bool loading = true;
+    private bool saving;
+    private bool paging;
+    private bool success;
+    private bool Available(AgentPackageView package) => package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow();
+
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        loading = true; error = null;
+        try { current = await Client.GetAsync(AgentId, lifetime.Token); packages = await Client.PackagesAsync(1, lifetime.Token); selected = ""; await LoadObservedAsync(); }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent version assignment"); error = "無法讀取 Agent 版本，請重新載入。"; }
+        finally { loading = false; }
+    }
+
+    private async Task LoadObservedAsync()
+    {
+        observedVersion = null; observedAt = null; inventoryError = false;
+        try
+        {
+            var inventory = await Monitoring.GetInventoryAsync(DeviceId, lifetime.Token);
+            if (inventory?.AgentId != AgentId) return;
+            var source = inventory.Sources.FirstOrDefault(x => x.Source == InventorySource.HostSystem);
+            if (source?.CurrentSnapshotId is not { } snapshot) return;
+            var chunk = await Monitoring.GetInventoryChunkAsync(DeviceId, InventorySource.HostSystem, snapshot, 0, lifetime.Token);
+            var host = chunk?.Items.FirstOrDefault(x => x.Key == "host");
+            if (host?.AgentVersion is null) return;
+            observedVersion = host.AgentVersion;
+            observedAt = chunk!.ObservedAt;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to read last Agent inventory version"); inventoryError = true; }
+    }
+
+    private async Task PageAsync(int page)
+    {
+        if (paging) return;
+        paging = true;
+        try { packages = await Client.PackagesAsync(page, lifetime.Token); selected = ""; }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent package page"); message = "無法讀取套件清單，請稍後重試。"; success = false; }
+        finally { paging = false; }
+    }
+    private Task PreviousAsync() => PageAsync(packages.Page - 1);
+    private Task NextAsync() => PageAsync(packages.Page + 1);
+    private Task AssignAsync() => Guid.TryParse(selected, out var packageId) ? SaveAsync(packageId) : Task.CompletedTask;
+    private Task CancelAsync() => SaveAsync(null);
+    private async Task SaveAsync(Guid? packageId)
+    {
+        if (saving) return;
+        saving = true; message = null;
+        try
+        {
+            var result = await Client.SetAsync(AgentId, new(packageId, current?.Revision ?? ""), lifetime.Token);
+            success = result == VersionAssignmentResult.Saved;
+            if (success) { await ReloadAsync(); message = packageId is null ? "已取消指派。" : "已儲存版本指派；設備是否安裝仍以實際回報為準。"; }
+            else if (result == VersionAssignmentResult.NotFound) current = null;
+            else message = "指派已變更或套件不可用，請重新載入。";
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to change Agent version assignment"); success = false; message = "無法儲存指派，請稍後重試。"; }
+        finally { saving = false; }
+    }
+
+    public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
+}

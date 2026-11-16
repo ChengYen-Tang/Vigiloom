@@ -26,6 +26,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentMetricSettingAudit> MetricSettingAudits => Set<AgentMetricSettingAudit>();
     public DbSet<UpdateTrustState> UpdateTrustStates => Set<UpdateTrustState>();
     public DbSet<AgentPackage> Packages => Set<AgentPackage>();
+    public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
     public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
     public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
@@ -86,6 +87,13 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         package.Property(x => x.Sha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.HasIndex(x => new { x.Version, x.RuntimeIdentifier }).IsUnique();
+        var assignment = modelBuilder.Entity<AgentVersionAssignment>();
+        assignment.ToTable("VersionAssignments", table => table.HasCheckConstraint("CK_VersionAssignments_Target",
+            "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')"));
+        assignment.HasKey(x => x.AgentId).IsClustered();
+        assignment.Property(x => x.Version).IsRowVersion();
+        assignment.HasOne<Agent>().WithOne().HasForeignKey<AgentVersionAssignment>(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        assignment.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
         var agent = modelBuilder.Entity<Agent>();
         agent.ToTable("Agents", table =>
         {
