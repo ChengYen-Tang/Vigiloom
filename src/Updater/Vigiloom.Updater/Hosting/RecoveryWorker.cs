@@ -42,7 +42,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
         {
             var journal = new UpdateJournal(stateDirectory!);
             var coordinator = new UpdateCoordinator(journal, runtime);
-            if (!await RecoverAsync(coordinator, root!, stoppingToken)) return;
+            if (!await RecoverAsync(coordinator, runtime, root!, stoppingToken)) return;
             if (!TryGetConfiguration(stateDirectory!, out var options))
             {
                 logger.LogInformation("Updater handoff is inactive until installation settings are configured.");
@@ -67,7 +67,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
                 {
                     var result = await processor.ProcessAsync(request, token);
                     logger.LogInformation("Updater request result: {Assignment}, {Phase}.", result.Assignment, result.State?.Phase);
-                }, token => RecoverAsync(coordinator, root!, token), logger, stoppingToken);
+                }, token => RecoverAsync(coordinator, runtime, root!, token), logger, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception error)
@@ -77,7 +77,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
         }
     }
 
-    private async Task<bool> RecoverAsync(UpdateCoordinator coordinator, string root, CancellationToken token)
+    private async Task<bool> RecoverAsync(UpdateCoordinator coordinator, IAgentUpdateRuntime runtime, string root, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
@@ -85,7 +85,18 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
             {
                 var state = await coordinator.RecoverAsync(token);
                 if (state is null) return true;
-                PreparedPackageCleanup.RemoveRolledBack(state, root);
+                try
+                {
+                    PreparedPackageCleanup.RemoveRolledBack(state, root);
+                    if (state.Phase == UpdatePhase.Succeeded)
+                        PreparedPackageCleanup.RemoveSuperseded(state, root, await runtime.GetSelectedDirectoryAsync(token));
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception error)
+                {
+                    // Disk cleanup is not required to keep the current Agent running.
+                    logger.LogWarning("Updater could not remove old package files: {ErrorType}.", error.GetType().Name);
+                }
                 logger.LogInformation("Updater recovery state: {Phase}.", state.Phase);
                 if (state.Phase == UpdatePhase.RollbackFailed)
                 {

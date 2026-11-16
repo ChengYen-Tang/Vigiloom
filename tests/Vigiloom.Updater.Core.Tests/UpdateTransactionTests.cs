@@ -215,6 +215,58 @@ public sealed class UpdateTransactionTests(TestContext context)
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    [TestMethod]
+    public void CleanupKeepsCurrentAndPreviousAfterSuccessfulUpdate()
+    {
+        var root = CreateDirectory();
+        try
+        {
+            var staging = Path.Combine(root, "staging");
+            var old = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var previous = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var current = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var unowned = Path.Combine(staging, "unowned");
+            foreach (var path in new[] { old, previous, current, unowned }) Directory.CreateDirectory(path);
+            var now = DateTimeOffset.UtcNow;
+            var state = new UpdateState(Guid.CreateVersion7(), previous, current, UpdatePhase.Succeeded, now, []);
+            PreparedPackageCleanup.RemoveSuperseded(state with { Phase = UpdatePhase.RollingBack }, root, current);
+            Assert.IsTrue(Directory.Exists(old));
+            Assert.ThrowsExactly<InvalidOperationException>(() => PreparedPackageCleanup.RemoveSuperseded(state, root, previous));
+            Assert.IsTrue(Directory.Exists(old));
+            PreparedPackageCleanup.RemoveSuperseded(state, root, current);
+            Assert.IsFalse(Directory.Exists(old));
+            Assert.IsTrue(Directory.Exists(previous));
+            Assert.IsTrue(Directory.Exists(current));
+            Assert.IsTrue(Directory.Exists(unowned));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Linux)]
+    public void CleanupDoesNotFollowLinkedDirectory()
+    {
+        var root = CreateDirectory();
+        try
+        {
+            var staging = Path.Combine(root, "staging");
+            var previous = Path.Combine(root, "old");
+            var current = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(current);
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "keep"), "data");
+            var link = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            Directory.CreateSymbolicLink(link, outside);
+            var now = DateTimeOffset.UtcNow;
+            var state = new UpdateState(Guid.CreateVersion7(), previous, current, UpdatePhase.Succeeded, now, []);
+            PreparedPackageCleanup.RemoveSuperseded(state, root, current);
+            Assert.IsTrue(File.Exists(Path.Combine(outside, "keep")));
+            Assert.IsTrue(Directory.Exists(link));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private Task<UpdateState> ApplyAsync(UpdateTransaction transaction, VerifiedManifest verified, AgentVersionTarget target,
         Stream archive, string root, string previous) => transaction.ApplyAsync(new Uri("https://vigiloom.example/"), "vla_test", target,
             verified, archive, root, previous, "win-x64", "1.0.0", "1.0.0", context.CancellationToken);
