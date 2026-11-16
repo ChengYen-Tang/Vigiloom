@@ -11,6 +11,7 @@ using Vigiloom.Modules.Publishing.Domain;
 using Vigiloom.Modules.Publishing.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Web.Authentication;
 
@@ -22,6 +23,34 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class ReusableWebDatabaseTests(TestContext context)
 {
+    [TestMethod]
+    public async Task ReceptionRejectionCounters_AreResetBetweenCases()
+    {
+        string? firstDatabase = null;
+        await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            firstDatabase = database.DatabaseName;
+            using var host = PingTestSite.CreateFactory(database.ConnectionString);
+            await using var scope = host.Services.CreateAsyncScope();
+            var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("test source", token);
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE [service].[ReceptionRejections] SET ObservedCount = 3, FirstRecordedAt = SYSDATETIMEOFFSET(), LastRecordedAt = SYSDATETIMEOFFSET(), ExampleIngress = 2, ExampleSourceId = @source WHERE Kind = 3";
+            command.Parameters.AddWithValue("@source", source.SourceId);
+            Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
+        }, context.CancellationToken);
+        await ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        {
+            Assert.AreEqual(firstDatabase, database.DatabaseName);
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM [service].[ReceptionRejections] WHERE ObservedCount <> 0 OR FirstRecordedAt IS NOT NULL OR LastRecordedAt IS NOT NULL OR ExampleIngress IS NOT NULL OR ExampleSourceId IS NOT NULL";
+            Assert.AreEqual(0, (int)(await command.ExecuteScalarAsync(token))!);
+        }, context.CancellationToken);
+    }
+
     [TestMethod]
     public async Task TemplateData_IsResetAndMigrationHistoryIsPreserved()
     {
@@ -147,7 +176,7 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task ChangedServiceSeed_IsRejectedAndDatabaseIsNotReused()
+    public async Task RemovedServiceSeed_IsRejectedAndDatabaseIsNotReused()
     {
         string? prior = null;
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -156,7 +185,7 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE [service].[ReceptionRejections] SET [ObservedCount] = [ObservedCount] + 1 WHERE [Kind] = 1";
+            command.CommandText = "DELETE FROM [service].[ReceptionRejections] WHERE [Kind] = 1";
             Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
         }, context.CancellationToken));
         await ReusableWebDatabase.ExecuteAsync((database, _) =>

@@ -58,6 +58,13 @@ internal static class ReusableWebDatabase
         });
         return async (connection, ct) =>
         {
+            // These seeded rows are live counters and can change during ordinary OTLP tests.
+            // Restore their values while retaining and checking the seeded rows themselves.
+            await using (var counters = connection.CreateCommand())
+            {
+                counters.CommandText = "UPDATE [service].[ReceptionRejections] SET [ObservedCount] = 0, [FirstRecordedAt] = NULL, [LastRecordedAt] = NULL, [ExampleIngress] = NULL, [ExampleSourceId] = NULL";
+                await counters.ExecuteNonQueryAsync(ct);
+            }
             if (await ReadSeedAsync(connection, ct) != seed) throw new InvalidOperationException("A reusable Web test changed preserved seed data.");
             await respawner.ResetAsync(connection);
         };

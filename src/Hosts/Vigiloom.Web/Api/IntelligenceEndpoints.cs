@@ -1,6 +1,7 @@
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -11,6 +12,25 @@ internal static class IntelligenceEndpoints
     {
         var admin = app.MapGroup("/api/v1/admin/intelligence/sources")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/baseline-check", async (Guid sourceId, Guid revisionId,
+            CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            return await stage.ReadAsync(sourceId, revisionId, token) is { } check ? Results.Ok(check) : Results.NotFound();
+        }).Produces<BaselineCheck>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Read a locally authored baseline check before review");
+        admin.MapPost("/baseline-checks", async (CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(null, null, input.Check, actor, token)), allowApiCredential: false);
+        }).Produces<CustomBaselineStageResult>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
+            .WithSummary("Stage a locally authored baseline check");
+        admin.MapPost("/{sourceId:guid}/baseline-revisions", async (Guid sourceId, CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(sourceId, input.ExpectedVersion, input.Check, actor, token)), allowApiCredential: false);
+        }).Produces<CustomBaselineStageResult>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Stage a revised local baseline check");
         admin.MapGet("/", async (int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
@@ -130,4 +150,15 @@ internal static class IntelligenceEndpoints
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Revoke a retained intelligence revision");
     }
+
+    private static IResult StageResult(CustomBaselineStageResult result) => result.Status switch
+    {
+        CustomBaselineStageStatus.Staged or CustomBaselineStageStatus.Unchanged => Results.Ok(result),
+        CustomBaselineStageStatus.Invalid => Results.ValidationProblem(new Dictionary<string, string[]> { ["check"] = ["Invalid or unsupported baseline check."] }),
+        CustomBaselineStageStatus.NotFound => Results.NotFound(),
+        _ => Results.Problem(statusCode: 409, title: "The check could not be staged; reload and review its status.")
+    };
 }
+
+/// <summary>A local read-only check to stage, plus the source version when revising an existing check.</summary>
+internal sealed record CustomBaselineDraftRequest(BaselineCheck Check, string? ExpectedVersion = null);

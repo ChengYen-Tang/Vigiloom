@@ -41,6 +41,13 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<int?>("AppliedSettingsPollSeconds")
                         .HasColumnType("int");
 
+                    b.Property<string>("BaselineConfigurationJson")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("BaselineConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("ConfigurationAppliedAt")
                         .HasColumnType("datetimeoffset");
 
