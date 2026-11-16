@@ -45,6 +45,21 @@ done
 ! systemctl cat vigiloom-agent.service >/dev/null 2>&1 || fail 'The Vigiloom Agent service already exists.'
 ! systemctl cat vigiloom-updater.service >/dev/null 2>&1 || fail 'The Vigiloom Updater service already exists.'
 
+# Exercise the published runtimes before creating an account or asking for secrets.
+# The runtime loads system ICU itself; checking package names alone is insufficient.
+for executable in "$agent_source/Vigiloom.Agent" "$updater_source/Vigiloom.Updater"; do
+    if ! (ulimit -c 0; env -u DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0 timeout 10s "$executable" check-runtime); then
+        printf '%s\n' \
+            'The Agent or Updater could not start. Check ICU and other native .NET dependencies.' \
+            'If the diagnostic above reports missing ICU, install the ICU runtime package for your distribution, then retry.' \
+            'For other errors, follow the diagnostic above.' \
+            'Fedora/RHEL: sudo dnf install libicu' \
+            'Ubuntu/Debian: install the libicu package for your OS version (for example, libicu74 on Ubuntu 24.04).' \
+            'See https://learn.microsoft.com/dotnet/core/install/linux for distribution-specific dependencies.' >&2
+        exit 1
+    fi
+done
+
 read -r -p 'Vigiloom server HTTPS URL: ' server
 [[ $server == https://?* && $server != *[!a-zA-Z0-9._~:/%\[\]-]* ]] || fail 'Enter an HTTPS URL without credentials, query, fragment, or whitespace.'
 read -r -p 'Device ID: ' device
