@@ -176,7 +176,7 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task ChangedServiceSeed_IsRejectedAndDatabaseIsNotReused()
+    public async Task RemovedServiceSeed_IsRejectedAndDatabaseIsNotReused()
     {
         string? prior = null;
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
@@ -185,7 +185,7 @@ public sealed class ReusableWebDatabaseTests(TestContext context)
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE [service].[ReceptionRejections] SET [ObservedCount] = [ObservedCount] + 1 WHERE [Kind] = 1";
+            command.CommandText = "DELETE FROM [service].[ReceptionRejections] WHERE [Kind] = 1";
             Assert.AreEqual(1, await command.ExecuteNonQueryAsync(token));
         }, context.CancellationToken));
         await ReusableWebDatabase.ExecuteAsync((database, _) =>
