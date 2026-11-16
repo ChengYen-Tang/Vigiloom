@@ -1,5 +1,12 @@
 using Vigiloom.Updater.Hosting;
 
+if (args is ["check-runtime"])
+{
+    _ = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+    Console.WriteLine("Updater runtime check passed.");
+    return;
+}
+
 if (args is ["provision-trust", ..])
 {
     if (args is not [_, var rootPath, var fingerprint])
