@@ -43,4 +43,5 @@ PR 合併後，確認目標分支已包含變更，再清理由本次工作建�
 資料庫測試先讀 [開發／測試資料庫隔離規範](docs/architecture/development-and-test-databases.md)。Windows 本機開發與測試都用同一個 LocalDB instance（預設 MSSQLLocalDB），使用不同資料庫與連線設定；開發 DB 持續保留，測試每次建立唯一臨時 DB。成功／失敗均清理並驗證刪除；中止殘留由明確擁有權 manifest 補清。清理不得操作開發／正式 DB、刪除系統 DB，或停止／刪除共用 LocalDB instance；只可透過 master 管理連線處理自己登記的臨時 DB。純單元測試不連 DB；LocalDB／SQL Server 測試標記 Integration／Database。fixture 與補清方式見 tests/Vigiloom.Testing.SqlServer/README.md；正式 migration／schema 驗證仍由 REQ-02-T02 完成。
 
 UI 風格已選第二輪第 2 張（Vigiloom-UI-Concept-2-Revision-2.png）。做到各 UI 需求時，開發 Agent 依該需求透過 Product Design 設計與驗證，再以 Blazor 實作，沿用共用風格；不以全站原型完成為前置。
+人工視覺驗證的隔離測試網站使用固定網址 `http://localhost:5043`：執行單一 Web 瀏覽器測試案例時設定 `VIGILOOM_VISUAL_QA=1`，同一時間只啟動一個固定 port 的測試網站。一般自動測試與 CI 不設定此變數，繼續使用動態 port 避免併行衝突。使用者已授權對本專案啟動的所有本機 port 使用瀏覽器與 DevTools，不因更換 port 再詢問。
 設備／主機與應用服務各有獨立身分、欄位和狀態；服務不強制綁主機。選單含網路測速。LINE 在登入後由 Administrator 從設定頁管理。AI Agent 分析維持擱置。
