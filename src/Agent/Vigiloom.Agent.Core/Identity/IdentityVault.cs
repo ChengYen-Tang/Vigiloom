@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Vigiloom.Agent.Core.Identity;
@@ -213,6 +214,33 @@ public sealed class IdentityVault(string directory)
         }
 
         public Task WriteAsync(IdentityState state, CancellationToken token) => WriteFileAsync("identity.dat", state, token);
+
+        internal async Task<string?> ReadBootstrapEnrollmentAsync(CancellationToken token)
+        {
+            var path = Path.Combine(directory, AgentEnrollmentBootstrap.FileName);
+            if (!File.Exists(path)) return null;
+            RejectLink(path);
+            if (OperatingSystem.IsLinux()) ValidateUnixFile(path);
+            await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None, 128, FileOptions.Asynchronous);
+            if (file.Length != 84) throw new InvalidDataException("Invalid bootstrap enrollment data.");
+            var bytes = new byte[84];
+            try
+            {
+                await file.ReadExactlyAsync(bytes, token);
+                if (bytes.Any(value => value > 127)) throw new InvalidDataException("Invalid bootstrap enrollment data.");
+                return Encoding.ASCII.GetString(bytes);
+            }
+            finally { CryptographicOperations.ZeroMemory(bytes); }
+        }
+
+        internal void DeleteBootstrapEnrollment()
+        {
+            var path = Path.Combine(directory, AgentEnrollmentBootstrap.FileName);
+            if (!File.Exists(path)) return;
+            RejectLink(path);
+            if (OperatingSystem.IsLinux()) ValidateUnixFile(path);
+            File.Delete(path);
+        }
 
         internal Task WriteSettingsAsync(AgentAppliedSettings settings, CancellationToken token) =>
             WriteFileAsync("settings.dat", settings, token);
