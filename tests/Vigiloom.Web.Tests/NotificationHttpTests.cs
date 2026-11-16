@@ -41,7 +41,7 @@ public sealed class NotificationHttpTests(TestContext context)
             var document = await new HtmlParser().ParseDocumentAsync(html, token);
             Assert.Contains("Ping 無法連線", document.Body!.TextContent);
             Assert.DoesNotContain("行為規則命中", document.Body.TextContent);
-            Assert.Contains("通知派送尚未接入", document.Body.TextContent);
+            Assert.Contains("此處的紀錄不代表通知已送達", document.Body.TextContent);
             Assert.IsNull(document.QuerySelector(".notifications-table script"));
             Assert.IsNotNull(document.QuerySelector($"a[href='/devices/{device.Id:D}']"));
             using var invalid = await reader.GetAsync("/notifications?from=2026-11-03&to=2026-11-01", token);

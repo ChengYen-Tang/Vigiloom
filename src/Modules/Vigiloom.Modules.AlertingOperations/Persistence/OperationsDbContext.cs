@@ -11,6 +11,9 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     internal DbSet<PingAlertEvent> PingAlertEvents => Set<PingAlertEvent>();
     internal DbSet<Notification> Notifications => Set<Notification>();
     internal DbSet<ServiceHealthAlert> ServiceHealthAlerts => Set<ServiceHealthAlert>();
+    internal DbSet<LineSettings> LineSettings => Set<LineSettings>();
+    internal DbSet<LineGroup> LineGroups => Set<LineGroup>();
+    internal DbSet<LineDelivery> LineDeliveries => Set<LineDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,6 +77,36 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         serviceAlert.HasIndex(x => x.RowId).IsUnique().IsClustered();
         serviceAlert.HasIndex(x => x.TargetId).IsUnique().HasFilter("[RecoveredAt] IS NULL");
         serviceAlert.HasIndex(x => new { x.ServiceId, x.OpenedAt });
+
+        var lineSettings = modelBuilder.Entity<LineSettings>();
+        lineSettings.ToTable("LineSettings", table => table.HasCheckConstraint("CK_LineSettings_Slot", "[Slot] = 1"));
+        lineSettings.HasKey(x => x.Id).IsClustered(false);
+        lineSettings.Property(x => x.Id).ValueGeneratedNever();
+        lineSettings.Property(x => x.RowId).UseIdentityColumn();
+        lineSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        lineSettings.HasIndex(x => x.Slot).IsUnique();
+        lineSettings.Property(x => x.Slot).ValueGeneratedNever();
+
+        var lineGroup = modelBuilder.Entity<LineGroup>();
+        lineGroup.ToTable("LineGroups");
+        lineGroup.HasKey(x => x.Id).IsClustered(false);
+        lineGroup.Property(x => x.Id).ValueGeneratedNever();
+        lineGroup.Property(x => x.RowId).UseIdentityColumn();
+        lineGroup.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        lineGroup.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
+        lineGroup.HasIndex(x => x.ExternalId).IsUnique();
+        lineGroup.Property(x => x.Name).HasMaxLength(256);
+
+        var lineDelivery = modelBuilder.Entity<LineDelivery>();
+        lineDelivery.ToTable("LineDeliveries");
+        lineDelivery.HasKey(x => x.Id).IsClustered(false);
+        lineDelivery.Property(x => x.Id).ValueGeneratedNever();
+        lineDelivery.Property(x => x.RowId).UseIdentityColumn();
+        lineDelivery.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        lineDelivery.HasIndex(x => new { x.NotificationId, x.GroupId }).IsUnique().HasFilter("[NotificationId] IS NOT NULL");
+        lineDelivery.Property(x => x.Recipient).HasMaxLength(128).IsRequired();
+        lineDelivery.Property(x => x.Text).HasMaxLength(5000).IsRequired();
+        lineDelivery.Property(x => x.FailureCode).HasMaxLength(64);
 
     }
 }

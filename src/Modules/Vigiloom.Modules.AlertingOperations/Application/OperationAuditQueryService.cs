@@ -74,6 +74,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryIntelligenceAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.IntelligenceRevisionActivatedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryLineAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.LineSettingsChangedV1, cancellationToken);
+
     private async Task<OperationAuditPage> QueryAsync(OperationAuditQuery query, short kind, CancellationToken cancellationToken)
     {
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
@@ -82,7 +85,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
                 (kind != 0 ? x.Kind == kind || (kind == AuditKinds.PublicationChangedV1 && x.Kind == AuditKinds.PublicationTemplateChangedV1) || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
                     (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) ||
                     (kind == AuditKinds.IntelligenceRevisionActivatedV1 && (x.Kind == AuditKinds.IntelligencePolicyChangedV1 || x.Kind == AuditKinds.AdvisoryImportAbandonedV1 || x.Kind == AuditKinds.AdvisoryCredentialChangedV1 || x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 || x.Kind == AuditKinds.IntelligenceOfflineImportedV1 || x.Kind == AuditKinds.SigmaRuleStateChangedV1 || x.Kind == AuditKinds.BaselineExceptionRecordedV1)) :
-                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1))
+                    x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1 && x.Kind != AuditKinds.LineSettingsChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -117,9 +120,20 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 ? ReadIntelligenceRevocation(x.Details) : null,
             x.Kind == AuditKinds.IntelligenceOfflineImportedV1 ? ReadIntelligenceOfflineImport(x.Details) : null,
             x.Kind == AuditKinds.SigmaRuleStateChangedV1 ? ReadSigmaRuleState(x.Details) : null,
-            x.Kind == AuditKinds.BaselineExceptionRecordedV1 ? ReadBaselineException(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.BaselineExceptionRecordedV1 ? ReadBaselineException(x.Details) : null,
+            x.Kind == AuditKinds.LineSettingsChangedV1 ? ReadLineSettings(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
+    }
+
+    private static LineSettingsChanged? ReadLineSettings(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<LineSettingsChanged>(details, Options);
+            return value?.Action is LineAuditAction.Channel or LineAuditAction.Group ? value : null;
+        }
+        catch (JsonException) { return null; }
     }
 
     internal static BaselineExceptionRecorded? ReadBaselineException(string details)
