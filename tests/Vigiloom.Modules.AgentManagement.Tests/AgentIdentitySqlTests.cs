@@ -40,6 +40,103 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public void VersionAssignment_RequiresExplicitPackageField()
+    {
+        Assert.ThrowsExactly<System.Text.Json.JsonException>(() =>
+            System.Text.Json.JsonSerializer.Deserialize<AgentVersionAssignmentUpdate>("{\"Revision\":\"\"}"));
+        var cancelled = System.Text.Json.JsonSerializer.Deserialize<AgentVersionAssignmentUpdate>("{\"PackageId\":null,\"Revision\":\"\"}");
+        Assert.IsNotNull(cancelled);
+        Assert.IsNull(cancelled.PackageId);
+    }
+
+    [TestMethod]
+    public Task VersionAssignment_TracksDesiredVersionAndRejectsStaleOrUnavailableUpdates() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("update target", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var devices = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, devices, clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var packageId = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
+            await db.SaveChangesAsync(token);
+        }
+        var assignments = new AgentVersionAssignments(agents, devices, identity, clock);
+        var credential = Credential(agentId, secret);
+        var emptyTarget = await assignments.GetForAgentAsync(credential, token);
+        Assert.IsTrue(emptyTarget.Authenticated);
+        Assert.IsNull(emptyTarget.Target);
+        var initiallyUnassigned = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(initiallyUnassigned);
+        Assert.IsNull(initiallyUnassigned.PackageId);
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, "", actor, token));
+        var assigned = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(assigned);
+        Assert.AreEqual(packageId, assigned.PackageId);
+        Assert.IsTrue(assigned.Available);
+        var target = await assignments.GetForAgentAsync(credential, token);
+        Assert.IsNotNull(target.Target);
+        Assert.AreEqual(packageId, target.Target.PackageId);
+        Assert.AreEqual(7, target.Target.UpdateId.Version);
+        Assert.AreEqual(target.Target, (await assignments.GetForAgentAsync(credential, token)).Target);
+        var otherDevice = new Device("other update target", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(otherDevice); await db.SaveChangesAsync(token); }
+        var otherIssued = await identity.IssueAsync(otherDevice.Id, actor, token);
+        var otherSecret = RandomNumberGenerator.GetBytes(32);
+        var otherAgent = await identity.RedeemAsync(otherIssued.Secret, SHA256.HashData(otherSecret), token);
+        var otherTarget = await assignments.GetForAgentAsync(Credential(otherAgent.AgentId!.Value, otherSecret), token);
+        Assert.IsTrue(otherTarget.Authenticated);
+        Assert.IsNull(otherTarget.Target);
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, null, "", actor, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var package = await db.Packages.SingleAsync(x => x.Id == packageId, token);
+            package.Revoked = true;
+            await db.SaveChangesAsync(token);
+        }
+        var revoked = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(revoked);
+        Assert.IsFalse(revoked.Available);
+        Assert.IsNull((await assignments.GetForAgentAsync(credential, token)).Target);
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, packageId, revoked.Revision, actor, token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, null, revoked.Revision, actor, token));
+        Assert.IsNull((await assignments.GetForAgentAsync(credential, token)).Target);
+        var cancelled = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(cancelled);
+        Assert.IsNull(cancelled.PackageId);
+        await using (var db = agents.CreateDbContext())
+        {
+            var package = await db.Packages.SingleAsync(x => x.Id == packageId, token);
+            package.Revoked = false;
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, packageId, "", actor, token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, cancelled.Revision, actor, token));
+        Assert.AreNotEqual(target.Target.UpdateId, (await assignments.GetForAgentAsync(credential, token)).Target!.UpdateId);
+        await using var verify = agents.CreateDbContext();
+        var changes = await verify.Audits.Where(x => x.AgentId == agentId && (x.Action == "VersionAssigned" || x.Action == "VersionAssignmentCancelled"))
+            .OrderBy(x => x.RowId).ToArrayAsync(token);
+        Assert.HasCount(3, changes);
+        Assert.IsNull(changes[0].PreviousPackageId);
+        Assert.AreEqual(packageId, changes[0].PackageId);
+        Assert.AreEqual(packageId, changes[1].PreviousPackageId);
+        Assert.IsNull(changes[1].PackageId);
+        Assert.IsNull(changes[2].PreviousPackageId);
+        Assert.AreEqual(packageId, changes[2].PackageId);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(agentId, actor, token));
+        Assert.IsNull(await assignments.GetAsync(agentId, token));
+        Assert.IsFalse((await assignments.GetForAgentAsync(credential, token)).Authenticated);
+    });
+
+    [TestMethod]
     public Task AgentOwnerFence_RejectsRevokedAndMismatchedOwners() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();

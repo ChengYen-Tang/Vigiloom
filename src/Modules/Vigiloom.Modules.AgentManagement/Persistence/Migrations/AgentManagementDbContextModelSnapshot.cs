@@ -318,6 +318,12 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreviousPackageId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
@@ -925,6 +931,41 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("SettingAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", b =>
+                {
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("AgentId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("AgentId"));
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("VersionAssignments", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_VersionAssignments_Target", "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')");
+                        });
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>
@@ -1578,6 +1619,20 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasForeignKey("SettingId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithOne()
+                        .HasForeignKey("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", "AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>
