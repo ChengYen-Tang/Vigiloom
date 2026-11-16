@@ -5,11 +5,19 @@ $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Start Windows PowerShell as Administrator before running this installer.'
 }
-if (-not [Environment]::Is64BitOperatingSystem -or [Environment]::OSVersion.Version.Major -lt 10) {
-    throw 'This test package requires a supported 64-bit Windows 10 or later system.'
+$version = [Environment]::OSVersion.Version
+if ($version.Major -lt 6 -or ($version.Major -eq 6 -and $version.Minor -lt 2)) {
+    throw 'This Agent requires a Windows version supported by .NET 10.'
+}
+if ($version.Major -eq 6 -and (Get-CimInstance Win32_OperatingSystem).ProductType -eq 1) {
+    throw 'This Windows client version is not supported by .NET 10.'
+}
+if ($version.Major -eq 6) {
+    Write-Warning '.NET 10 support on Windows Server 2012 and 2012 R2 requires Extended Security Updates. Check the Microsoft support policy for this system.'
 }
 
 $bundle = $PSScriptRoot
+. (Join-Path $bundle 'platform.ps1')
 $agentSource = Join-Path $bundle 'payload\agent'
 $updaterSource = Join-Path $bundle 'payload\updater'
 $rootSource = Join-Path $bundle 'payload\root.json'
@@ -23,6 +31,13 @@ $agentName = 'Vigiloom Agent'
 $updaterName = 'Vigiloom Updater'
 foreach ($file in @((Join-Path $agentSource 'Vigiloom.Agent.exe'), (Join-Path $updaterSource 'Vigiloom.Updater.exe'), $rootSource)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'The installer bundle is incomplete.' }
+}
+$architecture = Get-AgentExecutableArchitecture (Join-Path $agentSource 'Vigiloom.Agent.exe')
+if ((Get-AgentExecutableArchitecture (Join-Path $updaterSource 'Vigiloom.Updater.exe')) -ne $architecture) {
+    throw 'Agent and Updater must have the same Windows architecture.'
+}
+if ($architecture -eq 'x64' -and -not [Environment]::Is64BitOperatingSystem) {
+    throw 'This x64 Agent package requires a 64-bit Windows system; use the x86 package instead.'
 }
 if ((Test-Path -LiteralPath $programRoot) -or (Test-Path -LiteralPath $stateRoot) -or
     (Get-Service -Name $agentName -ErrorAction SilentlyContinue) -or (Get-Service -Name $updaterName -ErrorAction SilentlyContinue)) {
