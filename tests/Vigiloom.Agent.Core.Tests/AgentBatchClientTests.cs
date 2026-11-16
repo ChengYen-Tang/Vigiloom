@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Baseline;
 
 namespace Vigiloom.Agent.Core.Tests;
 
@@ -12,6 +13,44 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentBatchClientTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task Sender_BaselineBatchWaitsForCompatibleServerAndKeepsBytes()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomBaselineBatchTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var now = DateTimeOffset.UtcNow;
+            var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(Guid.CreateVersion7(), Guid.CreateVersion7(), "AQID", "check", now, "ubuntu:24.04", BaselineOutcome.Pass, null)]);
+            var bytes = BaselineBatchCodec.Serialize(batch);
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(batch.BatchId, now, batch.Items.Count, bytes, token));
+            using (var oldServer = new HttpClient(new LogBadRequestHandler(false)))
+                Assert.AreEqual(BatchSendResult.Retry, (await new AgentBatchClient(oldServer, TimeProvider.System).SendNextAsync(vault, server, token)).Status);
+            CollectionAssert.AreEqual(bytes, (await queue.PeekAsync(token))!.Payload);
+            var handler = new CompressionHandler(false, null);
+            using var upgraded = new HttpClient(handler);
+            Assert.AreEqual(BatchSendResult.Delivered, (await new AgentBatchClient(upgraded, TimeProvider.System).SendNextAsync(vault, server, token)).Status);
+            CollectionAssert.AreEqual(bytes, handler.Payloads.Single());
+            Assert.IsNull(await queue.PeekAsync(token));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 
     [TestMethod]
     [DataRow(false)]

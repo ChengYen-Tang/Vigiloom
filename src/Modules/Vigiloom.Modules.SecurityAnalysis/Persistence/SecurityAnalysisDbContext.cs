@@ -4,6 +4,7 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -38,6 +39,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<MsrcProductIndex> MsrcProductIndexes => Set<MsrcProductIndex>();
     public DbSet<EpssScoreRecord> EpssScores => Set<EpssScoreRecord>();
     public DbSet<VulnerabilityFinding> VulnerabilityFindings => Set<VulnerabilityFinding>();
+    public DbSet<BaselineObservation> BaselineObservations => Set<BaselineObservation>();
     public DbSet<VulnerabilityUnknownPackage> VulnerabilityUnknownPackages => Set<VulnerabilityUnknownPackage>();
     public DbSet<VulnerabilityEvaluation> VulnerabilityEvaluations => Set<VulnerabilityEvaluation>();
     public DbSet<VulnerabilityCoverage> VulnerabilityCoverage => Set<VulnerabilityCoverage>();
@@ -223,6 +225,16 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
         integrityChunk.HasIndex(x => new { x.AgentId, x.ScopeId, x.Generation, x.ChunkIndex }).IsUnique();
         integrityChunk.HasOne<IntegrityScan>().WithMany().HasForeignKey(x => new { x.AgentId, x.ScopeId, x.Generation })
             .HasPrincipalKey(x => new { x.AgentId, x.ScopeId, x.Generation }).OnDelete(DeleteBehavior.NoAction);
+
+        var baseline = modelBuilder.Entity<BaselineObservation>();
+        baseline.ToTable("BaselineObservations");
+        baseline.HasKey(x => x.RowId).IsClustered();
+        baseline.Property(x => x.RowId).UseIdentityColumn();
+        baseline.Property(x => x.ActivationVersion).HasMaxLength(64).IsRequired();
+        baseline.Property(x => x.CheckId).HasMaxLength(128).IsRequired();
+        baseline.Property(x => x.OperatingSystem).HasMaxLength(128).IsRequired();
+        baseline.Property(x => x.Evidence).HasMaxLength(512);
+        baseline.HasIndex(x => new { x.DeviceId, x.CheckId, x.ObservedAt, x.RowId });
 
         var integrityChange = modelBuilder.Entity<IntegrityChangeRecord>();
         integrityChange.ToTable("IntegrityChanges", table =>

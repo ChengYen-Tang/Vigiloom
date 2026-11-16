@@ -5,11 +5,12 @@ using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Agent.Hosting.Logs;
 using Vigiloom.Agent.Hosting.Inventory;
 using Vigiloom.Agent.Hosting.Integrity;
+using Vigiloom.Agent.Hosting.Baseline;
 
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Restores local settings and periodically synchronizes them without blocking other workers.</summary>
-internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentInventorySettingsClient inventoryClient, AgentIntegritySettingsClient integrityClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, InventorySettingsRuntime inventory, AgentIntegritySettingsRuntime integrity, IConfiguration configuration,
+internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueueCapacityClient capacityClient, AgentMetricSettingsClient metricClient, AgentLogSettingsClient logClient, AgentInventorySettingsClient inventoryClient, AgentIntegritySettingsClient integrityClient, AgentBaselineSettingsClient baselineClient, AgentSettingsRuntime runtime, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, InventorySettingsRuntime inventory, AgentIntegritySettingsRuntime integrity, AgentBaselineSettingsRuntime baseline, IConfiguration configuration,
     TimeProvider clock, ILogger<AgentSettingsWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -26,6 +27,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 logs.Bind(null);
                 inventory.Bind(null);
                 integrity.Bind(null);
+                baseline.Bind(null);
                 if (!await DelayAsync(TimeSpan.FromSeconds(30), stoppingToken)) break;
                 continue;
             }
@@ -41,6 +43,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 logs.Bind(null);
                 inventory.Bind(null);
                 integrity.Bind(null);
+                baseline.Bind(null);
                 do
                 {
                     if (!IsCurrent(directory, server)) break;
@@ -54,6 +57,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         logs.Bind(owner);
                         inventory.Bind(owner);
                         integrity.Bind(owner);
+                        baseline.Bind(owner);
                         if (owner is not null)
                         {
                             if (runtime.NeedsRestore(owner)) await RestoreAsync(
@@ -71,6 +75,9 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                             if (integrity.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await integrityClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
                                 saved => integrity.RestoreIfEmpty(owner, saved), () => integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                            if (baseline.NeedsRestore(owner)) await RestoreAsync(
+                                async () => (await baselineClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
+                                saved => baseline.RestoreIfEmpty(owner, saved), () => baseline.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
                         }
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
@@ -212,6 +219,31 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     {
                         integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent integrity settings synchronization failed: {ErrorType}.", ex.GetType().Name);
+                    }
+                    try
+                    {
+                        if (!IsCurrent(directory, server)) break;
+                        var result = await baselineClient.SyncAsync(vault, uri, stoppingToken);
+                        if (!IsCurrent(directory, server)) break;
+                        if (result.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) baseline.Bind(null);
+                        else if (result.Settings is not null) baseline.Publish(owner, result.Settings);
+                        else
+                        {
+                            var failure = result.Status switch
+                            {
+                                AgentSettingsSyncStatus.Unavailable => AgentConfigurationFailure.Unavailable,
+                                AgentSettingsSyncStatus.Invalid => AgentConfigurationFailure.Invalid,
+                                AgentSettingsSyncStatus.Unauthorized => AgentConfigurationFailure.Unauthorized,
+                                AgentSettingsSyncStatus.Conflict => AgentConfigurationFailure.Conflict,
+                                _ => (AgentConfigurationFailure?)null
+                            };
+                            if (failure is { } failureCode) baseline.MarkFailure(owner, failureCode);
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
+                    {
+                        baseline.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
+                        logger.LogWarning("Agent baseline settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
                     var seconds = runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
                     if (!await DelayAsync(TimeSpan.FromSeconds(seconds), stoppingToken)) return;

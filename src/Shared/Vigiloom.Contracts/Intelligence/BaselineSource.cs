@@ -1,5 +1,11 @@
 namespace Vigiloom.Contracts.Intelligence;
 
+public static class BaselineSources
+{
+    public const string LinuxShadow = "compliance-as-code-shadow";
+    public const string WindowsNetworkSelection = "powerstig-network-selection";
+}
+
 /// <summary>A reviewed, read-only baseline check selected by the central platform.</summary>
 public sealed record BaselineCheck(string Id, string Title, string Platform, string[] Versions,
     string Operation, string Target, string Expected, string SourceUrl, string License);
