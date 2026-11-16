@@ -2,7 +2,10 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -11,7 +14,8 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 internal enum LinuxWriteResult { Written, AlreadyWritten, Conflict, Changed }
 
 /// <summary>Writes one complete assessment atomically after revalidating all source and inventory fences.</summary>
-internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock)
+internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock,
+    INotificationWriter? notifications = null, IDevicePingSource? devices = null)
 {
     internal const string MatcherVersion = "ubuntu-osv-v4";
     internal const string DebianMatcherVersion = "debian-tracker-v1";
@@ -39,6 +43,7 @@ internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDb
         var packages = new HashSet<string>(StringComparer.Ordinal);
         var unknownPackages = new HashSet<string>(StringComparer.Ordinal);
         var now = clock.GetUtcNow().ToUniversalTime();
+        var alertSummary = notifications is null ? null : new VulnerabilityNotificationSummary();
         db.VulnerabilityRuns.Add(new VulnerabilityRun { RunId = runId, DeviceId = owner.DeviceId, SourceId = sourceId, Digest = digest, CompletedAt = now,
             RevisionId = revisionId, AgentId = owner.AgentId, DeviceGeneration = owner.DeviceGeneration, HostSnapshotId = hostId,
             PackageSnapshotId = packageId, MatcherVersion = matcherVersion, Ecosystem = assessment.Ecosystem });
@@ -90,6 +95,7 @@ internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDb
             else if (!string.Equals(finding.PackageKey, result.PackageKey, StringComparison.Ordinal) ||
                      !string.Equals(finding.AdvisoryId, result.AdvisoryId, StringComparison.Ordinal))
                 throw new InvalidDataException("Finding identity collision.");
+            alertSummary?.Observe(finding, result.State);
             finding.CurrentState = (int)result.State;
             finding.LastEvaluatedAt = now;
             finding.LastPackageSnapshotId = packageId;
@@ -118,6 +124,11 @@ internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDb
             db.VulnerabilityCoverage.Update(coverage);
         await db.SaveChangesAsync(token);
         if (!await LinuxAssessmentFence.LockCurrentAsync(db, owners, owner, assessment, clock, maximumAge, token)) return LinuxWriteResult.Changed;
+        if (notifications is not null && alertSummary is { HasChanges: true })
+        {
+            var context = devices is null ? null : await devices.GetContextAsync(owner.DeviceId, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            await notifications.WriteAsync(alertSummary.Create(runId, owner.DeviceId, revisionId, now, context), db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+        }
         await transaction.CommitAsync(token);
         return LinuxWriteResult.Written;
     }

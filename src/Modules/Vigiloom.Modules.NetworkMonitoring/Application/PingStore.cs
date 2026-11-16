@@ -15,7 +15,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application;
 
 public sealed record PingLease(Guid DeviceId, string Target, byte[] DeviceVersion, long Generation);
 
-public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDevicePingSource devices, TimeProvider clock)
+public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDevicePingSource devices, TimeProvider clock,
+    IEnumerable<IPingTransitionSink>? transitionSinks = null)
 {
     public async Task ReconcileAsync(PingSettingsSnapshot settings, CancellationToken token)
     {
@@ -157,8 +158,17 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         db.PingSamples.Add(sample);
         await PingRollupWriter.AddAsync(db, sample, token);
         if (previous != state.State)
+        {
             db.PingStateEvents.Add(new PingStateEvent { DeviceId = lease.DeviceId, Target = lease.Target, Generation = lease.Generation,
                 OccurredAt = measuredAt.ToUniversalTime(), Previous = previous, Current = state.State });
+            if (transitionSinks is not null && transitionSinks.Any())
+            {
+                var context = await devices.GetContextAsync(lease.DeviceId, db.Database.GetDbConnection(), tx.GetDbTransaction(), token);
+                var transition = new PingTransition(lease.DeviceId, lease.Target, lease.Generation, measuredAt.ToUniversalTime(), previous, state.State, context);
+                foreach (var sink in transitionSinks)
+                    await sink.RecordAsync(transition, db.Database.GetDbConnection(), tx.GetDbTransaction(), token);
+            }
+        }
         await db.SaveChangesAsync(token);
         await using var finish = db.Database.GetDbConnection().CreateCommand();
         finish.Transaction = tx.GetDbTransaction();
