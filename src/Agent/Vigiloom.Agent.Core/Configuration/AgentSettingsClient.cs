@@ -89,7 +89,7 @@ public sealed class AgentSettingsClient(HttpClient http, TimeProvider clock)
     }
 }
 
-public enum AgentSettingsSyncStatus { Saved, Unchanged, NoSavedSettings, NotRegistered, ServerMismatch, Unauthorized, Unavailable, Invalid, Conflict }
+public enum AgentSettingsSyncStatus { Saved, Unchanged, NoSavedSettings, NotRegistered, ServerMismatch, Unauthorized, Unavailable, Invalid, Conflict, Unsupported }
 public sealed record AgentSettingsSyncResult(AgentSettingsSyncStatus Status, AgentAppliedSettings? Settings = null);
 public sealed record AgentSettingsOwner(Guid AgentId, string Server, string StateDirectory)
 {

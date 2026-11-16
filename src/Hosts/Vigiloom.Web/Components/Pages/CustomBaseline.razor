@@ -1,0 +1,199 @@
+@page "/settings/baseline-checks"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines
+@using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence
+@inject CustomBaselineStage Stage
+@inject IBaselineSource Sources
+@inject IntelligencePublication Publication
+@inject NavigationManager Navigation
+@inject ILogger<CustomBaseline> Logger
+
+<PageTitle>自訂安全基準 - Vigiloom</PageTitle>
+<main class="device-page custom-baseline-page">
+    <header class="device-heading"><div><h1>自訂安全基準</h1><p>建立唯讀檢查；儲存草稿後，審核並啟用才會下發給 Agent。</p></div></header>
+    <p><a href="/settings/intelligence">返回情報來源與版本管理</a></p>
+    @if (message is not null) { <p class="device-alert" role="@(success ? "status" : "alert")">@message</p> }
+    <div class="custom-baseline-layout">
+        <section class="device-panel" aria-labelledby="custom-baseline-form-title">
+            <h2 id="custom-baseline-form-title">@(Input.SourceId is null ? "建立檢查草稿" : "編輯檢查草稿")</h2>
+            <EditForm Model="Input" FormName="custom-baseline" method="post" OnValidSubmit="SaveAsync" class="custom-baseline-form">
+                <DataAnnotationsValidator /><ValidationSummary />
+                <input type="hidden" name="Input.SourceId" value="@Input.SourceId" />
+                <input type="hidden" name="Input.ExpectedVersion" value="@Input.ExpectedVersion" />
+                <label for="baseline-name">檢查名稱</label><InputText id="baseline-name" @bind-Value="Input.Title" />
+                <label for="baseline-platform">適用作業系統</label>
+                <InputSelect id="baseline-platform" @bind-Value="Input.Platform">
+                    <option value="" selected="@(Input.Platform == "")">請選擇</option>
+                    <option value="ubuntu:22.04" selected="@(Input.Platform == "ubuntu:22.04")">Ubuntu 22.04</option><option value="ubuntu:24.04" selected="@(Input.Platform == "ubuntu:24.04")">Ubuntu 24.04</option>
+                    <option value="debian:12" selected="@(Input.Platform == "debian:12")">Debian 12</option>
+                    <option value="ubuntu-both" selected="@(Input.Platform == "ubuntu-both")">Ubuntu 22.04、24.04</option>
+                    <option value="ubuntu22-debian" selected="@(Input.Platform == "ubuntu22-debian")">Ubuntu 22.04、Debian 12</option>
+                    <option value="ubuntu24-debian" selected="@(Input.Platform == "ubuntu24-debian")">Ubuntu 24.04、Debian 12</option>
+                    <option value="linux-all" selected="@(Input.Platform == "linux-all")">以上三種 Linux</option>
+                    <option value="server:2022:member" selected="@(Input.Platform == "server:2022:member")">Windows Server 2022 成員伺服器</option>
+                </InputSelect>
+                <label for="baseline-target">檢查目標</label><InputText id="baseline-target" @bind-Value="Input.Target" />
+                <p class="custom-hint">Linux 輸入檔案絕對路徑；Windows 輸入 HKLM 登錄路徑與值名稱。</p>
+                <label for="baseline-expected">預期值</label><InputText id="baseline-expected" @bind-Value="Input.Expected" />
+                <p class="custom-hint">Linux 輸入最大權限，例如 0640；Windows 輸入 DWORD 的十進位值。</p>
+                <label for="baseline-reference">參考網址（選填）</label><InputText id="baseline-reference" @bind-Value="Input.Reference" />
+                <label for="baseline-license">來源與使用條件（選填）</label><InputText id="baseline-license" @bind-Value="Input.License" />
+                <label for="baseline-guidance">處理建議（選填）</label><InputTextArea id="baseline-guidance" @bind-Value="Input.Guidance" rows="3" />
+                <div><button type="submit">儲存草稿</button></div>
+            </EditForm>
+        </section>
+        <aside class="device-panel"><h2>審核與啟用</h2>
+            @if (preview is { } check && Approval is not null)
+            {
+                <p>請核對已儲存的版本，再啟用檢查；表單的修改須先儲存。</p>
+                <dl class="custom-preview">
+                    <dt>名稱</dt><dd>@check.Title</dd><dt>適用系統</dt><dd>@string.Join("、", check.Versions.Select(OsName))</dd>
+                    <dt>目標</dt><dd>@check.Target</dd><dt>預期值</dt><dd>@check.Expected</dd>
+                    <dt>參考網址</dt><dd>@(string.IsNullOrWhiteSpace(check.SourceUrl) ? "未提供" : check.SourceUrl)</dd><dt>來源與使用條件</dt><dd>@check.License</dd>
+                    <dt>處理建議</dt><dd class="custom-guidance">@(check.Guidance ?? "未提供")</dd>
+                </dl>
+                @if (sourceAvailability == BaselineSourceAvailability.Disabled) { <p>此檢查已停用，請先至情報來源管理啟用。</p> }
+                else if (activeRevision == RevisionId) { <p>此版本目前已啟用。</p> }
+                else
+                {
+                    <EditForm Model="Approval" FormName="custom-baseline-approval" method="post" OnValidSubmit="ApproveAsync">
+                        <input type="hidden" name="Approval.SourceId" value="@Approval.SourceId" />
+                        <input type="hidden" name="Approval.RevisionId" value="@Approval.RevisionId" />
+                        <input type="hidden" name="Approval.ExpectedActiveId" value="@Approval.ExpectedActiveId" />
+                        <input type="hidden" name="Approval.ExpectedVersion" value="@Approval.ExpectedVersion" />
+                        <button type="submit">審核並啟用</button>
+                    </EditForm>
+                }
+                <p><a href="@IntelligenceUrl">管理所有版本與回復</a></p>
+            }
+            else { <p>儲存後可查看完整檢查內容、選擇啟用或回復版本。發布動作會保留管理員與版本紀錄。</p> }
+            <p>Linux 檢查檔案權限及 ACL；Windows 檢查 64 位元登錄檢視中的 DWORD。系統不執行指令或自動修改設定。</p></aside>
+    </div>
+</main>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "source")] private Guid? SourceId { get; set; }
+    [SupplyParameterFromQuery(Name = "revision")] private Guid? RevisionId { get; set; }
+    [SupplyParameterFromForm(FormName = "custom-baseline")] private DraftForm Input { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "custom-baseline-approval")] private ApprovalForm? Approval { get; set; }
+    private string? message;
+    private bool success;
+    private BaselineCheck? preview;
+    private Guid? activeRevision;
+    private BaselineSourceAvailability sourceAvailability;
+    private string IntelligenceUrl = "/settings/intelligence";
+
+    private static string OsName(string version) => version switch
+    {
+        "ubuntu:22.04" => "Ubuntu 22.04", "ubuntu:24.04" => "Ubuntu 24.04", "debian:12" => "Debian 12",
+        "server:2022:member" => "Windows Server 2022 成員伺服器", _ => version
+    };
+
+    private static string PlatformOption(string[] versions)
+    {
+        if (versions.Length == 1) return versions[0];
+        if (versions.Length == 3) return "linux-all";
+        if (versions.Contains("ubuntu:22.04") && versions.Contains("ubuntu:24.04")) return "ubuntu-both";
+        if (versions.Contains("ubuntu:22.04") && versions.Contains("debian:12")) return "ubuntu22-debian";
+        return "ubuntu24-debian";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var submitted = Input is not null;
+        Input ??= new();
+        if (SourceId is not { } source || RevisionId is not { } revision) return;
+        var draft = await Stage.ReadDraftAsync(source, revision, HttpContext.RequestAborted);
+        if (draft is null) { message = "找不到此檢查版本。"; return; }
+        preview = draft.Check;
+        if (!submitted) Input = new DraftForm { SourceId = source, ExpectedVersion = draft.SourceVersion, Title = draft.Check.Title,
+            Platform = PlatformOption(draft.Check.Versions), Target = draft.Check.Target,
+            Expected = draft.Check.Expected, Reference = draft.Check.SourceUrl, License = draft.Check.License, Guidance = draft.Check.Guidance };
+        var current = await Sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{source:D}", HttpContext.RequestAborted);
+        sourceAvailability = current.Availability;
+        activeRevision = current.RevisionId;
+        Approval ??= new() { SourceId = source, RevisionId = revision, ExpectedActiveId = current.RevisionId, ExpectedVersion = current.ActivationVersion ?? "" };
+        IntelligenceUrl = $"/settings/intelligence?source={source:D}&sourcePage={await Stage.SourcePageAsync(source, HttpContext.RequestAborted)}";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = "登入已失效，請重新登入。"; return; }
+        var versions = Input.Platform switch
+        {
+            "linux-all" => new[] { "ubuntu:22.04", "ubuntu:24.04", "debian:12" },
+            "ubuntu-both" => new[] { "ubuntu:22.04", "ubuntu:24.04" },
+            "ubuntu22-debian" => new[] { "ubuntu:22.04", "debian:12" },
+            "ubuntu24-debian" => new[] { "ubuntu:24.04", "debian:12" },
+            _ => new[] { Input.Platform }
+        };
+        var windows = Input.Platform == "server:2022:member";
+        var check = new BaselineCheck("draft", Input.Title, windows ? "windows" : "linux", versions,
+            windows ? BaselineSources.WindowsRegistryOperation : BaselineSources.LinuxShadowOperation, Input.Target, Input.Expected,
+            Input.Reference?.Trim() ?? "", string.IsNullOrWhiteSpace(Input.License) ? "管理員自訂" : Input.License.Trim(),
+            string.IsNullOrWhiteSpace(Input.Guidance) ? null : Input.Guidance.Trim());
+        try
+        {
+            var result = await Stage.SaveAsync(Input.SourceId, Input.ExpectedVersion, check, actor, HttpContext.RequestAborted);
+            if (result.Status is CustomBaselineStageStatus.Staged or CustomBaselineStageStatus.Unchanged && result.SourceId is { } id)
+            {
+                Navigation.NavigateTo($"/settings/baseline-checks?source={id:D}&revision={result.RevisionId:D}");
+                return;
+            }
+            message = result.Status switch { CustomBaselineStageStatus.Invalid => "請檢查作業系統、目標路徑與預期值格式。",
+                CustomBaselineStageStatus.Conflict => "檢查已被其他人修改，請重新載入。", CustomBaselineStageStatus.LimitReached => "自訂檢查已達數量上限。",
+                CustomBaselineStageStatus.Revoked => "此內容已撤銷，請修改後重新送審。", _ => "無法儲存此草稿，請重新整理後再試。" };
+        }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            Logger.LogWarning("Unable to stage baseline check: {ErrorType}", ex.GetType().Name);
+            message = "無法儲存草稿，請稍後再試。";
+        }
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (Approval is null || Approval.SourceId != SourceId || Approval.RevisionId != RevisionId ||
+            !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor))
+        { message = "無法核對此版本，請重新整理。"; return; }
+        try
+        {
+            var result = await Publication.ActivateAsync(Approval.SourceId, Approval.RevisionId, Approval.ExpectedActiveId,
+                Approval.ExpectedVersion ?? "", false, actor, HttpContext.RequestAborted);
+            success = result is IntelligencePublicationResult.Published or IntelligencePublicationResult.Unchanged;
+            message = success ? "版本已啟用。" : "無法啟用版本，請確認檢查狀態並重新整理。";
+            if (success) activeRevision = Approval.RevisionId;
+        }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            Logger.LogWarning("Unable to publish baseline check: {ErrorType}", ex.GetType().Name);
+            message = "無法啟用版本，請稍後再試。";
+        }
+    }
+
+    private sealed class DraftForm
+    {
+        public Guid? SourceId { get; set; }
+        public string? ExpectedVersion { get; set; }
+        [Required, StringLength(256)] public string Title { get; set; } = "";
+        [Required] public string Platform { get; set; } = "";
+        [Required, StringLength(1024)] public string Target { get; set; } = "";
+        [Required, StringLength(256)] public string Expected { get; set; } = "";
+        [StringLength(2048)] public string? Reference { get; set; }
+        [StringLength(256)] public string? License { get; set; }
+        [StringLength(1024)] public string? Guidance { get; set; }
+    }
+
+    private sealed class ApprovalForm
+    {
+        public Guid SourceId { get; set; }
+        public Guid RevisionId { get; set; }
+        public Guid? ExpectedActiveId { get; set; }
+        public string? ExpectedVersion { get; set; }
+    }
+}

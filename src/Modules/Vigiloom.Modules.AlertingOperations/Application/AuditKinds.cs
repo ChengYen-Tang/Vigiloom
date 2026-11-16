@@ -33,4 +33,5 @@ internal static class AuditKinds
     public const short IntelligenceRevisionRevokedV1 = 28;
     public const short IntelligenceOfflineImportedV1 = 29;
     public const short SigmaRuleStateChangedV1 = 30;
+    public const short BaselineExceptionRecordedV1 = 31;
 }

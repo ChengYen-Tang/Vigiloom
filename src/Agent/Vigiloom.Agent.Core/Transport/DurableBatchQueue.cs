@@ -347,7 +347,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
     }
 
     /// <summary>Read the oldest unacknowledged batch. Repeated reads return the same ID and bytes.</summary>
-    public async Task<QueuedBatch?> PeekAsync(CancellationToken token)
+    public async Task<QueuedBatch?> PeekAsync(CancellationToken token, int? skipSchemaVersion = null)
     {
         await gate.WaitAsync(token);
         try
@@ -356,10 +356,60 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
-            command.CommandText = "SELECT batch_id, created_ticks, record_count, payload FROM batches WHERE rejection IS NULL ORDER BY ordinal LIMIT 1";
+            command.CommandText = skipSchemaVersion is null
+                ? "SELECT batch_id, created_ticks, record_count, payload FROM batches WHERE rejection IS NULL ORDER BY ordinal LIMIT 1"
+                : """
+                  SELECT batch_id, created_ticks, record_count, payload FROM batches
+                  WHERE rejection IS NULL AND CASE WHEN json_valid(CAST(payload AS TEXT))
+                      THEN COALESCE(json_extract(CAST(payload AS TEXT), '$.schemaVersion'), -1) ELSE -1 END <> $schema
+                  ORDER BY ordinal LIMIT 1
+                  """;
+            if (skipSchemaVersion is not null) command.Parameters.AddWithValue("$schema", skipSchemaVersion.Value);
             using var reader = command.ExecuteReader();
             return reader.Read() ? new QueuedBatch(Guid.Parse(reader.GetString(0)), new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero),
                 reader.GetInt32(2), (byte[])reader[3]) : null;
+        }
+        finally { gate.Release(); }
+    }
+
+    // An older Agent can classify a newer baseline payload as invalid. Restore only
+    // payloads that this version can fully validate, leaving other rejections intact.
+    internal async Task RestoreBaselineAfterUpgradeAsync(CancellationToken token)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            await using var session = await vault.AcquireForTransportAsync(token);
+            using var connection = Open(session.DirectoryPath);
+            using var transaction = connection.BeginTransaction();
+            using var query = connection.CreateCommand();
+            query.Transaction = transaction;
+            query.CommandText = """
+                SELECT batch_id, created_ticks, record_count, payload FROM batches
+                WHERE rejection = $reason AND CASE WHEN json_valid(CAST(payload AS TEXT))
+                    THEN json_extract(CAST(payload AS TEXT), '$.schemaVersion') ELSE NULL END = $schema
+                """;
+            query.Parameters.AddWithValue("$reason", (int)QueueRejection.InvalidLocalBatch);
+            query.Parameters.AddWithValue("$schema", Vigiloom.Contracts.Agent.Baseline.BaselineBatchCodec.SchemaVersion);
+            var restored = new List<string>();
+            using (var reader = query.ExecuteReader())
+                while (reader.Read())
+                {
+                    token.ThrowIfCancellationRequested();
+                    var pending = new QueuedBatch(Guid.Parse(reader.GetString(0)), new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero),
+                        reader.GetInt32(2), (byte[])reader[3]);
+                    if (AgentBatchClient.MatchesQueueEntry(pending, out var schema) &&
+                        schema == Vigiloom.Contracts.Agent.Baseline.BaselineBatchCodec.SchemaVersion)
+                        restored.Add(pending.BatchId.ToString("D"));
+                }
+            using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE batches SET rejection = NULL WHERE batch_id = $id AND rejection = $reason";
+            var id = update.Parameters.Add("$id", SqliteType.Text);
+            update.Parameters.AddWithValue("$reason", (int)QueueRejection.InvalidLocalBatch);
+            foreach (var batch in restored) { token.ThrowIfCancellationRequested(); id.Value = batch; update.ExecuteNonQuery(); }
+            token.ThrowIfCancellationRequested();
+            transaction.Commit();
         }
         finally { gate.Release(); }
     }

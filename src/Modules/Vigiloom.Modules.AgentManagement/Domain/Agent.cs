@@ -94,6 +94,8 @@ public sealed class Agent
     public long? IntegrityConfigurationSequence { get; private set; }
     public DateTimeOffset? IntegrityConfigurationReportedAt { get; private set; }
     public string? IntegrityConfigurationJson { get; private set; }
+    public DateTimeOffset? BaselineConfigurationReportedAt { get; private set; }
+    public string? BaselineConfigurationJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -236,6 +238,12 @@ public sealed class Agent
         IntegrityConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
         IntegrityConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
     }
+
+    public void RecordBaselineConfiguration(BaselineSettingsReport? report, DateTimeOffset now)
+    {
+        BaselineConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
+        BaselineConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
+    }
     public void BeginQueueSession(Guid epoch)
     {
         QueueReportEpoch = epoch;
@@ -282,6 +290,8 @@ public sealed class Agent
         IntegrityConfigurationSequence = null;
         IntegrityConfigurationReportedAt = null;
         IntegrityConfigurationJson = null;
+        BaselineConfigurationReportedAt = null;
+        BaselineConfigurationJson = null;
     }
     public void BeginRotation(byte[] verifier, DateTimeOffset until) { PendingVerifier = verifier; PendingUntil = until.ToUniversalTime(); }
     public void FinishRotation() { Verifier = PendingVerifier!; PendingVerifier = null; PendingUntil = null; }

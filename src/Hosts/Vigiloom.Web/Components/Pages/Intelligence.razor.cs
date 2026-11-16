@@ -39,6 +39,7 @@ public partial class Intelligence
     private string? error;
     private string? message;
     private bool policyOpen;
+    private IReadOnlyDictionary<Guid, BaselineCheck> localVersions = new Dictionary<Guid, BaselineCheck>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,6 +61,7 @@ public partial class Intelligence
     private async Task LoadAsync()
     {
         sources = null; selected = null; revisions = null; progress = null; sigmaRules = null; signatureFiles = null; iocIssues = null; signatureEvidence = null; shownRulesRevision = null; error = null;
+        localVersions = new Dictionary<Guid, BaselineCheck>();
         try
         {
             sources = await Status.GetSourcesAsync(Math.Clamp(SourcePage ?? 1, 1, 1000), HttpContext.RequestAborted);
@@ -67,6 +69,8 @@ public partial class Intelligence
             if (SourceId is not null && selected is null) { error = "找不到此頁的情報來源，請重新選擇。"; return; }
             if (selected is null) return;
             revisions = await Status.GetRevisionsAsync(selected.Id, Math.Clamp(VersionPage ?? 1, 1, 1000), HttpContext.RequestAborted);
+            if (selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) && revisions is not null)
+                localVersions = await CustomBaselines.ReadVersionsAsync(selected.Id, revisions.Items.Select(x => x.Id).ToArray(), HttpContext.RequestAborted);
             progress = selected.Key == "github-reviewed" ? await Status.GetAdvisoryProgressAsync(selected.Id, HttpContext.RequestAborted) : null;
             if (selected.Key == "sigmahq-rules" && (RulesRevision ?? revisions?.Items.FirstOrDefault()?.Id) is { } revisionId)
             {
@@ -239,7 +243,7 @@ public partial class Intelligence
     };
     private static string DisplayTime(DateTimeOffset? time) => time?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") ?? "尚無資料";
     private static string Coverage(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "CISA 已知遭利用的漏洞；不包含所有漏洞，也無法單獨判定設備是否受影響。", "github-reviewed" => "GitHub 已審核的套件安全公告；不包含未審核或惡意軟體公告，不能單獨判定設備是否受影響。", "debian-security" => "Debian 各發行版本的來源套件漏洞狀態；實際設備是否受影響需結合盤點資料判斷。", "ubuntu-osv" => "Canonical Ubuntu 漏洞資料；設備是否受影響需結合發行版本與套件盤點判斷。", "sigmahq-rules" => "保存 SigmaHQ 行為規則；支援的規則可試跑後啟用，不代表所有規則或設備均已涵蓋。", "signature-base" => "保存 IOC 與 YARA 原始檔案；IOC 來源可依條件選用，YARA 規則授權與相容性仍待核對。", _ => source.Description?.Coverage ?? "無法確認來源涵蓋範圍。" };
-    private static string Category(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "已知遭利用的漏洞", "github-reviewed" => "開源套件安全公告", "debian-security" or "ubuntu-osv" => "發行版安全公告", "sigmahq-rules" => "行為規則", "signature-base" => "IOC／YARA", "compliance-as-code-shadow" or "powerstig-network-selection" => "安全組態檢查", _ => source.Description?.Category ?? "未知" };
+    private static string Category(IntelligenceSourceView source) => source.Key switch { "cisa-kev" => "已知遭利用的漏洞", "github-reviewed" => "開源套件安全公告", "debian-security" or "ubuntu-osv" => "發行版安全公告", "sigmahq-rules" => "行為規則", "signature-base" => "IOC／YARA", "compliance-as-code-shadow" or "powerstig-network-selection" => "安全組態檢查", _ when source.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) => "安全組態檢查", _ => source.Description?.Category ?? "未知" };
     private static string PlatformCoverage(IntelligenceSourceView source) => source.Key switch
     {
         "cisa-kev" => "涵蓋多種平台與產品；是否受影響需依產品及版本另行判斷。",
