@@ -40,7 +40,12 @@ public sealed class LineSettingsBrowserTests(TestContext context)
         Assert.DoesNotContain("private-access-token", await page.Locator("body").InnerTextAsync());
         await page.GetByLabel("群組名稱").FillAsync("維運群組");
         await page.GetByRole(AriaRole.Button, new() { Name = "確認啟用", Exact = true }).ClickAsync();
+        await page.GetByLabel("群組名稱").FillAsync("值班群組");
+        await page.GetByRole(AriaRole.Button, new() { Name = "儲存名稱", Exact = true }).ClickAsync();
+        await page.GetByText("值班群組", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "發送測試通知", Exact = true }).ClickAsync();
         await page.GetByText("測試通知已排入，等待背景工作處理。").WaitForAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "最近派送", Exact = true }).WaitForAsync();
+        Assert.Contains("等待處理", await page.Locator("main").InnerTextAsync());
     }, context.CancellationToken);
 }

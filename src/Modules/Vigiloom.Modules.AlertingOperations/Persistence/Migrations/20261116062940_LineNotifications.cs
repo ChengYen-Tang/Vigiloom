@@ -58,6 +58,9 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                 schema: "operations",
                 columns: table => new
                 {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    RowId = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
                     Slot = table.Column<int>(type: "int", nullable: false),
                     Enabled = table.Column<bool>(type: "bit", nullable: false),
                     LastNotificationRowId = table.Column<long>(type: "bigint", nullable: false),
@@ -66,8 +69,8 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_LineSettings", x => x.Slot)
-                        .Annotation("SqlServer:Clustered", true);
+                    table.PrimaryKey("PK_LineSettings", x => x.Id)
+                        .Annotation("SqlServer:Clustered", false);
                     table.CheckConstraint("CK_LineSettings_Slot", "[Slot] = 1");
                 });
 
@@ -101,6 +104,21 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                 column: "RowId",
                 unique: true)
                 .Annotation("SqlServer:Clustered", true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LineSettings_RowId",
+                schema: "operations",
+                table: "LineSettings",
+                column: "RowId",
+                unique: true)
+                .Annotation("SqlServer:Clustered", true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LineSettings_Slot",
+                schema: "operations",
+                table: "LineSettings",
+                column: "Slot",
+                unique: true);
         }
 
         /// <inheritdoc />

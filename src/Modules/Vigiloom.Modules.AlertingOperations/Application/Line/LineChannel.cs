@@ -1,6 +1,10 @@
 using System.Data;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
@@ -8,10 +12,11 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Line;
 
 public sealed record LineGroupView(Guid Id, string ExternalId, string? Name, bool Approved, DateTimeOffset LastSeenAt);
 public sealed record LineChannelView(bool Enabled, bool HasAccessToken, bool HasChannelSecret, IReadOnlyList<LineGroupView> Groups);
-public sealed record LineChannelUpdate(bool Enabled, string? AccessToken, string? ChannelSecret);
+public sealed record LineChannelUpdate([property: JsonRequired] bool Enabled, string? AccessToken, string? ChannelSecret);
 
 /// <summary>Stores channel credentials and groups; webhook discovery never approves a group.</summary>
-public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts, IDataProtectionProvider protection, TimeProvider clock)
+public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts, IDataProtectionProvider protection, TimeProvider clock,
+    IOperationAuditWriter<OperationAudit> audit)
 {
     internal const string ProtectionPurpose = "Vigiloom.Line.Channel.v1";
     private readonly IDataProtector protector = protection.CreateProtector(ProtectionPurpose);
@@ -26,9 +31,9 @@ public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts,
             settings?.ProtectedChannelSecret is not null, groups);
     }
 
-    public async Task<bool> SaveAsync(LineChannelUpdate update, CancellationToken token)
+    public async Task<bool> SaveAsync(LineChannelUpdate update, Guid actor, CancellationToken token)
     {
-        if (update.AccessToken is { Length: > 4096 } || update.ChannelSecret is { Length: > 4096 }) return false;
+        if (actor == Guid.Empty || update.AccessToken is { Length: > 4096 } || update.ChannelSecret is { Length: > 4096 }) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var settings = await db.LineSettings.SingleOrDefaultAsync(token);
@@ -40,19 +45,26 @@ public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts,
             settings.LastNotificationRowId = await db.Notifications.MaxAsync(x => (long?)x.RowId, token) ?? 0;
         settings.Enabled = update.Enabled;
         await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actor, settings.Id, clock.GetUtcNow(), new LineSettingsChanged(LineAuditAction.Channel, update.Enabled,
+                !string.IsNullOrWhiteSpace(update.AccessToken), !string.IsNullOrWhiteSpace(update.ChannelSecret))), token);
         await transaction.CommitAsync(token);
         return true;
     }
 
-    public async Task<bool> SetGroupAsync(Guid id, string? name, bool approved, CancellationToken token)
+    public async Task<bool> SetGroupAsync(Guid id, string? name, bool approved, Guid actor, CancellationToken token)
     {
-        if (name is { Length: > 256 }) return false;
+        if (actor == Guid.Empty || name is { Length: > 256 }) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
         var group = await db.LineGroups.SingleOrDefaultAsync(x => x.Id == id, token);
         if (group is null) return false;
         group.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
         group.Approved = approved;
         await db.SaveChangesAsync(token);
+        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new OperationAudit(actor, group.Id, clock.GetUtcNow(), new LineSettingsChanged(LineAuditAction.Group, approved, false, false)), token);
+        await transaction.CommitAsync(token);
         return true;
     }
 

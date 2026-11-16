@@ -12,7 +12,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
 {
     [DbContext(typeof(OperationsDbContext))]
-    [Migration("20261116060343_LineNotifications")]
+    [Migration("20261116062940_LineNotifications")]
     partial class LineNotifications
     {
         /// <inheritdoc />
@@ -125,8 +125,8 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
 
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.LineSettings", b =>
                 {
-                    b.Property<int>("Slot")
-                        .HasColumnType("int");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("bit");
@@ -140,9 +140,26 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.Property<string>("ProtectedChannelSecret")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Slot");
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
 
-                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Slot"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Slot")
+                        .IsUnique();
 
                     b.ToTable("LineSettings", "operations", t =>
                         {

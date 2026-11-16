@@ -38,6 +38,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             IntelligenceRevisionRevoked change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceRevisionRevokedV1, JsonSerializer.Serialize(change)),
             SigmaRuleStateChanged change when change.TestId.Version == 7 => (AuditKinds.SigmaRuleStateChangedV1, JsonSerializer.Serialize(change)),
             BaselineExceptionRecorded change when IsValid(change) => (AuditKinds.BaselineExceptionRecordedV1, JsonSerializer.Serialize(change)),
+            LineSettingsChanged change when change.Action is LineAuditAction.Channel or LineAuditAction.Group => (AuditKinds.LineSettingsChangedV1, JsonSerializer.Serialize(change)),
             IntelligenceOfflineImported change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceOfflineImportedV1, JsonSerializer.Serialize(change)),
             IntelligencePolicyChanged change when IsValid(change) => (AuditKinds.IntelligencePolicyChangedV1, JsonSerializer.Serialize(change)),
             AdvisoryImportAbandoned change when IsValid(change) => (AuditKinds.AdvisoryImportAbandonedV1, JsonSerializer.Serialize(change)),
