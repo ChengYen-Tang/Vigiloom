@@ -1,0 +1,4 @@
+.device-page ::deep .baseline-exception-form { display: grid; gap: .5rem; max-width: 48rem; }
+.device-page ::deep .baseline-exception-form label { font-weight: 600; }
+.device-page ::deep .baseline-exception-form textarea { box-sizing: border-box; width: 100%; }
+.device-page ::deep .baseline-exception-form button { justify-self: start; }
