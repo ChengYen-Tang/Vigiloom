@@ -204,6 +204,8 @@ public sealed class LinuxInventorySqlTests(TestContext context)
             var priorityMigration = Array.FindIndex(migrations, x => x.EndsWith("_UbuntuPriority", StringComparison.Ordinal));
             Assert.IsGreaterThan(0, priorityMigration);
             await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(migrations[priorityMigration - 1], token));
+            // Later migrations may already have been rolled back before the protected downgrade failed.
+            await db.Database.MigrateAsync(token);
             Assert.AreEqual(4, await db.VulnerabilityEvaluations.CountAsync(x => x.UbuntuPriority == "high", token));
             var gap = await db.VulnerabilityUnknownPackages.AsNoTracking().SingleAsync(x => x.RunId == finding.RunId, token);
             Assert.AreEqual("other:amd64", gap.PackageKey);
