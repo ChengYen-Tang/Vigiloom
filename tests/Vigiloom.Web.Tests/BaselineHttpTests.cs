@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Publishing;
@@ -108,13 +109,21 @@ public sealed class BaselineHttpTests(TestContext context)
                 await security.SaveChangesAsync(token);
             }
             BaselineSelection selected;
+            BaselineSettingsSnapshot currentPolicy;
             using (var response = await client.GetAsync("/api/v1/agent/baseline-settings", token))
             {
                 var policy = await response.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token);
                 Assert.IsNotNull(policy);
+                currentPolicy = policy;
                 selected = policy.Checks.Single();
                 Assert.AreEqual(revision.Id, selected.RevisionId);
             }
+            var epoch = Guid.CreateVersion7();
+            using (var started = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, started.StatusCode);
+            var report = new BaselineSettingsReport(currentPolicy.Revision, now, now, null);
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null, BaselineConfiguration: report), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
                 [new(selected.SourceId, selected.RevisionId, selected.ActivationVersion, selected.Check.Id,
                     now, "ubuntu:24.04", BaselineOutcome.Fail, "test evidence")]);
@@ -175,9 +184,24 @@ public sealed class BaselineHttpTests(TestContext context)
                 var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
                 Assert.IsNotNull(view);
                 var result = view.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow);
+                Assert.AreEqual(BaselineSyncState.Applied, view.Sync!.State);
+                Assert.AreEqual(currentPolicy.Revision, view.Sync.AppliedRevision);
+                Assert.AreEqual(now, view.Sync.LastSyncedAt);
                 Assert.IsTrue(result.Latest!.Current);
                 Assert.AreEqual(BaselineOutcome.Fail, result.Latest.Outcome);
             }
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, null,
+                BaselineConfiguration: report with { Failure = AgentConfigurationFailure.Unavailable }), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
+            {
+                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                Assert.AreEqual(BaselineSyncState.Failed, view!.Sync!.State);
+                Assert.AreEqual(now, view.Sync.LastSyncedAt);
+            }
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 3, null,
+                BaselineConfiguration: report), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             await db.IntelligenceActivations.Where(x => x.SourceId == source.Id).ExecuteDeleteAsync(token);
             var historic = batch with { BatchId = Guid.CreateVersion7() };
             using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agent/batches") { Content = new ByteArrayContent(BaselineBatchCodec.Serialize(historic)) })
@@ -191,6 +215,7 @@ public sealed class BaselineHttpTests(TestContext context)
             {
                 var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
                 var result = view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow);
+                Assert.AreEqual(BaselineSyncState.Pending, view.Sync!.State);
                 Assert.AreEqual(BaselineSourceAvailability.NoActiveRevision, result.SourceAvailability);
                 Assert.IsFalse(result.Latest!.Current);
             }

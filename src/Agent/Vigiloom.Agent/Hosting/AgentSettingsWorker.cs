@@ -227,7 +227,8 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         if (!IsCurrent(directory, server)) break;
                         if (result.Status is AgentSettingsSyncStatus.NotRegistered or AgentSettingsSyncStatus.ServerMismatch) baseline.Bind(null);
                         else if (result.Status == AgentSettingsSyncStatus.Unsupported) baseline.MarkUnsupported(owner);
-                        else if (result.Settings is not null) baseline.Publish(owner, result.Settings);
+                        else if (result.Status == AgentSettingsSyncStatus.Conflict) baseline.MarkFailure(owner, AgentConfigurationFailure.Conflict);
+                        else if (result.Settings is not null) baseline.Publish(owner, result.Settings, clock.GetUtcNow());
                         else
                         {
                             var failure = result.Status switch

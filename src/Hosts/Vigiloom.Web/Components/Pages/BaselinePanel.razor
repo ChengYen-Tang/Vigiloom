@@ -18,6 +18,16 @@
     else
     {
         <p class="baseline-meta">檢查間隔與盤點設定相同：@view.ScanIntervalSeconds 秒。@if (view.AgentId is null) { <span>此設備尚無可用 Agent。</span> }</p>
+        @if (view.Sync is { } sync && view.AgentId is not null)
+        {
+            <details class="baseline-meta">
+                <summary>Agent 設定：@SyncStatus(sync.State)</summary>
+                <p>期望版本：@ShortVersion(sync.DesiredRevision)</p>
+                <p>已套用版本：@(sync.AppliedRevision is { } applied ? ShortVersion(applied) : "尚未回報")</p>
+                <p>最後成功同步（UTC）：@(sync.LastSyncedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚未回報")</p>
+                @if (sync.Failure is { } failure) { <p>同步問題：@SyncFailure(failure)</p> }
+            </details>
+        }
         <p class="baseline-scroll-hint">左右滑動查看完整檢查資訊。</p>
         <div class="baseline-table" tabindex="0" role="region" aria-label="基準檢查，可左右捲動">
             <table>
@@ -82,6 +92,21 @@
     };
 
     private static string ShortVersion(string value) => value.Length > 12 ? value[..12] : value;
+
+    private static string SyncStatus(BaselineSyncState state) => state switch
+    {
+        BaselineSyncState.Applied => "已套用", BaselineSyncState.Pending => "等待套用", BaselineSyncState.Failed => "同步失敗",
+        BaselineSyncState.Offline => "Agent 離線", _ => "等待回報"
+    };
+
+    private static string SyncFailure(Vigiloom.Contracts.Agent.AgentConfigurationFailure failure) => failure switch
+    {
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Unauthorized => "Agent 身分驗證失敗",
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Invalid => "設定資料無效",
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.LocalStorage => "無法讀寫 Agent 本機設定",
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Conflict => "設定同步衝突，稍後會重試",
+        _ => "暫時無法取得設定，稍後會重試"
+    };
 
     private static string Expected(BaselineCheckView check) => check.SourceKey switch
     {

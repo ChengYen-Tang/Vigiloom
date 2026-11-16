@@ -43,7 +43,7 @@ internal sealed class BaselineWorker(AgentBaselineSettingsRuntime settings, Agen
                             revision = null;
                             next = DateTimeOffset.MinValue;
                         }
-                        var saved = owner is null ? null : settings.ForOwner(owner);
+                        var saved = owner is null ? null : settings.ApplyForOwner(owner, clock.GetUtcNow());
                         var metricPolicy = owner is null ? null : metrics.ForOwner(owner);
                         if (owner is not null && saved is not null && metricPolicy is not null)
                         {
