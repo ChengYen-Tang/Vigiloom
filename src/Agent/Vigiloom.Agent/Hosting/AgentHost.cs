@@ -28,6 +28,7 @@ public static class AgentHost
         builder.Services.AddHttpClient<AgentInventorySettingsClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentLogSettingsClient>(client => { ConfigureClient(client); client.MaxResponseContentBufferSize = 512 * 1024; }).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentIntegritySettingsClient>(client => { ConfigureClient(client); client.MaxResponseContentBufferSize = 2 * 1024 * 1024; }).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddHttpClient<AgentBaselineSettingsClient>(client => { ConfigureClient(client); client.MaxResponseContentBufferSize = 2 * 1024 * 1024; }).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<InventoryStatusClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<Vigiloom.Agent.Core.Integrity.IntegrityStatusClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddSingleton<AgentSettingsRuntime>();
@@ -37,6 +38,7 @@ public static class AgentHost
         builder.Services.AddSingleton<SamplingBudgetCoordinator>();
         builder.Services.AddSingleton<AgentLogSettingsRuntime>();
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Integrity.AgentIntegritySettingsRuntime>();
+        builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Baseline.AgentBaselineSettingsRuntime>();
         builder.Services.AddSingleton<AgentLogStatusRuntime>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<HeartbeatWorker>();
@@ -46,6 +48,7 @@ public static class AgentHost
         builder.Services.AddHostedService<LogWorker>();
         builder.Services.AddHostedService<InventoryWorker>();
         builder.Services.AddHostedService<Vigiloom.Agent.Hosting.Integrity.IntegrityWorker>();
+        builder.Services.AddHostedService<Vigiloom.Agent.Hosting.Baseline.BaselineWorker>();
         return builder;
     }
 

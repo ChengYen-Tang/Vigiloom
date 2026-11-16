@@ -2,15 +2,22 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.IO.Compression;
 using Vigiloom.Agent.Core.Identity;
+using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
 
 namespace Vigiloom.Agent.Core.Transport;
 
 /// <summary>Sends an already persisted batch; only a confirmed central commit removes it locally.</summary>
 public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
 {
+    private readonly object gate = new();
+    private AgentSettingsOwner? deferredOwner;
+    private long? deferredSince;
+    private AgentSettingsOwner? restoredOwner;
+
     public async Task<BatchSendOutcome> SendNextAsync(IdentityVault vault, Uri server, CancellationToken token)
     {
         var expected = IdentityClient.NormalizeServer(server);
@@ -18,8 +25,15 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         if (identity is null) return new(mismatch ? BatchSendResult.ServerMismatch : BatchSendResult.NotRegistered);
         var id = identity.AgentId!.Value;
         var queue = new DurableBatchQueue(vault, id);
-        var pending = await queue.PeekAsync(token);
-        if (pending is null) return new(BatchSendResult.NoPendingBatch);
+        var owner = new AgentSettingsOwner(id, expected.AbsoluteUri, vault.StateDirectory);
+        if (restoredOwner != owner)
+        {
+            await queue.RestoreBaselineAfterUpgradeAsync(token);
+            restoredOwner = owner;
+        }
+        var skipBaseline = ShouldDeferBaseline(owner);
+        var pending = await queue.PeekAsync(token, skipBaseline ? BaselineBatchCodec.SchemaVersion : null);
+        if (pending is null) return new(skipBaseline ? BatchSendResult.Deferred : BatchSendResult.NoPendingBatch);
         if (!MatchesQueueEntry(pending, out var schemaVersion))
         {
             await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
@@ -46,6 +60,7 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         // Older servers can reject a newer valid schema with 400. Preserve its bytes
         // until the server explicitly advertises that schema.
         var unknownSchema = schemaVersion > 1 && response.StatusCode == HttpStatusCode.BadRequest && !SupportsSchema(response, schemaVersion);
+        if (unknownSchema && schemaVersion == BaselineBatchCodec.SchemaVersion) DeferBaseline(owner);
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
@@ -72,11 +87,30 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         return new(status, delay);
     }
 
+    private bool ShouldDeferBaseline(AgentSettingsOwner owner)
+    {
+        lock (gate)
+        {
+            if (deferredOwner != owner || deferredSince is null || clock.GetElapsedTime(deferredSince.Value) >= TimeSpan.FromMinutes(5))
+            {
+                deferredOwner = null;
+                deferredSince = null;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    private void DeferBaseline(AgentSettingsOwner owner)
+    {
+        lock (gate) { deferredOwner = owner; deferredSince = clock.GetTimestamp(); }
+    }
+
     private static bool SupportsSchema(HttpResponseMessage response, int schemaVersion) =>
         response.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var values) &&
         values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
 
-    private static bool MatchesQueueEntry(QueuedBatch pending, out int schemaVersion)
+    internal static bool MatchesQueueEntry(QueuedBatch pending, out int schemaVersion)
     {
         schemaVersion = 1;
         if (AgentBatchCodec.TryRead(pending.Payload, out var runtime))
@@ -103,6 +137,12 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             schemaVersion = integrity!.SchemaVersion;
             return integrity.BatchId == pending.BatchId && integrity.EnqueuedAt == pending.EnqueuedAt &&
                 Math.Max(1, integrity.Items.Count) == pending.RecordCount;
+        }
+        if (BaselineBatchCodec.TryRead(pending.Payload, out var baseline))
+        {
+            schemaVersion = BaselineBatchCodec.SchemaVersion;
+            return baseline!.BatchId == pending.BatchId && baseline.EnqueuedAt == pending.EnqueuedAt &&
+                baseline.Items.Count == pending.RecordCount;
         }
         return false;
     }
@@ -133,5 +173,5 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
     }
 }
 
-public enum BatchSendResult { NoPendingBatch, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch }
+public enum BatchSendResult { NoPendingBatch, Delivered, NotRegistered, ServerMismatch, Unauthorized, Retry, Rejected, InvalidLocalBatch, Deferred }
 public readonly record struct BatchSendOutcome(BatchSendResult Status, TimeSpan? RetryAfter = null);
