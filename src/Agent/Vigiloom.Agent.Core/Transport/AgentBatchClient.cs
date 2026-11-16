@@ -5,6 +5,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
 
 namespace Vigiloom.Agent.Core.Transport;
 
@@ -103,6 +104,12 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             schemaVersion = integrity!.SchemaVersion;
             return integrity.BatchId == pending.BatchId && integrity.EnqueuedAt == pending.EnqueuedAt &&
                 Math.Max(1, integrity.Items.Count) == pending.RecordCount;
+        }
+        if (BaselineBatchCodec.TryRead(pending.Payload, out var baseline))
+        {
+            schemaVersion = BaselineBatchCodec.SchemaVersion;
+            return baseline!.BatchId == pending.BatchId && baseline.EnqueuedAt == pending.EnqueuedAt &&
+                baseline.Items.Count == pending.RecordCount;
         }
         return false;
     }
