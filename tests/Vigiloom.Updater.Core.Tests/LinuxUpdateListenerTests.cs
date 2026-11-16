@@ -133,7 +133,12 @@ public sealed class LinuxUpdateListenerTests(TestContext context)
             Assert.AreEqual(0, process.ExitCode, await error);
             return (await output).Trim();
         }
-        finally { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+        finally
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync(cleanupTimeout.Token);
+        }
     }
 
     [TestMethod]
