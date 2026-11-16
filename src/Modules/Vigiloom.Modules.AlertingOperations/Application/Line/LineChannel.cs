@@ -13,7 +13,8 @@ public sealed record LineChannelUpdate(bool Enabled, string? AccessToken, string
 /// <summary>Stores channel credentials and groups; webhook discovery never approves a group.</summary>
 public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts, IDataProtectionProvider protection, TimeProvider clock)
 {
-    private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.Line.Channel.v1");
+    internal const string ProtectionPurpose = "Vigiloom.Line.Channel.v1";
+    private readonly IDataProtector protector = protection.CreateProtector(ProtectionPurpose);
 
     public async Task<LineChannelView> GetAsync(CancellationToken token)
     {

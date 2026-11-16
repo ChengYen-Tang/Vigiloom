@@ -1,0 +1,18 @@
+.line-page { max-width: 1100px; }
+.line-panel { margin-top: 1rem; }
+.line-form { display: grid; gap: .5rem; max-width: 42rem; }
+.line-form label span { color: #52709c; font-size: .875rem; margin-left: .4rem; }
+.line-form ::deep input[type=password], .line-group-form input { width: 100%; border: 1px solid #bfd0e5; border-radius: .3rem; padding: .65rem; }
+.line-form button, .line-group button { justify-self: start; border: 0; border-radius: .3rem; padding: .6rem .9rem; background: #075eee; color: white; cursor: pointer; }
+.line-form .line-toggle { margin-top: .4rem; }
+.line-url, .line-id { overflow-wrap: anywhere; }
+.line-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.line-group { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 2fr) auto; gap: 1rem; align-items: end; padding: 1rem 0; border-top: 1px solid #e2eaf3; }
+.line-group p { margin: .35rem 0 0; color: #62799d; font-size: .875rem; }
+.line-group-form { display: flex; gap: .5rem; align-items: end; }
+.line-group-form label { white-space: nowrap; padding-bottom: .6rem; }
+.line-group-form button { white-space: nowrap; }
+.line-group .line-secondary { background: #e7f0ff; color: #075eee; }
+.line-badge { margin-left: .6rem; border-radius: .25rem; padding: .2rem .45rem; color: #176c44; background: #e4f7eb; font-size: .8rem; }
+.line-message { padding: .75rem; background: #e4f7eb; color: #176c44; }
+@media (max-width: 720px) { .line-group { grid-template-columns: 1fr; } .line-group-form { flex-wrap: wrap; } .line-group-form label { padding: 0; } }
