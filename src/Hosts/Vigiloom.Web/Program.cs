@@ -162,6 +162,7 @@ builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, Vig
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
 builder.Services.AddHostDetection();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
+builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationReader, Vigiloom.Modules.AlertingOperations.Application.NotificationReader>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePolicy>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryRecovery>();

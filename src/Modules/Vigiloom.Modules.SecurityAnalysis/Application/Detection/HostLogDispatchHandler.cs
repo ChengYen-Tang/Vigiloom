@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
@@ -14,7 +15,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Evaluates committed Agent events and stores results within the Outbox acknowledgement transaction.</summary>
 internal sealed class HostLogDispatchHandler(IDbContextFactory<SecurityAnalysisDbContext> contexts, SigmaEnabledRules enabledRules,
-    SigmaCatalog catalog, IHostLogReader logs, TimeProvider clock) : IOutboxHandler
+    SigmaCatalog catalog, IHostLogReader logs, TimeProvider clock, INotificationWriter? notifications = null) : IOutboxHandler
 {
     public string MessageType => HostLogDispatch.MessageType;
 
@@ -58,6 +59,7 @@ internal sealed class HostLogDispatchHandler(IDbContextFactory<SecurityAnalysisD
         var present = events.Select(x => x.MessageId).ToHashSet();
         var now = clock.GetUtcNow().ToUniversalTime();
         var pending = 0;
+        var pendingNotifications = new List<NotificationRequest>();
         foreach (var missing in eventIds.Where(x => !present.Contains(x) && !existingGaps.Contains((x, 1))))
         {
             db.SigmaEventGaps.Add(new SigmaEventGap { AgentId = dispatch.AgentId, DeviceId = dispatch.DeviceId,
@@ -83,18 +85,27 @@ internal sealed class HostLogDispatchHandler(IDbContextFactory<SecurityAnalysisD
                     DeviceGeneration = dispatch.DeviceGeneration, MessageId = log.MessageId, ActivationId = version.Id,
                     TestId = version.TestId, ActivationVersion = version.Version, Result = (int)rule.Result, OccurredAt = log.OccurredAt,
                     ReceivedAt = log.ReceivedAt, EvaluatedAt = now });
+                if (notifications is not null && rule.Result == SigmaMatch.Yes)
+                    pendingNotifications.Add(SigmaNotification.Create(dispatch.DeviceId, log, rule.Source, version));
                 await FlushIfFullAsync();
             }
         }
-        await db.SaveChangesAsync(cancellationToken);
-        db.ChangeTracker.Clear();
+        await FlushAsync();
         foreach (var rule in selection.Rules.Correlations)
-            await new CorrelationDispatch(logs).HandleAsync(db, rule, versions[rule.Source.Path].Rule, dispatch, events, now, cancellationToken);
+            await new CorrelationDispatch(logs, notifications).HandleAsync(db, rule, versions[rule.Source.Path].Rule, dispatch, events, now, cancellationToken);
 
         async Task FlushIfFullAsync()
         {
             if (++pending < 200) return;
+            await FlushAsync();
+        }
+
+        async Task FlushAsync()
+        {
             await db.SaveChangesAsync(cancellationToken);
+            if (notifications is not null && pendingNotifications.Count != 0)
+                await notifications.WriteBatchAsync(pendingNotifications, connection, transaction, cancellationToken);
+            pendingNotifications.Clear();
             db.ChangeTracker.Clear();
             pending = 0;
         }
