@@ -61,12 +61,16 @@ public sealed class PackageStagerTests(TestContext context)
             UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         try
         {
-            using var archive = Archive(("Vigiloom.Agent", "binary"), ("runtimes/native.dll", "library"));
+            using var archive = Archive(("Vigiloom.Agent", "binary"), ("runtimes/native.dll", "library"), ("tools/createdump", "tool"));
+            using (var zip = new ZipArchive(archive, ZipArchiveMode.Update, leaveOpen: true))
+                zip.GetEntry("tools/createdump")!.ExternalAttributes = unchecked((int)0x81ed0000); // regular file, 0755
+            archive.Position = 0;
             var manifest = Manifest(archive, "linux-x64");
             var prepared = await PackageStager.PrepareAsync(archive, manifest, Target(manifest), root,
                 "linux-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken);
             Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", Path.Combine(prepared, "Vigiloom.Agent")));
             Assert.AreEqual(0, await TestAsUnprivilegedAsync("-r", Path.Combine(prepared, "runtimes", "native.dll")));
+            Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", Path.Combine(prepared, "tools", "createdump")));
             Assert.AreNotEqual(0, await TestAsUnprivilegedAsync("-w", Path.Combine(prepared, "Vigiloom.Agent")));
             Assert.AreNotEqual(0, await TestAsUnprivilegedAsync("-w", Path.Combine(prepared, "runtimes", "native.dll")));
         }
