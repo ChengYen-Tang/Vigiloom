@@ -15,7 +15,6 @@
             <section class="rollout-panel">
                 <h2>建立分批更新</h2>
                 <p>先試行少量設備，確認成功後再依批次更新。每次選擇一種作業系統與架構的套件。</p>
-                <p>平台最多同時有 @AgentRolloutLimits.MaximumOutstanding 台設備等待完成更新；離線或可重試的設備也會占用名額。</p>
                 <label for="rollout-package">Agent 套件</label>
                 <select id="rollout-package" value="@packageId" @onchange="PackageChanged" disabled="@(busy || !RendererInfo.IsInteractive)">
                     <option value="">選擇套件</option>
@@ -29,8 +28,8 @@
                     <div class="rollout-actions"><button @onclick="PreviousPackagesAsync" disabled="@(busy || packages.Page <= 1)">上一頁</button><span>套件第 @packages.Page 頁</span><button @onclick="NextPackagesAsync" disabled="@(busy || !packages.HasMore)">下一頁</button></div>
                 }
                 <div class="rollout-inputs">
-                    <label>試行設備數 <input type="number" min="1" max="100" @bind="pilotSize" disabled="@busy" /></label>
-                    <label>每批設備數 <input type="number" min="1" max="100" @bind="batchSize" disabled="@busy" /></label>
+                    <label>試行設備數 <input type="number" min="1" @bind="pilotSize" disabled="@busy" /></label>
+                    <label>每批設備數 <input type="number" min="1" @bind="batchSize" disabled="@busy" /></label>
                 </div>
                 <div class="rollout-actions"><button @onclick="PreviewAsync" disabled="@(busy || !RendererInfo.IsInteractive || packageId == "")">預覽適用設備</button></div>
                 @if (preview is not null)
@@ -145,7 +144,7 @@
     private async Task CreateAsync()
     {
         if (busy || !Guid.TryParse(packageId, out var package) || preview is null) return;
-        if (pilotSize is < 1 or > 100 || batchSize is < 1 or > 100) { message = "試行及每批設備數須介於 1 到 100。"; messageError = true; return; }
+        if (pilotSize < 1 || batchSize < 1) { message = "試行及每批設備數須大於零。"; messageError = true; return; }
         busy = true;
         try
         {

@@ -40,16 +40,16 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
-    public Task OutstandingUpdateLimitIncludesCancelledRolloutsAndRetryableResults() => WithDatabase(async (resources, agents, token) =>
+    public Task PlatformDoesNotCapOutstandingAgentAssignments() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
         var actor = Guid.CreateVersion7();
-        var devices = Enumerable.Range(1, AgentRolloutLimits.MaximumOutstanding + 2)
+        var devices = Enumerable.Range(1, 102)
             .Select(i => new Device($"capacity {i}", $"capacity-{i}.test", true, clock.Now)).ToArray();
         await using (var db = resources.CreateDbContext()) { db.Devices.AddRange(devices); await db.SaveChangesAsync(token); }
         var registered = devices.Select(x => new Agent(x.Id, x.AgentAuthorizationGeneration, new byte[32], clock.Now)).ToArray();
         var packageId = Guid.CreateVersion7();
-        var updates = registered.Take(AgentRolloutLimits.MaximumOutstanding).Select(_ => Guid.CreateVersion7()).ToArray();
+        var updates = registered.Take(100).Select(_ => Guid.CreateVersion7()).ToArray();
         await using (var db = agents.CreateDbContext())
         {
             db.Agents.AddRange(registered);
@@ -61,46 +61,14 @@ public sealed class AgentIdentitySqlTests
                 db.UpdateTargets.Add(new AgentUpdateTarget { Id = updates[i], AgentId = registered[i].Id, PackageId = packageId,
                     Version = "2.0.0", RuntimeIdentifier = "win-x64", ManifestSha256 = new string('b', 64), AssignedAt = clock.Now });
             }
-            var cancelled = new AgentRollout { Id = Guid.CreateVersion7(), GroupId = Guid.CreateVersion7(), PackageId = packageId,
-                CreatedBy = actor, CreatedAt = clock.Now, PilotSize = 1, BatchSize = 1, Status = AgentRolloutStatus.Cancelled };
-            db.Rollouts.Add(cancelled);
-            db.RolloutMembers.Add(new AgentRolloutMember { RolloutId = cancelled.Id, AgentId = registered[0].Id, DeviceId = devices[0].Id,
-                DeviceName = devices[0].Name, DeviceGeneration = devices[0].AgentAuthorizationGeneration, Batch = 0, Position = 0,
-                UpdateId = updates[0], Status = AgentRolloutMemberStatus.Assigned });
-            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = registered[0].Id, UpdateId = updates[0], MessageId = Guid.CreateVersion7(),
-                Sequence = 1, Result = AgentUpdateResultKind.RolledBack, RetryAllowed = true, Failure = AgentUpdateFailure.Interrupted,
-                OccurredAt = clock.Now, ReceivedAt = clock.Now });
             await db.SaveChangesAsync(token);
         }
         var source = new DeviceAgentSource(resources);
         var identity = new AgentIdentity(agents, source, clock);
-        var assignments = new AgentVersionAssignments(agents, source, identity, clock, source);
-        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(registered[^1].Id, packageId, "", actor, token));
-        await using (var db = agents.CreateDbContext())
-        {
-            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = registered[0].Id, UpdateId = updates[0], MessageId = Guid.CreateVersion7(),
-                Sequence = 2, Result = AgentUpdateResultKind.Succeeded, OccurredAt = clock.Now, ReceivedAt = clock.Now });
-            await db.SaveChangesAsync(token);
-        }
+        var assignments = new AgentVersionAssignments(agents, source, identity, clock);
         var attempted = await Task.WhenAll(assignments.SetAsync(registered[^1].Id, packageId, "", actor, token),
             assignments.SetAsync(registered[^2].Id, packageId, "", actor, token));
-        Assert.AreEqual(1, attempted.Count(x => x == VersionAssignmentResult.Saved));
-        Assert.AreEqual(1, attempted.Count(x => x == VersionAssignmentResult.Conflict));
-        var waiting = attempted[0] == VersionAssignmentResult.Conflict ? registered[^1] : registered[^2];
-        await using (var db = resources.CreateDbContext())
-        {
-            var temporarilyDisabled = await db.Devices.SingleAsync(x => x.Id == devices[1].Id, token);
-            temporarilyDisabled.Update(temporarilyDisabled.Name, temporarilyDisabled.Address, true, false, clock.Now);
-            await db.SaveChangesAsync(token);
-        }
-        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(waiting.Id, packageId, "", actor, token));
-        await using (var db = resources.CreateDbContext())
-        {
-            var archived = await db.Devices.SingleAsync(x => x.Id == devices[1].Id, token);
-            archived.Archive(clock.Now);
-            await db.SaveChangesAsync(token);
-        }
-        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(waiting.Id, packageId, "", actor, token));
+        Assert.AreEqual(2, attempted.Count(x => x == VersionAssignmentResult.Saved));
     });
 
     [TestMethod]
@@ -135,7 +103,7 @@ public sealed class AgentIdentitySqlTests
                 Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
             await db.SaveChangesAsync(token);
         }
-        var rollouts = new AgentRollouts(agents, new GroupAgentSource(), source, clock, source);
+        var rollouts = new AgentRollouts(agents, new GroupAgentSource(), source, clock);
         var preview = await rollouts.PreviewAsync(group.Id, packageId, token);
         Assert.IsNotNull(preview);
         Assert.AreEqual(3, preview.Included);
@@ -181,7 +149,7 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(AgentRolloutMemberStatus.Assigned, view.Members[1].Status);
         Assert.AreEqual(AgentRolloutMemberStatus.Pending, view.Members[2].Status);
         var second = view.Members[1];
-        var assignments = new AgentVersionAssignments(agents, source, identity, clock, source);
+        var assignments = new AgentVersionAssignments(agents, source, identity, clock);
         var existing = await assignments.GetAsync(second.AgentId, token);
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(second.AgentId, packageId, existing!.Revision, actor, token));
         await using (var db = agents.CreateDbContext())
@@ -239,6 +207,9 @@ public sealed class AgentIdentitySqlTests
         }
         await rollouts.AdvanceAsync(token);
         Assert.AreEqual(AgentRolloutMemberStatus.Assigned, (await rollouts.GetAsync(later, token))!.Members[0].Status);
+        var largerBatch = await rollouts.CreateAsync(new(group.Id, packageId, 150, 200), actor, token);
+        Assert.AreEqual(AgentRolloutResult.Saved, largerBatch.Result);
+        Assert.AreEqual(150, (await rollouts.GetAsync(largerBatch.Id!.Value, token))!.PilotSize);
     });
 
     [TestMethod]
@@ -303,7 +274,7 @@ public sealed class AgentIdentitySqlTests
                 Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
             await db.SaveChangesAsync(token);
         }
-        var assignments = new AgentVersionAssignments(agents, devices, identity, clock, devices);
+        var assignments = new AgentVersionAssignments(agents, devices, identity, clock);
         var credential = Credential(agentId, secret);
         var emptyTarget = await assignments.GetForAgentAsync(credential, token);
         Assert.IsTrue(emptyTarget.Authenticated);

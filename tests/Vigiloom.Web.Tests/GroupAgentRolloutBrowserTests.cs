@@ -67,10 +67,12 @@ public sealed class GroupAgentRolloutBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator(".rollouts[data-interactive='true']").WaitForAsync();
         await page.Locator("#rollout-package").SelectOptionAsync(packageId.ToString());
+        await page.GetByLabel("每批設備數").FillAsync("200");
         await page.GetByRole(AriaRole.Button, new() { Name = "預覽適用設備" }).ClickAsync();
         await page.GetByText("適用：2 台；未納入：0 台（win-x64）。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "開始分批更新" }).ClickAsync();
         await page.GetByText("已建立更新：納入 2 台，未納入 0 台。", new() { Exact = true }).WaitForAsync();
+        Assert.Contains("後續每批 200 台", await page.Locator("main").InnerTextAsync());
         await scope.ServiceProvider.GetRequiredService<AgentRollouts>().AdvanceAsync(token);
         await page.GetByRole(AriaRole.Button, new() { Name = "重新整理" }).ClickAsync();
         await page.GetByText("已指派，等待結果", new() { Exact = true }).WaitForAsync();

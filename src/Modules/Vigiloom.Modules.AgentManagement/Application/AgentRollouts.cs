@@ -9,12 +9,12 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Creates fixed group snapshots and advances a bounded number of Agents at a time.</summary>
 public sealed class AgentRollouts(IDbContextFactory<AgentManagementDbContext> contexts, IGroupAgentSource groups,
-    IDeviceAgentSource devices, TimeProvider clock, IDeviceGenerationSource generations)
+    IDeviceAgentSource devices, TimeProvider clock)
 {
     public async Task<AgentRolloutCreation> CreateAsync(AgentRolloutInput input, Guid actor, CancellationToken token)
     {
         if (input.GroupId.Version != 7 || input.PackageId.Version != 7 || actor.Version != 7 ||
-            input.PilotSize is < 1 or > 100 || input.BatchSize is < 1 or > 100) return new(AgentRolloutResult.Invalid);
+            input.PilotSize < 1 || input.BatchSize < 1) return new(AgentRolloutResult.Invalid);
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var snapshot = await SnapshotAsync(db, transaction, input.GroupId, input.PackageId, token);
@@ -165,7 +165,6 @@ public sealed class AgentRollouts(IDbContextFactory<AgentManagementDbContext> co
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        await AgentUpdateDispatch.AcquireAsync(db, token);
         var rollout = await LockAsync(db, rolloutId, token);
         if (rollout?.Status != AgentRolloutStatus.Running) return false;
         var member = await db.RolloutMembers.SingleOrDefaultAsync(x => x.RolloutId == rolloutId && x.AgentId == agentId, token);
@@ -197,14 +196,13 @@ public sealed class AgentRollouts(IDbContextFactory<AgentManagementDbContext> co
             return await PauseAsync(db, transaction, rollout, member, AgentRolloutProblem.AssignmentChanged, token);
 
         if (member.Status == AgentRolloutMemberStatus.Pending && current?.UpdateId is { } previous &&
-            await AgentUpdateDispatch.IsOutstandingAsync(db, previous, token)) return false;
+            await IsOutstandingAsync(db, previous, token)) return false;
 
         var package = await db.Packages.FromSqlInterpolated($"SELECT * FROM [agent].[Packages] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {rollout.PackageId}")
             .SingleOrDefaultAsync(token);
         if (package is null || !package.Listed || package.Revoked || package.VerifiedUntil <= clock.GetUtcNow())
             return await PauseAsync(db, transaction, rollout, member, AgentRolloutProblem.PackageUnavailable, token);
         if (member.Status == AgentRolloutMemberStatus.Assigned) return false;
-        if (!await AgentUpdateDispatch.HasCapacityAsync(db, generations, agentId, token)) return false;
         member.UpdateId = AgentVersionAssignments.Assign(db, agent, current, package, rollout.CreatedBy, clock.GetUtcNow());
         member.Status = AgentRolloutMemberStatus.Assigned;
         await db.SaveChangesAsync(token);
@@ -240,4 +238,12 @@ public sealed class AgentRollouts(IDbContextFactory<AgentManagementDbContext> co
 
     private static Task<AgentRollout?> LockAsync(AgentManagementDbContext db, Guid id, CancellationToken token) =>
         db.Rollouts.FromSqlInterpolated($"SELECT * FROM [agent].[Rollouts] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {id}").SingleOrDefaultAsync(token);
+
+    private static async Task<bool> IsOutstandingAsync(AgentManagementDbContext db, Guid updateId, CancellationToken token)
+    {
+        var last = await db.UpdateReceipts.AsNoTracking().Where(x => x.UpdateId == updateId)
+            .OrderByDescending(x => x.Sequence).Select(x => new { x.Result, x.RetryAllowed }).FirstOrDefaultAsync(token);
+        return last is null || last.Result is not (AgentUpdateResultKind.Succeeded or AgentUpdateResultKind.RollbackFailed) &&
+            (last.Result != AgentUpdateResultKind.RolledBack || last.RetryAllowed);
+    }
 }

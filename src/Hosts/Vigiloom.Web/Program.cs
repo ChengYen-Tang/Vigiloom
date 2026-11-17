@@ -92,7 +92,6 @@ builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
-builder.Services.AddScoped<IDeviceGenerationSource, DeviceAgentSource>();
 builder.Services.AddSingleton<IGroupAgentSource, GroupAgentSource>();
 builder.Services.AddScoped<AgentRollouts>();
 builder.Services.AddScoped<Vigiloom.Web.AgentVersions.AgentManagementSession>();
