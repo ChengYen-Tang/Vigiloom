@@ -1,0 +1,28 @@
+@page "/groups/{Id:guid}/agent-updates"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Modules.Resources.Application
+@inject GroupManagement Groups
+@inject ILogger<GroupAgentRollouts> Logger
+
+<PageTitle>群組 Agent 更新 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="@($"/groups/{Id:D}")">← 返回群組</a>
+    <header class="device-heading"><div><h1>群組 Agent 更新</h1><p>@(groupName is null ? "" : $"管理 {groupName} 的分批更新。")</p></div></header>
+    @if (failed) { <section class="device-panel" role="alert">無法讀取群組，請稍後重新整理。</section> }
+    else if (groupName is null) { <section class="device-panel">找不到群組。</section> }
+    else { <Vigiloom.Web.Client.Components.AgentVersions.GroupRollouts GroupId="Id" @rendermode="InteractiveAuto" /> }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private string? groupName;
+    private bool failed;
+    protected override async Task OnInitializedAsync()
+    {
+        try { groupName = (await Groups.GetAsync(Id, HttpContext.RequestAborted))?.Name; }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception error) { Logger.LogWarning(error, "Unable to load group for Agent updates"); failed = true; }
+    }
+}

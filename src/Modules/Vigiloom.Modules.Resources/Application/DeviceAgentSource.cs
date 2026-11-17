@@ -2,12 +2,23 @@ using System.Data;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
 
 namespace Vigiloom.Modules.Resources.Application;
 
-public sealed class DeviceAgentSource(IDbContextFactory<ResourcesDbContext> contexts) : IDeviceAgentSource
+public sealed class DeviceAgentSource(IDbContextFactory<ResourcesDbContext> contexts) : IDeviceAgentSource, IDeviceGenerationSource
 {
+    public async Task<IReadOnlyDictionary<Guid, long>> ReadAsync(Guid[] deviceIds, DbConnection connection, DbTransaction transaction, CancellationToken token)
+    {
+        var options = new DbContextOptionsBuilder<ResourcesDbContext>()
+            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                .MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+        await using var db = new ResourcesDbContext(options);
+        await db.Database.UseTransactionAsync(transaction, token);
+        return await db.Devices.AsNoTracking().Where(x => deviceIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.AgentAuthorizationGeneration, token);
+    }
     public async Task<DeviceAgentState?> GetAsync(Guid deviceId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

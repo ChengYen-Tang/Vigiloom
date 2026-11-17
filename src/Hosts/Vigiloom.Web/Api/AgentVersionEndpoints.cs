@@ -8,6 +8,7 @@ internal static class AgentVersionEndpoints
 {
     public static void MapAgentVersionEndpoints(this WebApplication app)
     {
+        app.MapAgentRolloutEndpoints();
         app.MapGet("/api/v1/agent/version-assignment", async (AgentVersionAssignments assignments, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
@@ -37,7 +38,7 @@ internal static class AgentVersionEndpoints
                 {
                     VersionAssignmentResult.Saved => Results.NoContent(),
                     VersionAssignmentResult.NotFound => Results.NotFound(),
-                    _ => Results.Problem(statusCode: 409, title: "Assignment changed or package is unavailable; reload and try again.")
+                    _ => Results.Problem(statusCode: 409, title: "Assignment changed, package is unavailable, or the outstanding update limit was reached.")
                 }, allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
             .Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)

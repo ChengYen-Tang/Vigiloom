@@ -832,6 +832,148 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRollout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("BatchSize")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PilotSize")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Status", "RowId");
+
+                    b.ToTable("Rollouts", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] BETWEEN 1 AND 100 AND [BatchSize] BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("CK_Rollouts_Status", "[Status] IN (1, 2, 3, 4, 5)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRolloutAudit", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RolloutId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RolloutId", "OccurredAt", "RowId");
+
+                    b.ToTable("RolloutAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRolloutMember", b =>
+                {
+                    b.Property<Guid>("RolloutId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Batch")
+                        .HasColumnType("int");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DeviceName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("ExpectedAssignmentVersion")
+                        .HasColumnType("binary(8)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Problem")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RolloutId", "AgentId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RolloutId", "AgentId"));
+
+                    b.HasIndex("AgentId");
+
+                    b.HasIndex("RolloutId", "Batch", "Position")
+                        .IsUnique();
+
+                    b.ToTable("RolloutMembers", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_RolloutMembers_Order", "[Batch] >= 0 AND [Position] >= 0");
+
+                            t.HasCheckConstraint("CK_RolloutMembers_Status", "[Status] IN (1, 2, 3, 4, 5)");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentSetting", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1729,6 +1871,39 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentReplayPolicy", null)
                         .WithMany()
                         .HasForeignKey("PolicyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRollout", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRolloutAudit", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentRollout", null)
+                        .WithMany()
+                        .HasForeignKey("RolloutId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentRolloutMember", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentRollout", null)
+                        .WithMany()
+                        .HasForeignKey("RolloutId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

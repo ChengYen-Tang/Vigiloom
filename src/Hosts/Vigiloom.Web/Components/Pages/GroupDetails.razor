@@ -24,6 +24,7 @@
             <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions"><a href="@($"/settings/publication/groups/{Id:D}")">公開設定</a><a class="device-primary" href="@($"/groups/{Id:D}/edit")">編輯群組</a></div></Authorized></AuthorizeView>
         </header>
         <section class="device-panel"><h2>設備</h2><p>群組中有 @group.DeviceCount 台設備。 @if (group.ArchivedDeviceCount > 0) { <span>另有 @group.ArchivedDeviceCount 台已封存。</span> }</p>
+            <p><a href="@($"/groups/{Id:D}/agent-updates")">查看群組 Agent 更新</a></p>
             <form method="get" action="@($"/groups/{Id:D}")" class="device-filters">
                 <input type="hidden" name="serviceSearch" value="@ServiceSearch" />
                 <input type="hidden" name="serviceFilter" value="@ServiceFilter" />

@@ -158,7 +158,7 @@
             success = result == VersionAssignmentResult.Saved;
             if (success) { await ReloadAsync(); message = packageId is null ? "已取消指派。" : "已儲存版本指派；設備是否安裝仍以實際回報為準。"; }
             else if (result == VersionAssignmentResult.NotFound) current = null;
-            else message = "指派已變更或套件不可用，請重新載入。";
+            else message = "指派已變更、套件不可用，或待完成更新的設備已達上限；請重新載入並檢查。";
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) { Logger.LogWarning(ex, "Unable to change Agent version assignment"); success = false; message = "無法儲存指派，請稍後重試。"; }
