@@ -81,6 +81,11 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             current.UpdateId = Guid.CreateVersion7();
             current.AssignedBy = actorId;
             current.AssignedAt = clock.GetUtcNow().ToUniversalTime();
+            db.UpdateTargets.Add(new AgentUpdateTarget
+            {
+                Id = current.UpdateId.Value, AgentId = agentId, PackageId = package.Id, Version = package.Version,
+                RuntimeIdentifier = package.RuntimeIdentifier, ManifestSha256 = package.ManifestSha256, AssignedAt = current.AssignedAt
+            });
         }
         else
         {
