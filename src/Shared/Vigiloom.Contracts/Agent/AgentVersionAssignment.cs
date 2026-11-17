@@ -4,7 +4,8 @@ namespace Vigiloom.Contracts.Agent;
 
 /// <summary>A desired package, which is not evidence that the Agent has installed it.</summary>
 public sealed record AgentVersionAssignmentView(Guid AgentId, Guid? PackageId, string? PackageVersion,
-    string? RuntimeIdentifier, DateTimeOffset AssignedAt, string Revision, bool Available);
+    string? RuntimeIdentifier, DateTimeOffset AssignedAt, string Revision, bool Available,
+    string? ReportedVersion = null, string? ReportedRuntimeIdentifier = null, DateTimeOffset? ReportedAt = null);
 
 /// <summary>A null package cancels the current assignment.</summary>
 public sealed record AgentVersionAssignmentUpdate([property: JsonRequired] Guid? PackageId, string Revision);

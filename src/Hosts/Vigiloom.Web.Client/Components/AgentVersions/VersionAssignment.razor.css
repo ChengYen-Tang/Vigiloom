@@ -2,9 +2,10 @@
 .version-panel { min-width: 0; background: #fff; border: 1px solid #d9e4f0; border-radius: 8px; padding: 20px; }
 .version-panel h2 { margin: 0 0 12px; color: #10244e; }
 .version-summary { display: flex; flex-wrap: wrap; gap: 24px; margin: 0; }
-.version-summary div { min-width: 160px; }
+.version-summary div { flex: 1 1 220px; min-width: 0; }
 .version-summary dt { color: #506384; }
-.version-summary dd { margin: 6px 0 0; font-weight: 600; }
+.version-summary dd { margin: 6px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.version-summary .version-time { color: #506384; font-size: .875rem; font-weight: 400; }
 .version-note, .version-warning { padding: 12px; border-radius: 6px; }
 .version-note { background: #eaf3ff; color: #16366b; }
 .version-warning { background: #fff3df; color: #713e00; }

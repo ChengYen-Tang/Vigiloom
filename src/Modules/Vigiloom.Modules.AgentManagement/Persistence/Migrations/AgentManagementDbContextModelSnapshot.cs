@@ -264,6 +264,18 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
 
+                    b.Property<string>("RuntimeIdentifier")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset?>("RuntimeReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RuntimeVersion")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<byte[]>("Verifier")
                         .IsRequired()
                         .HasColumnType("binary(32)");

@@ -49,7 +49,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
     public async Task<HeartbeatResult> SendAsync(IdentityVault vault, Uri server, AgentConfigurationObservation? configuration,
         AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, AgentLogStatusObservation? logObservation,
         InventorySettingsObservation? inventoryObservation, (AgentSettingsOwner Owner, IntegritySettingsReport Report)? integrityObservation,
-        (AgentSettingsOwner Owner, BaselineSettingsReport Report)? baselineObservation, CancellationToken token)
+        (AgentSettingsOwner Owner, BaselineSettingsReport Report)? baselineObservation, CancellationToken token,
+        AgentRuntimeReport? runtime = null)
     {
         await gate.WaitAsync(token);
         try
@@ -126,7 +127,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                     {
                         // An unavailable ledger is unknown, not an empty loss snapshot.
                     }
-                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss, logReport, inventoryReport, integrityReport, baselineReport);
+                    report = new AgentHeartbeatReport(1, sessionRequest!.Epoch, checked(++sequence), snapshot, settingsReport, quarantine, capacityReport, metricLoss, logReport, inventoryReport, integrityReport, baselineReport, runtime);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or System.Data.Common.DbException)
                 {
@@ -137,6 +138,11 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             while (true)
             {
                 using var response = await PostHeartbeatAsync(expected, credential, candidate, token);
+                if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge && candidate?.Runtime is not null)
+                {
+                    candidate = candidate with { Runtime = null };
+                    continue;
+                }
                 if (response.StatusCode == HttpStatusCode.RequestEntityTooLarge && candidate?.BaselineConfiguration is not null)
                 {
                     candidate = candidate with { BaselineConfiguration = null };
@@ -160,7 +166,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
                     return await HandleResponseAsync(response, expected, credential, candidate, token);
                 // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
-                if (candidate.BaselineConfiguration is not null) candidate = candidate with { BaselineConfiguration = null };
+                if (candidate.Runtime is not null) candidate = candidate with { Runtime = null };
+                else if (candidate.BaselineConfiguration is not null) candidate = candidate with { BaselineConfiguration = null };
                 else if (candidate.IntegrityConfiguration is not null) candidate = candidate with { IntegrityConfiguration = null };
                 else if (candidate.InventoryConfiguration is not null) candidate = candidate with { InventoryConfiguration = null };
                 else if (candidate.LogStatus is not null) candidate = candidate with { LogStatus = null };

@@ -1,6 +1,5 @@
 using Microsoft.Win32;
 using System.ComponentModel;
-using System.Reflection;
 using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Contracts.Agent.Inventory;
 using Linux = Vigiloom.Agent.Platforms.Linux.Inventory;
@@ -136,7 +135,7 @@ internal sealed class InventoryCollector(TimeProvider clock)
                 catch (Win32Exception) { }
             }
             else complete = false;
-            var agentVersion = NormalizeAgentVersion(typeof(InventoryCollector).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+            var agentVersion = AgentRuntimeInfo.Version;
             complete &= agentVersion is not null && memory is > 0;
             return new(complete ? InventoryReadStatus.Complete : InventoryReadStatus.Partial,
                 [new("host", host.HostName, host.KernelOrPlatformVersion, host.OsArchitecture,
@@ -209,10 +208,4 @@ internal sealed class InventoryCollector(TimeProvider clock)
     private static InventoryReadResult<InventoryEntry> WindowsPrincipals(InventoryReadResult<Windows.WindowsLocalPrincipal> source) =>
         new(source.Status, source.Items.Select(x => new InventoryEntry(x.Sid, x.Name, Members: x.MemberSids)).ToArray());
 
-    internal static string? NormalizeAgentVersion(string? informationalVersion)
-    {
-        if (string.IsNullOrWhiteSpace(informationalVersion)) return null;
-        var version = informationalVersion.Split('+', 2)[0];
-        return string.IsNullOrWhiteSpace(version) || version.Length > 256 || version.Any(char.IsControl) ? null : version;
-    }
 }

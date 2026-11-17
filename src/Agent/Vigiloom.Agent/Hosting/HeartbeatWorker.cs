@@ -64,7 +64,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         if (timer.Period != initialPeriod) timer.Period = initialPeriod;
                         var logReport = logStatus?.ForOwner(owner);
                         if (owner is null || logs.ForOwner(owner)?.Revision != logReport?.Report.Revision) logReport = null;
-                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken)).ToString();
+                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken, AgentRuntimeInfo.Report)).ToString();
                     }
                 }
             }
