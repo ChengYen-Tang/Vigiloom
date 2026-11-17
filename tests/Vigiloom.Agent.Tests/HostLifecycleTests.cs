@@ -274,7 +274,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
-            DisableCollectors(builder);
+            DisableUnrelatedWorkers(builder);
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
             builder.Services.AddSingleton(new AgentQueueCapacityClient(capacityHttp, clock));
             builder.Services.AddSingleton(new AgentMetricSettingsClient(capacityHttp, clock));
@@ -298,6 +298,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 clock.Advance(TimeSpan.FromSeconds(61));
                 heartbeatHandler.ReleaseSecond.TrySetResult();
                 var switched = await heartbeatHandler.Third.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                Assert.IsNotNull(AgentRuntimeInfo.Report);
+                Assert.IsNotNull(switched.Report.Runtime);
+                Assert.AreEqual(AgentRuntimeInfo.Report.Version, switched.Report.Runtime.Version);
+                Assert.AreEqual(AgentRuntimeInfo.Report.RuntimeIdentifier, switched.Report.Runtime.RuntimeIdentifier);
+                Assert.IsNotNull(switched.Report.Runtime.WorkingSetBytes);
+                Assert.IsGreaterThan(0L, switched.Report.Runtime.WorkingSetBytes.Value);
                 Assert.StartsWith($"vla_{secondId:D}.", switched.Credential);
                 Assert.IsNull(switched.Report.Configuration?.Applied);
                 Assert.AreEqual(AgentSettings.Default, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
@@ -537,7 +543,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using var settingsHttp = new HttpClient(new AlwaysUnavailableSettingsHandler());
             using var capacityHttp = new HttpClient(new CapacityHostHandler(next));
             var builder = AgentHost.CreateBuilder([]);
-            DisableCollectors(builder);
+            DisableUnrelatedWorkers(builder);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri });
             foreach (var name in new[] { "HeartbeatWorker", "BatchWorker" })
                 builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == name));
@@ -595,7 +601,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:StateDirectory"] = root,
                 ["Vigiloom:Agent:Server"] = server.AbsoluteUri
             });
-            DisableCollectors(builder);
+            DisableUnrelatedWorkers(builder);
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "BatchWorker"));
             builder.Services.AddSingleton(new AgentHeartbeatClient(heartbeatHttp));
             builder.Services.AddSingleton(new AgentSettingsClient(settingsHttp, clock));
@@ -674,7 +680,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             }
             await EnqueueAsync();
             var builder = AgentHost.CreateBuilder([]);
-            DisableCollectors(builder);
+            DisableUnrelatedWorkers(builder);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Vigiloom:Agent:StateDirectory"] = root, ["Vigiloom:Agent:Server"] = server.AbsoluteUri
@@ -1322,11 +1328,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var descriptor = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "AgentSettingsWorker");
         builder.Services.Remove(descriptor);
         // These fixtures isolate heartbeat or batch behavior and own their queue inputs.
-        DisableCollectors(builder);
+        DisableUnrelatedWorkers(builder);
     }
 
-    private static void DisableCollectors(HostApplicationBuilder builder)
+    private static void DisableUnrelatedWorkers(HostApplicationBuilder builder)
     {
+        // The update poll uses the same jitter range as settings; it is tested independently.
+        var updateWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "AgentUpdateWorker");
+        builder.Services.Remove(updateWorker);
         var descriptor = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MetricWorker));
         builder.Services.Remove(descriptor);
         var logWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(LogWorker));

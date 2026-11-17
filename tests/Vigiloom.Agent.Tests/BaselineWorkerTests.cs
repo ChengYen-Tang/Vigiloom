@@ -112,8 +112,9 @@ public sealed class BaselineWorkerTests(TestContext context)
             }).Build();
             Task<(string OperatingSystem, BaselineObservation Result)> Collect(BaselineCheck check, CancellationToken cancellationToken) =>
                 Task.FromResult(("ubuntu:24.04", new BaselineObservation(BaselineOutcome.Pass, "mode 600")));
+            var monitor = new ResourceMonitor();
             using var worker = new BaselineWorker(runtime, metrics, new SamplingBudgetCoordinator(TimeProvider.System), config,
-                TimeProvider.System, NullLogger<BaselineWorker>.Instance, new ResourceMonitor(), Collect);
+                TimeProvider.System, NullLogger<BaselineWorker>.Instance, monitor, Collect);
             try
             {
                 stopped = false;
@@ -121,8 +122,9 @@ public sealed class BaselineWorkerTests(TestContext context)
                 var queue = new DurableBatchQueue(vault, owner.AgentId);
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                 deadline.CancelAfter(TimeSpan.FromSeconds(15));
-                QueuedBatch? queued;
-                while ((queued = await queue.PeekAsync(deadline.Token)) is null) await Task.Delay(50, deadline.Token);
+                await monitor.CollectionFinished.Task.WaitAsync(deadline.Token);
+                var queued = await queue.PeekAsync(deadline.Token);
+                Assert.IsNotNull(queued);
                 Assert.IsTrue(BaselineBatchCodec.TryRead(queued.Payload, out var batch));
                 Assert.IsNotNull(batch);
                 var item = batch.Items.Single();
@@ -150,9 +152,15 @@ public sealed class BaselineWorkerTests(TestContext context)
 
     private sealed class ResourceMonitor : IMetricResourceMonitor
     {
+        private int reads;
+        public TaskCompletionSource CollectionFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public long ReadWorkingSetBytes() => 1024;
         public TimeSpan ReadCpuTime() => TimeSpan.Zero;
-        public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token) => ValueTask.FromResult(new ProcessIoSnapshot(0, 0));
+        public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token)
+        {
+            if (Interlocked.Increment(ref reads) == 2) CollectionFinished.TrySetResult();
+            return ValueTask.FromResult(new ProcessIoSnapshot(0, 0));
+        }
         public void Dispose() { }
     }
 }

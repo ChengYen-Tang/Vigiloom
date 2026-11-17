@@ -35,9 +35,19 @@
             {
                 <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
                 <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                <div><dt>Agent CPU（單一邏輯處理器為 100%）</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : "尚無資料")</dd></div>
+                <div><dt>Agent 記憶體工作集</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : "尚無資料")</dd></div>
+                <div><dt>Agent 資源回報（UTC）</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
             }
         </dl>
-            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }
+            @if (device.DeepMonitoring)
+            {
+                <h3>本次 Agent 執行期間的最近採集錯誤</h3>
+                @if (agentStatus?.Process?.ModuleFailures is not { } failures) { <p>尚無資料。</p> }
+                else if (failures.Count == 0) { <p>尚無回報的採集錯誤。</p> }
+                else { <ul>@foreach (var failure in failures) { <li>@ModuleName(failure.Module)：@failure.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</li> }</ul> }
+            }
+            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><a href="@($"/devices/{Id:D}/agent-version")">查看 Agent 版本</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }
         </section>
         @if (device.DeepMonitoring)
         {
@@ -287,6 +297,11 @@
         AgentConfigurationFailure.LocalStorage => "Agent 無法讀寫本機設定，請檢查 Agent 狀態。",
         AgentConfigurationFailure.Conflict => "設定同步發生衝突，Agent 會再次嘗試。",
         _ => "Agent 回報設定同步異常。"
+    };
+    private static string ModuleName(AgentModule module) => module switch
+    {
+        AgentModule.Metrics => "資源指標", AgentModule.Logs => "日誌", AgentModule.Inventory => "資產盤點",
+        AgentModule.Integrity => "完整性監控", AgentModule.Baseline => "安全基線", _ => "未知模組"
     };
     private static string QueueBytes(long bytes) => bytes < 1024 * 1024
         ? $"{bytes:N0} 位元組" : $"{bytes / 1048576d:N2} MiB";

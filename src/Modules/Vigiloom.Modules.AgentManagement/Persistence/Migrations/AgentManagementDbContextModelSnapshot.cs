@@ -264,6 +264,28 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
 
+                    b.Property<double?>("RuntimeCpuPercent")
+                        .HasColumnType("float");
+
+                    b.Property<string>("RuntimeIdentifier")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("RuntimeModuleFailuresJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<DateTimeOffset?>("RuntimeReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RuntimeVersion")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("RuntimeWorkingSetBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<byte[]>("Verifier")
                         .IsRequired()
                         .HasColumnType("binary(32)");
@@ -317,6 +339,12 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreviousPackageId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("RowId");
 
@@ -925,6 +953,150 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.ToTable("SettingAudits", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateReceipt", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Failure")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RetryAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdateId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("AgentId", "ReceivedAt", "RowId");
+
+                    b.ToTable("UpdateReceipts", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_UpdateReceipts_Result", "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ManifestSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("RuntimeIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("AgentId", "AssignedAt");
+
+                    b.ToTable("UpdateTargets", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_UpdateTargets_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", b =>
+                {
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("AgentId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("AgentId"));
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("VersionAssignments", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_VersionAssignments_Target", "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')");
+                        });
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>
@@ -1578,6 +1750,50 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .HasForeignKey("SettingId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateReceipt", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget", null)
+                        .WithMany()
+                        .HasForeignKey("UpdateId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithOne()
+                        .HasForeignKey("Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment", "AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.Enrollment", b =>

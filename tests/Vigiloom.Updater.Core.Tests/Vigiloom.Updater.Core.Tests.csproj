@@ -1,5 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../../src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
+    <ProjectReference Include="../../src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
+    <ProjectReference Include="../../src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../Vigiloom.UpdateSecurity.Tests/TestRepository.cs" Link="Fixtures/TestRepository.cs" />
+    <None Include="../Vigiloom.UpdateSecurity.Tests/Fixtures/PythonTuf/*.json" Link="Fixtures/PythonTuf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

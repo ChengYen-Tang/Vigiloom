@@ -26,6 +26,9 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentMetricSettingAudit> MetricSettingAudits => Set<AgentMetricSettingAudit>();
     public DbSet<UpdateTrustState> UpdateTrustStates => Set<UpdateTrustState>();
     public DbSet<AgentPackage> Packages => Set<AgentPackage>();
+    public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
+    public DbSet<AgentUpdateTarget> UpdateTargets => Set<AgentUpdateTarget>();
+    public DbSet<AgentUpdateReceipt> UpdateReceipts => Set<AgentUpdateReceipt>();
     public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
     public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
@@ -86,6 +89,35 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         package.Property(x => x.Sha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.HasIndex(x => new { x.Version, x.RuntimeIdentifier }).IsUnique();
+        var assignment = modelBuilder.Entity<AgentVersionAssignment>();
+        assignment.ToTable("VersionAssignments", table => table.HasCheckConstraint("CK_VersionAssignments_Target",
+            "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')"));
+        assignment.HasKey(x => x.AgentId).IsClustered();
+        assignment.Property(x => x.Version).IsRowVersion();
+        assignment.HasOne<Agent>().WithOne().HasForeignKey<AgentVersionAssignment>(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        assignment.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
+        var target = modelBuilder.Entity<AgentUpdateTarget>();
+        target.ToTable("UpdateTargets", table => table.HasCheckConstraint("CK_UpdateTargets_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        target.HasKey(x => x.Id).IsClustered(false);
+        target.Property(x => x.Id).ValueGeneratedNever();
+        target.Property(x => x.RowId).UseIdentityColumn();
+        target.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        target.HasIndex(x => new { x.AgentId, x.AssignedAt });
+        target.Property(x => x.Version).HasMaxLength(128).IsRequired();
+        target.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false).IsRequired();
+        target.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        target.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        target.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
+        var receipt = modelBuilder.Entity<AgentUpdateReceipt>();
+        receipt.ToTable("UpdateReceipts", table => table.HasCheckConstraint("CK_UpdateReceipts_Result",
+            "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))"));
+        receipt.HasKey(x => x.RowId).IsClustered();
+        receipt.Property(x => x.RowId).UseIdentityColumn();
+        receipt.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        receipt.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
+        receipt.HasIndex(x => new { x.UpdateId, x.Sequence }).IsUnique();
+        receipt.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        receipt.HasOne<AgentUpdateTarget>().WithMany().HasForeignKey(x => x.UpdateId).OnDelete(DeleteBehavior.NoAction);
         var agent = modelBuilder.Entity<Agent>();
         agent.ToTable("Agents", table =>
         {
@@ -107,6 +139,9 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         agent.Property(x => x.InventoryConfigurationJson).HasMaxLength(2048);
         agent.Property(x => x.IntegrityConfigurationJson).HasMaxLength(512);
         agent.Property(x => x.BaselineConfigurationJson).HasMaxLength(512);
+        agent.Property(x => x.RuntimeVersion).HasMaxLength(128);
+        agent.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false);
+        agent.Property(x => x.RuntimeModuleFailuresJson).HasMaxLength(1024);
         agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
 
         var replay = modelBuilder.Entity<AgentReplayPolicy>();
