@@ -1,6 +1,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Contracts.Agent.Inventory
+@using Vigiloom.Contracts.Devices
 @implements IAsyncDisposable
 @inject IAgentVersionClient Client
 @inject IHostMonitoringClient Monitoring
@@ -29,6 +30,10 @@
                 </div>
             </dl>
             @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
+            @if (current is { PackageId: not null } && ConnectionState is AgentConnectionState.Offline or AgentConnectionState.AwaitingFirstHeartbeat)
+            {
+                <p class="version-note">Agent 目前尚未連線，指派將等待 Agent 重新連線後取得。重新整理頁面可查看連線狀態。</p>
+            }
             <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>
         </section>
         <AuthorizeView Roles="Administrator">
@@ -69,6 +74,7 @@
 @code {
     [Parameter, EditorRequired] public Guid AgentId { get; set; }
     [Parameter, EditorRequired] public Guid DeviceId { get; set; }
+    [Parameter] public AgentConnectionState? ConnectionState { get; set; }
     private readonly CancellationTokenSource lifetime = new();
     private AgentVersionAssignmentView? current;
     private AgentPackagePage packages = new([], 1, false);

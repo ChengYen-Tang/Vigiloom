@@ -3,8 +3,10 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Contracts.Devices
 @inject DeviceManagement Devices
 @inject AgentIdentity Agents
+@inject AgentMonitoring Monitoring
 @inject ILogger<AgentVersionPage> Logger
 
 <PageTitle>Agent 版本 - Vigiloom</PageTitle>
@@ -17,7 +19,7 @@
     else
     {
         <section class="device-panel"><h2>@name</h2></section>
-        <Vigiloom.Web.Client.Components.AgentVersions.VersionAssignment DeviceId="Id" AgentId="agentId.Value" @rendermode="InteractiveAuto" />
+        <Vigiloom.Web.Client.Components.AgentVersions.VersionAssignment DeviceId="Id" AgentId="agentId.Value" ConnectionState="connectionState" @rendermode="InteractiveAuto" />
     }
 </main>
 
@@ -26,6 +28,7 @@
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     private string? name;
     private Guid? agentId;
+    private AgentConnectionState? connectionState;
     private bool failed;
 
     protected override async Task OnInitializedAsync()
@@ -37,6 +40,7 @@
             name = device.Name;
             var agents = await Agents.GetDeviceAgentsAsync(Id, HttpContext.RequestAborted);
             agentId = agents?.Agents.SingleOrDefault(x => x.RevokedAt is null && x.DeviceGeneration == agents.CurrentGeneration)?.Id;
+            if (agentId is not null) connectionState = (await Monitoring.GetAsync(Id, HttpContext.RequestAborted))?.State;
         }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
         catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent version page"); failed = true; }
