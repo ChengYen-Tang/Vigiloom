@@ -28,7 +28,8 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             await using (var setup = new OperationsDbContext(options)) await setup.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<OperationsDbContext>(options);
             var protection = new EphemeralDataProtectionProvider();
-            var settings = new AuditRetentionSettings(factory, new OperationAuditWriter(), protection);
+            var identity = new EmptyIdentityAuditRetention();
+            var settings = new AuditRetentionSettings(factory, new OperationAuditWriter(), protection, identity);
             var initial = await settings.GetAsync(token);
             Assert.AreEqual(365, initial.Days);
             var now = DateTimeOffset.UtcNow;
@@ -53,10 +54,10 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             Assert.IsEmpty((await audit.QueryAsync(new(now.AddDays(-1), now.AddDays(1)), token)).Items);
             var next = await settings.PreviewAsync(new(20, saved.Version), actor, token);
             Assert.IsNotNull(next);
-            var failing = new AuditRetentionSettings(factory, new FailingAuditWriter(), protection);
+            var failing = new AuditRetentionSettings(factory, new FailingAuditWriter(), protection, identity);
             await Assert.ThrowsAsync<InvalidOperationException>(() => failing.UpdateAsync(new(20, saved.Version, next.ConfirmationToken), actor, token));
             Assert.AreEqual(saved, await settings.GetAsync(token));
-            Assert.AreEqual(1L, await new AuditRetentionCleanup(factory, settings).RunAsync(token));
+            Assert.AreEqual(1L, await new AuditRetentionCleanup(factory, settings, identity).RunAsync(token));
             await using var verify = await factory.CreateDbContextAsync(token);
             var count = await verify.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token);
             Assert.AreEqual(2, count);
@@ -66,5 +67,11 @@ public sealed class AuditRetentionSqlTests(TestContext context)
     {
         public Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Simulated audit write failure.");
+    }
+
+    private sealed class EmptyIdentityAuditRetention : IIdentityAuditRetention
+    {
+        public Task<(long Accounts, long Credentials)> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token) => Task.FromResult((0L, 0L));
+        public Task<(int Accounts, int Credentials)> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token) => Task.FromResult((0, 0));
     }
 }
