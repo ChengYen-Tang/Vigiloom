@@ -124,8 +124,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var operations = services.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
         var auditActor = Guid.CreateVersion7();
         var auditTarget = Guid.CreateVersion7();
+        var schedulingActor = Guid.CreateVersion7();
         await using (var db = await operations.CreateDbContextAsync(token))
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.AuditEvents (ActorId, ResourceId, OccurredAt, Kind, Details) VALUES ({auditActor}, {auditTarget}, {old.AddDays(-400)}, {1}, {"{}"})", token);
+        await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'accepted'), ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'started'), ({schedulingActor}, {old}, '/jobs/enqueued/delete', 'accepted')", token);
         var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
         await using (var db = await network.CreateDbContextAsync(token)) { db.PingSamples.Add(oldPing); await db.SaveChangesAsync(token); }
         Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
@@ -233,6 +236,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.IsFalse(await checkNetwork.PingSamples.AnyAsync(x => x.RowId == oldPing.RowId, token));
             await using (var checkOperations = await operations.CreateDbContextAsync(token))
                 Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents WHERE ResourceId = {auditTarget}").SingleAsync(token));
+            await using (var checkScheduling = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            {
+                var cutoff = DateTimeOffset.UtcNow.AddDays(-365);
+                Assert.AreEqual(0, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] < {cutoff}").SingleAsync(token));
+                Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'started'").SingleAsync(token));
+                Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] >= {cutoff}").SingleAsync(token));
+            }
             await using (var checkIdentity = await identityDb.CreateDbContextAsync(token))
             {
                 Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.SubjectId == initialAdminId && x.Action == "InitialAdministratorCreated", token));

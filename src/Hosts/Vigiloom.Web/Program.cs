@@ -35,6 +35,7 @@ using MudBlazor.Services;
 using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
@@ -78,6 +79,7 @@ builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAudit
 builder.Services.AddScoped<IdentityAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource>(provider => provider.GetRequiredService<IdentityAuditRetention>());
 builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
+builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings>();
 builder.Services.AddScoped<IdentityAuditFeed>();

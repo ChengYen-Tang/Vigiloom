@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Hangfire;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -57,6 +58,7 @@ public static class WorkerHost
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddScoped<IAuditRetentionSource, IdentityAuditRetention>();
         builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
+        builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
         builder.Services.AddVigiloomScheduling(builder.Configuration);
