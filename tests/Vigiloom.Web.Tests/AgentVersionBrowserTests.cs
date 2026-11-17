@@ -98,6 +98,19 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.GetByText("1.2.3：已通過本機健康檢查", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual($"回報時間（UTC）：{observed.ToUniversalTime():yyyy-MM-dd HH:mm:ss}",
             await page.GetByText("心跳回報的 Agent 版本", new() { Exact = true }).Locator("..").Locator(".version-time").InnerTextAsync());
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
+            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
+                MessageId = Guid.CreateVersion7(), Sequence = 2, Result = AgentUpdateResultKind.RolledBack,
+                OccurredAt = observed.AddMinutes(1), ReceivedAt = observed.AddMinutes(2), Failure = AgentUpdateFailure.Interrupted });
+            await db.SaveChangesAsync(token);
+        }
+        await page.ReloadAsync();
+        await page.GetByText("1.2.3：已回復", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("原因：更新流程中斷", new() { Exact = true }).WaitForAsync();
+        await page.GetByText($"發生時間（UTC）：{observed.AddMinutes(1).ToUniversalTime():yyyy-MM-dd HH:mm:ss}", new() { Exact = true }).WaitForAsync();
+        await page.GetByText($"接收時間（UTC）：{observed.AddMinutes(2).ToUniversalTime():yyyy-MM-dd HH:mm:ss}", new() { Exact = true }).WaitForAsync();
         await using (var readerContext = await browser.NewContextAsync())
         {
             var reader = await readerContext.NewPageAsync();
