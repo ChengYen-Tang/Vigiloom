@@ -1,6 +1,7 @@
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
@@ -202,6 +203,7 @@ builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
+builder.Services.AddScoped<PingRetentionSettings>();
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<Vigiloom.Modules.NetworkMonitoring.Application.PingHistory.PingHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, Vigiloom.Web.Network.ServerPingHistoryClient>();

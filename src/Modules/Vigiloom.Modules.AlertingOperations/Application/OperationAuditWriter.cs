@@ -145,7 +145,12 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(PingSettingsChanged change) => change.Previous is not null && change.Current is not null &&
         PingSettingsLimits.IsValid(change.Current.IntervalSeconds, change.Current.TimeoutSeconds, change.Current.FailureThreshold,
             change.Current.SuccessThreshold, change.Current.MaxConcurrency) &&
+        ValidPingRetention(change.Previous) && ValidPingRetention(change.Current) &&
         (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
+
+    private static bool ValidPingRetention(PingSettingsAuditValues value) =>
+        value.RawRetentionDays is null && value.RollupRetentionDays is null ||
+        value.RawRetentionDays is int raw && value.RollupRetentionDays is int rollup && PingRetentionLimits.IsValid(raw, rollup);
 
     internal static bool IsValid(AgentReplayPolicyChanged change) =>
         change.ActivatedAt.Offset == TimeSpan.Zero && change.GraceUntil.Offset == TimeSpan.Zero &&

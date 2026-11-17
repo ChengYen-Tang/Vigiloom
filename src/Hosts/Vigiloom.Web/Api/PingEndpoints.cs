@@ -41,5 +41,25 @@ internal static class PingEndpoints
                 ? Results.Ok(saved) : Results.Problem(statusCode: 409, title: "Ping settings have changed; reload and try again."), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<PingSettingsSnapshot>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
             .WithSummary("Update central Ping settings");
+        app.MapGet("/api/v1/settings/ping/retention", async (PingRetentionSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+            .RequireAuthorization(AccessPolicies.Administrator).Produces<PingRetentionSnapshot>().ProducesProblem(401).ProducesProblem(403)
+            .WithSummary("Get Ping retention settings");
+        app.MapPost("/api/v1/settings/ping/retention/preview", async (PingRetentionPreviewRequest input, HttpContext context, PingRetentionSettings settings, CancellationToken token) =>
+        {
+            if (!PingRetentionLimits.IsValid(input.RawDays, input.RollupDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
+            return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input, actor, token) is { } preview
+                ? Results.Ok(preview) : Results.Problem(statusCode: 409, title: "Ping settings have changed; reload and try again."), allowApiCredential: false);
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<PingRetentionPreview>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
+            .WithSummary("Preview Ping retention changes");
+        app.MapPut("/api/v1/settings/ping/retention", async (PingRetentionInput input, HttpContext context, PingRetentionSettings settings, CancellationToken token) =>
+        {
+            if (!PingRetentionLimits.IsValid(input.RawDays, input.RollupDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                try { return await settings.UpdateAsync(input, actor, token) is { } saved ? Results.Ok(saved) : Results.Problem(statusCode: 409, title: "Ping settings have changed; reload and try again."); }
+                catch (ArgumentException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["preview"] = ["A current preview is required."] }); }
+            }, allowApiCredential: false);
+        }).RequireAuthorization(AccessPolicies.Administrator).Produces<PingRetentionSnapshot>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
+            .WithSummary("Update Ping retention settings");
     }
 }

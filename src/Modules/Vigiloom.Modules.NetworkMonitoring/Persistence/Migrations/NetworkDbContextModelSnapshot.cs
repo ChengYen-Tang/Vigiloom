@@ -92,6 +92,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("WindowStart", "RowId");
+
                     b.HasIndex("DeviceId", "WindowStart", "Target", "Location")
                         .IsUnique();
 
@@ -151,6 +153,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                         .HasDatabaseName("IX_PingSamples_Unaggregated")
                         .HasFilter("[Aggregated] = 0");
 
+                    b.HasIndex("OccurredAt", "RowId");
+
                     b.HasIndex("DeviceId", "OccurredAt", "RowId");
 
                     b.HasIndex("DeviceId", "Target", "Generation")
@@ -181,6 +185,16 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("RawRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
+
+                    b.Property<int>("RollupRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -221,6 +235,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                     b.ToTable("PingSettings", "network", t =>
                         {
                             t.HasCheckConstraint("CK_PingSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_PingSettings_Retention", "[RawRetentionDays] BETWEEN 1 AND 3650 AND [RollupRetentionDays] BETWEEN 1 AND 3650");
                         });
                 });
 

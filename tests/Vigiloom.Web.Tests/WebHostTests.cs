@@ -232,6 +232,10 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(inboxSettings.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(inboxSettings.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(inboxSettings.GetProperty("put").GetProperty("responses").TryGetProperty("429", out _));
+        var pingRetention = paths.GetProperty("/api/v1/settings/ping/retention");
+        Assert.IsTrue(pingRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(pingRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsTrue(paths.GetProperty("/api/v1/settings/ping/retention/preview").GetProperty("post").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         var serviceAudit = paths.GetProperty("/api/v1/operations/audit/service-approvals").GetProperty("get");
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);

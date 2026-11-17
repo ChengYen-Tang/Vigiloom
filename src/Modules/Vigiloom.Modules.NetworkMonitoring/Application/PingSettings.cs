@@ -75,6 +75,6 @@ public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, T
     public static PingSettingsSnapshot Map(PingSetting setting) => new(setting.IntervalSeconds, setting.TimeoutSeconds, setting.FailureThreshold,
         setting.SuccessThreshold, setting.MaxConcurrency, Convert.ToBase64String(setting.Version));
 
-    private static PingSettingsAuditValues Values(PingSetting setting) => new(setting.IntervalSeconds, setting.TimeoutSeconds,
-        setting.FailureThreshold, setting.SuccessThreshold, setting.MaxConcurrency);
+    internal static PingSettingsAuditValues Values(PingSetting setting) => new(setting.IntervalSeconds, setting.TimeoutSeconds,
+        setting.FailureThreshold, setting.SuccessThreshold, setting.MaxConcurrency, setting.RawRetentionDays, setting.RollupRetentionDays);
 }

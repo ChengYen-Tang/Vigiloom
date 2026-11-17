@@ -28,6 +28,11 @@
             </EditForm>
         }
     </section>
+    <section class="device-panel">
+        <h2>Ping 歷史資料保存</h2>
+        <p>設定原始樣本與五分鐘彙總的保存期限。</p>
+        <a href="/settings/ping/retention">管理保存期限</a>
+    </section>
 </main>
 @code {
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
