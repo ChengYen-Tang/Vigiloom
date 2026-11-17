@@ -994,7 +994,7 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.ToTable("UpdateReceipts", "agent", t =>
                         {
-                            t.HasCheckConstraint("CK_UpdateReceipts_Result", "[Sequence] > 0 AND [Result] IN (1, 2, 3) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] <> 1 OR ([RetryAllowed] = 0 AND [Failure] IS NULL))");
+                            t.HasCheckConstraint("CK_UpdateReceipts_Result", "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))");
                         });
                 });
 

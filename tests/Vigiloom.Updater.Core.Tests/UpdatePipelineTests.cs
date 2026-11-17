@@ -15,6 +15,7 @@ namespace Vigiloom.Updater.Core.Tests;
 public sealed class UpdatePipelineTests(TestContext context)
 {
     [TestMethod]
+    [Timeout(15000, CooperativeCancellation = true)]
     public async Task SignedAssignedPackageIsDownloadedAndAppliedOnce()
     {
         var root = Path.Combine(context.TestRunDirectory!, $"pipeline-{Guid.NewGuid():N}");
@@ -46,12 +47,13 @@ public sealed class UpdatePipelineTests(TestContext context)
             var handler = new CentralHandler(repository, archive, request, device, target);
             using var http = new HttpClient(handler);
             var journal = new UpdateJournal(Path.Combine(root, "state"));
-            var runtime = new TestRuntime(previous);
+            var runtime = new TestRuntime(previous, token => handler.ProgressStarted.Task.WaitAsync(token));
             var clock = TimeProvider.System;
             var server = new Uri("https://example.test/");
             var processor = new UpdateRequestProcessor(new CentralAssignmentClient(http, clock),
                 new CentralPackageAcquirer(server, trust, Path.Combine(root, "cache"), 1024 * 1024, clock, http),
-                new UpdateTransaction(http, journal, runtime, clock), journal, runtime, server, device, root, "win-x64", "1.0.0");
+                new UpdateTransaction(http, journal, runtime, clock), journal, runtime, server, device, root, "win-x64", "1.0.0",
+                new UpdateResultDelivery(http, journal, clock));
 
             var result = await processor.ProcessAsync(request, context.CancellationToken);
             Assert.AreEqual(CurrentAssignmentStatus.Available, result.Assignment);
@@ -60,6 +62,8 @@ public sealed class UpdatePipelineTests(TestContext context)
             CollectionAssert.AreEqual(new[] { "stop", "select", "start", "health" }, runtime.Actions);
             Assert.AreEqual(1, handler.PackageRequests);
             Assert.IsTrue(handler.AllAuthenticated);
+            Assert.IsTrue(handler.ProgressCancelled);
+            Assert.AreEqual(1, handler.TerminalReports);
 
             var repeated = await processor.ProcessAsync(request, context.CancellationToken);
             Assert.AreEqual(UpdatePhase.Succeeded, repeated.State?.Phase);
@@ -69,11 +73,11 @@ public sealed class UpdatePipelineTests(TestContext context)
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
-    private sealed class TestRuntime(string previous) : IAgentUpdateRuntime
+    private sealed class TestRuntime(string previous, Func<CancellationToken, Task> waitForProgress) : IAgentUpdateRuntime
     {
         public List<string> Actions { get; } = [];
         public Task<string> GetSelectedDirectoryAsync(CancellationToken token) => Task.FromResult(previous);
-        public Task StopAsync(CancellationToken token) { Actions.Add("stop"); return Task.CompletedTask; }
+        public Task StopAsync(CancellationToken token) { Actions.Add("stop"); return waitForProgress(token); }
         public Task SelectVersionAsync(string versionDirectory, CancellationToken token) { Actions.Add("select"); return Task.CompletedTask; }
         public Task StartAsync(CancellationToken token) { Actions.Add("start"); return Task.CompletedTask; }
         public Task<bool> WaitHealthyAsync(CancellationToken token) { Actions.Add("health"); return Task.FromResult(true); }
@@ -84,11 +88,26 @@ public sealed class UpdatePipelineTests(TestContext context)
     {
         public int PackageRequests { get; private set; }
         public bool AllAuthenticated { get; private set; } = true;
+        public TaskCompletionSource ProgressStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool ProgressCancelled { get; private set; }
+        public int TerminalReports { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken token)
         {
             AllAuthenticated &= message.Headers.Authorization is { Scheme: "Bearer" } authorization && authorization.Parameter == request.Credential;
             var path = message.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/update-results", StringComparison.Ordinal))
+            {
+                var report = await message.Content!.ReadFromJsonAsync<AgentUpdateResult>(token);
+                if (report?.Result == AgentUpdateResultKind.Succeeded)
+                {
+                    TerminalReports++;
+                    return new(HttpStatusCode.NoContent);
+                }
+                ProgressStarted.TrySetResult();
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { ProgressCancelled = true; throw; }
+            }
             if (path.EndsWith("/identity", StringComparison.Ordinal))
                 return new(HttpStatusCode.OK) { Content = JsonContent.Create(new { AgentId = Guid.ParseExact(request.Credential.AsSpan(4, 36), "D"), DeviceId = device }) };
             if (path.EndsWith("/version-assignment", StringComparison.Ordinal))

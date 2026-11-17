@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using System.Net;
+using System.Net.Http.Json;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Updater.Core.Updates;
 
 namespace Vigiloom.Updater.Core.Tests;
@@ -104,6 +106,58 @@ public sealed class UpdateOutcomeTests(TestContext context)
             Assert.AreEqual(before.MessageId, pending[0].MessageId);
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task UnsupportedProgressDoesNotBlockDurableTerminalResult()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"update-progress-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var agentId = Guid.CreateVersion7();
+            var updateId = Guid.CreateVersion7();
+            var messageId = Guid.CreateVersion7();
+            var target = new UpdateProvenance(agentId, Guid.CreateVersion7(), new string('a', 64));
+            var step = new UpdateStep(UpdatePhase.Switching, now, null, messageId);
+            var state = new UpdateState(updateId, "old", "new", UpdatePhase.Switching, now, [step], Provenance: target);
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(state, context.CancellationToken);
+            var handler = new LegacyProgressHandler();
+            using var http = new HttpClient(handler);
+            var delivery = new UpdateResultDelivery(http, journal, TimeProvider.System);
+            var credential = $"vla_{agentId:D}.{new string('a', 43)}";
+            var server = new Uri("https://example.test/");
+            await delivery.ReportProgressAsync(server, credential, context.CancellationToken);
+            await delivery.ReportProgressAsync(server, credential, context.CancellationToken);
+            Assert.HasCount(2, handler.Reports);
+            Assert.AreEqual(AgentUpdateResultKind.Switching, handler.Reports[0].Result);
+            Assert.AreEqual(messageId, handler.Reports[0].MessageId);
+            Assert.AreEqual(handler.Reports[0], handler.Reports[1]);
+
+            var terminal = state with { Phase = UpdatePhase.Succeeded, UpdatedAt = now.AddSeconds(1),
+                Steps = [step, new(UpdatePhase.Succeeded, now.AddSeconds(1), null, Guid.CreateVersion7())] };
+            await journal.WriteAsync(terminal, context.CancellationToken);
+            await delivery.ReportProgressAsync(server, credential, context.CancellationToken);
+            Assert.HasCount(2, handler.Reports);
+            Assert.AreEqual(1, await delivery.FlushAsync(server, credential, context.CancellationToken));
+            Assert.AreEqual(AgentUpdateResultKind.Succeeded, handler.Reports[2].Result);
+            Assert.IsEmpty(await journal.ReadPendingAsync(agentId, 10, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class LegacyProgressHandler : HttpMessageHandler
+    {
+        public List<AgentUpdateResult> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var report = await request.Content!.ReadFromJsonAsync<AgentUpdateResult>(token);
+            Assert.IsNotNull(report);
+            Reports.Add(report);
+            return new(report.Result == AgentUpdateResultKind.Succeeded ? HttpStatusCode.NoContent : HttpStatusCode.BadRequest);
+        }
     }
 
     private sealed class OlderServerHandler : HttpMessageHandler

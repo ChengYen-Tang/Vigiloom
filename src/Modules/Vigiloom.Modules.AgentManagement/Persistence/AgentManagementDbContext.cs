@@ -110,7 +110,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         target.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
         var receipt = modelBuilder.Entity<AgentUpdateReceipt>();
         receipt.ToTable("UpdateReceipts", table => table.HasCheckConstraint("CK_UpdateReceipts_Result",
-            "[Sequence] > 0 AND [Result] IN (1, 2, 3) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] <> 1 OR ([RetryAllowed] = 0 AND [Failure] IS NULL))"));
+            "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))"));
         receipt.HasKey(x => x.RowId).IsClustered();
         receipt.Property(x => x.RowId).UseIdentityColumn();
         receipt.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();

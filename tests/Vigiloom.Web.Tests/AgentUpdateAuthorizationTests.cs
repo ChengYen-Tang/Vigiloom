@@ -117,6 +117,12 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
             Assert.AreEqual(System.Net.HttpStatusCode.NoContent, accepted.StatusCode);
         using (var retried = await http.PostAsJsonAsync("/api/v1/agent/update-results", result, token))
             Assert.AreEqual(System.Net.HttpStatusCode.NoContent, retried.StatusCode);
+        var delayedProgress = result with { MessageId = Guid.CreateVersion7(), Sequence = 1,
+            Result = AgentUpdateResultKind.Switching, Failure = null };
+        using (var delayed = await http.PostAsJsonAsync("/api/v1/agent/update-results", delayedProgress, token))
+            Assert.AreEqual(System.Net.HttpStatusCode.NoContent, delayed.StatusCode);
+        var latestAfterDelayedProgress = await assignments.GetAsync(agent.AgentId.Value, token);
+        Assert.AreEqual(AgentUpdateResultKind.RolledBack, latestAfterDelayedProgress!.LatestResult!.Result);
         using (var conflict = await http.PostAsJsonAsync("/api/v1/agent/update-results", result with { Sequence = 4 }, token))
             Assert.AreEqual(System.Net.HttpStatusCode.Conflict, conflict.StatusCode);
         var jsonResult = System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));

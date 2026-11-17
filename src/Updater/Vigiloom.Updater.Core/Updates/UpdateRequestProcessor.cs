@@ -34,9 +34,35 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
         var provenance = new UpdateProvenance(Guid.ParseExact(request.Credential.AsSpan(4, 36), "D"), target.PackageId, target.ManifestSha256);
         await using var package = await packages.AcquireAsync(target.ManifestSha256, target.PackageVersion, runtimeIdentifier,
             updaterVersion, currentVersion, request.Credential, token);
-        var result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
-            installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
+        using var stopProgress = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var progress = delivery is null ? Task.CompletedTask : ReportProgressAsync(request.Credential, stopProgress.Token);
+        UpdateState result;
+        try
+        {
+            result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
+                installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
+        }
+        finally
+        {
+            await stopProgress.CancelAsync();
+            await progress;
+        }
         if (delivery is not null) await delivery.FlushAsync(server, request.Credential, token);
         return new(CurrentAssignmentStatus.Available, result);
+    }
+
+    private async Task ReportProgressAsync(string credential, CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                try { await delivery!.ReportProgressAsync(server, credential, token); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception) { /* A progress observation never blocks the local update. */ }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
     }
 }
