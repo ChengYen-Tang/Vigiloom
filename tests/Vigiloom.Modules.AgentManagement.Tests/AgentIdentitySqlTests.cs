@@ -1024,6 +1024,46 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    public Task HostMetricRetention_KeepsPendingSamplesAndExpiresSummariesAfterBackfill() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("metric retention", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var batch = Guid.CreateVersion7();
+        var old = DateTimeOffset.FromUnixTimeSeconds(now.AddDays(-400).ToUnixTimeSeconds() / 300 * 300).AddMinutes(1);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            db.HostMetrics.AddRange(
+                new HostMetric(agent.Id, batch, 0, new(Guid.CreateVersion7(), old, AgentMetricKind.CpuTotalPercent, "cpu", null, 1), now),
+                new HostMetric(agent.Id, batch, 1, new(Guid.CreateVersion7(), now.AddDays(-40), AgentMetricKind.CpuTotalPercent, "cpu", null, 2), now),
+                new HostMetric(agent.Id, batch, 2, new(Guid.CreateVersion7(), now.AddDays(-10), AgentMetricKind.CpuTotalPercent, "cpu", null, 3), now));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(3, await backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 3, new(Guid.CreateVersion7(), old.AddSeconds(1), AgentMetricKind.CpuTotalPercent, "cpu", null, 4), now));
+            await db.SaveChangesAsync(token);
+        }
+        var cleanup = new HostMetricRetentionCleanup(agents);
+        Assert.AreEqual((2L, 0L), await cleanup.RunAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => !x.Aggregated, token));
+            Assert.AreEqual(3, await db.HostMetricRollups.CountAsync(token));
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => x.Aggregated, token));
+        }
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        Assert.AreEqual((1L, 1L), await cleanup.RunAsync(token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.HostMetrics.CountAsync(token));
+        Assert.AreEqual(2, await verify.HostMetricRollups.CountAsync(token));
+    });
+
+    [TestMethod]
     public Task HostMetricRollup_FullBatchUpdatesManyDistinctSeries() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;

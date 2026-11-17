@@ -14,6 +14,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
     public DbSet<HostMetricRollup> HostMetricRollups => Set<HostMetricRollup>();
+    public DbSet<HostMetricRetentionSetting> HostMetricRetentionSettings => Set<HostMetricRetentionSetting>();
     public DbSet<HostMetricThreshold> HostMetricThresholds => Set<HostMetricThreshold>();
     public DbSet<HostMetricThresholdAudit> HostMetricThresholdAudits => Set<HostMetricThresholdAudit>();
     public DbSet<HostLog> HostLogs => Set<HostLog>();
@@ -222,6 +223,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         metric.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
         metric.HasIndex(x => new { x.AgentId, x.Kind, x.OccurredAt, x.RowId });
         metric.HasIndex(x => x.RowId).HasFilter("[Aggregated] = 0").HasDatabaseName("IX_HostMetrics_Unaggregated");
+        metric.HasIndex(x => new { x.OccurredAt, x.RowId }).HasFilter("[Aggregated] = 1").HasDatabaseName("IX_HostMetrics_Retention");
         metric.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
 
         var metricRollup = modelBuilder.Entity<HostMetricRollup>();
@@ -235,7 +237,22 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         metricRollup.Property(x => x.DimensionBytes).HasColumnType("varbinary(512)")
             .HasComputedColumnSql("CONVERT(varbinary(512), [Dimension])", stored: true);
         metricRollup.HasIndex(x => new { x.AgentId, x.Kind, x.WindowStart, x.SourceBytes, x.DimensionBytes }).IsUnique().HasFilter(null);
+        metricRollup.HasIndex(x => new { x.WindowStart, x.RowId }).HasDatabaseName("IX_HostMetricRollups_Retention");
         metricRollup.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var metricRetention = modelBuilder.Entity<HostMetricRetentionSetting>();
+        metricRetention.ToTable("HostMetricRetentionSettings", table =>
+        {
+            table.HasCheckConstraint("CK_HostMetricRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_HostMetricRetentionSettings_Slot", "[Slot] = 1");
+            table.HasCheckConstraint("CK_HostMetricRetentionSettings_Days", "[RawDays] BETWEEN 1 AND 3650 AND [RollupDays] BETWEEN [RawDays] AND 3650");
+        });
+        metricRetention.HasKey(x => x.Id).IsClustered(false);
+        metricRetention.Property(x => x.Id).ValueGeneratedNever();
+        metricRetention.Property(x => x.RowId).UseIdentityColumn();
+        metricRetention.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        metricRetention.HasIndex(x => x.Slot).IsUnique();
+        metricRetention.Property(x => x.Version).IsRowVersion();
 
         var log = modelBuilder.Entity<HostLog>();
         log.ToTable("HostLogs", table => table.HasCheckConstraint("CK_HostLogs_Gap", """
