@@ -12,14 +12,16 @@ public sealed class HostLifecycleTests(TestContext testContext)
 {
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task Host_WithoutProductConfiguration_CanStartAndStop()
+    public async Task HostWithoutProductConfigurationStops()
     {
         var builder = UpdaterHost.CreateBuilder([]);
         using var host = builder.Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
 
         await host.StartAsync(testContext.CancellationToken);
-        Assert.IsFalse(lifetime.ApplicationStopped.IsCancellationRequested);
+        await stopping.Task.WaitAsync(testContext.CancellationToken);
 
         await host.StopAsync(testContext.CancellationToken);
         Assert.IsTrue(lifetime.ApplicationStopped.IsCancellationRequested);
@@ -85,12 +87,60 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Updater:StateDirectory"] = stateDirectory
             });
             using var host = builder.Build();
+            var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
             await host.StartAsync(testContext.CancellationToken);
             await signal.Task.WaitAsync(testContext.CancellationToken);
+            var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
+            await stopping.Task.WaitAsync(testContext.CancellationToken);
             Assert.AreEqual(UpdatePhase.Prepared, (await journal.ReadAsync(testContext.CancellationToken))?.Phase);
             await host.StopAsync(testContext.CancellationToken);
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task HostStopsWhenInstalledConfigurationCannotAcceptHandoffs()
+    {
+        var root = Path.Combine(testContext.TestRunDirectory!, $"incomplete-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var builder = UpdaterHost.CreateBuilder([]);
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Updater:InstallationRoot"] = root,
+                ["Vigiloom:Updater:StateDirectory"] = Path.Combine(root, "state")
+            });
+            using var host = builder.Build();
+            var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+            var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
+            await host.StartAsync(testContext.CancellationToken);
+            await stopping.Task.WaitAsync(testContext.CancellationToken);
+            await host.StopAsync(testContext.CancellationToken);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task HostStopsWhenInstalledStatePathIsInvalid()
+    {
+        var builder = UpdaterHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Vigiloom:Updater:InstallationRoot"] = Path.Combine(testContext.TestRunDirectory!, "installation"),
+            ["Vigiloom:Updater:StateDirectory"] = "relative-state"
+        });
+        using var host = builder.Build();
+        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
+        await host.StartAsync(testContext.CancellationToken);
+        await stopping.Task.WaitAsync(testContext.CancellationToken);
+        await host.StopAsync(testContext.CancellationToken);
     }
 
     private sealed class OwnershipLogProvider(TaskCompletionSource signal) : ILoggerProvider

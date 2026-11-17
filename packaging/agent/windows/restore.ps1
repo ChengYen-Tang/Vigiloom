@@ -52,6 +52,9 @@ do {
     if ([DateTime]::UtcNow -ge $deadline) { throw 'Updater recovery did not complete in time; Agent was not enabled.' }
     Start-Sleep -Seconds 2
 } while ($true)
+$service = Get-Service -Name 'Vigiloom Updater'
+try { if ($service.Status -ne 'Running') { throw 'Updater stopped during recovery; Agent was not enabled.' } }
+finally { $service.Dispose() }
 Set-Service -Name 'Vigiloom Agent' -StartupType Automatic
 Start-Service -Name 'Vigiloom Agent'
 Write-Host 'Vigiloom services were restored with the retained Agent identity and data.'

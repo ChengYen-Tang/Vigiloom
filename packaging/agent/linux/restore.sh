@@ -45,5 +45,6 @@ while :; do
     (( SECONDS < deadline )) || fail 'Updater recovery did not complete in time; Agent was not enabled.'
     sleep 2
 done
+systemctl is-active --quiet vigiloom-updater.service || fail 'Updater stopped during recovery; Agent was not enabled.'
 systemctl enable --now vigiloom-agent.service
 printf '%s\n' 'Vigiloom services were restored with the retained Agent identity and data.'

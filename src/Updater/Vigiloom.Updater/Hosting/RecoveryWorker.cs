@@ -9,7 +9,7 @@ using Vigiloom.Updater.Core.Updates;
 namespace Vigiloom.Updater.Hosting;
 
 /// <summary>Owns recovery and serial update processing for one installed Agent.</summary>
-internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<RecoveryWorker> logger) : BackgroundService
+internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicationLifetime lifetime, ILogger<RecoveryWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -17,13 +17,14 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
         var stateDirectory = configuration["Vigiloom:Updater:StateDirectory"];
         if (!IsAbsoluteDirectory(root) || !IsAbsoluteDirectory(stateDirectory))
         {
-            logger.LogInformation("Updater is inactive until installation and state directories are configured.");
+            logger.LogError("Updater installation and state directories must both be absolute, non-root paths.");
+            lifetime.StopApplication();
             return;
         }
         IAgentUpdateRuntime runtime;
         if (OperatingSystem.IsWindows()) runtime = new WindowsAgentRuntime(root!);
         else if (OperatingSystem.IsLinux()) runtime = new SystemdAgentRuntime(root!);
-        else { logger.LogError("Updater is not supported on this operating system."); return; }
+        else { logger.LogError("Updater is not supported on this operating system."); lifetime.StopApplication(); return; }
 
         FileStream ownership;
         try
@@ -36,16 +37,22 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             logger.LogError("Updater cannot acquire installation ownership: {ErrorType}.", error.GetType().Name);
+            lifetime.StopApplication();
             return;
         }
         await using (ownership)
         {
             var journal = new UpdateJournal(stateDirectory!);
             var coordinator = new UpdateCoordinator(journal, runtime);
-            if (!await RecoverAsync(coordinator, runtime, root!, stoppingToken)) return;
+            if (!await RecoverAsync(coordinator, runtime, root!, stoppingToken))
+            {
+                if (!stoppingToken.IsCancellationRequested) lifetime.StopApplication();
+                return;
+            }
             if (!TryGetConfiguration(stateDirectory!, out var options))
             {
                 logger.LogInformation("Updater handoff is inactive until installation settings are configured.");
+                lifetime.StopApplication();
                 return;
             }
 
@@ -68,11 +75,13 @@ internal sealed class RecoveryWorker(IConfiguration configuration, ILogger<Recov
                     var result = await processor.ProcessAsync(request, token);
                     logger.LogInformation("Updater request result: {Assignment}, {Phase}.", result.Assignment, result.State?.Phase);
                 }, token => RecoverAsync(coordinator, runtime, root!, token), logger, stoppingToken);
+                if (!stoppingToken.IsCancellationRequested) lifetime.StopApplication();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception error)
             {
                 logger.LogError("Updater listener stopped: {ErrorType}.", error.GetType().Name);
+                lifetime.StopApplication();
             }
         }
     }
