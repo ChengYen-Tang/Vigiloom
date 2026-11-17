@@ -8,6 +8,7 @@ updater_source="$bundle/payload/updater"
 root_source="$bundle/payload/root.json"
 agent_root=/opt/vigiloom/agent
 updater_root=/opt/vigiloom/updater
+tools_root=/opt/vigiloom/agent-tools
 agent_state=/var/lib/vigiloom/agent
 updater_state=/var/lib/vigiloom/updater
 agent_env=/etc/vigiloom/agent.env
@@ -33,10 +34,10 @@ check_parent() {
 for parent in /opt /opt/vigiloom /var /var/lib /var/lib/vigiloom; do check_parent "$parent" yes; done
 for parent in /etc /etc/vigiloom /etc/systemd /etc/systemd/system; do check_parent "$parent" no; done
 for source in "$agent_source/Vigiloom.Agent" "$updater_source/Vigiloom.Updater" "$root_source" \
-    "$bundle/vigiloom-agent.service" "$bundle/vigiloom-updater.service"; do
+    "$bundle/vigiloom-agent.service" "$bundle/vigiloom-updater.service" "$bundle/remove.sh" "$bundle/restore.sh"; do
     [[ -f $source ]] || fail 'The installer bundle is incomplete.'
 done
-for destination in "$agent_root" "$updater_root" "$agent_state" "$updater_state" \
+for destination in "$agent_root" "$updater_root" "$tools_root" "$agent_state" "$updater_state" \
     "$agent_env" "$updater_env" "$agent_unit" "$updater_unit"; do
     [[ ! -e $destination && ! -L $destination ]] || fail 'An existing Vigiloom Agent installation or state was found. It will not be overwritten.'
 done
@@ -82,7 +83,7 @@ cleanup_failed_install() {
         systemctl disable --now vigiloom-agent.service >/dev/null 2>&1 || true
         systemctl disable --now vigiloom-updater.service >/dev/null 2>&1 || true
         rm -f -- "$agent_unit" "$updater_unit" "$agent_env" "$updater_env"
-        rm -rf -- "$agent_root" "$updater_root" "$agent_state" "$updater_state"
+        rm -rf -- "$agent_root" "$updater_root" "$tools_root" "$agent_state" "$updater_state"
         if (( created_account )); then userdel vigiloom-agent >/dev/null 2>&1 || true; fi
         systemctl daemon-reload >/dev/null 2>&1 || true
         printf '%s\n' 'Installation failed before Agent startup; newly created installation files were removed.' >&2
@@ -99,7 +100,8 @@ agent_gid=$(id -g vigiloom-agent)
 [[ -d /opt/vigiloom ]] || install -d -m 0755 /opt/vigiloom
 [[ -d /var/lib/vigiloom ]] || install -d -m 0755 /var/lib/vigiloom
 [[ -d /etc/vigiloom ]] || install -d -m 0755 /etc/vigiloom
-install -d -m 0755 "$agent_root/initial" "$updater_root"
+install -d -m 0755 "$agent_root/initial" "$updater_root" "$tools_root"
+install -m 0755 "$bundle/remove.sh" "$bundle/restore.sh" "$tools_root/"
 install -d -o vigiloom-agent -g vigiloom-agent -m 0700 "$agent_state"
 install -d -m 0700 "$updater_state"
 cp -a -- "$agent_source/." "$agent_root/initial/"
