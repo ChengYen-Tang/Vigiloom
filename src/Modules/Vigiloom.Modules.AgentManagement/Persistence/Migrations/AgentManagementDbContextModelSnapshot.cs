@@ -885,7 +885,7 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     b.ToTable("Rollouts", "agent", t =>
                         {
-                            t.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] BETWEEN 1 AND 100 AND [BatchSize] BETWEEN 1 AND 100");
+                            t.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] > 0 AND [BatchSize] > 0");
 
                             t.HasCheckConstraint("CK_Rollouts_Status", "[Status] IN (1, 2, 3, 4, 5)");
                         });

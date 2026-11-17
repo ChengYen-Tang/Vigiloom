@@ -5,7 +5,6 @@ public enum AgentRolloutMemberStatus { Pending = 1, Assigned = 2, Succeeded = 3,
 public enum AgentRolloutProblem { AssignmentChanged = 1, AgentUnavailable = 2, PackageUnavailable = 3, UpdateFailed = 4 }
 public enum AgentRolloutAction { Created = 1, Paused = 2, Resumed = 3, Cancelled = 4, AutomaticallyPaused = 5, ResumeRemaining = 6 }
 public enum AgentRolloutResult { Saved, NotFound, Invalid, Conflict }
-public static class AgentRolloutLimits { public const int MaximumOutstanding = 100; }
 
 public sealed record AgentRolloutInput(Guid GroupId, Guid PackageId, int PilotSize, int BatchSize);
 public sealed record AgentRolloutChange(string Revision, AgentRolloutAction Action);

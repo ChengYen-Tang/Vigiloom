@@ -58,7 +58,6 @@ public static class WorkerHost
         builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
         builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
         builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
-        builder.Services.AddScoped<IDeviceGenerationSource, DeviceAgentSource>();
         builder.Services.AddSingleton<IGroupAgentSource, GroupAgentSource>();
         builder.Services.AddScoped<AgentRollouts>();
         builder.Services.AddScoped<AgentRolloutJob>();

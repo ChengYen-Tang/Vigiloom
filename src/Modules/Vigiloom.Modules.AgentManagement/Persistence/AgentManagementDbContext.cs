@@ -41,7 +41,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         var rollout = modelBuilder.Entity<AgentRollout>();
         rollout.ToTable("Rollouts", table =>
         {
-            table.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] BETWEEN 1 AND 100 AND [BatchSize] BETWEEN 1 AND 100");
+            table.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] > 0 AND [BatchSize] > 0");
             table.HasCheckConstraint("CK_Rollouts_Status", "[Status] IN (1, 2, 3, 4, 5)");
         });
         rollout.HasKey(x => x.Id).IsClustered(false);
