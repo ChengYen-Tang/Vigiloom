@@ -94,6 +94,50 @@ public sealed class AgentVersionClientTests(TestContext context)
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [TestMethod]
+    public async Task ReconnectionFetchesLatestAssignmentInsteadOfAnOfflineTarget()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"vigiloom-version-test-{Guid.NewGuid():N}");
+        try
+        {
+            var token = context.CancellationToken;
+            var agentId = Guid.CreateVersion7();
+            var secret = Convert.ToBase64String(new byte[32]).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = "https://example.test/", AgentId = agentId, MachineSecret = secret }, token);
+            var original = new AgentVersionTarget(Guid.CreateVersion7(), Guid.CreateVersion7(), "1.0.0", "win-x64",
+                new string('a', 64), Convert.ToBase64String(new byte[8]));
+            var replacement = original with { UpdateId = Guid.CreateVersion7(), PackageId = Guid.CreateVersion7(), PackageVersion = "2.0.0" };
+            using var http = new HttpClient(new ReconnectionHandler(original, replacement));
+            var client = new AgentVersionClient(http, TimeProvider.System);
+            var server = new Uri("https://example.test/");
+            Assert.AreEqual(original, (await client.GetAsync(vault, server, token)).Target);
+            var offline = await client.GetAsync(vault, server, token);
+            Assert.AreEqual(AgentVersionFetchStatus.Unavailable, offline.Status);
+            Assert.IsNull(await client.CreateHandoffAsync(vault, server, offline, token));
+            var latest = await client.GetAsync(vault, server, token);
+            Assert.AreEqual(replacement, latest.Target);
+            Assert.AreEqual(replacement.UpdateId, (await client.CreateHandoffAsync(vault, server, latest, token))?.UpdateId);
+            var cancelled = await client.GetAsync(vault, server, token);
+            Assert.AreEqual(AgentVersionFetchStatus.NoAssignment, cancelled.Status);
+            Assert.IsTrue((await client.CreateHandoffAsync(vault, server, cancelled, token))!.SyncOnly);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    private sealed class ReconnectionHandler(AgentVersionTarget original, AgentVersionTarget replacement) : HttpMessageHandler
+    {
+        private int count;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => ++count switch
+        {
+            1 => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(original) }),
+            2 => throw new HttpRequestException("Offline"),
+            3 => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(replacement) }),
+            _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent))
+        };
+    }
+
     private sealed class StalledHandler : HttpMessageHandler
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
