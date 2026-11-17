@@ -1,10 +1,13 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -13,6 +16,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.UpdateSecurity;
 using Vigiloom.UpdateSecurity.Tests;
+using Vigiloom.Updater.Core.Updates;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -30,7 +34,10 @@ public sealed class AgentPackagePipelineTests(TestContext context)
         try
         {
             using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            var archive = "signed package"u8.ToArray();
+            using var archiveBuffer = new MemoryStream();
+            using (var zip = new ZipArchive(archiveBuffer, ZipArchiveMode.Create, leaveOpen: true))
+            using (var writer = new StreamWriter(zip.CreateEntry("Vigiloom.Agent.exe").Open())) writer.Write("new version");
+            var archive = archiveBuffer.ToArray();
             var hash = Convert.ToHexStringLower(SHA256.HashData(archive));
             var manifest = Encoding.UTF8.GetBytes($$"""{"schema":1,"version":"1.0.0","rid":"win-x64","size":{{archive.Length}},"sha256":"{{hash}}","minimumUpdaterVersion":"1.0.0","minimumAgentVersion":null,"maximumAgentVersion":null}""");
             var digest = Convert.ToHexStringLower(SHA256.HashData(manifest));
@@ -66,10 +73,30 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             await new LocalTrustStore(localTrust).ProvisionAsync(root, token);
             using var http = PingTestSite.Client(factory);
             var updater = new CentralPackageAcquirer(new Uri("https://localhost/"), localTrust, Path.Combine(path, "updater-cache"), 1024, TimeProvider.System, http);
-            await using var result = await updater.AcquireAsync(digest, "1.0.0", "win-x64", "1.0.0", null, credential, token);
-            using var output = new MemoryStream();
-            await result.Archive.CopyToAsync(output, token);
-            CollectionAssert.AreEqual(archive, output.ToArray());
+            await using (var package = await updater.AcquireAsync(digest, "1.0.0", "win-x64", "1.0.0", null, credential, token))
+            {
+                using var output = new MemoryStream();
+                await package.Archive.CopyToAsync(output, token);
+                CollectionAssert.AreEqual(archive, output.ToArray());
+            }
+            using var authorizedHttp = PingTestSite.Client(factory);
+            authorizedHttp.DefaultRequestHeaders.Authorization = new("Bearer", credential);
+            var target = await authorizedHttp.GetFromJsonAsync<AgentVersionTarget>("/api/v1/agent/version-assignment", token);
+            Assert.IsNotNull(target);
+            var previous = Path.Combine(path, "old");
+            Directory.CreateDirectory(previous);
+            File.Copy(typeof(AgentHost).Assembly.Location, Path.Combine(previous, "Vigiloom.Agent.dll"));
+            await File.WriteAllTextAsync(Path.Combine(previous, "Vigiloom.Agent.exe"), "old version", token);
+            var runtime = new TestRuntime(previous);
+            var journal = new UpdateJournal(Path.Combine(path, "state"));
+            var server = new Uri("https://localhost/");
+            var processor = new UpdateRequestProcessor(new CentralAssignmentClient(http, TimeProvider.System), updater,
+                new UpdateTransaction(http, journal, runtime, TimeProvider.System), journal, runtime, server, device.Id,
+                path, "win-x64", "1.0.0");
+            var result = await processor.ProcessAsync(new UpdateHandoff { UpdateId = target.UpdateId, Credential = credential }, token);
+            Assert.AreEqual(CurrentAssignmentStatus.Available, result.Assignment);
+            Assert.AreEqual(UpdatePhase.Succeeded, result.State?.Phase);
+            Assert.AreEqual("new version", await File.ReadAllTextAsync(Path.Combine(result.State!.TargetDirectory, "Vigiloom.Agent.exe"), token));
         }
         finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
     }, context.CancellationToken);
@@ -90,5 +117,15 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             }
             return bytes is null ? new(HttpStatusCode.NotFound) : new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
         }
+    }
+
+    private sealed class TestRuntime(string previous) : IAgentUpdateRuntime
+    {
+        private string selected = previous;
+        public Task<string> GetSelectedDirectoryAsync(CancellationToken token) => Task.FromResult(selected);
+        public Task StopAsync(CancellationToken token) => Task.CompletedTask;
+        public Task SelectVersionAsync(string directory, CancellationToken token) { selected = directory; return Task.CompletedTask; }
+        public Task StartAsync(CancellationToken token) => Task.CompletedTask;
+        public Task<bool> WaitHealthyAsync(CancellationToken token) => Task.FromResult(true);
     }
 }
