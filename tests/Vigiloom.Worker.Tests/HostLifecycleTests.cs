@@ -130,6 +130,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var auditActor = Guid.CreateVersion7();
         var auditTarget = Guid.CreateVersion7();
         var schedulingActor = Guid.CreateVersion7();
+        var completedWork = Guid.CreateVersion7();
         var openAlert = Guid.CreateVersion7(); var closedAlert = Guid.CreateVersion7(); var oldNotification = Guid.CreateVersion7();
         await using (var db = await operations.CreateDbContextAsync(token))
         {
@@ -138,7 +139,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({oldNotification}, {Guid.CreateVersion7()}, {"ping"}, {old.AddDays(-400)}, {"title"}, {"detail"})", token);
         }
         await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+        {
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'accepted'), ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'started'), ({schedulingActor}, {old}, '/jobs/enqueued/delete', 'accepted')", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[Outbox] ([MessageId], [MessageType], [Payload], [CreatedAt], [AvailableAt], [State], [Attempts], [CompletedAt]) VALUES ({completedWork}, {"agent.host-log.received.v1"}, {"{}"}, {old.AddDays(-400)}, {old.AddDays(-400)}, {2}, {1}, {old.AddDays(-400)})", token);
+        }
         var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
         await using (var db = await network.CreateDbContextAsync(token)) { db.PingSamples.Add(oldPing); await db.SaveChangesAsync(token); }
         Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
@@ -310,6 +314,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using (var checkScheduling = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
                 var cutoff = DateTimeOffset.UtcNow.AddDays(-365);
+                Assert.AreEqual(0, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[Outbox] WHERE [MessageId] = {completedWork}").SingleAsync(token));
                 Assert.AreEqual(0, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] < {cutoff}").SingleAsync(token));
                 Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'started'").SingleAsync(token));
                 Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] >= {cutoff}").SingleAsync(token));

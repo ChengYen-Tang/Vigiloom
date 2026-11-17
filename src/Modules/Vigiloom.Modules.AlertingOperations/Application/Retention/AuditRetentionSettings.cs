@@ -49,9 +49,10 @@ public sealed class AuditRetentionSettings(
         foreach (var source in sources)
             count = checked(count + await source.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-input.Days), token));
         var (episodes, notifications) = await AlertRetention.CountAsync(db, now.AddDays(-input.Days), token);
+        var jobs = await BackgroundHistoryRetention.CountAsync(db, now.AddDays(-input.Days), token);
         await tx.CommitAsync(token);
         var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.Days, input.Version, now)));
-        return new(input.Days, now, count, input.Version, proof, episodes, notifications);
+        return new(input.Days, now, count, input.Version, proof, episodes, notifications, jobs);
     }
 
     public async Task<AuditRetentionSnapshot?> UpdateAsync(AuditRetentionInput input, Guid actor, CancellationToken token)

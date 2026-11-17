@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application.Line;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Persistence;
@@ -26,6 +28,8 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
             await using (var setup = new OperationsDbContext(options)) await setup.Database.MigrateAsync(token);
+            await using (var setup = new SchedulingDbContext(new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options)) await setup.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<OperationsDbContext>(options);
             var protection = new EphemeralDataProtectionProvider();
             IAuditRetentionSource[] sources = [];
@@ -70,6 +74,8 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
             await using (var setup = new OperationsDbContext(options)) await setup.Database.MigrateAsync(token);
+            await using (var setup = new SchedulingDbContext(new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options)) await setup.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<OperationsDbContext>(options);
             IAuditRetentionSource[] sources = [];
             var settings = new AuditRetentionSettings(factory, new OperationAuditWriter(), new EphemeralDataProtectionProvider(), sources);
@@ -109,6 +115,44 @@ public sealed class AuditRetentionSqlTests(TestContext context)
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.LineSettings SET LastNotificationRowId = (SELECT MAX(RowId) FROM operations.Notifications)", token);
             }
             Assert.AreEqual(1L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task BackgroundCleanupKeepsActiveWorkAndRemovesExpiredTerminalDeliveries() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var setup = new OperationsDbContext(options)) await setup.Database.MigrateAsync(token);
+            await using (var setup = new SchedulingDbContext(new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options)) await setup.Database.MigrateAsync(token);
+            var factory = new PooledDbContextFactory<OperationsDbContext>(options);
+            IAuditRetentionSource[] sources = [];
+            var settings = new AuditRetentionSettings(factory, new OperationAuditWriter(), new EphemeralDataProtectionProvider(), sources);
+            var policy = await settings.GetAsync(token);
+            var now = DateTimeOffset.UtcNow; var old = now.AddDays(-40);
+            var queued = Guid.CreateVersion7(); var leased = Guid.CreateVersion7(); var completed = Guid.CreateVersion7();
+            var failed = Guid.CreateVersion7(); var recentFailed = Guid.CreateVersion7();
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                foreach (var (id, state, at) in new[] { (queued, 0, old), (leased, 1, old), (completed, 2, old), (failed, 3, old), (recentFailed, 3, now) })
+                {
+                    var finished = state == 2 ? at : (DateTimeOffset?)null;
+                    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts, LastAttemptAt, CompletedAt) VALUES ({id}, {"line.push.v1"}, {"{}"}, {old}, {old}, {state}, {1}, {at}, {finished})", token);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.LineDeliveries (Id, GroupId, Recipient, Text, CreatedAt, CompletedAt) VALUES ({id}, {Guid.CreateVersion7()}, {"group"}, {"message"}, {old}, {finished})", token);
+                }
+            }
+            var status = new LineDeliveryStatus(factory);
+            Assert.AreEqual("failed", (await status.GetAsync(failed, token))?.Status);
+            var actor = Guid.CreateVersion7();
+            var preview = await settings.PreviewAsync(new(30, policy.Version), actor, token);
+            Assert.IsNotNull(preview); Assert.AreEqual(2L, preview.BackgroundJobs);
+            Assert.IsNotNull(await settings.UpdateAsync(new(30, policy.Version, preview.ConfirmationToken), actor, token));
+            Assert.AreEqual(2L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+            Assert.IsNull(await status.GetAsync(completed, token)); Assert.IsNull(await status.GetAsync(failed, token));
+            Assert.AreEqual("pending", (await status.GetAsync(queued, token))?.Status);
+            Assert.AreEqual("pending", (await status.GetAsync(leased, token))?.Status);
+            Assert.AreEqual("failed", (await status.GetAsync(recentFailed, token))?.Status);
         }, context.CancellationToken);
 
     private sealed class FailingAuditWriter : IOperationAuditWriter<OperationAudit>
