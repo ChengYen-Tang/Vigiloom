@@ -76,14 +76,17 @@ public sealed class TelemetryRetentionTests(TestContext context)
             var actor = Guid.CreateVersion7();
             var original = await settings.GetAsync(token);
             Assert.AreEqual(14, original.LogDays); Assert.AreEqual(7, original.TraceDays);
-            var input = new Vigiloom.Contracts.Services.TelemetryRetentionInput(10, 5, original.Version, null);
+            Assert.AreEqual(30, original.MetricRawDays); Assert.AreEqual(365, original.MetricRollupDays);
+            var input = new Vigiloom.Contracts.Services.TelemetryRetentionInput(10, 5, original.Version, null, 20, 300);
             await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input, actor, token));
-            var preview = await settings.PreviewAsync(new(10, 5, original.Version), actor, token);
+            var preview = await settings.PreviewAsync(new(10, 5, original.Version, 20, 300), actor, token);
             Assert.IsNotNull(preview);
             await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, Guid.CreateVersion7(), token));
+            await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken, MetricRawDays = 19 }, actor, token));
             var saved = await settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, actor, token);
             Assert.IsNotNull(saved);
             Assert.AreEqual(10, saved.LogDays); Assert.AreEqual(5, saved.TraceDays);
+            Assert.AreEqual(20, saved.MetricRawDays); Assert.AreEqual(300, saved.MetricRollupDays);
             var source = new ServiceSource("retention settings", new byte[32], DateTimeOffset.UtcNow);
             var service = new MonitoredService(new ServiceCandidate(source.Id, "settings", "test", "Settings", DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
             await using (var db = factory.CreateDbContext()) { db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token); }
@@ -96,6 +99,7 @@ public sealed class TelemetryRetentionTests(TestContext context)
             Assert.HasCount(1, events.Items);
             Assert.AreEqual(14, events.Items[0].TelemetryRetention?.PreviousLogDays);
             Assert.AreEqual(5, events.Items[0].TelemetryRetention?.CurrentTraceDays);
+            Assert.AreEqual(20, events.Items[0].TelemetryRetention?.CurrentMetricRawDays);
             Assert.IsEmpty((await audit.QueryAsync(new(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token)).Items);
             await using (var db = operations.CreateDbContext()) await db.Database.ExecuteSqlRawAsync("DROP TABLE [operations].[AuditEvents]", token);
             await Assert.ThrowsAsync<SqlException>(() => settings.UpdateAsync(new(20, 10, saved.Version, null), actor, token));

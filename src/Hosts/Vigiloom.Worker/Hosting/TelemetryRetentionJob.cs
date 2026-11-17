@@ -11,7 +11,8 @@ public sealed class TelemetryRetentionJob(TelemetryRetentionCleanup cleanup, ILo
     public async Task RunAsync(CancellationToken token)
     {
         var (logs, spans) = await cleanup.RunAsync(token);
-        logger.LogInformation("Application telemetry retention removed {LogCount} logs and {SpanCount} spans", logs, spans);
+        var (pruned, expired) = await cleanup.RunMetricsAsync(token);
+        logger.LogInformation("Application telemetry retention removed {LogCount} logs, {SpanCount} spans and {ExpiredCount} metric windows; pruned {PrunedCount} metric windows", logs, spans, expired, pruned);
     }
 }
 

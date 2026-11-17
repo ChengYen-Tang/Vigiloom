@@ -72,6 +72,11 @@
                                 {
                                     <div>應用 Logs 保存：@telemetryRetention.PreviousLogDays → @telemetryRetention.CurrentLogDays 天</div>
                                     <div>應用 Traces 保存：@telemetryRetention.PreviousTraceDays → @telemetryRetention.CurrentTraceDays 天</div>
+                                    @if (telemetryRetention.PreviousMetricRawDays is not null)
+                                    {
+                                        <div>應用指標原始資料保存：@telemetryRetention.PreviousMetricRawDays → @telemetryRetention.CurrentMetricRawDays 天</div>
+                                        <div>應用指標五分鐘彙總保存：@telemetryRetention.PreviousMetricRollupDays → @telemetryRetention.CurrentMetricRollupDays 天</div>
+                                    }
                                     <details><summary>版本資訊</summary><span>@telemetryRetention.PreviousVersion → @telemetryRetention.CurrentVersion</span></details>
                                 }
                                 else if (entry.HostMetricRetention is { } metricRetention)

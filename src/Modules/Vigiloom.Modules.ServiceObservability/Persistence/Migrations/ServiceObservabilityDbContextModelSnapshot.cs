@@ -529,6 +529,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<bool>("IsPublic")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset?>("MetricRetainedAfter")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("PublicDisplayName")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -1165,6 +1168,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("WindowStart");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("WindowStart"), new[] { "ServiceId", "RawPruned" });
+
                     b.HasIndex("ServiceId", "WindowStart")
                         .IsUnique();
 
@@ -1185,6 +1192,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.Property<int>("LogDays")
                         .HasColumnType("int");
+
+                    b.Property<int>("MetricRawDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
+
+                    b.Property<int>("MetricRollupDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
 
                     b.Property<long>("RowId")
                         .ValueGeneratedOnAdd()
@@ -1218,7 +1235,7 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.ToTable("TelemetryRetentionSettings", "service", t =>
                         {
-                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650");
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650");
 
                             t.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 

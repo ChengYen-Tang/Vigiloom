@@ -120,6 +120,10 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(TelemetryRetentionChanged change) =>
         TelemetryRetentionLimits.IsValid(change.PreviousLogDays, change.PreviousTraceDays) &&
         TelemetryRetentionLimits.IsValid(change.CurrentLogDays, change.CurrentTraceDays) &&
+        (change.PreviousMetricRawDays is null && change.PreviousMetricRollupDays is null && change.CurrentMetricRawDays is null && change.CurrentMetricRollupDays is null ||
+         change.PreviousMetricRawDays is int previousRaw && change.PreviousMetricRollupDays is int previousRollup &&
+         change.CurrentMetricRawDays is int currentRaw && change.CurrentMetricRollupDays is int currentRollup &&
+         TelemetryRetentionLimits.IsValidMetrics(previousRaw, previousRollup) && TelemetryRetentionLimits.IsValidMetrics(currentRaw, currentRollup)) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     internal static bool IsValid(GroupChanged change) => change.Action is >= GroupAction.Created and <= GroupAction.ServicesChanged &&
