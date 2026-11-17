@@ -923,6 +923,68 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    public Task HostMetricAggregate_CombinesRollupsWithRawAndMarksUnavailableEdges() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        var device = new Device("metric history", "127.0.0.1", true, start);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], start);
+        var batch = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            void Add(int ordinal, int minute, string source, double value) => db.HostMetrics.Add(new HostMetric(agent.Id, batch, ordinal,
+                new(Guid.CreateVersion7(), start.AddMinutes(minute), AgentMetricKind.CpuCorePercent, source, null, value), start));
+            Add(0, 1, "cpu", 10); Add(1, 2, "cpu", 20); Add(2, 6, "cpu", 30);
+            Add(3, 7, "cpu", 50); Add(4, 11, "cpu", 70); Add(5, 6, "CPU", 99);
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(6, await new HostMetricRollupBackfill(agents).RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 6,
+                new(Guid.CreateVersion7(), start.AddMinutes(8), AgentMetricKind.CpuCorePercent, "cpu", null, 40), start));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var result = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 300, token);
+        Assert.IsNotNull(result);
+        Assert.IsFalse(result.HasIncompleteBuckets);
+        Assert.HasCount(3, result.Buckets);
+        Assert.AreEqual(15d, result.Buckets[0].Average);
+        Assert.AreEqual(40d, result.Buckets[1].Average);
+        Assert.AreEqual(3L, result.Buckets[1].Samples);
+        Assert.AreEqual(70d, result.Buckets[2].Average);
+        var combined = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 600, token);
+        Assert.IsNotNull(combined);
+        Assert.AreEqual(30d, combined.Buckets[0].Average);
+        Assert.AreEqual(5L, combined.Buckets[0].Samples);
+        await using (var db = agents.CreateDbContext())
+            await db.HostMetrics.Where(x => x.AgentId == agent.Id && x.Aggregated && x.OccurredAt < start.AddMinutes(10)).ExecuteDeleteAsync(token);
+        result = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 300, token);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.HasIncompleteBuckets);
+        Assert.HasCount(2, result.Buckets);
+        Assert.AreEqual(start.AddMinutes(5), result.Buckets[0].Start);
+        Assert.AreEqual(3L, result.Buckets[0].Samples);
+        Assert.AreEqual(40d, result.Buckets[0].Average);
+        combined = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 600, token);
+        Assert.IsNotNull(combined);
+        Assert.IsTrue(combined.HasIncompleteBuckets);
+        Assert.HasCount(1, combined.Buckets);
+        Assert.AreEqual(start.AddMinutes(10), combined.Buckets[0].Start);
+        var rawOnly = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 60, token);
+        Assert.IsNotNull(rawOnly);
+        Assert.IsTrue(rawOnly.HasIncompleteBuckets);
+        Assert.IsEmpty(rawOnly.Buckets);
+    });
+
+    [TestMethod]
     public Task HostMetricRollup_FullBatchUpdatesManyDistinctSeries() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var now = DateTimeOffset.UtcNow;
