@@ -173,6 +173,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, point, old));
             var expired = point with { MessageId = Guid.CreateVersion7(), OccurredAt = old.AddDays(-31), Dimension = "old" };
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, expired, old));
+            var logBatch = new AgentLogBatch(3, Guid.CreateVersion7(), old, Guid.CreateVersion7(), AgentLogSourceKind.Journal,
+                "system", 1, [new(Guid.CreateVersion7(), old, "expired", null, null, null, null, null),
+                    new(Guid.CreateVersion7(), old, "recent", null, null, null, null, null)]);
+            db.HostLogs.Add(new HostLog(agentId, logBatch, 0, old.AddDays(-20)));
+            db.HostLogs.Add(new HostLog(agentId, logBatch, 1, old));
             await db.SaveChangesAsync(token);
         }
         await using (var db = await securityDb.CreateDbContextAsync(token))
@@ -262,6 +267,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using var check = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(0, await check.ReceivedBatches.CountAsync(token));
             Assert.AreEqual(1, await check.RuntimeObservations.CountAsync(token));
+            Assert.AreEqual("recent", (await check.HostLogs.SingleAsync(token)).Content);
             Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(x => x.Dimension == null, token)).Sum);
             Assert.AreEqual(0, await check.HostMetrics.CountAsync(x => x.Dimension == "old", token));
             Assert.AreEqual(1, await check.HostMetricRollups.CountAsync(x => x.Dimension == "old", token));

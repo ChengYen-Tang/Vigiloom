@@ -1,6 +1,7 @@
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Persistence;
@@ -90,6 +91,7 @@ public static class WorkerHost
         builder.Services.AddScoped<MetricRollupCoordinator>();
         builder.Services.AddScoped<MetricRollupJob>();
         builder.Services.AddScoped<TelemetryRetentionCleanup>();
+        builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
         builder.Services.AddScoped<TelemetryRetentionJob>();
         builder.Services.AddScoped<SpeedSettings>();
         builder.Services.AddScoped<SpeedQueue>();

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -14,14 +15,14 @@ internal sealed class CorrelationEventStore(IHostLogReader logs, int maximumEven
 {
     internal const int MaximumEvents = 5000;
     internal const long MaximumContentCharacters = 16 * 1024 * 1024;
-    internal static readonly TimeSpan MaximumLateness = TimeSpan.FromMinutes(5);
-    internal static readonly TimeSpan MaximumFutureSkew = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan MaximumLateness = SigmaCorrelationLimits.MaximumLateness;
+    internal static readonly TimeSpan MaximumFutureSkew = SigmaCorrelationLimits.MaximumFutureSkew;
 
     internal async Task<CorrelationEventSet> CaptureAsync(SecurityAnalysisDbContext db, SigmaEnabledRuleVersion version,
         HostLogDispatch dispatch, IReadOnlyList<HostLogEntry> incoming, DateTimeOffset receivedAt, TimeSpan window, CancellationToken token)
     {
         if (db.Database.CurrentTransaction is null) throw new InvalidOperationException("A transaction is required.");
-        if (window <= TimeSpan.Zero || window > TimeSpan.FromDays(7)) throw new ArgumentOutOfRangeException(nameof(window));
+        if (window <= TimeSpan.Zero || window > SigmaCorrelationLimits.MaximumWindow) throw new ArgumentOutOfRangeException(nameof(window));
         if (maximumEvents is < 1 or > MaximumEvents || maximumContentCharacters is < 1 or > MaximumContentCharacters)
             throw new InvalidOperationException("Invalid correlation capacity.");
         var activationVersion = version.Version;

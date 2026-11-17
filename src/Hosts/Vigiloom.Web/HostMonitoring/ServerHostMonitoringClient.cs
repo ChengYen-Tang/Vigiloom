@@ -7,13 +7,14 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostMetricThresholds thresholds, HostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections) : IHostMonitoringClient
+    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, TelemetryRetentionSettings retention) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -56,7 +57,8 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     public async Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
     {
         await AuthorizeAsync(token);
-        return await logs.GetAsync(deviceId, from, until, cursor, null, token);
+        var page = await logs.GetAsync(deviceId, from, until, cursor, null, token);
+        return page is null ? null : page with { RetentionDays = (await retention.GetAsync(token)).LogDays };
     }
     public async Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
     {

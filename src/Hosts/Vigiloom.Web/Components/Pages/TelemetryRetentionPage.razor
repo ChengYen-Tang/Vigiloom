@@ -9,9 +9,9 @@
 
 <PageTitle>應用服務資料保存 - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定服務健康、指標、Logs 與 Traces 的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定服務健康、指標、Logs 與 Traces 的保存期限；Logs 期限也適用於主機日誌。</p></div></header>
     <section class="device-panel">
-        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機日誌與主機效能指標不受此設定影響。</p>
+        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。安全偵測所需的主機日誌可能延長保留。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
@@ -19,7 +19,7 @@
             <EditForm Model="Input" FormName="telemetry-retention" method="post" OnValidSubmit="SubmitAsync">
                 <InputHidden @bind-Value="Input.Version" />
                 <InputHidden @bind-Value="Input.ConfirmationToken" />
-                <label for="telemetry-log-days">應用 Logs 保存天數（1～3650 天）</label>
+                <label for="telemetry-log-days">應用與主機 Logs 保存天數（1～3650 天）</label>
                 <InputNumber id="telemetry-log-days" @bind-Value="Input.LogDays" min="1" max="3650" required />
                 <label for="telemetry-trace-days">應用 Traces 保存天數（1～3650 天）</label>
                 <InputNumber id="telemetry-trace-days" @bind-Value="Input.TraceDays" min="1" max="3650" required />
@@ -32,7 +32,7 @@
                 <p>進行中的狀態區間與目前狀態所需的最近檢查會保留。</p>
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.Logs 筆 Logs 及 @impact.Spans 筆 Trace spans 符合清理條件。實際數量會隨時間及資料變動。</p>
+                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.Logs 筆應用 Logs、@impact.HostLogs 筆主機日誌及 @impact.Spans 筆 Trace spans 符合清理條件。實際數量會隨時間及資料變動。</p>
                     <p>有 @impact.MetricPoints 筆原始指標及 @impact.MetricWindows 個指標時段已超過所選期限；實際清理會視彙總狀態進行。</p>
                     <p>預計清理 @impact.HealthObservations 筆健康檢查和 @impact.HealthIntervals 個已結束的狀態區間。</p>
                     <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>

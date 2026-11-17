@@ -1227,6 +1227,8 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("AgentId", "MessageId")
                         .IsUnique();
 
+                    b.HasIndex("ReceivedAt", "RowId");
+
                     b.HasIndex("AgentId", "ReceivedAt", "RowId");
 
                     b.HasIndex("AgentId", "SourceId", "OccurredAt", "RowId");

@@ -42,9 +42,19 @@ public sealed class PingHttpTests
     public Task TelemetryRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token);
+        var device = await PingTestSite.InitializeAsync(factory, token);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        var now = DateTimeOffset.UtcNow;
+        var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
+        var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now.AddDays(-20), Guid.CreateVersion7(), AgentLogSourceKind.Journal,
+            "system", 1, [new(Guid.CreateVersion7(), now.AddDays(-20), "old", null, null, null, null, null)]);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        { db.Agents.Add(agent); db.HostLogs.Add(new HostLog(agent.Id, batch, 0, now.AddDays(-20))); await db.SaveChangesAsync(token); }
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync("/api/v1/settings/telemetry/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
@@ -59,6 +69,7 @@ public sealed class PingHttpTests
         fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5"; fields["Input.MetricRawDays"] = "20"; fields["Input.MetricRollupDays"] = "300"; fields["Input.HealthDays"] = "180";
         using var preview = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
+        Assert.Contains("1 筆主機日誌", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "telemetry-retention", token));
         confirm["Input.LogDays"] = "10"; confirm["Input.TraceDays"] = "5"; confirm["Input.MetricRawDays"] = "20"; confirm["Input.MetricRollupDays"] = "300"; confirm["Input.HealthDays"] = "180";
         using var saved = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(confirm), token);
@@ -67,8 +78,11 @@ public sealed class PingHttpTests
         Assert.AreEqual(10, current?.LogDays); Assert.AreEqual(5, current?.TraceDays);
         Assert.AreEqual(20, current?.MetricRawDays); Assert.AreEqual(300, current?.MetricRollupDays);
         Assert.AreEqual(180, current?.HealthDays);
+        var from = Uri.EscapeDataString(now.AddDays(-1).ToString("O")); var until = Uri.EscapeDataString(now.AddDays(1).ToString("O"));
+        var hostLogs = await reader.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}", token);
+        Assert.AreEqual(10, hostLogs?.RetentionDays);
         using var audit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token);
-        Assert.Contains("應用 Logs 保存：14 → 10 天", await TextAsync(audit, token));
+        Assert.Contains("應用與主機 Logs 保存：14 → 10 天", await TextAsync(audit, token));
         Assert.Contains("應用 Traces 保存：7 → 5 天", await TextAsync(audit, token));
         Assert.Contains("應用指標原始資料保存：30 → 20 天", await TextAsync(audit, token));
         Assert.Contains("服務健康歷史保存：365 → 180 天", await TextAsync(audit, token));

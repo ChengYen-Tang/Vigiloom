@@ -70,7 +70,7 @@
                             <td>
                                 @if (entry.TelemetryRetention is { } telemetryRetention)
                                 {
-                                    <div>應用 Logs 保存：@telemetryRetention.PreviousLogDays → @telemetryRetention.CurrentLogDays 天</div>
+                                    <div>應用與主機 Logs 保存：@telemetryRetention.PreviousLogDays → @telemetryRetention.CurrentLogDays 天</div>
                                     <div>應用 Traces 保存：@telemetryRetention.PreviousTraceDays → @telemetryRetention.CurrentTraceDays 天</div>
                                     @if (telemetryRetention.PreviousMetricRawDays is not null)
                                     {

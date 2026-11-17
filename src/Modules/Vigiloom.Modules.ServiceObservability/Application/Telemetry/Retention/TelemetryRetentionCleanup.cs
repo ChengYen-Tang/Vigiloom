@@ -1,14 +1,34 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 /// <summary>Removes expired application logs and spans and their unreferenced shared contexts.</summary>
-public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabilityDbContext> contexts, IHostLogRetention? hostLogs = null)
 {
     private const int BatchSize = 500;
 
     public Task<(long Pruned, long Expired)> RunMetricsAsync(CancellationToken token) => new MetricRetentionCleanup(contexts).RunAsync(token);
+
+    public async Task<long> RunHostLogsAsync(CancellationToken token)
+    {
+        if (hostLogs is null) throw new InvalidOperationException("Host log retention is not registered.");
+        await TelemetryRetentionSettings.EnsureAsync(contexts, token);
+        long total = 0;
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+            var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var removed = await hostLogs.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, policy.LogDays, BatchSize, token);
+            await tx.CommitAsync(token);
+            total += removed;
+            if (removed < BatchSize) return total;
+        }
+    }
 
     public async Task<(long Observations, long Intervals)> RunHealthAsync(CancellationToken token)
     {
