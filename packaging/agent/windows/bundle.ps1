@@ -49,7 +49,8 @@ try {
     if ((Get-FileHash -LiteralPath (Join-Path $stage 'payload\root.json') -Algorithm SHA256).Hash -ne $RootSha256) {
         throw 'The copied publisher root fingerprint does not match.'
     }
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1'), (Join-Path $PSScriptRoot 'platform.ps1') -Destination $stage
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1'), (Join-Path $PSScriptRoot 'platform.ps1'),
+        (Join-Path $PSScriptRoot 'native.ps1'), (Join-Path $PSScriptRoot 'remove.ps1'), (Join-Path $PSScriptRoot 'restore.ps1') -Destination $stage
     $stream = [IO.File]::Open($artifact, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     $createdArtifact = $true
     try {
