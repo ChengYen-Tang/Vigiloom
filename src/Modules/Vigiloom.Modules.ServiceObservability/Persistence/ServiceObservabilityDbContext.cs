@@ -16,6 +16,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
     public DbSet<LogContext> LogContexts => Set<LogContext>();
     public DbSet<TraceContext> TraceContexts => Set<TraceContext>();
     public DbSet<TraceSpan> TraceSpans => Set<TraceSpan>();
+    public DbSet<TelemetryRetentionSetting> TelemetryRetentionSettings => Set<TelemetryRetentionSetting>();
     public DbSet<MetricContext> MetricContexts => Set<MetricContext>();
     public DbSet<MetricPoint> MetricPoints => Set<MetricPoint>();
     public DbSet<MetricRollupWindow> MetricRollupWindows => Set<MetricRollupWindow>();
@@ -245,6 +246,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         log.Property(x => x.SpanId).HasColumnType("binary(8)");
         log.Property(x => x.RecordPayload).HasColumnType("varbinary(max)").IsRequired();
         log.HasIndex(x => new { x.ServiceId, x.OccurredAt, x.RowId });
+        log.HasIndex(x => new { x.OccurredAt, x.RowId }).HasDatabaseName("IX_LogRecords_Retention");
         log.HasIndex(x => new { x.ServiceId, x.ReceivedAt });
         log.HasIndex(x => new { x.ServiceId, x.TraceId, x.OccurredAt }).HasFilter("[TraceId] IS NOT NULL");
         log.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
@@ -278,6 +280,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         span.Property(x => x.ParentSpanId).HasColumnType("binary(8)");
         span.Property(x => x.SpanPayload).HasColumnType("varbinary(max)").IsRequired();
         span.HasIndex(x => new { x.ServiceId, x.StartedAt, x.RowId });
+        span.HasIndex(x => new { x.StartedAt, x.RowId }).HasDatabaseName("IX_TraceSpans_Retention");
         span.HasIndex(x => new { x.ServiceId, x.ReceivedAt });
         span.HasIndex(x => new { x.ServiceId, x.TraceId, x.StartedAt, x.RowId });
         span.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
@@ -285,6 +288,20 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
             .HasPrincipalKey(x => new { x.RowId, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
         span.HasOne<ServiceInstance>().WithMany().HasForeignKey(x => new { x.InstanceId, x.ServiceId })
             .HasPrincipalKey(x => new { x.Id, x.ServiceId }).OnDelete(DeleteBehavior.Restrict);
+
+        var telemetryRetention = modelBuilder.Entity<TelemetryRetentionSetting>();
+        telemetryRetention.ToTable("TelemetryRetentionSettings", table =>
+        {
+            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Slot", "[Slot] = 1");
+            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650");
+        });
+        telemetryRetention.HasKey(x => x.Id).IsClustered(false);
+        telemetryRetention.Property(x => x.Id).ValueGeneratedNever();
+        telemetryRetention.Property(x => x.RowId).UseIdentityColumn();
+        telemetryRetention.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        telemetryRetention.HasIndex(x => x.Slot).IsUnique();
+        telemetryRetention.Property(x => x.Version).IsRowVersion();
 
         var metricContext = modelBuilder.Entity<MetricContext>();
         metricContext.ToTable("MetricContexts", table => table.HasCheckConstraint("CK_MetricContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536 AND DATALENGTH([MetricPayload]) <= 65536"));

@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -28,6 +29,8 @@ public sealed class PingBrowserTests
             factory.StartServer();
             var device = await PingTestSite.InitializeAsync(factory, token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
             var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
             using var playwright = await Playwright.CreateAsync();
@@ -79,6 +82,18 @@ public sealed class PingBrowserTests
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "host-metric-retention-desktop.png"), FullPage = true });
             await page.Locator("#metric-raw-days").FillAsync("10");
             await page.Locator("#metric-rollup-days").FillAsync("60");
+            await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
+            await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();
+            await page.SetViewportSizeAsync(390, 844);
+            await page.GotoAsync(url + "/settings/service-reception/retention");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "應用服務資料保存" }).WaitForAsync();
+            Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "telemetry-retention-mobile.png"), FullPage = true });
+            await page.SetViewportSizeAsync(1440, 1000);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "telemetry-retention-desktop.png"), FullPage = true });
+            await page.Locator("#telemetry-log-days").FillAsync("10");
+            await page.Locator("#telemetry-trace-days").FillAsync("5");
             await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
             await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();

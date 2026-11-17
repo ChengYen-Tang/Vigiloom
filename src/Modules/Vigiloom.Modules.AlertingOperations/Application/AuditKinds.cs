@@ -37,4 +37,5 @@ internal static class AuditKinds
     public const short LineSettingsChangedV1 = 32;
     public const short AuditRetentionChangedV1 = 33;
     public const short HostMetricRetentionChangedV1 = 34;
+    public const short TelemetryRetentionChangedV1 = 35;
 }

@@ -921,6 +921,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.HasIndex("InstanceId", "ServiceId");
 
+                    b.HasIndex("OccurredAt", "RowId")
+                        .HasDatabaseName("IX_LogRecords_Retention");
+
                     b.HasIndex("ServiceId", "ReceivedAt");
 
                     b.HasIndex("ServiceId", "OccurredAt", "RowId");
@@ -1175,6 +1178,54 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TelemetryRetentionSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LogDays")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TraceDays")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Slot")
+                        .IsUnique();
+
+                    b.ToTable("TelemetryRetentionSettings", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650");
+
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Slot", "[Slot] = 1");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext", b =>
                 {
                     b.Property<long>("RowId")
@@ -1266,6 +1317,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasIndex("InstanceId", "ServiceId");
 
                     b.HasIndex("ServiceId", "ReceivedAt");
+
+                    b.HasIndex("StartedAt", "RowId")
+                        .HasDatabaseName("IX_TraceSpans_Retention");
 
                     b.HasIndex("ServiceId", "StartedAt", "RowId");
 

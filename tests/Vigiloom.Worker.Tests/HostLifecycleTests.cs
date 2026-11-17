@@ -26,6 +26,7 @@ using System.Text;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -131,6 +132,20 @@ public sealed class HostLifecycleTests(TestContext testContext)
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, expired, old));
             await db.SaveChangesAsync(token);
         }
+        var serviceDb = services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        await using (var db = await serviceDb.CreateDbContextAsync(token))
+        {
+            var source = new ServiceSource("telemetry worker", new byte[32], old.AddDays(-30));
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "worker", "test", "Worker", old.AddDays(-30)), old.AddDays(-30));
+            db.Sources.Add(source); db.Services.Add(service);
+            db.LogRecords.Add(new LogRecord { ServiceId = service.Id, Context = new LogContext { ServiceId = service.Id,
+                ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" },
+                OccurredAt = old.AddDays(-10), ReceivedAt = old, RecordPayload = [] });
+            db.TraceSpans.Add(new TraceSpan { ServiceId = service.Id, Context = new TraceContext { ServiceId = service.Id,
+                ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" },
+                StartedAt = old, EndedAt = old, ReceivedAt = old, TraceId = new byte[16], SpanId = new byte[8], SpanPayload = [] });
+            await db.SaveChangesAsync(token);
+        }
         var credential = $"vla_{agentId:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
         var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
         var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
@@ -177,11 +192,14 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await Task.Delay(100, deadline.Token);
             }
             var hostRetentionId = jobs.Enqueue<HostMetricRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var telemetryRetentionId = jobs.Enqueue<TelemetryRetentionJob>(job => job.RunAsync(CancellationToken.None));
             while (true)
             {
                 var state = connection.GetStateData(hostRetentionId)?.Name;
+                var telemetryState = connection.GetStateData(telemetryRetentionId)?.Name;
                 Assert.AreNotEqual("Failed", state);
-                if (state == "Succeeded") break;
+                Assert.AreNotEqual("Failed", telemetryState);
+                if (state == "Succeeded" && telemetryState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
             await using var check = await agents.CreateDbContextAsync(token);
@@ -190,6 +208,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(x => x.Dimension == null, token)).Sum);
             Assert.AreEqual(0, await check.HostMetrics.CountAsync(x => x.Dimension == "old", token));
             Assert.AreEqual(1, await check.HostMetricRollups.CountAsync(x => x.Dimension == "old", token));
+            await using (var telemetry = await serviceDb.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await telemetry.LogRecords.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.TraceSpans.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.LogContexts.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.TraceContexts.CountAsync(token));
+            }
             var agent = await check.Agents.SingleAsync(x => x.Id == agentId, token);
             Assert.AreEqual(1L, agent.InboxDeletedTotal);
             Assert.IsNotNull(agent.ReplayCleanedBefore);
@@ -214,6 +239,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-rollup'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-telemetry-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
