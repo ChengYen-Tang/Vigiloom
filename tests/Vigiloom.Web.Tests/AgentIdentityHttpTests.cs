@@ -1151,6 +1151,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
                 var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("管理 Agent 身分", doc.Body!.TextContent);
+                Assert.Contains(device.Id.ToString(), doc.Body.TextContent);
+                Assert.Contains("正式安裝包下載功能尚未提供", doc.Body.TextContent);
                 var issueForm = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "agent-issue");
                 var fields = issueForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(e => e.GetAttribute("name")!, e => e.GetAttribute("value") ?? "");
                 fields["Issue.Confirm"] = "true";
