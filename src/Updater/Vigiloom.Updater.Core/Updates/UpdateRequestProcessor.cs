@@ -29,10 +29,11 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
         var previous = await runtime.GetSelectedDirectoryAsync(token);
         var currentVersion = InstalledAgentVersion.Read(previous);
         var target = assignment.Target;
+        var provenance = new UpdateProvenance(Guid.ParseExact(request.Credential.AsSpan(4, 36), "D"), target.PackageId, target.ManifestSha256);
         await using var package = await packages.AcquireAsync(target.ManifestSha256, target.PackageVersion, runtimeIdentifier,
             updaterVersion, currentVersion, request.Credential, token);
         var result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
-            installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token);
+            installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
         return new(CurrentAssignmentStatus.Available, result);
     }
 }

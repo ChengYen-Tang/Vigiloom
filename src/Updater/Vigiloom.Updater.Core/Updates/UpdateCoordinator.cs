@@ -23,7 +23,8 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
 
     /// <param name="isCurrent">Checks the current authenticated assignment, revocation and manifest authorization for this update.</param>
     public async Task<UpdateState> ApplyAsync(Guid id, string previousDirectory, string targetDirectory,
-        Func<Guid, CancellationToken, Task<UpdateAuthorization>> isCurrent, CancellationToken token)
+        Func<Guid, CancellationToken, Task<UpdateAuthorization>> isCurrent, CancellationToken token,
+        UpdateProvenance? provenance = null)
     {
         ArgumentNullException.ThrowIfNull(isCurrent);
         if (id.Version != 7 || string.IsNullOrWhiteSpace(previousDirectory) || string.IsNullOrWhiteSpace(targetDirectory) ||
@@ -32,6 +33,8 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
         var existing = await journal.ReadAsync(token);
         if (existing?.Id == id)
         {
+            if (existing.Provenance is not null && existing.Provenance != provenance)
+                throw new InvalidOperationException("The update identifier belongs to a different target.");
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             var retryable = existing.Phase == UpdatePhase.RolledBack && existing.RetryAllowed;
             if (!string.Equals(existing.PreviousDirectory, previousDirectory, comparison) ||
@@ -47,7 +50,7 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
         var steps = existing?.Id == id && existing.RetryAllowed
             ? existing.Steps.Append(new(UpdatePhase.Prepared, now, null)).ToArray()
             : [new(UpdatePhase.Prepared, now, null)];
-        var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps);
+        var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps, Provenance: provenance);
         await journal.WriteAsync(state, token);
         try
         {

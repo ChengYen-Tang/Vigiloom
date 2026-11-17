@@ -1,0 +1,81 @@
+using Microsoft.Data.Sqlite;
+using Vigiloom.Updater.Core.Updates;
+
+namespace Vigiloom.Updater.Core.Tests;
+
+[TestClass]
+public sealed class UpdateOutcomeTests(TestContext context)
+{
+    [TestMethod]
+    public async Task TerminalOutcomesSurviveLaterUpdatesAndAcknowledgementIsAgentScoped()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"update-outcomes-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var agent = Guid.CreateVersion7();
+            var other = Guid.CreateVersion7();
+            var update = Guid.CreateVersion7();
+            var target = new UpdateProvenance(agent, Guid.CreateVersion7(), new string('a', 64));
+            var now = DateTimeOffset.UtcNow;
+            var steps = new[] { new UpdateStep(UpdatePhase.Prepared, now, null), new UpdateStep(UpdatePhase.RolledBack, now, "Interrupted") };
+            var first = new UpdateState(update, Path.Combine(directory, "old"), Path.Combine(directory, "new"), UpdatePhase.RolledBack,
+                now, steps, Error: "Interrupted", RetryAllowed: true, Provenance: target);
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(first, context.CancellationToken);
+            await journal.WriteAsync(first, context.CancellationToken);
+            var pending = await new UpdateJournal(directory).ReadPendingAsync(agent, 10, context.CancellationToken);
+            Assert.HasCount(1, pending);
+            Assert.AreEqual(UpdateFailure.Interrupted, pending[0].Failure);
+            Assert.AreEqual(7, pending[0].MessageId.Version);
+            var message = pending[0].MessageId;
+            await journal.AcknowledgeAsync(other, message, context.CancellationToken);
+            Assert.HasCount(1, await journal.ReadPendingAsync(agent, 10, context.CancellationToken));
+
+            var success = first with { Phase = UpdatePhase.Succeeded, Error = null, RetryAllowed = false,
+                UpdatedAt = now.AddSeconds(1), Steps = [.. steps, new(UpdatePhase.Succeeded, now.AddSeconds(1), null)] };
+            await journal.WriteAsync(success, context.CancellationToken);
+            await journal.WriteAsync(new UpdateState(Guid.CreateVersion7(), first.PreviousDirectory, first.TargetDirectory,
+                UpdatePhase.Prepared, now.AddSeconds(2), [new(UpdatePhase.Prepared, now.AddSeconds(2), null)], Provenance: target), context.CancellationToken);
+            pending = await new UpdateJournal(directory).ReadPendingAsync(agent, 10, context.CancellationToken);
+            Assert.HasCount(2, pending);
+            Assert.AreEqual(message, pending[0].MessageId);
+            Assert.AreEqual(UpdatePhase.Succeeded, pending[1].Phase);
+            Assert.IsGreaterThan(pending[0].Sequence, pending[1].Sequence);
+            await journal.AcknowledgeAsync(agent, message, context.CancellationToken);
+            await journal.WriteAsync(first, context.CancellationToken);
+            pending = await new UpdateJournal(directory).ReadPendingAsync(agent, 10, context.CancellationToken);
+            Assert.HasCount(1, pending);
+            Assert.AreEqual(UpdatePhase.Succeeded, pending[0].Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task OutboxFailureRollsBackTerminalJournalWrite()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"update-outcomes-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var target = new UpdateProvenance(Guid.CreateVersion7(), Guid.CreateVersion7(), new string('b', 64));
+            var state = new UpdateState(Guid.CreateVersion7(), Path.Combine(directory, "old"), Path.Combine(directory, "new"),
+                UpdatePhase.Prepared, now, [new(UpdatePhase.Prepared, now, null)], Provenance: target);
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(state, context.CancellationToken);
+            await using (var db = new SqliteConnection($"Data Source={Path.Combine(directory, "update.db")};Pooling=False"))
+            {
+                await db.OpenAsync(context.CancellationToken);
+                await using var command = db.CreateCommand();
+                command.CommandText = "CREATE TRIGGER FailOutcome BEFORE INSERT ON UpdateOutbox BEGIN SELECT RAISE(ABORT, 'injected failure'); END";
+                await command.ExecuteNonQueryAsync(context.CancellationToken);
+            }
+            var terminal = state with { Phase = UpdatePhase.Succeeded, Steps = [.. state.Steps, new(UpdatePhase.Succeeded, now, null)] };
+            await Assert.ThrowsAsync<SqliteException>(() => journal.WriteAsync(terminal, context.CancellationToken));
+            Assert.AreEqual(UpdatePhase.Prepared, (await journal.ReadAsync(context.CancellationToken))!.Phase);
+            Assert.IsEmpty(await journal.ReadPendingAsync(target.AgentId, 10, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+}
