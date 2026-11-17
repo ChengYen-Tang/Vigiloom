@@ -17,4 +17,8 @@ public sealed record HostMetricBucket(DateTimeOffset Start, DateTimeOffset LastO
 
 /// <summary>Only populated buckets are returned; absence never means zero.</summary>
 public sealed record HostMetricAggregate(Guid AgentId, string Source, string? Dimension,
-    int BucketSeconds, IReadOnlyList<HostMetricBucket> Buckets);
+    int BucketSeconds, IReadOnlyList<HostMetricBucket> Buckets)
+{
+    /// <summary>At least one clipped time bucket could not be reconstructed from retained raw data.</summary>
+    public bool HasIncompleteBuckets { get; init; }
+}

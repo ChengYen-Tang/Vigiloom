@@ -36,6 +36,7 @@ public partial class HostDetails
     private List<HostMetricValue> series = [];
     private int seriesIndex;
     private IReadOnlyList<TimeSeriesPoint> points = [];
+    private bool metricIncomplete;
     private HostLogPage? logs;
     private readonly Stack<string?> logCursors = new();
     private string? logCursor;
@@ -164,7 +165,7 @@ public partial class HostDetails
         token.ThrowIfCancellationRequested();
         metricPage = page ?? throw new InvalidOperationException("Device missing");
         series = page.Items.DistinctBy(x => (x.AgentId, x.Source, x.Dimension)).ToList();
-        seriesIndex = 0; points = []; metricThreshold = null;
+        seriesIndex = 0; points = []; metricThreshold = null; metricIncomplete = false;
         if (series.Count > 0) await LoadSeriesAsync(token);
     }
     private Task NextMetricsAsync() => metricPage?.NextCursor is { } cursor ? NavigateMetricsAsync(cursor, true) : Task.CompletedTask;
@@ -198,6 +199,7 @@ public partial class HostDetails
         var threshold = await Monitoring.GetMetricThresholdAsync(DeviceId, item.AgentId, metricKind, item.Source, item.Dimension, token);
         token.ThrowIfCancellationRequested();
         points = output;
+        metricIncomplete = result.HasIncompleteBuckets;
         metricThreshold = threshold ?? throw new InvalidOperationException("Agent missing");
     }
     private string ThresholdEditUrl(HostMetricValue item) => $"/devices/{DeviceId:D}/metric-threshold?agentId={item.AgentId:D}&kind={(int)metricKind}&source={Uri.EscapeDataString(item.Source)}{(item.Dimension is null ? "" : $"&dimension={Uri.EscapeDataString(item.Dimension)}")}";

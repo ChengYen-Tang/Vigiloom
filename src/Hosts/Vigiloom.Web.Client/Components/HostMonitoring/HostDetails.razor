@@ -97,6 +97,7 @@
                     <AuthorizeView Roles="Administrator"><Authorized><a href="@ThresholdEditUrl(series[seriesIndex])">設定此來源的閾值</a></Authorized></AuthorizeView>
                 </section>
             }
+            @if (metricIncomplete) { <p role="status">部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。</p> }
             @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@HostMetricUnits.For(metricKind)" Points="points" /> }
             else { <p>此時間範圍沒有可繪製的資料。</p> }
             @if (metricPage.NextCursor is not null) { <p>來源選項來自本頁資料；可查看較早資料中的其他來源。</p> }

@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
@@ -33,20 +34,7 @@ public sealed class HostMetricHistory(IDbContextFactory<AgentManagementDbContext
         if (await devices.GetAsync(deviceId, token) is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
         if (!await db.Agents.AsNoTracking().AnyAsync(x => x.Id == agentId && x.DeviceId == deviceId, token)) return null;
-        var rows = await db.HostMetrics.AsNoTracking()
-            .Where(x => x.AgentId == agentId && x.Kind == kind && x.OccurredAt >= from && x.OccurredAt < until &&
-                EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2") == source &&
-                EF.Functions.DataLength(x.Source) == EF.Functions.DataLength(source) &&
-                (dimension == null ? x.Dimension == null : x.Dimension != null &&
-                    EF.Functions.Collate(x.Dimension, "Latin1_General_100_BIN2") == dimension &&
-                    EF.Functions.DataLength(x.Dimension) == EF.Functions.DataLength(dimension)))
-            .GroupBy(x => EF.Functions.DateDiffSecond(anchor, x.OccurredAt) / bucketSeconds)
-            .Select(g => new { Bucket = g.Key, Last = g.Max(x => x.OccurredAt), Min = g.Min(x => x.Value),
-                Max = g.Max(x => x.Value), Average = g.Average(x => x.Value), Count = g.LongCount() })
-            .OrderBy(x => x.Bucket).ToArrayAsync(token);
-        var buckets = rows.Select(x => new HostMetricBucket(anchor.AddSeconds((long)x.Bucket * bucketSeconds),
-            x.Last, x.Min, x.Max, x.Average, x.Count)).ToArray();
-        return new(agentId, source, dimension, bucketSeconds, buckets);
+        return await HostMetricRollupQuery.AggregateAsync(db, agentId, from, until, kind, source, dimension, bucketSeconds, anchor, token);
     }
 
     public async Task<HostMetricPage?> GetAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, AgentMetricKind? kind, CancellationToken token)
