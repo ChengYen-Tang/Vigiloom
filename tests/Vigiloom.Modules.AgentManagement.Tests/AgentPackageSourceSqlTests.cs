@@ -50,6 +50,13 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
             var library = new PackageLibrary(factory, settings, trust, transport, TimeProvider.System);
             Assert.IsTrue(await library.CacheAsync(packageId, token));
             CollectionAssert.AreEqual(archive, await File.ReadAllBytesAsync(Path.Combine(path, archiveHash + ".pkg"), token));
+            await using var lease = await trust.AcquireAsync(token);
+            var verified = await transport.ReadManifestAsync(uri, "test-token", lease, manifestHash, token);
+            var parsed = PackageManifest.Parse(verified, TimeProvider.System.GetUtcNow());
+            await using var opened = await transport.OpenAsync(uri, "test-token", parsed, token);
+            using var bytes = new MemoryStream();
+            await opened.CopyToAsync(bytes, token);
+            CollectionAssert.AreEqual(archive, bytes.ToArray());
         }
         finally
         {
@@ -315,6 +322,8 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
             Cached++;
             if (DuringCache is not null) await DuringCache(cancellationToken);
         }
+        public Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest package, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RepositoryHandler(TestRepository repository, string archiveHash, byte[] archive) : HttpMessageHandler
