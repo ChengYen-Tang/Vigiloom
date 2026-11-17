@@ -99,6 +99,8 @@ public sealed class Agent
     public string? RuntimeVersion { get; private set; }
     public string? RuntimeIdentifier { get; private set; }
     public DateTimeOffset? RuntimeReportedAt { get; private set; }
+    public double? RuntimeCpuPercent { get; private set; }
+    public long? RuntimeWorkingSetBytes { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -252,12 +254,16 @@ public sealed class Agent
         RuntimeVersion = report?.Version;
         RuntimeIdentifier = report?.RuntimeIdentifier;
         RuntimeReportedAt = report is null ? null : now.ToUniversalTime();
+        RuntimeCpuPercent = report?.CpuPercent;
+        RuntimeWorkingSetBytes = report?.WorkingSetBytes;
     }
     public void BeginQueueSession(Guid epoch)
     {
         RuntimeVersion = null;
         RuntimeIdentifier = null;
         RuntimeReportedAt = null;
+        RuntimeCpuPercent = null;
+        RuntimeWorkingSetBytes = null;
         QueueReportEpoch = epoch;
         QueueReportSequence = null;
         QueueReportedAt = null;

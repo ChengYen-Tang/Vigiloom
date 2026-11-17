@@ -299,7 +299,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 heartbeatHandler.ReleaseSecond.TrySetResult();
                 var switched = await heartbeatHandler.Third.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 Assert.IsNotNull(AgentRuntimeInfo.Report);
-                Assert.AreEqual(AgentRuntimeInfo.Report, switched.Report.Runtime);
+                Assert.IsNotNull(switched.Report.Runtime);
+                Assert.AreEqual(AgentRuntimeInfo.Report.Version, switched.Report.Runtime.Version);
+                Assert.AreEqual(AgentRuntimeInfo.Report.RuntimeIdentifier, switched.Report.Runtime.RuntimeIdentifier);
+                Assert.IsNotNull(switched.Report.Runtime.WorkingSetBytes);
+                Assert.IsGreaterThan(0L, switched.Report.Runtime.WorkingSetBytes.Value);
                 Assert.StartsWith($"vla_{secondId:D}.", switched.Credential);
                 Assert.IsNull(switched.Report.Configuration?.Applied);
                 Assert.AreEqual(AgentSettings.Default, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);

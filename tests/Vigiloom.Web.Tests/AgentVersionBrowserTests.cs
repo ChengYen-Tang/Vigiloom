@@ -86,14 +86,17 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             var registered = await db.Agents.SingleAsync(x => x.Id == agent.AgentId.Value, token);
-            registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64"), observed);
+            registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64", 25.5, 4096), observed);
             var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
             db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
                 MessageId = Guid.CreateVersion7(), Sequence = 1, Result = AgentUpdateResultKind.Switching,
                 OccurredAt = observed, ReceivedAt = observed });
             await db.SaveChangesAsync(token);
         }
-        await page.ReloadAsync();
+        await page.GotoAsync(url + $"/devices/{device.Id:D}");
+        await page.GetByText("25.5%", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("4,096 位元組", new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync(url + $"/devices/{device.Id:D}/agent-version");
         await page.GetByText("1.1.0", new() { Exact = true }).WaitForAsync();
         await page.GetByText("1.1.1 (win-x64)", new() { Exact = true }).WaitForAsync();
         await page.GetByText("1.2.3：切換版本", new() { Exact = true }).WaitForAsync();
