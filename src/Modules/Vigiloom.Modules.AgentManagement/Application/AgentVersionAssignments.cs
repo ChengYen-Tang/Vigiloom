@@ -40,6 +40,12 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
         if (agent is null) return null;
         var device = await devices.GetAsync(agent.DeviceId, token);
         if (device is null || !device.Eligible || device.Generation != agent.DeviceGeneration) return null;
+        var latest = await (from receipt in db.UpdateReceipts.AsNoTracking()
+            join target in db.UpdateTargets.AsNoTracking() on receipt.UpdateId equals target.Id
+            where receipt.AgentId == agentId && !db.UpdateReceipts.Any(other => other.UpdateId == receipt.UpdateId && other.Sequence > receipt.Sequence)
+            orderby receipt.ReceivedAt descending, receipt.RowId descending
+            select new AgentUpdateResultView(receipt.UpdateId, target.Version, receipt.Result,
+                receipt.OccurredAt, receipt.ReceivedAt, receipt.RetryAllowed, receipt.Failure)).FirstOrDefaultAsync(token);
         var row = await (from assignment in db.VersionAssignments.AsNoTracking()
             join package in db.Packages.AsNoTracking() on assignment.PackageId equals package.Id into packages
             from package in packages.DefaultIfEmpty()
@@ -47,9 +53,9 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             select new { assignment.AgentId, assignment.PackageId, PackageVersion = package == null ? null : package.Version,
                 RuntimeIdentifier = package == null ? null : package.RuntimeIdentifier, assignment.AssignedAt, assignment.Version,
                 Available = package != null && package.Listed && !package.Revoked && package.VerifiedUntil > clock.GetUtcNow() }).SingleOrDefaultAsync(token);
-        if (row is null) return new(agentId, null, null, null, default, "", false, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt);
+        if (row is null) return new(agentId, null, null, null, default, "", false, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt, latest);
         return new(row.AgentId, row.PackageId, row.PackageVersion, row.RuntimeIdentifier, row.AssignedAt,
-            Convert.ToBase64String(row.Version), row.Available, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt);
+            Convert.ToBase64String(row.Version), row.Available, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt, latest);
     }
 
     public async Task<VersionAssignmentResult> SetAsync(Guid agentId, Guid? packageId, string? revision, Guid actorId, CancellationToken token)

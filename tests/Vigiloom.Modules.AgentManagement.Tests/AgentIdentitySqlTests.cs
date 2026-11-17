@@ -172,7 +172,25 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, packageId, "", actor, token));
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, cancelled.Revision, actor, token));
         Assert.AreNotEqual(target.Target.UpdateId, (await assignments.GetForAgentAsync(credential, token)).Target!.UpdateId);
+        var results = new AgentUpdateResults(agents, identity, clock);
+        var result = new AgentUpdateResult(Guid.CreateVersion7(), target.Target.UpdateId, packageId, new string('b', 64), 5,
+            AgentUpdateResultKind.Succeeded, clock.Now, false, null);
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { RetryAllowed = true, Result = AgentUpdateResultKind.RolledBack }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { MessageId = Guid.CreateVersion7() }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { ManifestSha256 = new string('c', 64) }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(Credential(otherAgent.AgentId!.Value, otherSecret), result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Unauthorized, await results.ReceiveAsync("invalid", result, token));
+        var earlier = result with { MessageId = Guid.CreateVersion7(), Sequence = 3, Result = AgentUpdateResultKind.RolledBack,
+            OccurredAt = clock.Now.AddSeconds(-1), RetryAllowed = true, Failure = AgentUpdateFailure.Interrupted };
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, earlier, token));
+        var latest = (await assignments.GetAsync(agentId, token))!.LatestResult;
+        Assert.IsNotNull(latest);
+        Assert.AreEqual(target.Target.UpdateId, latest.UpdateId);
+        Assert.AreEqual(AgentUpdateResultKind.Succeeded, latest.Result);
         await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(2, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == result.UpdateId, token));
         var targets = await verify.UpdateTargets.Where(x => x.AgentId == agentId).OrderBy(x => x.RowId).ToArrayAsync(token);
         Assert.HasCount(2, targets);
         Assert.AreEqual(target.Target.UpdateId, targets[0].Id);

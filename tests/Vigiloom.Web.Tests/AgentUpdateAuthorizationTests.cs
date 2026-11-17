@@ -111,6 +111,42 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         Assert.AreEqual(CurrentAssignmentStatus.Changed, (await central.GetAsync(new Uri("https://localhost/"), device.Id, handoff, token)).Status);
         var reassigned = await http.GetFromJsonAsync<AgentVersionTarget>("/api/v1/agent/version-assignment", token);
         Assert.IsNotNull(reassigned);
+        var result = new AgentUpdateResult(Guid.CreateVersion7(), target.UpdateId, packageId, manifest.ManifestSha256, 3,
+            AgentUpdateResultKind.RolledBack, now, false, AgentUpdateFailure.Interrupted);
+        using (var accepted = await http.PostAsJsonAsync("/api/v1/agent/update-results", result, token))
+            Assert.AreEqual(System.Net.HttpStatusCode.NoContent, accepted.StatusCode);
+        using (var retried = await http.PostAsJsonAsync("/api/v1/agent/update-results", result, token))
+            Assert.AreEqual(System.Net.HttpStatusCode.NoContent, retried.StatusCode);
+        using (var conflict = await http.PostAsJsonAsync("/api/v1/agent/update-results", result with { Sequence = 4 }, token))
+            Assert.AreEqual(System.Net.HttpStatusCode.Conflict, conflict.StatusCode);
+        var jsonResult = System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        using (var duplicate = await http.PostAsync("/api/v1/agent/update-results",
+            new StringContent(jsonResult.Insert(1, $"\"messageId\":\"{result.MessageId:D}\","), Encoding.UTF8, "application/json"), token))
+            Assert.AreEqual(System.Net.HttpStatusCode.BadRequest, duplicate.StatusCode);
+        using (var oversized = await http.PostAsync("/api/v1/agent/update-results", new StringContent(new string('x', 4097), Encoding.UTF8, "application/json"), token))
+            Assert.AreEqual(System.Net.HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+        using (var unauthenticated = PingTestSite.Client(factory))
+        using (var denied = await unauthenticated.PostAsJsonAsync("/api/v1/agent/update-results", result, token))
+            Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, denied.StatusCode);
+        var outcomeDirectory = Path.Combine(context.TestRunDirectory!, $"update-outbox-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(outcomeDirectory);
+        try
+        {
+            var journal = new UpdateJournal(outcomeDirectory);
+            var provenance = new UpdateProvenance(agent.AgentId.Value, packageId, manifest.ManifestSha256);
+            await journal.WriteAsync(new UpdateState(target.UpdateId, Path.Combine(outcomeDirectory, "old"), Path.Combine(outcomeDirectory, "new"),
+                UpdatePhase.RolledBack, now, [new(UpdatePhase.Prepared, now, null), new(UpdatePhase.RolledBack, now, "Interrupted")],
+                Error: "Interrupted", Provenance: provenance), token);
+            using var deliveryHttp = new HttpClient(new DropFirstResponseHandler(factory.Server.CreateHandler()));
+            var delivery = new UpdateResultDelivery(deliveryHttp, journal, TimeProvider.System);
+            Assert.AreEqual(0, await delivery.FlushAsync(new Uri("https://localhost/"), credential, token));
+            Assert.HasCount(1, await journal.ReadPendingAsync(agent.AgentId.Value, 10, token));
+            Assert.AreEqual(1, await delivery.FlushAsync(new Uri("https://localhost/"), credential, token));
+            Assert.IsEmpty(await journal.ReadPendingAsync(agent.AgentId.Value, 10, token));
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(1, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == target.UpdateId && x.Sequence == 2, token));
+        }
+        finally { Directory.Delete(outcomeDirectory, recursive: true); }
         var current = new AssignmentVerifier(http, new Uri("https://localhost/"), credential, reassigned, manifest, TimeProvider.System);
         Assert.AreEqual(UpdateAuthorization.Authorized, await current.CheckAsync(reassigned.UpdateId, token));
 
@@ -118,6 +154,27 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         Assert.IsNotNull(view);
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agent.AgentId.Value, null, view.Revision, actor, token));
         Assert.AreEqual(UpdateAuthorization.NoLongerAuthorized, await current.CheckAsync(reassigned.UpdateId, token));
+        var syncDirectory = Path.Combine(context.TestRunDirectory!, $"update-sync-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(syncDirectory);
+        try
+        {
+            var journal = new UpdateJournal(syncDirectory);
+            var provenance = new UpdateProvenance(agent.AgentId.Value, packageId, manifest.ManifestSha256);
+            await journal.WriteAsync(new UpdateState(reassigned.UpdateId, Path.Combine(syncDirectory, "old"), Path.Combine(syncDirectory, "new"),
+                UpdatePhase.Succeeded, now, [new(UpdatePhase.Succeeded, now, null)], Provenance: provenance), token);
+            var runtime = new TestRuntime(Path.Combine(syncDirectory, "old"), () => Task.CompletedTask);
+            var server = new Uri("https://localhost/");
+            var processor = new UpdateRequestProcessor(central,
+                new CentralPackageAcquirer(server, Path.Combine(syncDirectory, "trust"), Path.Combine(syncDirectory, "cache"), 1024, TimeProvider.System),
+                new UpdateTransaction(http, journal, runtime, TimeProvider.System), journal, runtime, server, device.Id,
+                syncDirectory, "win-x64", "1.0.0", new UpdateResultDelivery(http, journal, TimeProvider.System));
+            var synced = await processor.ProcessAsync(new UpdateHandoff { SyncOnly = true, UpdateId = Guid.Empty, Credential = credential }, token);
+            Assert.AreEqual(CurrentAssignmentStatus.Changed, synced.Assignment);
+            Assert.IsEmpty(await journal.ReadPendingAsync(agent.AgentId.Value, 10, token));
+            await using var verify = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(1, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == reassigned.UpdateId, token));
+        }
+        finally { Directory.Delete(syncDirectory, recursive: true); }
         view = await assignments.GetAsync(agent.AgentId.Value, token);
         Assert.IsNotNull(view);
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agent.AgentId.Value, packageId, view.Revision, actor, token));
@@ -135,6 +192,19 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         Assert.AreEqual(UpdateAuthorization.Unavailable, await final.CheckAsync(again.UpdateId, token));
         Assert.AreEqual(CurrentAssignmentStatus.Unauthorized, (await central.GetAsync(new Uri("https://localhost/"), device.Id, handoff, token)).Status);
     }, context.CancellationToken);
+
+    private sealed class DropFirstResponseHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        private bool drop = true;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var response = await base.SendAsync(request, token);
+            if (!drop) return response;
+            drop = false;
+            response.Dispose();
+            throw new HttpRequestException("Simulated lost response after commit.");
+        }
+    }
 
     private sealed class TestRuntime(string previous, Func<Task> cancelAssignment) : IAgentUpdateRuntime
     {

@@ -945,6 +945,59 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.ToTable("SettingAudits", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateReceipt", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Failure")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RetryAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdateId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("AgentId", "ReceivedAt", "RowId");
+
+                    b.ToTable("UpdateReceipts", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_UpdateReceipts_Result", "[Sequence] > 0 AND [Result] IN (1, 2, 3) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] <> 1 OR ([RetryAllowed] = 0 AND [Failure] IS NULL))");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1685,6 +1738,21 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentSetting", null)
                         .WithMany()
                         .HasForeignKey("SettingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateReceipt", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget", null)
+                        .WithMany()
+                        .HasForeignKey("UpdateId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

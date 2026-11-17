@@ -70,6 +70,10 @@ public sealed class AgentVersionClientTests(TestContext context)
             Assert.IsNotNull(handoff);
             Assert.AreEqual(target.UpdateId, handoff.UpdateId);
             Assert.AreEqual($"vla_{agentId:D}.{secret}", handoff.Credential);
+            var syncForIncompatibleTarget = await client.CreateHandoffAsync(vault, server, first, token, syncOnly: true);
+            Assert.IsNotNull(syncForIncompatibleTarget);
+            Assert.IsTrue(syncForIncompatibleTarget.SyncOnly);
+            Assert.AreEqual(Guid.Empty, syncForIncompatibleTarget.UpdateId);
             Assert.DoesNotContain(secret, handoff.ToString());
             Assert.IsNull(await client.CreateHandoffAsync(vault, new Uri("https://other.example/"), first, token));
             await using (var session = vault.Acquire())
@@ -77,7 +81,13 @@ public sealed class AgentVersionClientTests(TestContext context)
             Assert.IsNull(await client.CreateHandoffAsync(vault, server, first, token));
             await using (var session = vault.Acquire())
                 await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = agentId, MachineSecret = secret }, token);
-            Assert.AreEqual(AgentVersionFetchStatus.NoAssignment, (await client.GetAsync(vault, server, token)).Status);
+            var unassigned = await client.GetAsync(vault, server, token);
+            Assert.AreEqual(AgentVersionFetchStatus.NoAssignment, unassigned.Status);
+            var sync = await client.CreateHandoffAsync(vault, server, unassigned, token);
+            Assert.IsNotNull(sync);
+            Assert.IsTrue(sync.SyncOnly);
+            Assert.AreEqual(Guid.Empty, sync.UpdateId);
+            Assert.AreEqual($"vla_{agentId:D}.{secret}", sync.Credential);
             Assert.AreEqual(AgentVersionFetchStatus.Unauthorized, (await client.GetAsync(vault, server, token)).Status);
             Assert.AreEqual(AgentVersionFetchStatus.Invalid, (await client.GetAsync(vault, server, token)).Status);
         }
