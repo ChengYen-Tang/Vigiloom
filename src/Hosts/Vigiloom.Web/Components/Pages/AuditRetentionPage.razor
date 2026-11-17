@@ -7,11 +7,11 @@
 @inject AuditRetentionSettings Retention
 @inject ILogger<AuditRetentionPage> Logger
 
-<PageTitle>設定操作紀錄保存 - Vigiloom</PageTitle>
+<PageTitle>操作紀錄保存 - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>設定操作紀錄保存</h1><p>管理設定變更紀錄的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理中央設定、帳號與 API 憑證操作紀錄的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於測速、Ping、公開設定等中央操作紀錄；帳號與設備等其他來源不在此期限內。到期後定期清理，延長期限無法還原已刪除資料。</p>
+        <p>此期限適用於中央設定、帳號與 API 憑證操作紀錄；設備等其他來源不在此期限內。首次管理員初始化紀錄會永久保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
@@ -23,7 +23,7 @@
                 <InputNumber id="audit-retention-days" @bind-Value="Input.Days" min="1" max="3650" required />
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆設定操作紀錄符合清理條件；實際數量可能變動。</p>
+                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆操作紀錄符合清理條件；實際數量可能變動。</p>
                     <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
                     <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/audit/retention">取消</a></div>
                 }

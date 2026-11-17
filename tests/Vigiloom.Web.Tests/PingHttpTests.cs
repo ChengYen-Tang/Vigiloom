@@ -105,6 +105,15 @@ public sealed class PingHttpTests
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>().CreateDbContextAsync(token))
+        {
+            var actor = Guid.CreateVersion7();
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            db.AccountAuditEvents.Add(new AccountAuditEvent(actor, actor, "AccountRenamed", old));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(null, actor, "InitialAdministratorCreated", old));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(actor, Guid.CreateVersion7(), "ApiCredentialIssued", old));
+            await db.SaveChangesAsync(token);
+        }
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
@@ -119,13 +128,14 @@ public sealed class PingHttpTests
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
+        Assert.Contains("預計有 2 筆操作紀錄", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
         Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
         Assert.AreEqual(30, (await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token))?.Days);
         using var audit = await admin.GetAsync("/settings/audit?source=audit-retention", token);
-        Assert.Contains("設定操作紀錄保存：365 → 30 天", await TextAsync(audit, token));
+        Assert.Contains("操作紀錄保存：365 → 30 天", await TextAsync(audit, token));
     }, TestContext.CancellationToken);
 
     [TestMethod]

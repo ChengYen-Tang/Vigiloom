@@ -4,10 +4,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
 
@@ -165,6 +167,13 @@ public sealed class InitialAdministratorTests
             var role = await roleManager.FindByNameAsync("Administrator");
             Assert.IsNotNull(role);
             Assert.IsTrue((await roleManager.UpdateAsync(role)).Succeeded);
+            await check.Database.ExecuteSqlRawAsync("UPDATE [identity].[AccountAuditEvents] SET [OccurredAt] = DATEADD(day, -400, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Action] = 'InitialAdministratorCreated'", token);
+            await using (var retention = await check.Database.BeginTransactionAsync(token))
+            {
+                var identityRetention = updateScope.ServiceProvider.GetRequiredService<IIdentityAuditRetention>();
+                await identityRetention.DeleteBatchAsync(check.Database.GetDbConnection(), retention.GetDbTransaction(), DateTimeOffset.UtcNow.AddDays(-365), 500, token);
+                await retention.CommitAsync(token);
+            }
             // Even out-of-band account deletion must not reopen first-time setup.
             await check.Database.ExecuteSqlRawAsync("DELETE FROM [identity].[AspNetUserRoles]; DELETE FROM [identity].[AspNetUsers];", token);
             Assert.AreEqual(InitialAdministratorStatus.AlreadyInitialized,

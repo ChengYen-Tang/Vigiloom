@@ -106,6 +106,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
         await using (var db = await identityDb.CreateDbContextAsync(token))
         {
             db.AccountAuditEvents.Add(new AccountAuditEvent(null, initialAdminId, "InitialAdministratorCreated", old.AddDays(-400)));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(initialAdminId, initialAdminId, "AccountRenamed", old.AddDays(-400)));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(initialAdminId, initialAdminId, "PasswordChanged", old));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(initialAdminId, Guid.CreateVersion7(), "ApiCredentialIssued", old.AddDays(-400)));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(initialAdminId, Guid.CreateVersion7(), "ApiCredentialRevoked", old));
             await db.SaveChangesAsync(token);
         }
         var device = new Device("inbox worker", "127.0.0.1", true, old);
@@ -224,7 +228,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using (var checkOperations = await operations.CreateDbContextAsync(token))
                 Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents WHERE ResourceId = {auditTarget}").SingleAsync(token));
             await using (var checkIdentity = await identityDb.CreateDbContextAsync(token))
+            {
                 Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.SubjectId == initialAdminId && x.Action == "InitialAdministratorCreated", token));
+                Assert.IsFalse(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.Action == "AccountRenamed", token));
+                Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.Action == "PasswordChanged", token));
+                Assert.IsFalse(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialIssued", token));
+                Assert.IsTrue(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialRevoked", token));
+            }
             await using var sql = new SqlConnection(database.ConnectionString);
             await sql.OpenAsync(token);
             await using var command = sql.CreateCommand();

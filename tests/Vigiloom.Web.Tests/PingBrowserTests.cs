@@ -101,7 +101,7 @@ public sealed class PingBrowserTests
             await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();
             await page.SetViewportSizeAsync(390, 844);
             await page.GotoAsync(url + "/settings/audit/retention");
-            await page.GetByRole(AriaRole.Heading, new() { Name = "設定操作紀錄保存" }).WaitForAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = "操作紀錄保存" }).WaitForAsync();
             Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "audit-retention-mobile.png"), FullPage = true });
             await page.SetViewportSizeAsync(1440, 1000);
