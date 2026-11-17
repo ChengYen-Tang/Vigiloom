@@ -1,7 +1,30 @@
 @host = https://localhost:7043
 @deviceId = 00000000-0000-0000-0000-000000000000
 @apiCredential = replace-with-monitoring-read-credential
+@antiforgery = replace-with-session-token
+@version = replace-with-retention-version
+@confirmationToken = replace-with-preview-confirmation-token
 
 ### Metric sources from raw and retained five-minute history.
 GET {{host}}/api/v1/devices/{{deviceId}}/host-metrics/series?from=2026-01-01T00%3A00%3A00Z&until=2027-01-01T00%3A00%3A00Z&kind=CpuTotalPercent&page=0
 Authorization: Bearer {{apiCredential}}
+
+### The following operations require an Administrator browser session.
+GET {{host}}/api/v1/settings/host-metrics/retention
+
+### Preview the effect of shortening retention.
+POST {{host}}/api/v1/settings/host-metrics/retention/preview
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "rawDays": 10, "rollupDays": 60, "version": "{{version}}" }
+
+### Apply the confirmed settings.
+PUT {{host}}/api/v1/settings/host-metrics/retention
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "rawDays": 10, "rollupDays": 60, "version": "{{version}}", "confirmationToken": "{{confirmationToken}}" }
+
+### Read changes made to host metric retention.
+GET {{host}}/api/v1/operations/audit/host-metric-retention?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z

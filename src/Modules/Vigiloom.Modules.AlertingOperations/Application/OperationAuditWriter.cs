@@ -28,6 +28,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
             AuditRetentionChanged change when IsValid(change) => (AuditKinds.AuditRetentionChangedV1, JsonSerializer.Serialize(change)),
+            HostMetricRetentionChanged change when IsValid(change) => (AuditKinds.HostMetricRetentionChangedV1, JsonSerializer.Serialize(change)),
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             AgentInboxSettingsChanged change when IsValid(change) => (AuditKinds.AgentInboxSettingsChangedV1, JsonSerializer.Serialize(change)),
@@ -107,6 +108,11 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
 
     internal static bool IsValid(AuditRetentionChanged change) =>
         AuditRetentionLimits.IsValid(change.PreviousDays) && AuditRetentionLimits.IsValid(change.CurrentDays) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(HostMetricRetentionChanged change) =>
+        HostMetricRetentionLimits.IsValid(change.PreviousRawDays, change.PreviousRollupDays) &&
+        HostMetricRetentionLimits.IsValid(change.CurrentRawDays, change.CurrentRollupDays) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     internal static bool IsValid(GroupChanged change) => change.Action is >= GroupAction.Created and <= GroupAction.ServicesChanged &&

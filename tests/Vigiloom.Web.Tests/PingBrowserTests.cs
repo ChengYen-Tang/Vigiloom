@@ -5,6 +5,7 @@ using Microsoft.Playwright;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -26,6 +27,8 @@ public sealed class PingBrowserTests
             factory.UseKestrel(0);
             factory.StartServer();
             var device = await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
             var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
@@ -65,6 +68,18 @@ public sealed class PingBrowserTests
             await page.Locator("#ping-rollup-days").FillAsync("300");
             await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
+            await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();
+            await page.SetViewportSizeAsync(390, 844);
+            await page.GotoAsync(url + "/settings/agents/metric-retention");
+            await page.GetByRole(AriaRole.Heading, new() { Name = "主機效能資料保存" }).WaitForAsync();
+            Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "host-metric-retention-mobile.png"), FullPage = true });
+            await page.SetViewportSizeAsync(1440, 1000);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "host-metric-retention-desktop.png"), FullPage = true });
+            await page.Locator("#metric-raw-days").FillAsync("10");
+            await page.Locator("#metric-rollup-days").FillAsync("60");
+            await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
             await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();
             await page.SetViewportSizeAsync(390, 844);

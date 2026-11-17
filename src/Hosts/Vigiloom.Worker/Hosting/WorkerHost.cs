@@ -86,6 +86,8 @@ public static class WorkerHost
         builder.Services.AddScoped<AgentInboxCleanup>();
         builder.Services.AddScoped<HostMetricRollupBackfill>();
         builder.Services.AddScoped<HostMetricRollupJob>();
+        builder.Services.AddScoped<HostMetricRetentionCleanup>();
+        builder.Services.AddScoped<HostMetricRetentionJob>();
         builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
         builder.Services.AddScoped<UpdateTrustStore>();
         builder.Services.AddScoped<AgentPackageSourceSettings>();
@@ -170,6 +172,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<PingRollupBackfillSchedule>();
         builder.Services.AddHostedService<HostMetricRollupSchedule>();
+        builder.Services.AddHostedService<HostMetricRetentionSchedule>();
         builder.Services.AddHostedService<PingRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         builder.Services.AddHostedService<MetricRollupSchedule>();

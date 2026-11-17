@@ -239,6 +239,10 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(pingRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(pingRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/settings/ping/retention/preview").GetProperty("post").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        var hostMetricRetention = paths.GetProperty("/api/v1/settings/host-metrics/retention");
+        Assert.IsTrue(hostMetricRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+        Assert.IsTrue(hostMetricRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+        Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/host-metric-retention").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var serviceAudit = paths.GetProperty("/api/v1/operations/audit/service-approvals").GetProperty("get");
         Assert.IsTrue(serviceAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", serviceAudit.GetProperty("description").GetString()!);

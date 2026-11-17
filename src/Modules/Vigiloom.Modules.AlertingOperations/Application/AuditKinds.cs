@@ -36,4 +36,5 @@ internal static class AuditKinds
     public const short BaselineExceptionRecordedV1 = 31;
     public const short LineSettingsChangedV1 = 32;
     public const short AuditRetentionChangedV1 = 33;
+    public const short HostMetricRetentionChangedV1 = 34;
 }

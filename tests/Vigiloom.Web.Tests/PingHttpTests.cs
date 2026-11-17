@@ -10,9 +10,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -29,6 +31,38 @@ namespace Vigiloom.Web.Tests;
 public sealed class PingHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task HostMetricRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/host-metrics/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/host-metrics/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<HostMetricRetentionSnapshot>("/api/v1/settings/host-metrics/retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/host-metrics/retention/preview", new HostMetricRetentionPreviewRequest(10, 60, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/agents/metric-retention", token);
+        var fields = Hidden(await FormAsync(page, "host-metric-retention", token));
+        fields["Input.RawDays"] = "10"; fields["Input.RollupDays"] = "60";
+        using var preview = await admin.PostAsync("/settings/agents/metric-retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "host-metric-retention", token));
+        confirm["Input.RawDays"] = "10"; confirm["Input.RollupDays"] = "60";
+        using var saved = await admin.PostAsync("/settings/agents/metric-retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        var current = await admin.GetFromJsonAsync<HostMetricRetentionSnapshot>("/api/v1/settings/host-metrics/retention", token);
+        Assert.AreEqual(10, current?.RawDays); Assert.AreEqual(60, current?.RollupDays);
+        using var audit = await admin.GetAsync("/settings/audit?source=host-metric-retention", token);
+        Assert.Contains("原始樣本保存：30 → 10 天", await TextAsync(audit, token));
+        Assert.Contains("五分鐘彙總保存：365 → 60 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task AuditRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
