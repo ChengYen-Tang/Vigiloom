@@ -5,7 +5,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Modules.AlertingOperations.Application.Retention;
 
-public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext> contexts, AuditRetentionSettings settings, IIdentityAuditRetention identity)
+public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext> contexts, AuditRetentionSettings settings, IEnumerable<IAuditRetentionSource> sources)
 {
     private const int BatchSize = 500;
 
@@ -22,10 +22,12 @@ public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext>
             var ids = db.AuditEvents.Where(x => x.OccurredAt < cutoff).OrderBy(x => x.OccurredAt).ThenBy(x => x.RowId)
                 .Select(x => x.RowId).Take(BatchSize);
             var removed = await db.AuditEvents.Where(x => ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
-            var identityRemoved = await identity.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), cutoff, BatchSize, token);
+            var sourceRemoved = 0;
+            foreach (var source in sources)
+                sourceRemoved += await source.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), cutoff, BatchSize, token);
             await tx.CommitAsync(token);
-            total += removed + identityRemoved.Accounts + identityRemoved.Credentials;
-            if (removed < BatchSize && identityRemoved.Accounts < BatchSize && identityRemoved.Credentials < BatchSize) return total;
+            total += removed + sourceRemoved;
+            if (removed < BatchSize && sourceRemoved < BatchSize) return total;
         }
     }
 }

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
-using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Modules.IdentityAccess.Application.Retention;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
 
@@ -170,7 +170,7 @@ public sealed class InitialAdministratorTests
             await check.Database.ExecuteSqlRawAsync("UPDATE [identity].[AccountAuditEvents] SET [OccurredAt] = DATEADD(day, -400, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [Action] = 'InitialAdministratorCreated'", token);
             await using (var retention = await check.Database.BeginTransactionAsync(token))
             {
-                var identityRetention = updateScope.ServiceProvider.GetRequiredService<IIdentityAuditRetention>();
+                var identityRetention = updateScope.ServiceProvider.GetRequiredService<IdentityAuditRetention>();
                 await identityRetention.DeleteBatchAsync(check.Database.GetDbConnection(), retention.GetDbTransaction(), DateTimeOffset.UtcNow.AddDays(-365), 500, token);
                 await retention.CommitAsync(token);
             }

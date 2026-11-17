@@ -9,9 +9,9 @@
 
 <PageTitle>操作紀錄保存 - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理中央設定、帳號與 API 憑證操作紀錄的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理中央設定、設備、帳號與 API 憑證操作紀錄的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於中央設定、帳號與 API 憑證操作紀錄；設備等其他來源不在此期限內。首次管理員初始化紀錄會永久保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
+        <p>此期限適用於中央設定、設備、帳號與 API 憑證操作紀錄；Agent 等其他來源不在此期限內。首次管理員初始化紀錄會永久保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
