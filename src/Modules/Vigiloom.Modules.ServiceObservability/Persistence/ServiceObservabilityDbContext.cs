@@ -298,6 +298,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         metricContext.Property(x => x.MetricNameBytes).HasColumnType("varbinary(512)")
             .HasComputedColumnSql("CONVERT(varbinary(512), [MetricName])", stored: true);
         metricContext.HasIndex(x => new { x.ServiceId, x.MetricNameBytes });
+        metricContext.HasIndex(x => x.RowId).HasFilter("[WindowsTracked] = 0").HasDatabaseName("IX_MetricContexts_UntrackedWindows");
         metricContext.Property(x => x.ResourceSchemaUrl).HasMaxLength(2048).IsRequired();
         metricContext.Property(x => x.ScopeSchemaUrl).HasMaxLength(2048).IsRequired();
         metricContext.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);

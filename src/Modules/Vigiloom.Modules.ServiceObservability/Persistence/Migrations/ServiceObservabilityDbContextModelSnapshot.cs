@@ -979,9 +979,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<Guid>("ServiceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("WindowsTracked")
+                        .HasColumnType("bit");
+
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RowId")
+                        .HasDatabaseName("IX_MetricContexts_UntrackedWindows")
+                        .HasFilter("[WindowsTracked] = 0");
 
                     b.HasIndex("ServiceId", "MetricNameBytes");
 
