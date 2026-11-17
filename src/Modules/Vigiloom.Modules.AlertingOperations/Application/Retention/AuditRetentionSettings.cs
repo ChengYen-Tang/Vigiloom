@@ -15,7 +15,7 @@ public sealed class AuditRetentionSettings(
     IDbContextFactory<OperationsDbContext> contexts,
     IOperationAuditWriter<OperationAudit> audit,
     IDataProtectionProvider protection,
-    IIdentityAuditRetention identity)
+    IEnumerable<IAuditRetentionSource> sources)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AuditRetention.Preview.v1");
 
@@ -46,10 +46,11 @@ public sealed class AuditRetentionSettings(
         if (!string.Equals(input.Version, Convert.ToBase64String(policy.Version), StringComparison.Ordinal)) return null;
         var now = await NowAsync(db, token);
         var count = await db.AuditEvents.Where(x => x.OccurredAt < now.AddDays(-input.Days)).LongCountAsync(token);
-        var identityCount = await identity.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-input.Days), token);
+        foreach (var source in sources)
+            count = checked(count + await source.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-input.Days), token));
         await tx.CommitAsync(token);
         var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.Days, input.Version, now)));
-        return new(input.Days, now, checked(count + identityCount.Accounts + identityCount.Credentials), input.Version, proof);
+        return new(input.Days, now, count, input.Version, proof);
     }
 
     public async Task<AuditRetentionSnapshot?> UpdateAsync(AuditRetentionInput input, Guid actor, CancellationToken token)

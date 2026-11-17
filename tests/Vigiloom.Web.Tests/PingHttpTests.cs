@@ -106,7 +106,7 @@ public sealed class PingHttpTests
     public Task AuditRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token);
+        var device = await PingTestSite.InitializeAsync(factory, token);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>().CreateDbContextAsync(token))
         {
             var actor = Guid.CreateVersion7();
@@ -114,6 +114,11 @@ public sealed class PingHttpTests
             db.AccountAuditEvents.Add(new AccountAuditEvent(actor, actor, "AccountRenamed", old));
             db.AccountAuditEvents.Add(new AccountAuditEvent(null, actor, "InitialAdministratorCreated", old));
             db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(actor, Guid.CreateVersion7(), "ApiCredentialIssued", old));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "updated", DateTimeOffset.UtcNow.AddDays(-40)));
             await db.SaveChangesAsync(token);
         }
         using var anonymous = Client(factory);
@@ -130,7 +135,7 @@ public sealed class PingHttpTests
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
-        Assert.Contains("預計有 2 筆操作紀錄", await TextAsync(preview, token));
+        Assert.Contains("預計有 3 筆操作紀錄", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);

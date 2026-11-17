@@ -113,7 +113,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await db.SaveChangesAsync(token);
         }
         var device = new Device("inbox worker", "127.0.0.1", true, old);
-        await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        await using (var db = await resources.CreateDbContextAsync(token))
+        {
+            db.Devices.Add(device);
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "updated", old.AddDays(-400)));
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "created", old));
+            await db.SaveChangesAsync(token);
+        }
         var network = services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
         var operations = services.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
         var auditActor = Guid.CreateVersion7();
@@ -234,6 +240,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.Action == "PasswordChanged", token));
                 Assert.IsFalse(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialIssued", token));
                 Assert.IsTrue(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialRevoked", token));
+            }
+            await using (var checkResources = await resources.CreateDbContextAsync(token))
+            {
+                Assert.IsFalse(await checkResources.DeviceAudits.AnyAsync(x => x.DeviceId == device.Id && x.Action == "updated", token));
+                Assert.IsTrue(await checkResources.DeviceAudits.AnyAsync(x => x.DeviceId == device.Id && x.Action == "created", token));
             }
             await using var sql = new SqlConnection(database.ConnectionString);
             await sql.OpenAsync(token);
