@@ -12,7 +12,9 @@ public sealed class TelemetryRetentionJob(TelemetryRetentionCleanup cleanup, ILo
     {
         var (logs, spans) = await cleanup.RunAsync(token);
         var (pruned, expired) = await cleanup.RunMetricsAsync(token);
+        var (observations, intervals) = await cleanup.RunHealthAsync(token);
         logger.LogInformation("Application telemetry retention removed {LogCount} logs, {SpanCount} spans and {ExpiredCount} metric windows; pruned {PrunedCount} metric windows", logs, spans, expired, pruned);
+        logger.LogInformation("Service health retention removed {ObservationCount} observations and {IntervalCount} intervals", observations, intervals);
     }
 }
 

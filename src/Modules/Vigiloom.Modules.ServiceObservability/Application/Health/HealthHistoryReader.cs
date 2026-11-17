@@ -107,7 +107,7 @@ public sealed class HealthHistoryReader(IDbContextFactory<ServiceObservabilityDb
     }
 
     private sealed record VersionEntry(Guid TargetId, byte[] TargetVersion, byte[]? ScheduleVersion);
-    private sealed record VersionSnapshot(VersionEntry[] Entries, byte[]? PolicyVersion);
+    private sealed record VersionSnapshot(VersionEntry[] Entries, byte[]? PolicyVersion, byte[]? RetentionVersion);
 
     private static async Task<VersionSnapshot> VersionsAsync(ServiceObservabilityDbContext db, Guid serviceId, CancellationToken token)
     {
@@ -119,12 +119,14 @@ public sealed class HealthHistoryReader(IDbContextFactory<ServiceObservabilityDb
                              select new VersionEntry(target.Id, target.Version, schedule == null ? null : schedule.Version)).ToArrayAsync(token);
         var policy = await db.HealthNetworkPolicies.AsNoTracking().Where(x => x.Name == "central")
             .Select(x => x.Version).SingleOrDefaultAsync(token);
-        return new(targets, policy);
+        var retention = await db.TelemetryRetentionSettings.AsNoTracking().Where(x => x.Slot == 1)
+            .Select(x => x.Version).SingleOrDefaultAsync(token);
+        return new(targets, policy, retention);
     }
 
     private static bool SameVersions(VersionSnapshot first, VersionSnapshot second)
     {
-        if (!Same(first.PolicyVersion, second.PolicyVersion) || first.Entries.Length != second.Entries.Length) return false;
+        if (!Same(first.PolicyVersion, second.PolicyVersion) || !Same(first.RetentionVersion, second.RetentionVersion) || first.Entries.Length != second.Entries.Length) return false;
         for (var i = 0; i < first.Entries.Length; i++)
         {
             var a = first.Entries[i]; var b = second.Entries[i];

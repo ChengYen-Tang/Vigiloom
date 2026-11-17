@@ -6,6 +6,7 @@ public sealed record ServiceDetails(Guid Id, string Name, string ServiceKey, str
 {
     public int LogRetentionDays { get; init; } = 14;
     public int TraceRetentionDays { get; init; } = 7;
+    public int HealthRetentionDays { get; init; } = 365;
 }
 
 /// <summary>A registered instance belonging to an approved application service.</summary>

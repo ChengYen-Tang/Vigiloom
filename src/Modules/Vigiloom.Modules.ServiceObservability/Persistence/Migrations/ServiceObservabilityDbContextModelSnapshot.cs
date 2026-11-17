@@ -241,6 +241,8 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("ObservedAt");
+
                     b.HasIndex("TargetId", "LeaseGeneration")
                         .IsUnique();
 
@@ -360,6 +362,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("EndedAt")
+                        .HasFilter("[EndedAt] IS NOT NULL");
 
                     b.HasIndex("TargetId")
                         .IsUnique()
@@ -1190,6 +1195,11 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("HealthDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
+
                     b.Property<int>("LogDays")
                         .HasColumnType("int");
 
@@ -1235,7 +1245,7 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.ToTable("TelemetryRetentionSettings", "service", t =>
                         {
-                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650");
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650 AND [HealthDays] BETWEEN 1 AND 3650");
 
                             t.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
 

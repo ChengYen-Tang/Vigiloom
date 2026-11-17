@@ -13,8 +13,10 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -32,6 +34,39 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class PublicServiceHistoryTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task ExpiredPublicHealthHistoryBecomesUnknown() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var host = PingTestSite.CreateFactory(database.ConnectionString);
+        var start = DateTimeOffset.UtcNow.AddDays(-3);
+        var end = start.AddMinutes(30);
+        var source = new ServiceSource("source", new byte[32], start);
+        var candidate = new ServiceCandidate(source.Id, "orders", "prod", "Orders", start);
+        var service = new MonitoredService(candidate, start);
+        service.SetPublication(true, "Orders", PublicationPolicy.ServiceHistoryVersion, start);
+        service.ConfirmPublicSince(start);
+        var target = new HealthTarget(service.Id, null, "http://127.0.0.1/health", 30, 5, 3, 2, start);
+        var interval = new HealthStateInterval(target.Id, 1, 1, start);
+        interval.Close(end);
+        var contexts = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        await using (var db = await contexts.CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source); db.Candidates.Add(candidate); db.Services.Add(service); db.HealthTargets.Add(target);
+            db.HealthStateIntervals.Add(interval); db.TelemetryRetentionSettings.Add(new TelemetryRetentionSetting { HealthDays = 1 });
+            await db.SaveChangesAsync(token);
+        }
+        using var client = PingTestSite.Client(host);
+        var url = $"/api/v1/public/services/{service.Id:D}/history?from={Uri.EscapeDataString(start.ToString("O"))}&to={Uri.EscapeDataString(end.ToString("O"))}";
+        var before = await client.GetFromJsonAsync<PublicServiceHistory>(url, token);
+        Assert.IsNotNull(before);
+        Assert.IsTrue(before.Days.All(x => x.State == "Healthy" && x.Coverage == 1));
+        Assert.AreEqual((0L, 1L), await new TelemetryRetentionCleanup(contexts).RunHealthAsync(token));
+        var after = await client.GetFromJsonAsync<PublicServiceHistory>(url, token);
+        Assert.IsNotNull(after);
+        Assert.IsTrue(after.Days.All(x => x.State == "Unknown" && x.Coverage == 0 && x.Availability is null));
+    }, context.CancellationToken);
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ServiceArchive_RevokesPublicHistoryAndPeriods() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>

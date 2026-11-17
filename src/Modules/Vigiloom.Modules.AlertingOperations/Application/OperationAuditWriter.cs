@@ -124,6 +124,9 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
          change.PreviousMetricRawDays is int previousRaw && change.PreviousMetricRollupDays is int previousRollup &&
          change.CurrentMetricRawDays is int currentRaw && change.CurrentMetricRollupDays is int currentRollup &&
          TelemetryRetentionLimits.IsValidMetrics(previousRaw, previousRollup) && TelemetryRetentionLimits.IsValidMetrics(currentRaw, currentRollup)) &&
+        (change.PreviousHealthDays is null && change.CurrentHealthDays is null ||
+         change.PreviousHealthDays is int previousHealth && change.CurrentHealthDays is int currentHealth &&
+         TelemetryRetentionLimits.IsValidHealth(previousHealth) && TelemetryRetentionLimits.IsValidHealth(currentHealth)) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     internal static bool IsValid(GroupChanged change) => change.Action is >= GroupAction.Created and <= GroupAction.ServicesChanged &&

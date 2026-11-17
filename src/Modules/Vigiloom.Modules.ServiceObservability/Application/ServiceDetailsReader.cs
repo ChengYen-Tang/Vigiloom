@@ -22,9 +22,9 @@ public sealed class ServiceDetailsReader(IDbContextFactory<ServiceObservabilityD
             .SingleOrDefaultAsync(token);
         if (result is null) return null;
         var retention = await db.TelemetryRetentionSettings.AsNoTracking().Where(x => x.Slot == 1)
-            .Select(x => new { x.LogDays, x.TraceDays }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.LogDays, x.TraceDays, x.HealthDays }).SingleOrDefaultAsync(token);
         return result with { ServerTime = await DiscoveryTransaction.NowAsync(db, token),
-            LogRetentionDays = retention?.LogDays ?? 14, TraceRetentionDays = retention?.TraceDays ?? 7 };
+            LogRetentionDays = retention?.LogDays ?? 14, TraceRetentionDays = retention?.TraceDays ?? 7, HealthRetentionDays = retention?.HealthDays ?? 365 };
     }
 
     public async Task<ServiceInstancePage?> InstancesAsync(Guid id, int page, CancellationToken token)
