@@ -72,6 +72,7 @@ builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
 builder.Services.AddScoped<TraceQuotaSettings>();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<OperationAuditQueryService>();
+builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings>();
 builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddScoped<DeviceAuditFeed>();
 builder.Services.AddScoped<AgentAuditFeed>();

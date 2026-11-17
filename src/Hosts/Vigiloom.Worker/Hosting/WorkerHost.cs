@@ -2,6 +2,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
@@ -55,6 +56,9 @@ public static class WorkerHost
         builder.Services.AddVigiloomScheduling(builder.Configuration);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<WorkerDiagnosticsStore>();
+        builder.Services.AddScoped<AuditRetentionSettings>();
+        builder.Services.AddScoped<AuditRetentionCleanup>();
+        builder.Services.AddScoped<AuditRetentionJob>();
         builder.Services.AddSingleton<WorkerDiagnostics>();
         builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
         builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
@@ -163,6 +167,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<PingRollupBackfillSchedule>();
         builder.Services.AddHostedService<PingRetentionSchedule>();
+        builder.Services.AddHostedService<AuditRetentionSchedule>();
         builder.Services.AddHostedService<MetricRollupSchedule>();
         builder.Services.AddSingleton<HealthRunner>();
         builder.Services.AddHostedService<HealthPolicyWorker>();

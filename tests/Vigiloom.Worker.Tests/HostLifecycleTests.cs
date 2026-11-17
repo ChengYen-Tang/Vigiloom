@@ -18,6 +18,8 @@ using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.IdentityAccess.Persistence;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -89,16 +91,29 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var services = host.Services;
         var resources = services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
         var agents = services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+        var identityDb = services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
         await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await identityDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         var old = DateTimeOffset.UtcNow.AddDays(-10);
+        var initialAdminId = Guid.CreateVersion7();
+        await using (var db = await identityDb.CreateDbContextAsync(token))
+        {
+            db.AccountAuditEvents.Add(new AccountAuditEvent(null, initialAdminId, "InitialAdministratorCreated", old.AddDays(-400)));
+            await db.SaveChangesAsync(token);
+        }
         var device = new Device("inbox worker", "127.0.0.1", true, old);
         await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
         var network = services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+        var operations = services.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+        var auditActor = Guid.CreateVersion7();
+        var auditTarget = Guid.CreateVersion7();
+        await using (var db = await operations.CreateDbContextAsync(token))
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.AuditEvents (ActorId, ResourceId, OccurredAt, Kind, Details) VALUES ({auditActor}, {auditTarget}, {old.AddDays(-400)}, {1}, {"{}"})", token);
         var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
         await using (var db = await network.CreateDbContextAsync(token)) { db.PingSamples.Add(oldPing); await db.SaveChangesAsync(token); }
         Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
@@ -130,9 +145,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<LinuxReassessmentJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<WindowsReassessmentJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<MetricRollupJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<AuditRetentionJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
             var pingRetentionId = jobs.Enqueue<PingRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var auditRetentionId = jobs.Enqueue<AuditRetentionJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(60));
@@ -140,9 +157,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
             {
                 var state = connection.GetStateData(id)?.Name;
                 var pingState = connection.GetStateData(pingRetentionId)?.Name;
+                var auditState = connection.GetStateData(auditRetentionId)?.Name;
                 Assert.AreNotEqual("Failed", state);
                 Assert.AreNotEqual("Failed", pingState);
-                if (state == "Succeeded" && pingState == "Succeeded") break;
+                Assert.AreNotEqual("Failed", auditState);
+                if (state == "Succeeded" && pingState == "Succeeded" && auditState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
             await using var check = await agents.CreateDbContextAsync(token);
@@ -154,6 +173,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
             await using (var checkNetwork = await network.CreateDbContextAsync(token))
                 Assert.IsFalse(await checkNetwork.PingSamples.AnyAsync(x => x.RowId == oldPing.RowId, token));
+            await using (var checkOperations = await operations.CreateDbContextAsync(token))
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents WHERE ResourceId = {auditTarget}").SingleAsync(token));
+            await using (var checkIdentity = await identityDb.CreateDbContextAsync(token))
+                Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.SubjectId == initialAdminId && x.Action == "InitialAdministratorCreated", token));
             await using var sql = new SqlConnection(database.ConnectionString);
             await sql.OpenAsync(token);
             await using var command = sql.CreateCommand();
@@ -162,6 +185,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-metric-rollup'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-ping-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-settings-audit-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
