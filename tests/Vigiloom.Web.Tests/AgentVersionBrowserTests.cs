@@ -86,7 +86,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             var registered = await db.Agents.SingleAsync(x => x.Id == agent.AgentId.Value, token);
-            registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64", 25.5, 4096), observed);
+            registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64", 25.5, 4096, [new(AgentModule.Metrics, observed)]), observed);
             var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
             db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
                 MessageId = Guid.CreateVersion7(), Sequence = 1, Result = AgentUpdateResultKind.Switching,
@@ -96,6 +96,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.GotoAsync(url + $"/devices/{device.Id:D}");
         await page.GetByText("25.5%", new() { Exact = true }).WaitForAsync();
         await page.GetByText("4,096 位元組", new() { Exact = true }).WaitForAsync();
+        await page.GetByText($"資源指標：{observed.ToUniversalTime():yyyy-MM-dd HH:mm:ss} UTC", new() { Exact = true }).WaitForAsync();
         await page.GotoAsync(url + $"/devices/{device.Id:D}/agent-version");
         await page.GetByText("1.1.0", new() { Exact = true }).WaitForAsync();
         await page.GetByText("1.1.1 (win-x64)", new() { Exact = true }).WaitForAsync();

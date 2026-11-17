@@ -101,6 +101,7 @@ public sealed class Agent
     public DateTimeOffset? RuntimeReportedAt { get; private set; }
     public double? RuntimeCpuPercent { get; private set; }
     public long? RuntimeWorkingSetBytes { get; private set; }
+    public string? RuntimeModuleFailuresJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -256,6 +257,7 @@ public sealed class Agent
         RuntimeReportedAt = report is null ? null : now.ToUniversalTime();
         RuntimeCpuPercent = report?.CpuPercent;
         RuntimeWorkingSetBytes = report?.WorkingSetBytes;
+        RuntimeModuleFailuresJson = report?.ModuleFailures is { } failures ? JsonSerializer.Serialize(failures) : null;
     }
     public void BeginQueueSession(Guid epoch)
     {
@@ -264,6 +266,7 @@ public sealed class Agent
         RuntimeReportedAt = null;
         RuntimeCpuPercent = null;
         RuntimeWorkingSetBytes = null;
+        RuntimeModuleFailuresJson = null;
         QueueReportEpoch = epoch;
         QueueReportSequence = null;
         QueueReportedAt = null;

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Agent;
@@ -18,7 +19,7 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
         if (!device.Eligible) return new(deviceId, AgentConnectionState.Disabled, null, OfflineAfterSeconds);
         await using var db = await contexts.CreateDbContextAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
-            .Select(x => new { x.Id, x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.LastReplayIssue, x.LastReplayIssueAt, x.RuntimeReportedAt, x.RuntimeCpuPercent, x.RuntimeWorkingSetBytes, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
+            .Select(x => new { x.Id, x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.LastReplayIssue, x.LastReplayIssueAt, x.RuntimeReportedAt, x.RuntimeCpuPercent, x.RuntimeWorkingSetBytes, x.RuntimeModuleFailuresJson, x.QueueReportedAt, x.QueueTotalBytes, x.QueueTotalBatches,
                 x.QueueQuarantinedBatches, x.QueueCapacityBytes, x.QueueCapacityBatches,
                 x.QuarantineInvalidLocal, x.QuarantineBadRequest, x.QuarantineConflict, x.QuarantineTooLarge,
                 x.QuarantineUnsupported, x.QuarantineExpired, x.QuarantineOther,
@@ -70,8 +71,12 @@ public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> 
             AgentBatchReceiver.MaximumRetainedBytesPerAgent);
         var issue = agent.LastReplayIssue is { } reason && Enum.IsDefined(reason) && agent.LastReplayIssueAt is { } issueAt
             ? new AgentReplayIssueObservation(reason, issueAt) : null;
-        var process = agent.RuntimeReportedAt is { } runtimeAt && (agent.RuntimeCpuPercent is not null || agent.RuntimeWorkingSetBytes is not null)
-            ? new AgentProcessMetrics(agent.RuntimeCpuPercent, agent.RuntimeWorkingSetBytes, runtimeAt) : null;
+        AgentModuleFailure[]? failures = null;
+        try { if (agent.RuntimeModuleFailuresJson is { } json) failures = JsonSerializer.Deserialize<AgentModuleFailure[]>(json); }
+        catch (JsonException) { }
+        if (failures is not null && (failures.Length > 5 || failures.Any(x => x is null || !x.IsValid()))) failures = null;
+        var process = agent.RuntimeReportedAt is { } runtimeAt && (agent.RuntimeCpuPercent is not null || agent.RuntimeWorkingSetBytes is not null || failures is not null)
+            ? new AgentProcessMetrics(agent.RuntimeCpuPercent, agent.RuntimeWorkingSetBytes, runtimeAt, failures) : null;
         return new(deviceId, state, last, offlineAfter, queue, batchTime?.ReceivedAt, batchTime, capacity, issue, metricLoss, process);
     }
 

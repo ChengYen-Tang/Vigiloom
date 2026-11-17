@@ -50,7 +50,7 @@ public sealed class AgentHeartbeatClient(HttpClient http)
         AgentQueueCapacityObservation? capacityObservation, Guid? metricLossWriter, AgentLogStatusObservation? logObservation,
         InventorySettingsObservation? inventoryObservation, (AgentSettingsOwner Owner, IntegritySettingsReport Report)? integrityObservation,
         (AgentSettingsOwner Owner, BaselineSettingsReport Report)? baselineObservation, CancellationToken token,
-        AgentRuntimeReport? runtime = null)
+        AgentRuntimeReport? runtime = null, AgentSettingsOwner? runtimeOwner = null)
     {
         await gate.WaitAsync(token);
         try
@@ -59,6 +59,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
             var (state, mismatch) = await IdentityClient.ReadRegisteredAsync(vault, expected, token);
             if (state is null) return mismatch ? HeartbeatResult.ServerMismatch : HeartbeatResult.NotRegistered;
             var id = state.AgentId!.Value;
+            if (runtime?.ModuleFailures is not null && (runtimeOwner is null || !runtimeOwner.Matches(id, expected, vault)))
+                runtime = runtime with { ModuleFailures = null };
             var settingsReport = configuration is not null && configuration.Owner.Matches(id, expected, vault) ? configuration.Report : null;
             var capacityOwnerMatches = capacityObservation is not null && capacityObservation.Owner.Matches(id, expected, vault);
             var logReport = logObservation is not null && logObservation.Owner.Matches(id, expected, vault) && logObservation.Report.IsValid()

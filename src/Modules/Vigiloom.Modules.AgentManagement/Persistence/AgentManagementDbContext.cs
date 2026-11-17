@@ -141,6 +141,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         agent.Property(x => x.BaselineConfigurationJson).HasMaxLength(512);
         agent.Property(x => x.RuntimeVersion).HasMaxLength(128);
         agent.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false);
+        agent.Property(x => x.RuntimeModuleFailuresJson).HasMaxLength(1024);
         agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
 
         var replay = modelBuilder.Entity<AgentReplayPolicy>();

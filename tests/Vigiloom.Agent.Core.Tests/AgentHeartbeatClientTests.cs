@@ -15,6 +15,34 @@ public sealed class AgentHeartbeatClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task Heartbeat_DoesNotSendPreviousOwnersModuleFailures()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var oldOwner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            var newOwner = oldOwner with { AgentId = Guid.CreateVersion7() };
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = newOwner.Server, AgentId = newOwner.AgentId,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var handler = new CaptureHandler();
+            using var http = new HttpClient(handler);
+            var client = new AgentHeartbeatClient(http);
+            var runtime = new AgentRuntimeReport("1.0.0", "linux-x64", 10, 2048,
+                [new AgentModuleFailure(AgentModule.Metrics, DateTimeOffset.UtcNow)]);
+            var server = new Uri(newOwner.Server);
+            Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, server, null, null, null, null, null, null, null, token, runtime, oldOwner));
+            Assert.IsNull(handler.Reports[0].Runtime!.ModuleFailures);
+            Assert.AreEqual(2048, handler.Reports[0].Runtime!.WorkingSetBytes);
+            Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, server, null, null, null, null, null, null, null, token, runtime, newOwner));
+            Assert.HasCount(1, handler.Reports[1].Runtime!.ModuleFailures!);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
     [DataRow(HttpStatusCode.BadRequest)]
     [DataRow(HttpStatusCode.RequestEntityTooLarge)]
     public async Task Heartbeat_OlderServerRetainsQueueReportWhenRuntimeIsUnsupported(HttpStatusCode rejected)

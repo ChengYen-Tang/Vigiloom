@@ -43,6 +43,7 @@ public static class AgentHost
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Integrity.AgentIntegritySettingsRuntime>();
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Baseline.AgentBaselineSettingsRuntime>();
         builder.Services.AddSingleton<AgentLogStatusRuntime>();
+        builder.Services.AddSingleton<AgentModuleFailures>();
         builder.Services.AddHostedService<AgentEnrollmentWorker>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<AgentUpdateWorker>();
