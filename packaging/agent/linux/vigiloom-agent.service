@@ -1,0 +1,19 @@
+[Unit]
+Description=Vigiloom Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=vigiloom-agent
+Group=vigiloom-agent
+EnvironmentFile=/etc/vigiloom/agent.env
+WorkingDirectory=/opt/vigiloom/agent/current
+ExecStart=/opt/vigiloom/agent/current/Vigiloom.Agent
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target

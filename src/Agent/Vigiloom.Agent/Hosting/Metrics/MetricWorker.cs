@@ -4,13 +4,14 @@ using System.ComponentModel;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>Runs one owner's metric collection serially and retries pending batches.</summary>
 internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfiguration configuration, TimeProvider clock,
     ILogger<MetricWorker> logger, IMetricResourceMonitor? resourceMonitor = null, SamplingBudgetCoordinator? sharedBudget = null,
-    Func<TimeProvider, IHostMetricCollector>? collectorFactory = null) : BackgroundService
+    Func<TimeProvider, IHostMetricCollector>? collectorFactory = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(5);
 
@@ -186,7 +187,10 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                                     lastStatus = status;
                                 }
                                 foreach (var source in result.UnavailableSources)
+                                {
+                                    failures?.Record(owner, AgentModule.Metrics);
                                     if (loggedUnavailable.Add(source)) logger.LogWarning("Agent metric source unavailable: {Source}.", source);
+                                }
                                 if (result.Delay > TimeSpan.Zero && result.Delay < delay) delay = result.Delay;
                             }
                         }
@@ -196,6 +200,7 @@ internal sealed class MetricWorker(AgentMetricSettingsRuntime settings, IConfigu
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                     UnauthorizedAccessException or JsonException or CryptographicException or System.Data.Common.DbException or Win32Exception or PlatformNotSupportedException)
                 {
+                    failures?.Record(activeOwner, AgentModule.Metrics);
                     logger.LogWarning("Agent metric sampling failed: {ErrorType}.", ex.GetType().Name);
                 }
                 try { await Task.Delay(delay, clock, stoppingToken); }

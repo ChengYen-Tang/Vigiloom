@@ -8,6 +8,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Metrics;
 using Vigiloom.Agent.Core.Transport;
+using Vigiloom.Agent.Hosting;
 using Vigiloom.Agent.Hosting.Inventory;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent;
@@ -117,6 +118,7 @@ public sealed class InventoryWorkerTests
             }).Build();
             using var http = new HttpClient(new EmptyStatusHandler());
             var monitor = new ExhaustedMonitor();
+            var failures = new AgentModuleFailures(TimeProvider.System);
             var collected = 0;
             Task<InventoryReadResult<InventoryEntry>> Collect(InventorySource source, CancellationToken _)
             {
@@ -125,7 +127,7 @@ public sealed class InventoryWorkerTests
             }
             using var worker = new InventoryWorker(new InventoryStatusClient(http, TimeProvider.System), settings, inventorySettings,
                 new SamplingBudgetCoordinator(TimeProvider.System), config, TimeProvider.System,
-                NullLogger<InventoryWorker>.Instance, monitor, Collect);
+                NullLogger<InventoryWorker>.Instance, monitor, Collect, failures);
             try
             {
                 stopped = false;
@@ -140,6 +142,7 @@ public sealed class InventoryWorkerTests
                     await Task.Delay(50, deadline.Token);
                 }
                 Assert.AreEqual(1, Volatile.Read(ref collected));
+                Assert.AreEqual(AgentModule.Inventory, failures.ForOwner(owner).Single().Module);
                 await monitor.FourthCpuRead.WaitAsync(deadline.Token);
                 Assert.IsGreaterThanOrEqualTo(4, monitor.CpuReads);
             }

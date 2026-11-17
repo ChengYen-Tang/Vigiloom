@@ -40,6 +40,187 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class AgentIdentitySqlTests
 {
     [TestMethod]
+    public void VersionAssignment_RequiresExplicitPackageField()
+    {
+        Assert.ThrowsExactly<System.Text.Json.JsonException>(() =>
+            System.Text.Json.JsonSerializer.Deserialize<AgentVersionAssignmentUpdate>("{\"Revision\":\"\"}"));
+        var cancelled = System.Text.Json.JsonSerializer.Deserialize<AgentVersionAssignmentUpdate>("{\"PackageId\":null,\"Revision\":\"\"}");
+        Assert.IsNotNull(cancelled);
+        Assert.IsNull(cancelled.PackageId);
+    }
+
+    [TestMethod]
+    public Task UpdateTargetMigrationPreservesExistingAssignment() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("legacy update target", "127.0.0.3", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        var packageId = Guid.CreateVersion7();
+        var updateId = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20261117020539_AgentRuntimeObservation", token);
+            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "linux-x64", Size = 1,
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
+            db.VersionAssignments.Add(new AgentVersionAssignment { AgentId = registered.AgentId!.Value, PackageId = packageId,
+                UpdateId = updateId, AssignedBy = actor, AssignedAt = clock.Now });
+            await db.SaveChangesAsync(token);
+            await db.GetService<IMigrator>().MigrateAsync(null, token);
+        }
+        await using var verify = agents.CreateDbContext();
+        var target = await verify.UpdateTargets.SingleAsync(x => x.Id == updateId, token);
+        Assert.AreEqual(registered.AgentId, target.AgentId);
+        Assert.AreEqual(packageId, target.PackageId);
+        Assert.AreEqual("1.2.3", target.Version);
+        Assert.AreEqual("linux-x64", target.RuntimeIdentifier);
+        Assert.AreEqual(new string('b', 64), target.ManifestSha256);
+        Assert.AreEqual(clock.Now, target.AssignedAt);
+    });
+
+    [TestMethod]
+    public Task VersionAssignment_TracksDesiredVersionAndRejectsStaleOrUnavailableUpdates() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("update target", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var devices = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, devices, clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registered.AgentId!.Value;
+        var packageId = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
+            await db.SaveChangesAsync(token);
+        }
+        var assignments = new AgentVersionAssignments(agents, devices, identity, clock);
+        var credential = Credential(agentId, secret);
+        var emptyTarget = await assignments.GetForAgentAsync(credential, token);
+        Assert.IsTrue(emptyTarget.Authenticated);
+        Assert.IsNull(emptyTarget.Target);
+        var initiallyUnassigned = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(initiallyUnassigned);
+        Assert.IsNull(initiallyUnassigned.PackageId);
+        Assert.IsNull(initiallyUnassigned.ReportedVersion);
+        var epoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(null, epoch), token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential,
+            new(1, epoch, 1, null, Runtime: new("1.0.0", "win-x64", 25.5, 4096, [new(AgentModule.Metrics, clock.Now)])), token));
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential,
+            new(1, epoch, 1, null, Runtime: new("9.0.0", "linux-x64")), token));
+        var observed = await assignments.GetAsync(agentId, token);
+        Assert.AreEqual("1.0.0", observed!.ReportedVersion);
+        Assert.AreEqual("win-x64", observed.ReportedRuntimeIdentifier);
+        Assert.AreEqual(clock.Now, observed.ReportedAt);
+        var process = (await new AgentMonitoring(agents, devices, clock).GetAsync(device.Id, token))!.Process;
+        Assert.IsNotNull(process);
+        Assert.AreEqual(25.5, process.CpuPercent);
+        Assert.AreEqual(4096, process.WorkingSetBytes);
+        Assert.AreEqual(clock.Now, process.ReceivedAt);
+        Assert.HasCount(1, process.ModuleFailures!);
+        Assert.AreEqual(AgentModule.Metrics, process.ModuleFailures![0].Module);
+        var newEpoch = Guid.CreateVersion7();
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(epoch, newEpoch), token));
+        Assert.IsNull((await assignments.GetAsync(agentId, token))!.ReportedVersion);
+        Assert.IsNull((await new AgentMonitoring(agents, devices, clock).GetAsync(device.Id, token))!.Process);
+        Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential,
+            new(1, epoch, 2, null, Runtime: new("8.0.0", "win-x64")), token));
+        Assert.IsNull((await assignments.GetAsync(agentId, token))!.ReportedVersion);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential,
+            new(1, newEpoch, 1, null, Runtime: new("1.0.1", "win-x64")), token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, "", actor, token));
+        var assigned = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(assigned);
+        Assert.AreEqual(packageId, assigned.PackageId);
+        Assert.IsTrue(assigned.Available);
+        var target = await assignments.GetForAgentAsync(credential, token);
+        Assert.IsNotNull(target.Target);
+        Assert.AreEqual(packageId, target.Target.PackageId);
+        Assert.AreEqual(7, target.Target.UpdateId.Version);
+        Assert.AreEqual(target.Target, (await assignments.GetForAgentAsync(credential, token)).Target);
+        var otherDevice = new Device("other update target", "127.0.0.2", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(otherDevice); await db.SaveChangesAsync(token); }
+        var otherIssued = await identity.IssueAsync(otherDevice.Id, actor, token);
+        var otherSecret = RandomNumberGenerator.GetBytes(32);
+        var otherAgent = await identity.RedeemAsync(otherIssued.Secret, SHA256.HashData(otherSecret), token);
+        var otherTarget = await assignments.GetForAgentAsync(Credential(otherAgent.AgentId!.Value, otherSecret), token);
+        Assert.IsTrue(otherTarget.Authenticated);
+        Assert.IsNull(otherTarget.Target);
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, null, "", actor, token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var package = await db.Packages.SingleAsync(x => x.Id == packageId, token);
+            package.Revoked = true;
+            await db.SaveChangesAsync(token);
+        }
+        var revoked = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(revoked);
+        Assert.IsFalse(revoked.Available);
+        Assert.IsNull((await assignments.GetForAgentAsync(credential, token)).Target);
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, packageId, revoked.Revision, actor, token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, null, revoked.Revision, actor, token));
+        Assert.IsNull((await assignments.GetForAgentAsync(credential, token)).Target);
+        var cancelled = await assignments.GetAsync(agentId, token);
+        Assert.IsNotNull(cancelled);
+        Assert.IsNull(cancelled.PackageId);
+        await using (var db = agents.CreateDbContext())
+        {
+            var package = await db.Packages.SingleAsync(x => x.Id == packageId, token);
+            package.Revoked = false;
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(VersionAssignmentResult.Conflict, await assignments.SetAsync(agentId, packageId, "", actor, token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, cancelled.Revision, actor, token));
+        Assert.AreNotEqual(target.Target.UpdateId, (await assignments.GetForAgentAsync(credential, token)).Target!.UpdateId);
+        var results = new AgentUpdateResults(agents, identity, clock);
+        var result = new AgentUpdateResult(Guid.CreateVersion7(), target.Target.UpdateId, packageId, new string('b', 64), 5,
+            AgentUpdateResultKind.Succeeded, clock.Now, false, null);
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { RetryAllowed = true, Result = AgentUpdateResultKind.RolledBack }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { MessageId = Guid.CreateVersion7() }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(credential, result with { ManifestSha256 = new string('c', 64) }, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Conflict, await results.ReceiveAsync(Credential(otherAgent.AgentId!.Value, otherSecret), result, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Unauthorized, await results.ReceiveAsync("invalid", result, token));
+        var earlier = result with { MessageId = Guid.CreateVersion7(), Sequence = 3, Result = AgentUpdateResultKind.RolledBack,
+            OccurredAt = clock.Now.AddSeconds(-1), RetryAllowed = true, Failure = AgentUpdateFailure.Interrupted };
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, earlier, token));
+        var latest = (await assignments.GetAsync(agentId, token))!.LatestResult;
+        Assert.IsNotNull(latest);
+        Assert.AreEqual(target.Target.UpdateId, latest.UpdateId);
+        Assert.AreEqual(AgentUpdateResultKind.Succeeded, latest.Result);
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(2, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == result.UpdateId, token));
+        var targets = await verify.UpdateTargets.Where(x => x.AgentId == agentId).OrderBy(x => x.RowId).ToArrayAsync(token);
+        Assert.HasCount(2, targets);
+        Assert.AreEqual(target.Target.UpdateId, targets[0].Id);
+        Assert.AreEqual(packageId, targets[0].PackageId);
+        Assert.AreEqual(new string('b', 64), targets[0].ManifestSha256);
+        Assert.AreEqual("1.2.3", targets[0].Version);
+        Assert.AreNotEqual(targets[0].Id, targets[1].Id);
+        var changes = await verify.Audits.Where(x => x.AgentId == agentId && (x.Action == "VersionAssigned" || x.Action == "VersionAssignmentCancelled"))
+            .OrderBy(x => x.RowId).ToArrayAsync(token);
+        Assert.HasCount(3, changes);
+        Assert.IsNull(changes[0].PreviousPackageId);
+        Assert.AreEqual(packageId, changes[0].PackageId);
+        Assert.AreEqual(packageId, changes[1].PreviousPackageId);
+        Assert.IsNull(changes[1].PackageId);
+        Assert.IsNull(changes[2].PreviousPackageId);
+        Assert.AreEqual(packageId, changes[2].PackageId);
+        Assert.AreEqual(AgentIdentityStatus.Success, await identity.RevokeAsync(agentId, actor, token));
+        Assert.IsNull(await assignments.GetAsync(agentId, token));
+        Assert.IsFalse((await assignments.GetForAgentAsync(credential, token)).Authenticated);
+    });
+
+    [TestMethod]
     public Task AgentOwnerFence_RejectsRevokedAndMismatchedOwners() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();

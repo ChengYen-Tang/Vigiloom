@@ -11,11 +11,13 @@ using Vigiloom.Agent.Hosting.Baseline;
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Runs the initial heartbeat schedule; configuration synchronization will supply its effective interval.</summary>
-internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null, AgentBaselineSettingsRuntime? baseline = null) : BackgroundService
+internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null, AgentBaselineSettingsRuntime? baseline = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         string? previous = null;
+        using var resources = new MetricResourceMonitor();
+        var selfMetrics = new AgentSelfMetrics(resources, clock);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(AgentSettings.Default.HeartbeatSeconds), clock);
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -64,7 +66,9 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         if (timer.Period != initialPeriod) timer.Period = initialPeriod;
                         var logReport = logStatus?.ForOwner(owner);
                         if (owner is null || logs.ForOwner(owner)?.Revision != logReport?.Report.Revision) logReport = null;
-                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken)).ToString();
+                        var runtime = selfMetrics.Read(AgentRuntimeInfo.Report);
+                        if (runtime is not null && failures is not null) runtime = runtime with { ModuleFailures = failures.ForOwner(owner) };
+                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken, runtime, owner)).ToString();
                     }
                 }
             }

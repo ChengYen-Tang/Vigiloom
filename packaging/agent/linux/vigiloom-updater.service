@@ -1,0 +1,22 @@
+[Unit]
+Description=Vigiloom Agent Updater
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=root
+Group=vigiloom-agent
+EnvironmentFile=/etc/vigiloom/updater.env
+WorkingDirectory=/opt/vigiloom/updater
+ExecStart=/opt/vigiloom/updater/Vigiloom.Updater
+RuntimeDirectory=vigiloom-updater
+RuntimeDirectoryMode=2750
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target

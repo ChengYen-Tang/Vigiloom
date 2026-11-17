@@ -67,9 +67,10 @@ internal static class PingTestSite
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
-            // Configure the delegated host before it starts; the derived factory's
-            // UseKestrel(0) port override is not applied by its parent on .NET 10.
-            builder.UseUrls("http://127.0.0.1:0");
+            // Keep the manual design-review origin stable while retaining isolated,
+            // dynamically allocated ports for ordinary parallel CI runs.
+            builder.UseUrls(Environment.GetEnvironmentVariable("VIGILOOM_VISUAL_QA") == "1"
+                ? "http://localhost:5043" : "http://127.0.0.1:0");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Vigiloom"] = connectionString,

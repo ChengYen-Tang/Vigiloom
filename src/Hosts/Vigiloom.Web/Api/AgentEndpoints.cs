@@ -75,6 +75,12 @@ internal static class AgentEndpoints
             .Accepts<AgentHeartbeatReport>(true, "application/json")
             .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
             .WithSummary("Record an authenticated Agent heartbeat");
+        machine.MapPost("/update-results", AgentUpdateResultEndpoint.ReceiveAsync)
+            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
+            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentUpdateResultEndpoint.MaximumBytes))
+            .Accepts<AgentUpdateResult>("application/json")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
+            .WithSummary("Record an authenticated Agent update result");
         machine.MapGet("/queue-session", async (HttpContext context, AgentIdentity agents, CancellationToken token) =>
             await agents.GetQueueSessionAsync(Bearer(context), token) is { } session ? Results.Ok(session) : Results.Unauthorized())
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
