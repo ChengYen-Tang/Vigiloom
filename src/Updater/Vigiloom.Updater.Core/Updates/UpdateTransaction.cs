@@ -11,7 +11,7 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
 {
     public async Task<UpdateState> ApplyAsync(Uri server, string credential, AgentVersionTarget target, VerifiedManifest verified,
         Stream archive, string installationRoot, string previousDirectory, string runtimeIdentifier,
-        string updaterVersion, string? currentAgentVersion, CancellationToken token)
+        string updaterVersion, string? currentAgentVersion, CancellationToken token, UpdateProvenance? provenance = null)
     {
         ArgumentNullException.ThrowIfNull(verified);
         var root = Path.GetFullPath(installationRoot);
@@ -53,7 +53,7 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
         // The coordinator records this directory before stopping the Agent. If the process is interrupted,
         // keep it for recovery; the installed version must never be deleted while it may be running.
         UpdateState result;
-        try { result = await coordinator.ApplyAsync(target.UpdateId, previousDirectory, prepared, verifier.CheckAsync, token); }
+        try { result = await coordinator.ApplyAsync(target.UpdateId, previousDirectory, prepared, verifier.CheckAsync, token, provenance); }
         catch (Exception failure)
         {
             UpdateState? recorded;

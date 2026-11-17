@@ -103,16 +103,22 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var runtime = new FakeRuntime { Healthy = version => version != "old" || ++recoveryChecks > 1 };
             var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
             var id = Guid.CreateVersion7();
+            var provenance = new UpdateProvenance(Guid.CreateVersion7(), Guid.CreateVersion7(), new string('c', 64));
             var checks = 0;
             var first = await coordinator.ApplyAsync(id, "old", "new", (_, _) => Task.FromResult(++checks == 1
-                ? UpdateAuthorization.Authorized : UpdateAuthorization.Unavailable), context.CancellationToken);
+                ? UpdateAuthorization.Authorized : UpdateAuthorization.Unavailable), context.CancellationToken, provenance);
             Assert.AreEqual(UpdatePhase.RollingBack, first.Phase);
             var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
             Assert.IsNotNull(recovered);
             Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
             Assert.IsTrue(recovered.RetryAllowed);
-            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken);
+            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken, provenance);
             Assert.AreEqual(UpdatePhase.Succeeded, retry.Phase);
+            var pending = await new UpdateJournal(directory).ReadPendingAsync(provenance.AgentId, 10, context.CancellationToken);
+            Assert.HasCount(2, pending);
+            Assert.AreEqual(UpdatePhase.RolledBack, pending[0].Phase);
+            Assert.AreEqual(UpdatePhase.Succeeded, pending[1].Phase);
+            Assert.IsGreaterThan(pending[0].Sequence, pending[1].Sequence);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
