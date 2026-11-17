@@ -1,7 +1,10 @@
 using System.Threading.Channels;
+using System.Net;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Updater.Core.Transport;
+using Vigiloom.Updater.Core.Updates;
 using Vigiloom.Updater.Hosting;
 
 namespace Vigiloom.Updater.Tests;
@@ -27,7 +30,7 @@ public sealed class UpdateListenerLoopTests(TestContext context)
                 firstStarted.SetResult();
                 await release.Task.WaitAsync(token);
             }
-        }, _ => Task.FromResult(seen.Count < 2), NullLogger.Instance, context.CancellationToken);
+        }, (_, _) => Task.FromResult(seen.Count < 2), NullLogger.Instance, context.CancellationToken);
         await listener.SendAsync(first, context.CancellationToken);
         await firstStarted.Task.WaitAsync(context.CancellationToken);
         await listener.SendAsync(second, context.CancellationToken);
@@ -49,7 +52,7 @@ public sealed class UpdateListenerLoopTests(TestContext context)
         {
             started.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, token);
-        }, _ => Task.FromResult(true), NullLogger.Instance, stop.Token);
+        }, (_, _) => Task.FromResult(true), NullLogger.Instance, stop.Token);
         await listener.SendAsync(Request(), context.CancellationToken);
         await started.Task.WaitAsync(context.CancellationToken);
         await stop.CancelAsync();
@@ -63,12 +66,59 @@ public sealed class UpdateListenerLoopTests(TestContext context)
     {
         await using var listener = new TestListener();
         var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var request = Request();
         var running = RecoveryWorker.RunListenerAsync(listener, (_, _) => throw new IOException("Interrupted update"),
-            _ => { recovered.SetResult(); return Task.FromResult(false); }, NullLogger.Instance, context.CancellationToken);
-        await listener.SendAsync(Request(), context.CancellationToken);
+            (current, _) => { Assert.AreSame(request, current); recovered.SetResult(); return Task.FromResult(false); }, NullLogger.Instance, context.CancellationToken);
+        await listener.SendAsync(request, context.CancellationToken);
         await recovered.Task.WaitAsync(context.CancellationToken);
         await running.WaitAsync(context.CancellationToken);
         Assert.IsTrue(listener.Stopped);
+    }
+
+    [TestMethod]
+    public async Task FailedRecoveryDeliversItsNewResultBeforeListenerStops()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"recovery-report-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var agent = Guid.CreateVersion7();
+            var update = Guid.CreateVersion7();
+            var request = new UpdateHandoff { UpdateId = update, Credential = $"vla_{agent:D}.{new string('a', 43)}" };
+            var journal = new UpdateJournal(directory);
+            var handler = new CaptureHandler();
+            using var http = new HttpClient(handler);
+            var delivery = new UpdateResultDelivery(http, journal, TimeProvider.System);
+            await using var listener = new TestListener();
+            var running = RecoveryWorker.RunListenerAsync(listener, (_, _) => Task.CompletedTask,
+                (current, token) => RecoveryWorker.RecoverAndDeliverAsync(current, async ct =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    await journal.WriteAsync(new UpdateState(update, "old", "new", UpdatePhase.RollbackFailed, now,
+                        [new(UpdatePhase.RollbackFailed, now, "Interrupted")], Error: "Interrupted",
+                        Provenance: new(agent, Guid.CreateVersion7(), new string('a', 64))), ct);
+                    return false;
+                }, delivery, new Uri("https://example.test/"), NullLogger.Instance, token),
+                NullLogger.Instance, context.CancellationToken);
+            await listener.SendAsync(request, context.CancellationToken);
+            await running.WaitAsync(context.CancellationToken);
+            Assert.IsTrue(listener.Stopped);
+            Assert.IsNotNull(handler.Report);
+            Assert.AreEqual(AgentUpdateResultKind.RollbackFailed, handler.Report.Result);
+            Assert.AreEqual(update, handler.Report.UpdateId);
+            Assert.IsEmpty(await journal.ReadPendingAsync(agent, 10, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public AgentUpdateResult? Report { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Report = await request.Content!.ReadFromJsonAsync<AgentUpdateResult>(cancellationToken);
+            return new(HttpStatusCode.NoContent);
+        }
     }
 
     private static UpdateHandoff Request() => new() { UpdateId = Guid.CreateVersion7(), Credential = "test" };
