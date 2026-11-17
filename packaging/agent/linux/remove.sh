@@ -6,6 +6,9 @@ fail() { printf '%s\n' "$1" >&2; exit 1; }
 [[ $(id -u) == 0 ]] || fail 'Run this command as root.'
 [[ -d /run/systemd/system ]] && systemctl show --property=Version >/dev/null || fail 'A running systemd service manager is required.'
 command -v flock >/dev/null || fail 'The flock command is required to stop the installation safely.'
+[[ -d /opt/vigiloom/agent && ! -L /opt/vigiloom/agent ]] || fail 'The Agent installation directory is missing.'
+exec {maintenance}>>/opt/vigiloom/agent/repair.lock
+flock -n "$maintenance" || fail 'Another installation maintenance operation is already running.'
 
 backup=/etc/vigiloom/service-backup
 agent=/etc/systemd/system/vigiloom-agent.service
