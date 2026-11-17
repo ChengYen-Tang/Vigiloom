@@ -54,4 +54,6 @@ public interface IPackageLibraryTransport
 {
     Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken cancellationToken);
     Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
+    /// <summary>Opens the verified cached archive; the caller owns the returned stream.</summary>
+    Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
 }
