@@ -4,6 +4,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 . (Join-Path $PSScriptRoot 'native.ps1')
 $programRoot = Join-Path $env:ProgramFiles 'VigiloomAgent'
 $agentRoot = Join-Path $programRoot 'Agent'
+$maintenance = [IO.File]::Open((Join-Path $agentRoot 'repair.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try {
 $updaterExe = Join-Path $programRoot 'Updater\Vigiloom.Updater.exe'
 $updaterState = Join-Path $env:ProgramData 'VigiloomAgent\Updater'
 $backup = Join-Path $updaterState 'service-backup.json'
@@ -58,3 +60,4 @@ finally { $service.Dispose() }
 Set-Service -Name 'Vigiloom Agent' -StartupType Automatic
 Start-Service -Name 'Vigiloom Agent'
 Write-Host 'Vigiloom services were restored with the retained Agent identity and data.'
+} finally { $maintenance.Dispose() }

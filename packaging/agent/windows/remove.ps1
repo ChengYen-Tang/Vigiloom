@@ -2,8 +2,11 @@ $ErrorActionPreference = 'Stop'
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run as Administrator.' }
 . (Join-Path $PSScriptRoot 'native.ps1')
+. (Join-Path $PSScriptRoot 'service-operations.ps1')
 $programRoot = Join-Path $env:ProgramFiles 'VigiloomAgent'
 $agentRoot = Join-Path $programRoot 'Agent'
+$maintenance = [IO.File]::Open((Join-Path $agentRoot 'repair.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try {
 $stateRoot = Join-Path $env:ProgramData 'VigiloomAgent'
 $backup = Join-Path $stateRoot 'Updater\service-backup.json'
 $agentName = 'Vigiloom Agent'
@@ -26,22 +29,6 @@ function Get-ServiceConfiguration {
 }
 [void](Get-ServiceConfiguration)
 
-function Stop-VigiloomService([string]$name) {
-    $service = Get-Service -Name $name
-    $process = $null
-    try {
-        $pidValue = (Get-CimInstance Win32_Service -Filter "Name='$name'").ProcessId
-        if ($pidValue) {
-            try { $process = [Diagnostics.Process]::GetProcessById([int]$pidValue); [void]$process.Handle }
-            catch [ArgumentException] { $process = $null }
-        }
-        if ($service.Status -ne 'Stopped') {
-            if ($service.Status -ne 'StopPending') { $service.Stop() }
-            $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
-        }
-        if ($process -and -not $process.WaitForExit(60000)) { throw "The $name process has not exited." }
-    } finally { if ($process) { $process.Dispose() }; $service.Dispose() }
-}
 Stop-VigiloomService $updaterName
 $lock = [IO.File]::Open((Join-Path $agentRoot 'updater.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
 try {
@@ -54,3 +41,4 @@ try {
 Write-Host 'Vigiloom services were removed. Identity, queued data, settings, trust and installed versions were retained.'
 Write-Host 'Run restore.ps1 from the installed Tools directory to restore this installation.'
 Write-Host 'Removing local services does not revoke the Agent credential in the central platform.'
+} finally { $maintenance.Dispose() }

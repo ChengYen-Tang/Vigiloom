@@ -30,7 +30,7 @@ $updaterState = Join-Path $stateRoot 'Updater'
 $agentName = 'Vigiloom Agent'
 $updaterName = 'Vigiloom Updater'
 foreach ($file in @((Join-Path $agentSource 'Vigiloom.Agent.exe'), (Join-Path $updaterSource 'Vigiloom.Updater.exe'), $rootSource,
-    (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1'))) {
+    (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'service-operations.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1'))) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'The installer bundle is incomplete.' }
 }
 $architecture = Get-AgentExecutableArchitecture (Join-Path $agentSource 'Vigiloom.Agent.exe')
@@ -119,7 +119,7 @@ try {
     $programCreated = $true
     $toolsRoot = Join-Path $programRoot 'Tools'
     [void](New-Item -ItemType Directory -Path $agentRoot, $updaterRoot, $toolsRoot -Force)
-    Copy-Item -LiteralPath (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1') -Destination $toolsRoot
+    Copy-Item -LiteralPath (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'service-operations.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1') -Destination $toolsRoot
     Copy-Item -Path (Join-Path $agentSource '*') -Destination $agentRoot -Recurse -Force
     Copy-Item -Path (Join-Path $updaterSource '*') -Destination $updaterRoot -Recurse -Force
     $bytes = [Text.Encoding]::ASCII.GetBytes($enrollment)
