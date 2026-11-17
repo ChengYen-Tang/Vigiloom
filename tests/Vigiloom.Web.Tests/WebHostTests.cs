@@ -213,6 +213,9 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.AreEqual(2, hostLogSecurity.GetArrayLength());
         Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
         Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
+        var metricSeriesSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-metrics/series").GetProperty("get").GetProperty("security");
+        Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
+        Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
         var accessSecurity = paths.GetProperty("/api/v1/access").GetProperty("get").GetProperty("security")[0];
         Assert.IsTrue(accessSecurity.TryGetProperty("ApiBearer", out _));
         var audit = paths.GetProperty("/api/v1/operations/audit").GetProperty("get");

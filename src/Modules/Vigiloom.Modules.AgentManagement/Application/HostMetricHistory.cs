@@ -12,6 +12,7 @@ public sealed class HostMetricHistory(IDbContextFactory<AgentManagementDbContext
 {
     public const int PageSize = 200;
     private static readonly TimeSpan MaximumRange = TimeSpan.FromDays(31);
+    private static readonly TimeSpan MaximumAggregateRange = TimeSpan.FromDays(366);
 
     /// <summary>Aggregates one series in UTC buckets. Missing buckets are omitted.</summary>
     public async Task<HostMetricAggregate?> AggregateAsync(Guid deviceId, Guid agentId, DateTimeOffset from,
@@ -19,7 +20,7 @@ public sealed class HostMetricHistory(IDbContextFactory<AgentManagementDbContext
     {
         from = from.ToUniversalTime();
         until = until.ToUniversalTime();
-        if (deviceId == Guid.Empty || agentId == Guid.Empty || from.Year < 2 || until <= from || until - from > MaximumRange ||
+        if (deviceId == Guid.Empty || agentId == Guid.Empty || from.Year < 2 || until <= from || until - from > MaximumAggregateRange ||
             !Enum.IsDefined(kind) || kind == AgentMetricKind.CollectionUnavailable ||
             string.IsNullOrWhiteSpace(source) || source.Length > 128 || source.Any(char.IsControl) ||
             dimension is { Length: > 256 } || dimension?.Any(char.IsControl) == true ||
@@ -35,6 +36,30 @@ public sealed class HostMetricHistory(IDbContextFactory<AgentManagementDbContext
         await using var db = await contexts.CreateDbContextAsync(token);
         if (!await db.Agents.AsNoTracking().AnyAsync(x => x.Id == agentId && x.DeviceId == deviceId, token)) return null;
         return await HostMetricRollupQuery.AggregateAsync(db, agentId, from, until, kind, source, dimension, bucketSeconds, anchor, token);
+    }
+
+    /// <summary>Finds metric series in both retained samples and five-minute summaries.</summary>
+    public async Task<HostMetricSeriesPage?> GetSeriesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until,
+        AgentMetricKind kind, int page, CancellationToken token)
+    {
+        from = from.ToUniversalTime();
+        until = until.ToUniversalTime();
+        if (deviceId == Guid.Empty || from.Year < 2 || until <= from || until - from > MaximumAggregateRange ||
+            !Enum.IsDefined(kind) || kind == AgentMetricKind.CollectionUnavailable || page < 0 || page > int.MaxValue / PageSize)
+            throw new ArgumentException("Invalid metric series query.");
+        if (await devices.GetAsync(deviceId, token) is null) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var ids = db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId).Select(x => x.Id);
+        var startWindow = new DateTimeOffset(from.Ticks - from.Ticks % TimeSpan.FromMinutes(5).Ticks, TimeSpan.Zero);
+        var raw = db.HostMetrics.AsNoTracking().Where(x => ids.Contains(x.AgentId) && x.Kind == kind && x.OccurredAt >= from && x.OccurredAt < until)
+            .Select(x => new { x.AgentId, Source = EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2"), SourceLength = EF.Functions.DataLength(x.Source),
+                Dimension = x.Dimension == null ? null : EF.Functions.Collate(x.Dimension, "Latin1_General_100_BIN2"), DimensionLength = EF.Functions.DataLength(x.Dimension) });
+        var summaries = db.HostMetricRollups.AsNoTracking().Where(x => ids.Contains(x.AgentId) && x.Kind == kind && x.WindowStart >= startWindow && x.WindowStart < until)
+            .Select(x => new { x.AgentId, Source = EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2"), SourceLength = EF.Functions.DataLength(x.Source),
+                Dimension = x.Dimension == null ? null : EF.Functions.Collate(x.Dimension, "Latin1_General_100_BIN2"), DimensionLength = EF.Functions.DataLength(x.Dimension) });
+        var rows = await raw.Union(summaries).OrderBy(x => x.AgentId).ThenBy(x => x.Source).ThenBy(x => x.SourceLength)
+            .ThenBy(x => x.Dimension).ThenBy(x => x.DimensionLength).Skip(page * PageSize).Take(PageSize + 1).ToArrayAsync(token);
+        return new(rows.Take(PageSize).Select(x => new HostMetricSeries(x.AgentId, x.Source, x.Dimension)).ToArray(), rows.Length > PageSize);
     }
 
     public async Task<HostMetricPage?> GetAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, AgentMetricKind? kind, CancellationToken token)

@@ -7,6 +7,7 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
@@ -87,11 +88,17 @@ public sealed class HostDetailsBrowserTests
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddDays(-2), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 67), now));
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddDays(-10), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 17), now));
+            db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now.AddDays(-200), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 13), now));
             var records = Enumerable.Range(0, 26).Select(i => new AgentLogRecord(Guid.CreateVersion7(), now, $"event-{i}", null, null, null, null, null)).ToArray();
             var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, records);
             for (var i = 0; i < records.Length; i++) db.HostLogs.Add(new HostLog(agent.Id, batch, i, now));
             await db.SaveChangesAsync(token);
         }
+        var agentContexts = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+        Assert.AreEqual(5, await new HostMetricRollupBackfill(agentContexts).RunBatchAsync(token));
+        await using (var db = await agentContexts.CreateDbContextAsync(token))
+            await db.HostMetrics.Where(x => x.AgentId == agent.Id && x.OccurredAt < now.AddDays(-100)).ExecuteDeleteAsync(token);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var thresholds = scope.ServiceProvider.GetRequiredService<HostMetricThresholds>();
@@ -156,6 +163,18 @@ public sealed class HostDetailsBrowserTests
         Assert.AreEqual(0, await page.Locator(".time-series-chart table").GetByText("17", new() { Exact = true }).CountAsync());
         await page.Locator("#host-range").SelectOptionAsync("720");
         await page.Locator(".time-series-chart table").GetByText("17", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        await page.Locator("#host-range").SelectOptionAsync("8760");
+        await page.Locator(".time-series-chart table").GetByText("13", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } metricEvidence)
+        {
+            Directory.CreateDirectory(metricEvidence);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(metricEvidence, "metric-year-desktop.png"), FullPage = true });
+        }
+        await page.SetViewportSizeAsync(390, 844);
+        Assert.IsLessThanOrEqualTo(390, await page.EvaluateAsync<int>("() => document.documentElement.scrollWidth"));
+        if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } mobileEvidence)
+            await page.ScreenshotAsync(new() { Path = Path.Combine(mobileEvidence, "metric-year-mobile.png"), FullPage = true });
+        await page.SetViewportSizeAsync(1440, 1024);
         await page.Locator("#metric-kind").SelectOptionAsync(((int)AgentMetricKind.SwapTotalBytes).ToString());
         await page.GetByText("這段時間沒有此指標。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
@@ -177,6 +196,9 @@ public sealed class HostDetailsBrowserTests
         await page.GetByRole(AriaRole.Region, new() { Name = "盤點變更表格，可左右捲動" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
         await page.GetByText("未達觸發條件", new() { Exact = true }).WaitForAsync();
+        await page.Locator("#host-range").SelectOptionAsync("8760");
+        await page.GetByText("以表格查看資料", new() { Exact = true }).ClickAsync();
+        await page.Locator(".time-series-chart table").GetByText("13", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "設定此來源的閾值" }).CountAsync());
         await using (var scope = factory.Services.CreateAsyncScope())
         {

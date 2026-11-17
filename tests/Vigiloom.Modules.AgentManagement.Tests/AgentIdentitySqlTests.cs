@@ -982,6 +982,45 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNotNull(rawOnly);
         Assert.IsTrue(rawOnly.HasIncompleteBuckets);
         Assert.IsEmpty(rawOnly.Buckets);
+        var annual = await history.AggregateAsync(device.Id, agent.Id, start, start.AddDays(365),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 86400, token);
+        Assert.IsNotNull(annual);
+        Assert.AreEqual(6L, annual.Buckets.Single().Samples);
+        Assert.AreEqual(220d / 6, annual.Buckets.Single().Average, 0.000001);
+        var sources = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 0, token);
+        Assert.IsNotNull(sources);
+        Assert.IsFalse(sources.HasMore);
+        Assert.HasCount(2, sources.Items);
+        Assert.IsTrue(sources.Items.Any(x => x.Source == "cpu" && x.AgentId == agent.Id));
+        Assert.IsTrue(sources.Items.Any(x => x.Source == "CPU" && x.AgentId == agent.Id));
+    });
+
+    [TestMethod]
+    public Task HostMetricSeries_PagesDistinctExactSourcesFromRollupsAndRaw() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        var device = new Device("metric sources", "127.0.0.1", true, start);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], start);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            var batch = Guid.CreateVersion7();
+            for (var i = 0; i < 203; i++)
+                db.HostMetrics.Add(new HostMetric(agent.Id, batch, i,
+                    new(Guid.CreateVersion7(), start.AddMinutes(1), AgentMetricKind.CpuCorePercent, "cpu", $"core-{i}", i), start));
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 203,
+                new(Guid.CreateVersion7(), start.AddMinutes(1), AgentMetricKind.CpuCorePercent, "cpu ", null, 1), start));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var first = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 0, token);
+        var second = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 1, token);
+        Assert.IsNotNull(first); Assert.IsNotNull(second);
+        Assert.HasCount(200, first.Items); Assert.IsTrue(first.HasMore);
+        Assert.HasCount(4, second.Items); Assert.IsFalse(second.HasMore);
+        Assert.AreEqual(204, first.Items.Concat(second.Items).Distinct().Count());
+        Assert.IsTrue(first.Items.Concat(second.Items).Any(x => x.Source == "cpu "));
     });
 
     [TestMethod]
