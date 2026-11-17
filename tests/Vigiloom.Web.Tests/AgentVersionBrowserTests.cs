@@ -139,6 +139,13 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "mobile.png"), FullPage = true });
         await page.GetByRole(AriaRole.Button, new() { Name = "取消指派", Exact = true }).ClickAsync();
         await page.GetByText("已取消指派。", new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync(url + $"/devices/{device.Id:D}/agent");
+        var downloads = page.GetByRole(AriaRole.Link, new() { Name = "Vigiloom 官方版本下載頁", Exact = true });
+        await Assertions.Expect(downloads).ToHaveAttributeAsync("href", "https://github.com/ChengYen-Tang/Vigiloom/releases");
+        Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "installer-mobile.png"), FullPage = true });
+        await page.SetViewportSizeAsync(1440, 1024);
+        await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "installer-desktop.png"), FullPage = true });
         testContext.AddResultFile(Path.Combine(evidence, "desktop.png"));
         testContext.AddResultFile(Path.Combine(evidence, "mobile.png"));
     }, testContext.CancellationToken);
