@@ -63,6 +63,54 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             Assert.AreEqual(2, count);
         }, context.CancellationToken);
 
+    [TestMethod]
+    public Task AlertCleanupPreservesOpenEpisodesAndPendingDelivery() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var setup = new OperationsDbContext(options)) await setup.Database.MigrateAsync(token);
+            var factory = new PooledDbContextFactory<OperationsDbContext>(options);
+            IAuditRetentionSource[] sources = [];
+            var settings = new AuditRetentionSettings(factory, new OperationAuditWriter(), new EphemeralDataProtectionProvider(), sources);
+            var original = await settings.GetAsync(token);
+            var now = DateTimeOffset.UtcNow; var old = now.AddDays(-40); var recent = now.AddDays(-10);
+            var openPing = Guid.CreateVersion7(); var closedPing = Guid.CreateVersion7();
+            var openService = Guid.CreateVersion7(); var closedService = Guid.CreateVersion7();
+            var expiredNotice = Guid.CreateVersion7(); var queuedNotice = Guid.CreateVersion7();
+            var pendingNotice = Guid.CreateVersion7(); var recentNotice = Guid.CreateVersion7();
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlerts (Id, DeviceId, Target, OpenedAt, RecoveredAt) VALUES ({openPing}, {Guid.CreateVersion7()}, {"a"}, {old}, {null}), ({closedPing}, {Guid.CreateVersion7()}, {"b"}, {old}, {old})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlertEvents (MessageId, AlertId, Generation, OccurredAt, IsRecovery, DeviceName, GroupsJson) VALUES ({Guid.CreateVersion7()}, {openPing}, {1}, {old}, {false}, {"a"}, {"[]"}), ({Guid.CreateVersion7()}, {closedPing}, {1}, {old}, {true}, {"b"}, {"[]"})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.ServiceHealthAlerts (Id, TargetId, ServiceId, State, OpenedAt, RecoveredAt) VALUES ({openService}, {Guid.CreateVersion7()}, {Guid.CreateVersion7()}, {1}, {old}, {null}), ({closedService}, {Guid.CreateVersion7()}, {Guid.CreateVersion7()}, {0}, {old}, {old})", token);
+                foreach (var (id, at) in new[] { (expiredNotice, old), (queuedNotice, old), (pendingNotice, old), (recentNotice, recent) })
+                    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({id}, {Guid.CreateVersion7()}, {"ping"}, {at}, {"title"}, {"detail"})", token);
+                var cursor = await db.Database.SqlQuery<long>($"SELECT RowId AS [Value] FROM operations.Notifications WHERE Id = {queuedNotice}").SingleAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.LineSettings (Id, Slot, Enabled, LastNotificationRowId) VALUES ({Guid.CreateVersion7()}, {1}, {true}, {cursor})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.LineDeliveries (Id, NotificationId, GroupId, Recipient, Text, CreatedAt) VALUES ({Guid.CreateVersion7()}, {queuedNotice}, {Guid.CreateVersion7()}, {"group"}, {"pending"}, {old})", token);
+            }
+            var actor = Guid.CreateVersion7();
+            var preview = await settings.PreviewAsync(new(30, original.Version), actor, token);
+            Assert.IsNotNull(preview);
+            Assert.AreEqual(2L, preview.AlertEpisodes); Assert.AreEqual(2L, preview.Notifications);
+            Assert.IsNotNull(await settings.UpdateAsync(new(30, original.Version, preview.ConfirmationToken), actor, token));
+            Assert.AreEqual(4L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlerts WHERE Id = {openPing}").SingleAsync(token));
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlertEvents WHERE AlertId = {closedPing}").SingleAsync(token));
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.ServiceHealthAlerts WHERE Id = {openService}").SingleAsync(token));
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.ServiceHealthAlerts WHERE Id = {closedService}").SingleAsync(token));
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.Notifications WHERE Id = {expiredNotice}").SingleAsync(token));
+                Assert.AreEqual(2, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM operations.Notifications").SingleAsync(token));
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.LineDeliveries WHERE NotificationId = {queuedNotice} AND CompletedAt IS NULL").SingleAsync(token));
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.LineDeliveries SET CompletedAt = {now} WHERE NotificationId = {queuedNotice}", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.LineSettings SET LastNotificationRowId = (SELECT MAX(RowId) FROM operations.Notifications)", token);
+            }
+            Assert.AreEqual(1L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+        }, context.CancellationToken);
+
     private sealed class FailingAuditWriter : IOperationAuditWriter<OperationAudit>
     {
         public Task AppendAsync(DbConnection connection, DbTransaction transaction, OperationAudit audit, CancellationToken cancellationToken) =>

@@ -130,8 +130,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var auditActor = Guid.CreateVersion7();
         var auditTarget = Guid.CreateVersion7();
         var schedulingActor = Guid.CreateVersion7();
+        var openAlert = Guid.CreateVersion7(); var closedAlert = Guid.CreateVersion7(); var oldNotification = Guid.CreateVersion7();
         await using (var db = await operations.CreateDbContextAsync(token))
+        {
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.AuditEvents (ActorId, ResourceId, OccurredAt, Kind, Details) VALUES ({auditActor}, {auditTarget}, {old.AddDays(-400)}, {1}, {"{}"})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlerts (Id, DeviceId, Target, OpenedAt, RecoveredAt) VALUES ({openAlert}, {device.Id}, {"open"}, {old.AddDays(-400)}, {null}), ({closedAlert}, {device.Id}, {"closed"}, {old.AddDays(-400)}, {old.AddDays(-400)})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({oldNotification}, {Guid.CreateVersion7()}, {"ping"}, {old.AddDays(-400)}, {"title"}, {"detail"})", token);
+        }
         await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'accepted'), ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'started'), ({schedulingActor}, {old}, '/jobs/enqueued/delete', 'accepted')", token);
         var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
@@ -296,7 +301,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
             await using (var checkNetwork = await network.CreateDbContextAsync(token))
                 Assert.IsFalse(await checkNetwork.PingSamples.AnyAsync(x => x.RowId == oldPing.RowId, token));
             await using (var checkOperations = await operations.CreateDbContextAsync(token))
+            {
                 Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents WHERE ResourceId = {auditTarget}").SingleAsync(token));
+                Assert.AreEqual(1, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlerts WHERE Id = {openAlert}").SingleAsync(token));
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlerts WHERE Id = {closedAlert}").SingleAsync(token));
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.Notifications WHERE Id = {oldNotification}").SingleAsync(token));
+            }
             await using (var checkScheduling = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
                 var cutoff = DateTimeOffset.UtcNow.AddDays(-365);

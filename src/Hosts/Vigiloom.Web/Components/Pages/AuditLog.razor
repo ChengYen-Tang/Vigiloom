@@ -91,7 +91,7 @@
                                 }
                                 else if (entry.AuditRetention is { } auditRetention)
                                 {
-                                    <div>操作紀錄保存：@auditRetention.PreviousDays → @auditRetention.CurrentDays 天</div>
+                                    <div>操作紀錄保存：@auditRetention.PreviousDays → @auditRetention.CurrentDays 天（目前亦適用於告警與通知）</div>
                                     <details><summary>版本資訊</summary><span>@auditRetention.PreviousVersion → @auditRetention.CurrentVersion</span></details>
                                 }
                                 else if (entry.SpeedSettings is { } change)

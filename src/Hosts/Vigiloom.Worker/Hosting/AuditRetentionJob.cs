@@ -11,7 +11,7 @@ public sealed class AuditRetentionJob(AuditRetentionCleanup cleanup, ILogger<Aud
     public async Task RunAsync(CancellationToken token)
     {
         var removed = await cleanup.RunAsync(token);
-        logger.LogInformation("Audit retention removed {Count} records", removed);
+        logger.LogInformation("Audit and alert retention removed {Count} records", removed);
     }
 }
 
