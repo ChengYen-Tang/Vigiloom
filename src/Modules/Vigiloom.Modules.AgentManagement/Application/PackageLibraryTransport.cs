@@ -31,10 +31,15 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
 
     public async Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken)
     {
+        await using var stream = await OpenAsync(origin, credential, manifest, cancellationToken);
+    }
+
+    public Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken)
+    {
         var packages = new Uri(origin, "packages/");
         var downloader = client is not null ? new PackageArchiveDownloader(packages, client, credential) :
             credential is null ? new PackageArchiveDownloader(packages) : new PackageArchiveDownloader(packages, credential);
         var cache = new LocalPackageCache(cacheDirectory, maximumBytes, downloader, clock);
-        await using var stream = await cache.OpenManifestAsync(manifest, cancellationToken);
+        return cache.OpenManifestAsync(manifest, cancellationToken);
     }
 }
