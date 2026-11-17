@@ -5,6 +5,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Agent.Core.Baseline;
 
@@ -14,7 +15,7 @@ namespace Vigiloom.Agent.Hosting.Baseline;
 internal sealed class BaselineWorker(AgentBaselineSettingsRuntime settings, AgentMetricSettingsRuntime metrics,
     SamplingBudgetCoordinator budget, IConfiguration configuration, TimeProvider clock, ILogger<BaselineWorker> logger,
     IMetricResourceMonitor? resourceMonitor = null,
-    Func<BaselineCheck, CancellationToken, Task<(string OperatingSystem, BaselineObservation Result)>>? collectOverride = null) : BackgroundService
+    Func<BaselineCheck, CancellationToken, Task<(string OperatingSystem, BaselineObservation Result)>>? collectOverride = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -56,6 +57,7 @@ internal sealed class BaselineWorker(AgentBaselineSettingsRuntime settings, Agen
                                 try { queued = await CollectAsync(vault, owner, saved, resources, cancellation.Token); }
                                 catch (OperationCanceledException) when (deadline.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
                                 {
+                                    failures?.Record(owner, AgentModule.Baseline);
                                     logger.LogWarning("Agent baseline collection timed out; it will be retried.");
                                     queued = false;
                                 }
@@ -75,6 +77,7 @@ internal sealed class BaselineWorker(AgentBaselineSettingsRuntime settings, Agen
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                     UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException or Win32Exception or PlatformNotSupportedException)
                 {
+                    failures?.Record(active, AgentModule.Baseline);
                     logger.LogWarning("Agent baseline collection failed: {ErrorType}.", ex.GetType().Name);
                     next = clock.GetUtcNow().AddMinutes(1);
                 }

@@ -1,0 +1,334 @@
+using Vigiloom.Updater.Core.Updates;
+using Microsoft.Data.Sqlite;
+
+namespace Vigiloom.Updater.Core.Tests;
+
+[TestClass]
+public sealed class UpdateCoordinatorTests(TestContext context)
+{
+    private static Task<UpdateAuthorization> Authorized(Guid _, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return Task.FromResult(UpdateAuthorization.Authorized);
+    }
+
+    [TestMethod]
+    public async Task ChangedAssignmentBeforeStopLeavesAgentRunningAndCanBeRetried()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime();
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            var id = Guid.CreateVersion7();
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => coordinator.ApplyAsync(id, "old", "new",
+                (_, _) => Task.FromResult(UpdateAuthorization.NoLongerAuthorized), context.CancellationToken));
+            Assert.IsEmpty(runtime.Actions);
+            Assert.IsNull(await journal.ReadAsync(context.CancellationToken));
+            Assert.AreEqual(UpdatePhase.Succeeded, (await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken)).Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task ChangedAssignmentDuringStopRestoresPreviousVersion()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime();
+            var checks = 0;
+            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
+            var result = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new",
+                (_, _) => Task.FromResult(++checks == 1 ? UpdateAuthorization.Authorized : UpdateAuthorization.NoLongerAuthorized), context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
+            Assert.AreEqual("old", runtime.Selected);
+            Assert.DoesNotContain("select:new", runtime.Actions);
+            CollectionAssert.AreEqual(new[] { "stop", "stop", "select:old", "start", "health" }, runtime.Actions);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task AuthorizationUnavailableBeforeStopDoesNotConsumeAssignment()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime();
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            var id = Guid.CreateVersion7();
+            await Assert.ThrowsExactlyAsync<UpdateAuthorizationUnavailableException>(() => coordinator.ApplyAsync(id, "old", "new",
+                (_, _) => Task.FromResult(UpdateAuthorization.Unavailable), context.CancellationToken));
+            Assert.IsEmpty(runtime.Actions);
+            Assert.IsNull(await journal.ReadAsync(context.CancellationToken));
+            Assert.AreEqual(UpdatePhase.Succeeded, (await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken)).Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task TemporaryAuthorizationFailureAfterStopCanRetrySameAssignment()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime();
+            var checks = 0;
+            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
+            var id = Guid.CreateVersion7();
+            var result = await coordinator.ApplyAsync(id, "old", "new", (_, _) => ++checks == 1
+                ? Task.FromResult(UpdateAuthorization.Authorized)
+                : Task.FromException<UpdateAuthorization>(new HttpRequestException()), context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
+            Assert.AreEqual("old", runtime.Selected);
+            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.Succeeded, retry.Phase);
+            Assert.AreEqual("new", runtime.Selected);
+            Assert.IsTrue(retry.Steps.Any(step => step.Phase == UpdatePhase.RolledBack));
+            Assert.AreEqual(2, retry.Steps.Count(step => step.Phase == UpdatePhase.Prepared));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task TemporaryAuthorizationFailureRemainsRetryableAfterInterruptedRollback()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var recoveryChecks = 0;
+            var runtime = new FakeRuntime { Healthy = version => version != "old" || ++recoveryChecks > 1 };
+            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
+            var id = Guid.CreateVersion7();
+            var provenance = new UpdateProvenance(Guid.CreateVersion7(), Guid.CreateVersion7(), new string('c', 64));
+            var checks = 0;
+            var first = await coordinator.ApplyAsync(id, "old", "new", (_, _) => Task.FromResult(++checks == 1
+                ? UpdateAuthorization.Authorized : UpdateAuthorization.Unavailable), context.CancellationToken, provenance);
+            Assert.AreEqual(UpdatePhase.RollingBack, first.Phase);
+            var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
+            Assert.IsTrue(recovered.RetryAllowed);
+            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken, provenance);
+            Assert.AreEqual(UpdatePhase.Succeeded, retry.Phase);
+            var pending = await new UpdateJournal(directory).ReadPendingAsync(provenance.AgentId, 10, context.CancellationToken);
+            Assert.HasCount(2, pending);
+            Assert.AreEqual(UpdatePhase.RolledBack, pending[0].Phase);
+            Assert.AreEqual(UpdatePhase.Succeeded, pending[1].Phase);
+            Assert.IsGreaterThan(pending[0].Sequence, pending[1].Sequence);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task SuccessfulUpdateRecordsNewVersionAfterHealthCheck()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime();
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            var id = Guid.CreateVersion7();
+            var result = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.Succeeded, result.Phase);
+            Assert.AreEqual("new", runtime.Selected);
+            CollectionAssert.AreEqual(new[] { "stop", "select:new", "start", "health" }, runtime.Actions);
+            var saved = await journal.ReadAsync(context.CancellationToken);
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(result.Id, saved.Id);
+            Assert.AreEqual(result.Phase, saved.Phase);
+            CollectionAssert.AreEqual(result.Steps.ToArray(), saved.Steps.ToArray());
+            Assert.AreEqual(result.Phase, (await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken)).Phase);
+            Assert.HasCount(4, runtime.Actions);
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => coordinator.ApplyAsync(id, "old", "different", Authorized, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task UnhealthyVersionRollsBackToPreviousVersion()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime { Healthy = version => version == "old" };
+            var journal = new UpdateJournal(directory);
+            var result = await new UpdateCoordinator(journal, runtime).ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
+            Assert.AreEqual("old", runtime.Selected);
+            CollectionAssert.AreEqual(new[] { "stop", "select:new", "start", "health", "stop", "select:old", "start", "health" }, runtime.Actions);
+            var saved = await journal.ReadAsync(context.CancellationToken);
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(result.Phase, saved.Phase);
+            CollectionAssert.AreEqual(result.Steps.ToArray(), saved.Steps.ToArray());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task InterruptedSwitchIsRecoveredWithoutCentralConnection()
+    {
+        var directory = CreateDirectory();
+        using var cancellation = new CancellationTokenSource();
+        try
+        {
+            var runtime = new FakeRuntime { OnSelect = version => { if (version == "new") cancellation.Cancel(); } };
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, cancellation.Token));
+            Assert.AreEqual(UpdatePhase.Switching, (await journal.ReadAsync(context.CancellationToken))!.Phase);
+            var recovered = await coordinator.RecoverAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
+            Assert.AreEqual("old", runtime.Selected);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    [DataRow("stop", UpdatePhase.Stopping)]
+    [DataRow("select:new", UpdatePhase.Switching)]
+    [DataRow("start", UpdatePhase.Starting)]
+    [DataRow("health", UpdatePhase.Verifying)]
+    public async Task InterruptionAtEachServiceOperationRestoresPreviousVersion(string interruptedAction, UpdatePhase recordedPhase)
+    {
+        var directory = CreateDirectory();
+        using var cancellation = new CancellationTokenSource();
+        try
+        {
+            var runtime = new FakeRuntime { OnAction = action => { if (action == interruptedAction) cancellation.Cancel(); } };
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, cancellation.Token));
+            Assert.AreEqual(recordedPhase, (await journal.ReadAsync(context.CancellationToken))!.Phase);
+
+            // Model a restarted Updater: the new instance reads only the durable journal.
+            runtime.OnAction = null;
+            var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
+            Assert.AreEqual("old", runtime.Selected);
+            Assert.AreEqual(recordedPhase == UpdatePhase.Stopping, recovered.RetryAllowed);
+            CollectionAssert.AreEqual(new[] { "stop", "select:old", "start", "health" }, runtime.Actions.TakeLast(4).ToArray());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task RestartAfterSchemaCreationBeforeFirstUpdateCanContinue()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            await using (var connection = new SqliteConnection($"Data Source={Path.Combine(directory, "update.db")};Pooling=False"))
+            {
+                await connection.OpenAsync(context.CancellationToken);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "CREATE TABLE UpdateJournal (Id INTEGER PRIMARY KEY, State TEXT NOT NULL)";
+                await command.ExecuteNonQueryAsync(context.CancellationToken);
+            }
+            var journal = new UpdateJournal(directory);
+            Assert.IsNull(await journal.ReadAsync(context.CancellationToken));
+            var result = await new UpdateCoordinator(journal, new FakeRuntime()).ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.Succeeded, result.Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task CorruptJournalDoesNotTouchAgent()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(directory, "update.db"), "not a database", context.CancellationToken);
+            var runtime = new FakeRuntime();
+            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
+            await Assert.ThrowsExactlyAsync<SqliteException>(() => coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken));
+            Assert.IsEmpty(runtime.Actions);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task JournalFailureBeforeStoppingDoesNotInterruptAgent()
+    {
+        var runtime = new FakeRuntime();
+        var journal = new FailingJournal();
+        await Assert.ThrowsExactlyAsync<IOException>(() => new UpdateCoordinator(journal, runtime)
+            .ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken));
+        Assert.IsEmpty(runtime.Actions);
+        Assert.AreEqual(UpdatePhase.Prepared, journal.State!.Phase);
+    }
+
+    [TestMethod]
+    public async Task FailedRollbackStopsAfterThreeRecoveryAttempts()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime { Healthy = _ => false };
+            var journal = new UpdateJournal(directory);
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            var state = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
+            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
+            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
+            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
+            Assert.AreEqual(UpdatePhase.RollbackFailed, state.Phase);
+            var actionCount = runtime.Actions.Count;
+            Assert.AreEqual(state.Phase, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
+            Assert.HasCount(actionCount, runtime.Actions);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private string CreateDirectory()
+    {
+        var path = Path.Combine(context.TestRunDirectory!, $"update-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private sealed class FakeRuntime : IAgentUpdateRuntime
+    {
+        public Task<string> GetSelectedDirectoryAsync(CancellationToken token) => Task.FromResult(Selected ?? "old");
+        public List<string> Actions { get; } = [];
+        public string? Selected { get; private set; }
+        public Func<string?, bool> Healthy { get; init; } = _ => true;
+        public Action<string>? OnSelect { get; init; }
+        public Action<string>? OnAction { get; set; }
+        private void Record(string action, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Actions.Add(action);
+            OnAction?.Invoke(action);
+            token.ThrowIfCancellationRequested();
+        }
+        public Task StopAsync(CancellationToken token) { Record("stop", token); return Task.CompletedTask; }
+        public Task SelectVersionAsync(string versionDirectory, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested(); Selected = versionDirectory; Record($"select:{versionDirectory}", token);
+            OnSelect?.Invoke(versionDirectory); token.ThrowIfCancellationRequested(); return Task.CompletedTask;
+        }
+        public Task StartAsync(CancellationToken token) { Record("start", token); return Task.CompletedTask; }
+        public Task<bool> WaitHealthyAsync(CancellationToken token) { Record("health", token); return Task.FromResult(Healthy(Selected)); }
+    }
+
+    private sealed class FailingJournal : IUpdateJournal
+    {
+        public UpdateState? State { get; private set; }
+        public Task<UpdateState?> ReadAsync(CancellationToken token) => Task.FromResult(State);
+        public Task WriteAsync(UpdateState state, CancellationToken token)
+        {
+            if (State is not null) throw new IOException("Simulated journal failure.");
+            State = state;
+            return Task.CompletedTask;
+        }
+    }
+}

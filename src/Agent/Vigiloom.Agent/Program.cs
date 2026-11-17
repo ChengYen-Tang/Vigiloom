@@ -2,6 +2,13 @@ using Vigiloom.Agent.Hosting;
 using Vigiloom.Agent.Core.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
+if (args is ["check-runtime"])
+{
+    _ = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+    Console.WriteLine("Agent runtime check passed.");
+    return;
+}
+
 var builder = AgentHost.CreateBuilder(args);
 using var host = builder.Build();
 if (args.Length == 1 && args[0] is "enroll" or "reset-pending-enrollment" or "rotate-credential")

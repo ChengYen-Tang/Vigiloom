@@ -96,6 +96,12 @@ public sealed class Agent
     public string? IntegrityConfigurationJson { get; private set; }
     public DateTimeOffset? BaselineConfigurationReportedAt { get; private set; }
     public string? BaselineConfigurationJson { get; private set; }
+    public string? RuntimeVersion { get; private set; }
+    public string? RuntimeIdentifier { get; private set; }
+    public DateTimeOffset? RuntimeReportedAt { get; private set; }
+    public double? RuntimeCpuPercent { get; private set; }
+    public long? RuntimeWorkingSetBytes { get; private set; }
+    public string? RuntimeModuleFailuresJson { get; private set; }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now.ToUniversalTime();
     public void AdvanceReplayClock(DateTimeOffset now)
@@ -244,8 +250,23 @@ public sealed class Agent
         BaselineConfigurationReportedAt = report is null ? null : now.ToUniversalTime();
         BaselineConfigurationJson = report is null ? null : JsonSerializer.Serialize(report);
     }
+    public void RecordRuntime(AgentRuntimeReport? report, DateTimeOffset now)
+    {
+        RuntimeVersion = report?.Version;
+        RuntimeIdentifier = report?.RuntimeIdentifier;
+        RuntimeReportedAt = report is null ? null : now.ToUniversalTime();
+        RuntimeCpuPercent = report?.CpuPercent;
+        RuntimeWorkingSetBytes = report?.WorkingSetBytes;
+        RuntimeModuleFailuresJson = report?.ModuleFailures is { } failures ? JsonSerializer.Serialize(failures) : null;
+    }
     public void BeginQueueSession(Guid epoch)
     {
+        RuntimeVersion = null;
+        RuntimeIdentifier = null;
+        RuntimeReportedAt = null;
+        RuntimeCpuPercent = null;
+        RuntimeWorkingSetBytes = null;
+        RuntimeModuleFailuresJson = null;
         QueueReportEpoch = epoch;
         QueueReportSequence = null;
         QueueReportedAt = null;

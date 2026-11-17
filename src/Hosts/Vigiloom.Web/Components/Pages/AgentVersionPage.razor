@@ -1,0 +1,48 @@
+@page "/devices/{Id:guid}/agent-version"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Contracts.Devices
+@inject DeviceManagement Devices
+@inject AgentIdentity Agents
+@inject AgentMonitoring Monitoring
+@inject ILogger<AgentVersionPage> Logger
+
+<PageTitle>Agent 版本 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
+    <header class="device-heading"><div><h1>Agent 版本</h1><p>查看並管理此設備的 Agent 版本。</p></div></header>
+    @if (failed) { <section class="device-panel" role="alert">無法讀取設備，請稍後重新整理。</section> }
+    else if (name is null) { <section class="device-panel"><p>找不到設備。</p></section> }
+    else if (agentId is null) { <section class="device-panel"><h2>@name</h2><p>此設備目前沒有已註冊的 Agent。</p></section> }
+    else
+    {
+        <section class="device-panel"><h2>@name</h2></section>
+        <Vigiloom.Web.Client.Components.AgentVersions.VersionAssignment DeviceId="Id" AgentId="agentId.Value" ConnectionState="connectionState" @rendermode="InteractiveAuto" />
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    private string? name;
+    private Guid? agentId;
+    private AgentConnectionState? connectionState;
+    private bool failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var device = await Devices.GetAsync(Id, HttpContext.RequestAborted);
+            if (device is null || device.Archived) return;
+            name = device.Name;
+            var agents = await Agents.GetDeviceAgentsAsync(Id, HttpContext.RequestAborted);
+            agentId = agents?.Agents.SingleOrDefault(x => x.RevokedAt is null && x.DeviceGeneration == agents.CurrentGeneration)?.Id;
+            if (agentId is not null) connectionState = (await Monitoring.GetAsync(Id, HttpContext.RequestAborted))?.State;
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent version page"); failed = true; }
+    }
+}

@@ -11,7 +11,12 @@ public enum AgentConnectionState { Disabled, NotRegistered, AwaitingFirstHeartbe
 public sealed record AgentConnectionStatus(Guid DeviceId, AgentConnectionState State, DateTimeOffset? LastHeartbeatAt,
     int OfflineAfterSeconds, AgentQueueMonitoring? Queue = null, DateTimeOffset? LastCommittedBatchAt = null,
     AgentBatchTimeObservation? LastBatchTime = null, AgentReceiptCapacity? ReceiptCapacity = null,
-    AgentReplayIssueObservation? LastReplayIssue = null, AgentMetricLossMonitoring? MetricLoss = null);
+    AgentReplayIssueObservation? LastReplayIssue = null, AgentMetricLossMonitoring? MetricLoss = null,
+    AgentProcessMetrics? Process = null);
+
+/// <summary>Agent process resource usage from the last accepted heartbeat.</summary>
+public sealed record AgentProcessMetrics(double? CpuPercent, long? WorkingSetBytes, DateTimeOffset ReceivedAt,
+    IReadOnlyList<AgentModuleFailure>? ModuleFailures = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<AgentReplayIssue>))]
 public enum AgentReplayIssue { ClockUncertain = 1, TimestampAhead = 2, Expired = 3 }

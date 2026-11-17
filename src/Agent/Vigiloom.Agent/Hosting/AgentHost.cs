@@ -7,6 +7,7 @@ using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Agent.Hosting.Logs;
 using Vigiloom.Agent.Hosting.Inventory;
 using Vigiloom.Agent.Core.Inventory;
+using Vigiloom.Agent.Core.Updates;
 
 namespace Vigiloom.Agent.Hosting;
 
@@ -20,6 +21,8 @@ public static class AgentHost
         builder.Services.AddSystemd();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddHttpClient<IdentityClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddTransient<AgentEnrollmentBootstrap>();
+        builder.Services.AddHttpClient<AgentVersionClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentHeartbeatClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentBatchClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentSettingsClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
@@ -40,7 +43,10 @@ public static class AgentHost
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Integrity.AgentIntegritySettingsRuntime>();
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Baseline.AgentBaselineSettingsRuntime>();
         builder.Services.AddSingleton<AgentLogStatusRuntime>();
+        builder.Services.AddSingleton<AgentModuleFailures>();
+        builder.Services.AddHostedService<AgentEnrollmentWorker>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
+        builder.Services.AddHostedService<AgentUpdateWorker>();
         builder.Services.AddHostedService<HeartbeatWorker>();
         builder.Services.AddHostedService<BatchWorker>();
         // Stop the producer before the sender during default sequential shutdown.
