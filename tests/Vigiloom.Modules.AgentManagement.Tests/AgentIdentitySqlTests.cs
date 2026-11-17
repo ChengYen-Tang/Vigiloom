@@ -923,6 +923,33 @@ public sealed class AgentIdentitySqlTests
     });
 
     [TestMethod]
+    public Task HostMetricRollup_FullBatchUpdatesManyDistinctSeries() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("rollup batch", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        await using (var db = agents.CreateDbContext()) { db.Agents.Add(agent); await db.SaveChangesAsync(token); }
+        var backfill = new HostMetricRollupBackfill(agents);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var batchId = Guid.CreateVersion7();
+            await using (var db = agents.CreateDbContext())
+            {
+                for (var index = 0; index < HostMetricRollupBackfill.BatchSize; index++)
+                    db.HostMetrics.Add(new HostMetric(agent.Id, batchId, index,
+                        new(Guid.CreateVersion7(), now, AgentMetricKind.CpuCorePercent, "cpu", $"core-{index}", pass + 1), now));
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual(HostMetricRollupBackfill.BatchSize, await backfill.RunBatchAsync(token));
+        }
+        await using var verify = agents.CreateDbContext();
+        var rollups = await verify.HostMetricRollups.AsNoTracking().ToArrayAsync(token);
+        Assert.HasCount(HostMetricRollupBackfill.BatchSize, rollups);
+        Assert.IsTrue(rollups.All(x => x.Count == 2 && x.Sum == 3));
+    });
+
+    [TestMethod]
     public Task HostMetricRollup_ReceiptRetriesDoNotDuplicateMeasurements() => WithReusableDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
