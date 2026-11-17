@@ -119,6 +119,32 @@ public sealed class PingHttpTests
         using var list = await reader.GetAsync("/devices", token);
         var listText = (await new HtmlParser().ParseDocumentAsync(await list.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
         Assert.Contains("主要目標 Ping", listText); Assert.Contains("可達", listText);
+
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/ping/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await reader.GetAsync("/api/v1/settings/ping/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        var initialRetention = await admin.GetFromJsonAsync<PingRetentionSnapshot>("/api/v1/settings/ping/retention", token);
+        Assert.IsNotNull(initialRetention);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/ping/retention/preview", new PingRetentionPreviewRequest(20, 300, initialRetention.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var retentionPage = await admin.GetAsync("/settings/ping/retention", token);
+        var retentionFields = Hidden(await FormAsync(retentionPage, "ping-retention", token));
+        retentionFields["Input.RawDays"] = "20"; retentionFields["Input.RollupDays"] = "300";
+        using var preview = await admin.PostAsync("/settings/ping/retention", new FormUrlEncodedContent(retentionFields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirmation = Hidden(await FormAsync(preview, "ping-retention", token));
+        confirmation["Input.RawDays"] = "20"; confirmation["Input.RollupDays"] = "300";
+        using var retentionSaved = await admin.PostAsync("/settings/ping/retention", new FormUrlEncodedContent(confirmation), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(retentionSaved, token));
+        var savedRetention = await admin.GetFromJsonAsync<PingRetentionSnapshot>("/api/v1/settings/ping/retention", token);
+        Assert.IsNotNull(savedRetention);
+        Assert.AreEqual(20, savedRetention.RawDays);
+        Assert.AreEqual(300, savedRetention.RollupDays);
+        var historyWithRetention = await reader.GetFromJsonAsync<PingHistoryPage>(historyUrl, token);
+        Assert.IsNotNull(historyWithRetention);
+        Assert.AreEqual(20, historyWithRetention.RawRetentionDays);
+        Assert.AreEqual(300, historyWithRetention.RollupRetentionDays);
+        using var retentionAudit = await admin.GetAsync("/settings/audit?source=ping", token);
+        Assert.Contains("原始 Ping 保存", await TextAsync(retentionAudit, token));
     }, TestContext.CancellationToken);
 
     private static async Task<string> TextAsync(HttpResponseMessage response, CancellationToken token) =>

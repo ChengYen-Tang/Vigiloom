@@ -16,7 +16,8 @@ public sealed record SpeedSettingsChanged(
 public sealed record SpeedRetentionChanged(int PreviousDays, int CurrentDays,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 
-public sealed record PingSettingsAuditValues(int IntervalSeconds, int TimeoutSeconds, int FailureThreshold, int SuccessThreshold, int MaxConcurrency);
+public sealed record PingSettingsAuditValues(int IntervalSeconds, int TimeoutSeconds, int FailureThreshold, int SuccessThreshold, int MaxConcurrency,
+    int? RawRetentionDays = null, int? RollupRetentionDays = null);
 public sealed record PingSettingsChanged(PingSettingsAuditValues Previous, PingSettingsAuditValues Current,
     string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 

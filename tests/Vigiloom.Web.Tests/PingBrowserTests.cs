@@ -46,7 +46,7 @@ public sealed class PingBrowserTests
             await page.Locator("#ping-timeout").FillAsync("2");
             await page.GetByRole(AriaRole.Button, new() { Name = "儲存 Ping 設定" }).ClickAsync();
             await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "設定已儲存" }).WaitForAsync();
-            var evidence = Path.Combine(TestContext.TestRunDirectory!, "ping-ui");
+            var evidence = Path.Combine(Environment.GetEnvironmentVariable("VIGILOOM_UI_EVIDENCE_DIR") ?? TestContext.TestRunDirectory!, "ping-ui");
             Directory.CreateDirectory(evidence);
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "settings-desktop.png"), FullPage = true });
             await page.SetViewportSizeAsync(390, 844);
@@ -55,6 +55,19 @@ public sealed class PingBrowserTests
             Assert.IsTrue(await page.GetByRole(AriaRole.Button, new() { Name = "儲存 Ping 設定" }).IsVisibleAsync());
             Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "settings-mobile.png"), FullPage = true });
+            await page.GetByRole(AriaRole.Link, new() { Name = "管理保存期限" }).ClickAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = "Ping 資料保存" }).WaitForAsync();
+            Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "retention-mobile.png"), FullPage = true });
+            await page.SetViewportSizeAsync(1440, 1000);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "retention-desktop.png"), FullPage = true });
+            await page.Locator("#ping-raw-days").FillAsync("20");
+            await page.Locator("#ping-rollup-days").FillAsync("300");
+            await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).WaitForAsync();
+            await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
+            await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();
+            await page.SetViewportSizeAsync(390, 844);
             await using (var scope = factory.Services.CreateAsyncScope())
             {
                 var settings = scope.ServiceProvider.GetRequiredService<PingSettings>();

@@ -12,6 +12,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
+using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
@@ -96,6 +98,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var old = DateTimeOffset.UtcNow.AddDays(-10);
         var device = new Device("inbox worker", "127.0.0.1", true, old);
         await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var network = services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+        var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
+        await using (var db = await network.CreateDbContextAsync(token)) { db.PingSamples.Add(oldPing); await db.SaveChangesAsync(token); }
+        Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
         var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), TimeProvider.System);
         var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
         var secret = RandomNumberGenerator.GetBytes(32);
@@ -126,14 +132,17 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<MetricRollupJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var pingRetentionId = jobs.Enqueue<PingRetentionJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(60));
             while (true)
             {
                 var state = connection.GetStateData(id)?.Name;
+                var pingState = connection.GetStateData(pingRetentionId)?.Name;
                 Assert.AreNotEqual("Failed", state);
-                if (state == "Succeeded") break;
+                Assert.AreNotEqual("Failed", pingState);
+                if (state == "Succeeded" && pingState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
             await using var check = await agents.CreateDbContextAsync(token);
@@ -143,12 +152,16 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.AreEqual(1L, agent.InboxDeletedTotal);
             Assert.IsNotNull(agent.ReplayCleanedBefore);
             Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+            await using (var checkNetwork = await network.CreateDbContextAsync(token))
+                Assert.IsFalse(await checkNetwork.PingSamples.AnyAsync(x => x.RowId == oldPing.RowId, token));
             await using var sql = new SqlConnection(database.ConnectionString);
             await sql.OpenAsync(token);
             await using var command = sql.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-agent-inbox-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-metric-rollup'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-ping-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);

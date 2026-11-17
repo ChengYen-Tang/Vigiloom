@@ -12,6 +12,8 @@ public sealed class PingSetting
     public int FailureThreshold { get; set; } = 3;
     public int SuccessThreshold { get; set; } = 2;
     public int MaxConcurrency { get; set; } = 64;
+    public int RawRetentionDays { get; set; } = 30;
+    public int RollupRetentionDays { get; set; } = 365;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public Guid? UpdatedBy { get; set; }
