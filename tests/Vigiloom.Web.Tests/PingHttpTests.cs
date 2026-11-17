@@ -17,6 +17,9 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
@@ -129,6 +132,22 @@ public sealed class PingHttpTests
             var old = DateTimeOffset.UtcNow.AddDays(-40);
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({actor}, {old}, '/jobs/enqueued/delete', 'accepted'), ({actor}, {old}, '/jobs/enqueued/delete', 'started')", token);
         }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            db.Audits.Add(new AgentAudit(device.Id, null, Guid.CreateVersion7(), "EnrollmentIssued", DateTimeOffset.UtcNow.AddDays(-40)));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            var actor = Guid.CreateVersion7();
+            var setting = new InventorySetting { DeviceId = device.Id, UpdatedBy = actor, UpdatedAt = DateTimeOffset.UtcNow };
+            db.InventorySettings.Add(setting);
+            db.InventorySettingAudits.Add(new InventorySettingAudit { SettingId = setting.Id, DeviceId = device.Id, ActorId = actor,
+                OccurredAt = DateTimeOffset.UtcNow.AddDays(-40), EffectiveScanIntervalSeconds = 3600, EffectiveRevision = "test", ChangeVersion = new byte[8] });
+            await db.SaveChangesAsync(token);
+        }
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
@@ -143,7 +162,7 @@ public sealed class PingHttpTests
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
-        Assert.Contains("預計有 4 筆操作紀錄", await TextAsync(preview, token));
+        Assert.Contains("預計有 6 筆操作紀錄", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);

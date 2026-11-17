@@ -34,6 +34,9 @@ using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Agent;
 using System.Security.Cryptography;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -101,6 +104,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
         await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await identityDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        var securityDb = services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+        await using (var db = await securityDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         var old = DateTimeOffset.UtcNow.AddDays(-10);
         var initialAdminId = Guid.CreateVersion7();
         await using (var db = await identityDb.CreateDbContextAsync(token))
@@ -139,10 +144,49 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var agentId = registered.AgentId!.Value;
         await using (var db = await agents.CreateDbContextAsync(token))
         {
+            var settings = new AgentSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var queue = new AgentQueueCapacitySetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var metrics = new AgentMetricSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var logSource = new HostLogSource(device.Id, AgentLogSourceKind.WindowsEvent, "System", "System", true, null, auditActor, old.AddDays(-400));
+            var threshold = new HostMetricThreshold { DeviceId = device.Id, AgentId = agentId, Kind = AgentMetricKind.MemoryAvailableBytes,
+                Source = "system", SeriesHash = new byte[32], Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 1, FreshnessSeconds = 30 };
+            db.Settings.Add(settings); db.QueueCapacitySettings.Add(queue); db.MetricSettings.Add(metrics);
+            db.HostLogSources.Add(logSource); db.HostMetricThresholds.Add(threshold);
+            await db.SaveChangesAsync(token);
+            db.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Created));
+            logSource.Update("System updated", true, null, auditActor, old);
+            await db.SaveChangesAsync(token);
+            db.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Updated));
+            foreach (var time in new[] { old.AddDays(-400), old })
+            {
+                db.Audits.Add(new AgentAudit(device.Id, agentId, auditActor, "AgentEnrolled", time));
+                db.SettingAudits.Add(new AgentSettingAudit { SettingId = settings.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.QueueCapacityAudits.Add(new AgentQueueCapacityAudit { SettingId = queue.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.MetricSettingAudits.Add(new AgentMetricSettingAudit { SettingId = metrics.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.HostMetricThresholdAudits.Add(new HostMetricThresholdAudit { ThresholdId = threshold.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 1, FreshnessSeconds = 30, Version = new byte[8] });
+            }
             var point = new AgentMetricPoint(Guid.CreateVersion7(), old, AgentMetricKind.MemoryAvailableBytes, "system", null, 42);
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, point, old));
             var expired = point with { MessageId = Guid.CreateVersion7(), OccurredAt = old.AddDays(-31), Dimension = "old" };
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, expired, old));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await securityDb.CreateDbContextAsync(token))
+        {
+            var inventory = new InventorySetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var integrity = new IntegrityScopeSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old, Revision = 1, DefinitionJson = "{}" };
+            db.InventorySettings.Add(inventory); db.IntegrityScopes.Add(integrity);
+            foreach (var time in new[] { old.AddDays(-400), old })
+            {
+                db.InventorySettingAudits.Add(new InventorySettingAudit { SettingId = inventory.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, EffectiveScanIntervalSeconds = 3600, EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.IntegrityScopeAudits.Add(new IntegrityScopeAudit { ScopeId = integrity.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, Revision = 1, Action = IntegrityScopeAction.Created, Enabled = true });
+            }
             await db.SaveChangesAsync(token);
         }
         var serviceDb = services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
@@ -221,6 +265,17 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(x => x.Dimension == null, token)).Sum);
             Assert.AreEqual(0, await check.HostMetrics.CountAsync(x => x.Dimension == "old", token));
             Assert.AreEqual(1, await check.HostMetricRollups.CountAsync(x => x.Dimension == "old", token));
+            Assert.AreEqual(1, await check.Audits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.HostLogSourceAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.SettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.QueueCapacityAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.MetricSettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.HostMetricThresholdAudits.CountAsync(x => x.ActorId == auditActor, token));
+            await using (var checkSecurity = await securityDb.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await checkSecurity.InventorySettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+                Assert.AreEqual(1, await checkSecurity.IntegrityScopeAudits.CountAsync(x => x.ActorId == auditActor, token));
+            }
             await using (var telemetry = await serviceDb.CreateDbContextAsync(token))
             {
                 Assert.AreEqual(0, await telemetry.LogRecords.CountAsync(token));
