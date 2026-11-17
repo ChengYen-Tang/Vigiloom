@@ -27,6 +27,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<UpdateTrustState> UpdateTrustStates => Set<UpdateTrustState>();
     public DbSet<AgentPackage> Packages => Set<AgentPackage>();
     public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
+    public DbSet<AgentUpdateTarget> UpdateTargets => Set<AgentUpdateTarget>();
     public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
     public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
@@ -94,6 +95,18 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         assignment.Property(x => x.Version).IsRowVersion();
         assignment.HasOne<Agent>().WithOne().HasForeignKey<AgentVersionAssignment>(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
         assignment.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
+        var target = modelBuilder.Entity<AgentUpdateTarget>();
+        target.ToTable("UpdateTargets", table => table.HasCheckConstraint("CK_UpdateTargets_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        target.HasKey(x => x.Id).IsClustered(false);
+        target.Property(x => x.Id).ValueGeneratedNever();
+        target.Property(x => x.RowId).UseIdentityColumn();
+        target.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        target.HasIndex(x => new { x.AgentId, x.AssignedAt });
+        target.Property(x => x.Version).HasMaxLength(128).IsRequired();
+        target.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false).IsRequired();
+        target.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        target.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        target.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
         var agent = modelBuilder.Entity<Agent>();
         agent.ToTable("Agents", table =>
         {

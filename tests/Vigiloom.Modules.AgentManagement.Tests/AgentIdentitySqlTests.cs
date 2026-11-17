@@ -50,6 +50,38 @@ public sealed class AgentIdentitySqlTests
     }
 
     [TestMethod]
+    public Task UpdateTargetMigrationPreservesExistingAssignment() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("legacy update target", "127.0.0.3", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(RandomNumberGenerator.GetBytes(32)), token);
+        var packageId = Guid.CreateVersion7();
+        var updateId = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20261117020539_AgentRuntimeObservation", token);
+            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "linux-x64", Size = 1,
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
+            db.VersionAssignments.Add(new AgentVersionAssignment { AgentId = registered.AgentId!.Value, PackageId = packageId,
+                UpdateId = updateId, AssignedBy = actor, AssignedAt = clock.Now });
+            await db.SaveChangesAsync(token);
+            await db.GetService<IMigrator>().MigrateAsync(null, token);
+        }
+        await using var verify = agents.CreateDbContext();
+        var target = await verify.UpdateTargets.SingleAsync(x => x.Id == updateId, token);
+        Assert.AreEqual(registered.AgentId, target.AgentId);
+        Assert.AreEqual(packageId, target.PackageId);
+        Assert.AreEqual("1.2.3", target.Version);
+        Assert.AreEqual("linux-x64", target.RuntimeIdentifier);
+        Assert.AreEqual(new string('b', 64), target.ManifestSha256);
+        Assert.AreEqual(clock.Now, target.AssignedAt);
+    });
+
+    [TestMethod]
     public Task VersionAssignment_TracksDesiredVersionAndRejectsStaleOrUnavailableUpdates() => WithDatabase(async (resources, agents, token) =>
     {
         var clock = new TestClock();
@@ -141,6 +173,13 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, packageId, cancelled.Revision, actor, token));
         Assert.AreNotEqual(target.Target.UpdateId, (await assignments.GetForAgentAsync(credential, token)).Target!.UpdateId);
         await using var verify = agents.CreateDbContext();
+        var targets = await verify.UpdateTargets.Where(x => x.AgentId == agentId).OrderBy(x => x.RowId).ToArrayAsync(token);
+        Assert.HasCount(2, targets);
+        Assert.AreEqual(target.Target.UpdateId, targets[0].Id);
+        Assert.AreEqual(packageId, targets[0].PackageId);
+        Assert.AreEqual(new string('b', 64), targets[0].ManifestSha256);
+        Assert.AreEqual("1.2.3", targets[0].Version);
+        Assert.AreNotEqual(targets[0].Id, targets[1].Id);
         var changes = await verify.Audits.Where(x => x.AgentId == agentId && (x.Action == "VersionAssigned" || x.Action == "VersionAssignmentCancelled"))
             .OrderBy(x => x.RowId).ToArrayAsync(token);
         Assert.HasCount(3, changes);
