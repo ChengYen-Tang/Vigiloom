@@ -66,6 +66,7 @@ public sealed class IntegrityHostTests
             builder.Services.AddSingleton(new AgentLogSettingsClient(http, TimeProvider.System));
             builder.Services.AddSingleton(new AgentInventorySettingsClient(http, TimeProvider.System));
             builder.Services.AddSingleton(new AgentIntegritySettingsClient(http, TimeProvider.System));
+            builder.Services.AddSingleton(new AgentBaselineSettingsClient(http, TimeProvider.System));
             builder.Services.AddSingleton(new IntegrityStatusClient(http, TimeProvider.System));
             builder.Services.AddSingleton(new AgentBatchClient(http, TimeProvider.System));
             builder.Services.AddSingleton<IMetricResourceMonitor>(new Monitor());
@@ -81,10 +82,32 @@ public sealed class IntegrityHostTests
                 IntegrityChunk? parsed;
                 if (send)
                 {
-                    while (!handler.Delivered.Task.IsCompleted)
+                    // Advance slowly until the initial sync completes; rapid clock changes
+                    // can trigger repeated polls that contend with collection and transport.
+                    var owner = new AgentSettingsOwner(agentId, server.AbsoluteUri, vault.StateDirectory);
+                    var settings = host.Services.GetRequiredService<AgentIntegritySettingsRuntime>();
+                    try
                     {
-                        scheduleClock!.Advance(TimeSpan.FromSeconds(1));
-                        await Task.Delay(50, deadline.Token);
+                        while (settings.ForOwner(owner)?.Revision != snapshot.Revision)
+                        {
+                            scheduleClock!.Advance(TimeSpan.FromSeconds(1));
+                            await Task.Delay(100, deadline.Token);
+                        }
+                        while (!handler.Delivered.Task.IsCompleted)
+                        {
+                            scheduleClock!.Advance(TimeSpan.FromSeconds(5));
+                            if (await IntegrityTestLease.ReadAsync(() => queue.PeekAsync(deadline.Token), deadline.Token) is not null) break;
+                            await Task.Delay(50, deadline.Token);
+                        }
+                        while (!handler.Delivered.Task.IsCompleted)
+                        {
+                            scheduleClock!.Advance(TimeSpan.FromSeconds(5));
+                            await Task.Delay(100, deadline.Token);
+                        }
+                    }
+                    catch (OperationCanceledException) when (deadline.IsCancellationRequested && !token.IsCancellationRequested)
+                    {
+                        throw new AssertFailedException($"Integrity delivery timed out; attempts={handler.BatchAttempts}, revision={settings.ForOwner(owner)?.Revision ?? "unavailable"}.");
                     }
                     parsed = await handler.Delivered.Task.WaitAsync(deadline.Token);
                     Assert.IsGreaterThanOrEqualTo(3, handler.BatchAttempts);
