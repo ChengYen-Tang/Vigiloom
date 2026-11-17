@@ -98,6 +98,25 @@ public sealed class PingSqlTests
         Assert.AreEqual(6, await operations.Set<Notification>().CountAsync(token));
         var recovery = await operations.Set<PingAlertEvent>().AsNoTracking().SingleAsync(x => x.AlertId == alert.Id && x.IsRecovery, token);
         Assert.Contains("Renamed group", recovery.GroupsJson);
+        var reader = new NotificationReader(new Factory<OperationsDbContext>(() => new OperationsDbContext(options)));
+        var episodes = await reader.GetEpisodesAsync(new NotificationQuery(1, "ping"), token);
+        Assert.HasCount(3, episodes.Items);
+        var episode = episodes.Items.Single(x => x.Id == alert.Id);
+        Assert.AreEqual(device.Id, episode.ResourceId);
+        Assert.AreEqual(alert.Target, episode.Target);
+        Assert.IsNotNull(episode.RecoveredAt);
+        Assert.IsEmpty((await reader.GetEpisodesAsync(new NotificationQuery(1, "service-health"), token)).Items);
+        for (var i = 0; i < 51; i++)
+            operations.Set<PingAlert>().Add(new PingAlert { DeviceId = device.Id, Target = $"192.0.2.{i}",
+                OpenedAt = clock.Now.AddMinutes(i + 1), RecoveredAt = clock.Now.AddMinutes(i + 2) });
+        await operations.SaveChangesAsync(token);
+        var firstPage = await reader.GetEpisodesAsync(new NotificationQuery(1, "ping"), token);
+        var secondPage = await reader.GetEpisodesAsync(new NotificationQuery(2, "ping"), token);
+        Assert.HasCount(50, firstPage.Items);
+        Assert.IsTrue(firstPage.HasMore);
+        Assert.HasCount(4, secondPage.Items);
+        Assert.IsFalse(secondPage.HasMore);
+        Assert.IsEmpty(firstPage.Items.Select(x => x.Id).Intersect(secondPage.Items.Select(x => x.Id)));
     });
 
     [TestMethod]
