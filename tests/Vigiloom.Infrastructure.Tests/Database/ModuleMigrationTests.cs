@@ -85,7 +85,13 @@ public sealed class ModuleMigrationTests
             """;
         Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = "SELECT COUNT(*) FROM network.__EFMigrationsHistory";
-        Assert.AreEqual(7, (int)(await command.ExecuteScalarAsync(token))!);
+        Assert.AreEqual(8, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('network.PingSettings') AND name IN ('RawRetentionDays', 'RollupRetentionDays')";
+        Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = "SELECT COUNT(*) FROM sys.indexes WHERE (object_id = OBJECT_ID('network.PingSamples') AND name = 'IX_PingSamples_OccurredAt_RowId') OR (object_id = OBJECT_ID('network.PingRollups') AND name = 'IX_PingRollups_WindowStart_RowId')";
+        Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+        command.CommandText = "SELECT COUNT(*) FROM sys.check_constraints WHERE parent_object_id = OBJECT_ID('network.PingSettings') AND name = 'CK_PingSettings_Retention' AND is_disabled = 0 AND is_not_trusted = 0";
+        Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         command.CommandText = """
             SELECT COUNT(*) FROM sys.indexes i
             WHERE i.object_id = OBJECT_ID('network.PingRollups')
