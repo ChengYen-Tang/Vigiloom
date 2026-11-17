@@ -37,8 +37,8 @@ cp -a -- "$updater/." "$stage/payload/updater/"
 cp -- "$root" "$stage/payload/root.json"
 [[ $(sha256sum -- "$stage/payload/root.json" | cut -d ' ' -f 1) == "$fingerprint" ]] || fail 'The copied publisher root fingerprint does not match.'
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-cp -- "$source_dir/install.sh" "$source_dir/remove.sh" "$source_dir/restore.sh" "$source_dir/vigiloom-agent.service" "$source_dir/vigiloom-updater.service" "$stage/"
-chmod 0755 "$stage/install.sh" "$stage/remove.sh" "$stage/restore.sh" "$stage/payload/agent/Vigiloom.Agent" "$stage/payload/updater/Vigiloom.Updater"
+cp -- "$source_dir/install.sh" "$source_dir/remove.sh" "$source_dir/restore.sh" "$source_dir/repair-updater.sh" "$source_dir/vigiloom-agent.service" "$source_dir/vigiloom-updater.service" "$stage/"
+chmod 0755 "$stage/install.sh" "$stage/remove.sh" "$stage/restore.sh" "$stage/repair-updater.sh" "$stage/payload/agent/Vigiloom.Agent" "$stage/payload/updater/Vigiloom.Updater"
 tar -C "$stage" -czf "$artifact" .
 complete=1
 printf 'Created %s\n' "$artifact"
