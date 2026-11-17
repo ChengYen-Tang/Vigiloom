@@ -9,6 +9,7 @@ using OpenTelemetry.Proto.Trace.V1;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -237,6 +238,12 @@ public sealed class ServiceDetailsBrowserTests
             Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
             Assert.IsNotNull(approved.ServiceId);
             serviceId = approved.ServiceId.Value;
+            var retention = scope.ServiceProvider.GetRequiredService<TelemetryRetentionSettings>();
+            var current = await retention.GetAsync(token);
+            var actor = Guid.CreateVersion7();
+            var preview = await retention.PreviewAsync(new(10, 5, current.Version), actor, token);
+            Assert.IsNotNull(preview);
+            Assert.IsNotNull(await retention.UpdateAsync(new(10, 5, current.Version, preview.ConfirmationToken), actor, token));
         }
 
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
@@ -253,6 +260,7 @@ public sealed class ServiceDetailsBrowserTests
         await page.GetByText("目前狀態：", new() { Exact = false }).WaitForAsync();
         await page.GetByText("尚未設定健康檢查", new() { Exact = true }).WaitForAsync();
         await page.GetByText("此服務尚未加入群組。", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("Logs 保存 10 天，Traces 保存 5 天", new() { Exact = false }).WaitForAsync();
         var unselected = page.GetByRole(AriaRole.Button, new() { Name = "最近 1 小時" });
         Assert.AreEqual("rgb(23, 66, 126)", await unselected.EvaluateAsync<string>("element => getComputedStyle(element).color"));
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "管理健康檢查" }).CountAsync());
@@ -290,6 +298,7 @@ public sealed class ServiceDetailsBrowserTests
         await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await page.Locator(".service-overview[data-runtime='WebAssembly'][data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByText("Logs 保存 10 天，Traces 保存 5 天", new() { Exact = false }).WaitForAsync();
         var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

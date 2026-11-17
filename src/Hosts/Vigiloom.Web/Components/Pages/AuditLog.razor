@@ -33,6 +33,7 @@
                 <option value="collectors" selected="@(sourceText == "collectors")">Collector 管理</option>
                 <option value="agent-inbox" selected="@(sourceText == "agent-inbox")">Agent 收據保存</option>
                 <option value="host-metric-retention" selected="@(sourceText == "host-metric-retention")">主機效能資料保存</option>
+                <option value="telemetry-retention" selected="@(sourceText == "telemetry-retention")">應用服務資料保存</option>
                 <option value="agent-packages" selected="@(sourceText == "agent-packages")">Agent 套件管理</option>
                 <option value="intelligence" selected="@(sourceText == "intelligence")">情報與安全基準</option><option value="line" selected="@(sourceText == "line")">LINE 通知</option>
                 <option value="speed" selected="@(sourceText == "speed")">網路測速設定</option><option value="audit-retention" selected="@(sourceText == "audit-retention")">設定操作紀錄保存</option><option value="ping" selected="@(sourceText == "ping")">Ping 設定</option><option value="accounts" selected="@(sourceText == "accounts")">帳號</option><option value="api-credentials" selected="@(sourceText == "api-credentials")">API 憑證</option>
@@ -52,7 +53,7 @@
     {
         <section class="audit-panel" aria-labelledby="audit-results-title">
             <h2 id="audit-results-title">查詢結果</h2>
-            <p>此來源收錄成功儲存的@(sourceText switch { "audit-retention" => "設定操作紀錄保存設定", "host-metric-retention" => "主機效能資料保存設定", "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "publications" => "公開設定", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", "intelligence" => "情報與安全基準", "line" => " LINE 通知設定", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
+            <p>此來源收錄成功儲存的@(sourceText switch { "audit-retention" => "設定操作紀錄保存設定", "host-metric-retention" => "主機效能資料保存設定", "telemetry-retention" => "應用服務資料保存設定", "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "publications" => "公開設定", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", "intelligence" => "情報與安全基準", "line" => " LINE 通知設定", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
             @if (actorLookupFailed) { <p role="status">目前無法取得帳號名稱，改以帳號 ID 顯示。</p> }
             @if (result.Items.Count == 0) { <p>@(result.Page > 1 ? "此頁沒有紀錄，請返回上一頁。" : "此日期範圍沒有稽核紀錄。")</p> }
             else
@@ -65,9 +66,15 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@Operation(entry)</span></td>
-                            <td>@(entry.HostMetricRetention is not null ? "主機效能資料保存" : entry.AuditRetention is not null ? "設定操作紀錄保存" : entry.LineSettings is not null ? "LINE 通知" : entry.BaselineException is not null ? "安全基準" : (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) ? "情報來源" : entry.PublicationTemplate is not null ? "公開範本" : entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.DeploymentLink is not null ? "部署關聯" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")@if (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) { <div>@entry.ResourceId</div> }</td>
+                            <td>@(entry.TelemetryRetention is not null ? "應用服務資料保存" : entry.HostMetricRetention is not null ? "主機效能資料保存" : entry.AuditRetention is not null ? "設定操作紀錄保存" : entry.LineSettings is not null ? "LINE 通知" : entry.BaselineException is not null ? "安全基準" : (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) ? "情報來源" : entry.PublicationTemplate is not null ? "公開範本" : entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.DeploymentLink is not null ? "部署關聯" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")@if (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) { <div>@entry.ResourceId</div> }</td>
                             <td>
-                                @if (entry.HostMetricRetention is { } metricRetention)
+                                @if (entry.TelemetryRetention is { } telemetryRetention)
+                                {
+                                    <div>應用 Logs 保存：@telemetryRetention.PreviousLogDays → @telemetryRetention.CurrentLogDays 天</div>
+                                    <div>應用 Traces 保存：@telemetryRetention.PreviousTraceDays → @telemetryRetention.CurrentTraceDays 天</div>
+                                    <details><summary>版本資訊</summary><span>@telemetryRetention.PreviousVersion → @telemetryRetention.CurrentVersion</span></details>
+                                }
+                                else if (entry.HostMetricRetention is { } metricRetention)
                                 {
                                     <div>原始樣本保存：@metricRetention.PreviousRawDays → @metricRetention.CurrentRawDays 天</div>
                                     <div>五分鐘彙總保存：@metricRetention.PreviousRollupDays → @metricRetention.CurrentRollupDays 天</div>
@@ -293,7 +300,7 @@
         var today = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime);
         sourceText = Source ?? "speed";
         var selected = AuditFeedReader.Parse(sourceText);
-        if (sourceText is not ("speed" or "audit-retention" or "host-metric-retention" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors" or "intelligence" or "line") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
+        if (sourceText is not ("speed" or "audit-retention" or "host-metric-retention" or "telemetry-retention" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors" or "intelligence" or "line") && selected is null) { pageError = "紀錄來源無效，請重新查詢。"; return; }
         fromText = From ?? today.AddDays(-6).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         toText = To ?? today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (!DateOnly.TryParseExact(fromText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
@@ -311,12 +318,13 @@
         try
         {
             Guid[] ids;
-            if (sourceText is "speed" or "audit-retention" or "host-metric-retention" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors" or "intelligence" or "line")
+            if (sourceText is "speed" or "audit-retention" or "host-metric-retention" or "telemetry-retention" or "ping" or "agent-replay" or "agent-inbox" or "agent-packages" or "service-approvals" or "service-sources" or "groups" or "publications" or "instance-policy" or "log-quota" or "trace-quota" or "service-instances" or "service-collections" or "health-targets" or "health-networks" or "collectors" or "intelligence" or "line")
             {
                 result = sourceText switch
                 {
                     "audit-retention" => await Audit.QueryAuditRetentionAsync(query, HttpContext.RequestAborted),
                     "host-metric-retention" => await Audit.QueryHostMetricRetentionAsync(query, HttpContext.RequestAborted),
+                    "telemetry-retention" => await Audit.QueryTelemetryRetentionAsync(query, HttpContext.RequestAborted),
                     "ping" => await Audit.QueryPingAsync(query, HttpContext.RequestAborted),
                     "agent-replay" => await Audit.QueryAgentReplayAsync(query, HttpContext.RequestAborted),
                     "agent-inbox" => await Audit.QueryAgentInboxAsync(query, HttpContext.RequestAborted),
@@ -401,7 +409,7 @@
         _ when entry.IntelligencePolicy is not null => "更新情報來源設定",
         _ when entry.AdvisoryImport is not null => "放棄情報匯入",
         _ when entry.AdvisoryCredential is not null => "更新來源憑證",
-        _ when entry.HostMetricRetention is not null || entry.AuditRetention is not null || entry.SpeedSettings is not null || entry.SpeedRetention is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.AgentInboxSettings is not null || entry.AgentPackageSource is not null || entry.InstancePolicy is not null || entry.LogQuota is not null || entry.TraceQuota is not null => "更新",
+        _ when entry.TelemetryRetention is not null || entry.HostMetricRetention is not null || entry.AuditRetention is not null || entry.SpeedSettings is not null || entry.SpeedRetention is not null || entry.PingSettings is not null || entry.AgentReplayPolicy is not null || entry.AgentInboxSettings is not null || entry.AgentPackageSource is not null || entry.InstancePolicy is not null || entry.LogQuota is not null || entry.TraceQuota is not null => "更新",
         _ => "未支援的紀錄"
     };
     private static string ReplayPhase(AgentReplayPhase value) => value switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" };

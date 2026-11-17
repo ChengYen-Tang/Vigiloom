@@ -1,0 +1,24 @@
+@host = https://localhost:7043
+@antiforgery = replace-with-session-token
+@version = replace-with-retention-version
+@confirmationToken = replace-with-preview-confirmation-token
+
+### These operations require an Administrator browser session.
+GET {{host}}/api/v1/settings/telemetry/retention
+
+### Preview the effect of shortening retention.
+POST {{host}}/api/v1/settings/telemetry/retention/preview
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "logDays": 10, "traceDays": 5, "version": "{{version}}" }
+
+### Apply the confirmed settings.
+PUT {{host}}/api/v1/settings/telemetry/retention
+RequestVerificationToken: {{antiforgery}}
+Content-Type: application/json
+
+{ "logDays": 10, "traceDays": 5, "version": "{{version}}", "confirmationToken": "{{confirmationToken}}" }
+
+### Read changes to application telemetry retention.
+GET {{host}}/api/v1/operations/audit/telemetry-retention?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z

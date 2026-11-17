@@ -19,6 +19,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
@@ -78,6 +79,8 @@ public static class WorkerHost
         builder.Services.AddScoped<MetricWindowBackfill>();
         builder.Services.AddScoped<MetricRollupCoordinator>();
         builder.Services.AddScoped<MetricRollupJob>();
+        builder.Services.AddScoped<TelemetryRetentionCleanup>();
+        builder.Services.AddScoped<TelemetryRetentionJob>();
         builder.Services.AddScoped<SpeedSettings>();
         builder.Services.AddScoped<SpeedQueue>();
         builder.Services.AddScoped<SpeedRunner>();
@@ -173,6 +176,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<PingRollupBackfillSchedule>();
         builder.Services.AddHostedService<HostMetricRollupSchedule>();
         builder.Services.AddHostedService<HostMetricRetentionSchedule>();
+        builder.Services.AddHostedService<TelemetryRetentionSchedule>();
         builder.Services.AddHostedService<PingRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         builder.Services.AddHostedService<MetricRollupSchedule>();

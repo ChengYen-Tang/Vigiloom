@@ -11,10 +11,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -31,6 +33,38 @@ namespace Vigiloom.Web.Tests;
 public sealed class PingHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task TelemetryRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/telemetry/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/telemetry/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<TelemetryRetentionSnapshot>("/api/v1/settings/telemetry/retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/telemetry/retention/preview", new TelemetryRetentionPreviewRequest(10, 5, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/service-reception/retention", token);
+        var fields = Hidden(await FormAsync(page, "telemetry-retention", token));
+        fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5";
+        using var preview = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "telemetry-retention", token));
+        confirm["Input.LogDays"] = "10"; confirm["Input.TraceDays"] = "5";
+        using var saved = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        var current = await admin.GetFromJsonAsync<TelemetryRetentionSnapshot>("/api/v1/settings/telemetry/retention", token);
+        Assert.AreEqual(10, current?.LogDays); Assert.AreEqual(5, current?.TraceDays);
+        using var audit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token);
+        Assert.Contains("應用 Logs 保存：14 → 10 天", await TextAsync(audit, token));
+        Assert.Contains("應用 Traces 保存：7 → 5 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task HostMetricRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

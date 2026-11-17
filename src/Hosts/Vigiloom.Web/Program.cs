@@ -46,6 +46,7 @@ using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Web.LogQuota;
 using Vigiloom.Web.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -99,6 +100,7 @@ builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddScoped<CandidateDiscovery>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
+builder.Services.AddScoped<TelemetryRetentionSettings>();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<ServiceDetailsReader>();
@@ -427,6 +429,7 @@ app.MapLineWebhookEndpoints();
 app.MapLineSettingsEndpoints();
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
+app.MapTelemetryRetentionEndpoints();
 app.MapServiceDetailsEndpoints();
 app.MapServiceInstanceEndpoints();
 app.MapHealthTargetEndpoints();

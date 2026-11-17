@@ -32,6 +32,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryHostMetricRetentionAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.HostMetricRetentionChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryTelemetryRetentionAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.TelemetryRetentionChangedV1, cancellationToken);
+
     public async Task<OperationAuditPage> QueryAgentReplayAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.AgentReplayPolicyChangedV1, cancellationToken);
 
@@ -91,7 +94,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
                 (kind != 0 ? x.Kind == kind || (kind == AuditKinds.PublicationChangedV1 && x.Kind == AuditKinds.PublicationTemplateChangedV1) || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
                     (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) ||
                     (kind == AuditKinds.IntelligenceRevisionActivatedV1 && (x.Kind == AuditKinds.IntelligencePolicyChangedV1 || x.Kind == AuditKinds.AdvisoryImportAbandonedV1 || x.Kind == AuditKinds.AdvisoryCredentialChangedV1 || x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 || x.Kind == AuditKinds.IntelligenceOfflineImportedV1 || x.Kind == AuditKinds.SigmaRuleStateChangedV1 || x.Kind == AuditKinds.BaselineExceptionRecordedV1)) :
-                    x.Kind != AuditKinds.AuditRetentionChangedV1 && x.Kind != AuditKinds.HostMetricRetentionChangedV1 && x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1 && x.Kind != AuditKinds.LineSettingsChangedV1))
+                    x.Kind != AuditKinds.AuditRetentionChangedV1 && x.Kind != AuditKinds.HostMetricRetentionChangedV1 && x.Kind != AuditKinds.TelemetryRetentionChangedV1 && x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1 && x.Kind != AuditKinds.LineSettingsChangedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -129,7 +132,8 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.BaselineExceptionRecordedV1 ? ReadBaselineException(x.Details) : null,
             x.Kind == AuditKinds.LineSettingsChangedV1 ? ReadLineSettings(x.Details) : null,
             x.Kind == AuditKinds.AuditRetentionChangedV1 ? ReadAuditRetention(x.Details) : null,
-            x.Kind == AuditKinds.HostMetricRetentionChangedV1 ? ReadHostMetricRetention(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.HostMetricRetentionChangedV1 ? ReadHostMetricRetention(x.Details) : null,
+            x.Kind == AuditKinds.TelemetryRetentionChangedV1 ? ReadTelemetryRetention(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
     }
@@ -149,6 +153,16 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HostMetricRetentionChanged>(details, Options);
+            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static TelemetryRetentionChanged? ReadTelemetryRetention(string details)
+    {
+        try
+        {
+            var value = JsonSerializer.Deserialize<TelemetryRetentionChanged>(details, Options);
             return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }

@@ -7,6 +7,7 @@ using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Services;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;
 
@@ -29,6 +30,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
             AuditRetentionChanged change when IsValid(change) => (AuditKinds.AuditRetentionChangedV1, JsonSerializer.Serialize(change)),
             HostMetricRetentionChanged change when IsValid(change) => (AuditKinds.HostMetricRetentionChangedV1, JsonSerializer.Serialize(change)),
+            TelemetryRetentionChanged change when IsValid(change) => (AuditKinds.TelemetryRetentionChangedV1, JsonSerializer.Serialize(change)),
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             AgentInboxSettingsChanged change when IsValid(change) => (AuditKinds.AgentInboxSettingsChangedV1, JsonSerializer.Serialize(change)),
@@ -113,6 +115,11 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(HostMetricRetentionChanged change) =>
         HostMetricRetentionLimits.IsValid(change.PreviousRawDays, change.PreviousRollupDays) &&
         HostMetricRetentionLimits.IsValid(change.CurrentRawDays, change.CurrentRollupDays) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(TelemetryRetentionChanged change) =>
+        TelemetryRetentionLimits.IsValid(change.PreviousLogDays, change.PreviousTraceDays) &&
+        TelemetryRetentionLimits.IsValid(change.CurrentLogDays, change.CurrentTraceDays) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
     internal static bool IsValid(GroupChanged change) => change.Action is >= GroupAction.Created and <= GroupAction.ServicesChanged &&

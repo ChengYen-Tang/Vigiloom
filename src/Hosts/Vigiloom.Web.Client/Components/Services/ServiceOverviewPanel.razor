@@ -111,7 +111,7 @@ else
     <section class="service-card" aria-labelledby="evidence-heading">
         <h2 id="evidence-heading">觀測與證據</h2>
         <p>最後接收（UTC）：Logs @LastReceived(service.LastLogReceivedAt) · Metrics @LastReceived(service.LastMetricReceivedAt) · Traces @LastReceived(service.LastTraceReceivedAt)</p>
-        <p>使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。資料受各自保存期限限制。</p>
+        <p>使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。Logs 保存 @service.LogRetentionDays 天，Traces 保存 @service.TraceRetentionDays 天；實際資料依接收及清理狀況而定。</p>
         <div class="service-actions"><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(false, 1)">查看 Logs</button><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(true, 1)">查看 Traces</button></div>
         @if (evidenceLoading) { <p role="status">正在載入證據…</p> }
         @if (evidenceError is not null) { <p role="alert">@evidenceError</p> }
