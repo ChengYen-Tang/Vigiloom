@@ -13,6 +13,7 @@ using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -121,6 +122,13 @@ public sealed class PingHttpTests
             db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "updated", DateTimeOffset.UtcNow.AddDays(-40)));
             await db.SaveChangesAsync(token);
         }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            var actor = Guid.CreateVersion7();
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({actor}, {old}, '/jobs/enqueued/delete', 'accepted'), ({actor}, {old}, '/jobs/enqueued/delete', 'started')", token);
+        }
         using var anonymous = Client(factory);
         using (var denied = await anonymous.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
@@ -135,7 +143,7 @@ public sealed class PingHttpTests
         fields["Input.Days"] = "30";
         using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
-        Assert.Contains("預計有 3 筆操作紀錄", await TextAsync(preview, token));
+        Assert.Contains("預計有 4 筆操作紀錄", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
