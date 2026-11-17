@@ -40,6 +40,9 @@ public sealed class WindowsBundleTests(TestContext context)
                 using var archive = ZipFile.OpenRead(Path.Combine(output, $"vigiloom-agent-win-{architecture}.zip"));
                 Assert.IsNotNull(archive.GetEntry("install.ps1"));
                 Assert.IsNotNull(archive.GetEntry("platform.ps1"));
+                Assert.IsNotNull(archive.GetEntry("native.ps1"));
+                Assert.IsNotNull(archive.GetEntry("remove.ps1"));
+                Assert.IsNotNull(archive.GetEntry("restore.ps1"));
             }
 
             await WriteExecutableAsync(Path.Combine(updater, "Vigiloom.Updater.exe"), 0x014c, context.CancellationToken);
