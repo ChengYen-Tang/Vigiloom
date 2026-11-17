@@ -50,7 +50,8 @@ try {
         throw 'The copied publisher root fingerprint does not match.'
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1'), (Join-Path $PSScriptRoot 'platform.ps1'),
-        (Join-Path $PSScriptRoot 'native.ps1'), (Join-Path $PSScriptRoot 'remove.ps1'), (Join-Path $PSScriptRoot 'restore.ps1') -Destination $stage
+        (Join-Path $PSScriptRoot 'native.ps1'), (Join-Path $PSScriptRoot 'service-operations.ps1'), (Join-Path $PSScriptRoot 'remove.ps1'), (Join-Path $PSScriptRoot 'restore.ps1'),
+        (Join-Path $PSScriptRoot 'repair-updater.ps1') -Destination $stage
     $stream = [IO.File]::Open($artifact, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     $createdArtifact = $true
     try {

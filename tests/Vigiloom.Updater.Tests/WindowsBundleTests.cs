@@ -41,8 +41,10 @@ public sealed class WindowsBundleTests(TestContext context)
                 Assert.IsNotNull(archive.GetEntry("install.ps1"));
                 Assert.IsNotNull(archive.GetEntry("platform.ps1"));
                 Assert.IsNotNull(archive.GetEntry("native.ps1"));
+                Assert.IsNotNull(archive.GetEntry("service-operations.ps1"));
                 Assert.IsNotNull(archive.GetEntry("remove.ps1"));
                 Assert.IsNotNull(archive.GetEntry("restore.ps1"));
+                Assert.IsNotNull(archive.GetEntry("repair-updater.ps1"));
             }
 
             await WriteExecutableAsync(Path.Combine(updater, "Vigiloom.Updater.exe"), 0x014c, context.CancellationToken);
