@@ -11,7 +11,7 @@ internal static class AgentUpdateDownloadEndpoints
     {
         var endpoints = app.MapGroup("/api/v1/agent/update").RequireAuthorization("Agent")
             .RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance);
-        endpoints.MapGet("/targets/{name}", async (string name, HttpContext context, AgentPackageAccess access, CancellationToken token) =>
+        endpoints.MapGet("/targets/{name}", async (string name, HttpContext context, AgentPackageAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             try
@@ -20,10 +20,13 @@ internal static class AgentUpdateDownloadEndpoints
                 return data is null ? Results.NotFound() : Results.File(data, "application/json");
             }
             catch (Exception error) when (Unavailable(error, token))
-            { return Results.Problem(statusCode: 503, title: "Agent update package is unavailable."); }
+            {
+                logger.LogWarning("Agent manifest unavailable: {ErrorType}", error.GetType().Name);
+                return Results.Problem(statusCode: 503, title: "Agent update package is unavailable.");
+            }
         }).Produces(200, contentType: "application/json").ProducesProblem(401).ProducesProblem(404).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Retrieve the assigned publisher-signed Agent manifest");
-        endpoints.MapGet("/packages/{name}", async (string name, HttpContext context, AgentPackageAccess access, CancellationToken token) =>
+        endpoints.MapGet("/packages/{name}", async (string name, HttpContext context, AgentPackageAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             try
@@ -32,7 +35,10 @@ internal static class AgentUpdateDownloadEndpoints
                 return stream is null ? Results.NotFound() : Results.Stream(stream, "application/octet-stream");
             }
             catch (Exception error) when (Unavailable(error, token))
-            { return Results.Problem(statusCode: 503, title: "Agent update package is unavailable."); }
+            {
+                logger.LogWarning("Agent package unavailable: {ErrorType}", error.GetType().Name);
+                return Results.Problem(statusCode: 503, title: "Agent update package is unavailable.");
+            }
         }).Produces(200, contentType: "application/octet-stream").ProducesProblem(401).ProducesProblem(404).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Download the authenticated Agent's assigned package");
     }
