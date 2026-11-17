@@ -1,0 +1,193 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Contracts.Agent
+@implements IAsyncDisposable
+@inject IAgentRolloutClient Client
+@inject IAgentVersionClient Versions
+@inject TimeProvider Clock
+@inject ILogger<GroupRollouts> Logger
+
+<div class="rollouts" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
+    @if (loading) { <p role="status">正在讀取群組更新…</p> }
+    else if (error is not null) { <section class="rollout-panel"><p role="alert">@error</p><button @onclick="LoadAsync">重新載入</button></section> }
+    else
+    {
+        <AuthorizeView Roles="Administrator"><Authorized>
+            <section class="rollout-panel">
+                <h2>建立分批更新</h2>
+                <p>先試行少量設備，確認成功後再依批次更新。每次選擇一種作業系統與架構的套件。</p>
+                <p>平台最多同時有 @AgentRolloutLimits.MaximumOutstanding 台設備等待完成更新；離線或可重試的設備也會占用名額。</p>
+                <label for="rollout-package">Agent 套件</label>
+                <select id="rollout-package" value="@packageId" @onchange="PackageChanged" disabled="@(busy || !RendererInfo.IsInteractive)">
+                    <option value="">選擇套件</option>
+                    @foreach (var package in packages.Items)
+                    {
+                        <option value="@package.Id" disabled="@(!Available(package))">@package.Version · @package.RuntimeIdentifier @(Available(package) ? "" : "（不可用）")</option>
+                    }
+                </select>
+                @if (packages.Page > 1 || packages.HasMore)
+                {
+                    <div class="rollout-actions"><button @onclick="PreviousPackagesAsync" disabled="@(busy || packages.Page <= 1)">上一頁</button><span>套件第 @packages.Page 頁</span><button @onclick="NextPackagesAsync" disabled="@(busy || !packages.HasMore)">下一頁</button></div>
+                }
+                <div class="rollout-inputs">
+                    <label>試行設備數 <input type="number" min="1" max="100" @bind="pilotSize" disabled="@busy" /></label>
+                    <label>每批設備數 <input type="number" min="1" max="100" @bind="batchSize" disabled="@busy" /></label>
+                </div>
+                <div class="rollout-actions"><button @onclick="PreviewAsync" disabled="@(busy || !RendererInfo.IsInteractive || packageId == "")">預覽適用設備</button></div>
+                @if (preview is not null)
+                {
+                    <div class="rollout-note" role="status">
+                        <p>適用：@preview.Included 台；未納入：@preview.Excluded 台（@preview.RuntimeIdentifier）。</p>
+                        <p>計數只包含已啟用深入監控的群組設備；未註冊、尚未回報平台或平台不符的設備不會納入。建立時會重新確認名單。</p>
+                    </div>
+                    <button class="rollout-primary" @onclick="CreateAsync" disabled="@(busy || preview.Included == 0 || !RendererInfo.IsInteractive)">開始分批更新</button>
+                }
+                @if (message is not null) { <p role="@(messageError ? "alert" : "status")">@message</p> }
+            </section>
+        </Authorized></AuthorizeView>
+        <section class="rollout-panel">
+            <div class="rollout-heading"><h2>更新紀錄</h2><button @onclick="RefreshAsync" disabled="@busy">重新整理</button></div>
+            @if (summaries.Count == 0) { <p>此群組尚無分批更新。</p> }
+            else
+            {
+                <p>顯示最近 100 筆更新。</p>
+                <p class="rollout-scroll">左右滑動查看更新紀錄</p>
+                <div class="rollout-table"><table><thead><tr><th>建立時間（UTC）</th><th>套件</th><th>狀態</th><th>查看</th></tr></thead><tbody>
+                    @foreach (var item in summaries)
+                    {
+                        <tr @key="item.Id"><td>@Time(item.CreatedAt)</td><td>@item.PackageVersion · @item.RuntimeIdentifier</td><td>@Status(item.Status)</td><td><button @onclick="() => SelectAsync(item.Id)" disabled="@busy">查看詳情</button></td></tr>
+                    }
+                </tbody></table></div>
+            }
+        </section>
+        @if (selected is not null)
+        {
+            <section class="rollout-panel">
+                <h2>更新詳情</h2>
+                <p>@selected.PackageVersion · @selected.RuntimeIdentifier　｜　@Status(selected.Status)</p>
+                <p>試行 @selected.PilotSize 台，後續每批 @selected.BatchSize 台；顯示建立時的設備名稱與成員快照。</p>
+                <p class="rollout-note">暫停或取消只會停止後續指派；已經指派的設備仍可能完成更新。</p>
+                <AuthorizeView Roles="Administrator"><Authorized>
+                    <div class="rollout-actions">
+                        @if (selected.Status == AgentRolloutStatus.Running) { <button @onclick="() => ChangeAsync(AgentRolloutAction.Paused)" disabled="@busy">暫停後續指派</button> }
+                        @if (selected.Status == AgentRolloutStatus.Paused && !HasIssues) { <button @onclick="() => ChangeAsync(AgentRolloutAction.Resumed)" disabled="@busy">繼續更新</button> }
+                        @if (selected.Status == AgentRolloutStatus.Paused && HasIssues)
+                        {
+                            <p class="rollout-warning">有設備更新失敗或指派已變更。略過後不會重設這些設備的指派，包含失敗的試行設備。</p>
+                            <button @onclick="() => ChangeAsync(AgentRolloutAction.ResumeRemaining)" disabled="@busy">略過有問題的設備並繼續</button>
+                        }
+                        @if (selected.Status is AgentRolloutStatus.Running or AgentRolloutStatus.Paused) { <button @onclick="() => ChangeAsync(AgentRolloutAction.Cancelled)" disabled="@busy">取消後續指派</button> }
+                    </div>
+                    @if (actionMessage is not null) { <p role="@(actionError ? "alert" : "status")">@actionMessage</p> }
+                </Authorized></AuthorizeView>
+                <p class="rollout-scroll">左右滑動查看設備狀態</p>
+                <div class="rollout-table"><table><thead><tr><th>設備</th><th>批次</th><th>狀態</th><th>原因</th></tr></thead><tbody>
+                    @foreach (var member in selected.Members)
+                    {
+                        <tr @key="member.AgentId"><td><a href="@($"/devices/{member.DeviceId:D}")">@member.DeviceName</a></td><td>@(member.Batch == 0 ? "試行" : $"第 {member.Batch} 批")</td><td>@MemberStatus(member.Status)</td><td>@Problem(member.Problem)</td></tr>
+                    }
+                </tbody></table></div>
+                <details><summary>操作紀錄</summary><ul>@foreach (var entry in selected.History) { <li>@Time(entry.OccurredAt) UTC · @Action(entry.Action) · @(entry.ActorId is null ? "系統" : $"管理員 {entry.ActorId:D}")</li> }</ul></details>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid GroupId { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private AgentPackagePage packages = new([], 1, false);
+    private IReadOnlyList<AgentRolloutSummary> summaries = [];
+    private AgentRolloutView? selected;
+    private AgentRolloutPreview? preview;
+    private string packageId = "";
+    private int pilotSize = 1, batchSize = 10;
+    private string? error, message, actionMessage;
+    private bool loading = true, busy, messageError, actionError;
+    private bool HasIssues => selected?.Members.Any(x => x.Status is AgentRolloutMemberStatus.Failed or AgentRolloutMemberStatus.Conflict) == true;
+    private bool Available(AgentPackageView package) => package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow();
+    private static string Time(DateTimeOffset value) => value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+    private static string Status(AgentRolloutStatus value) => value switch
+    { AgentRolloutStatus.Running => "進行中", AgentRolloutStatus.Paused => "已暫停", AgentRolloutStatus.Completed => "已完成", AgentRolloutStatus.Cancelled => "已取消", AgentRolloutStatus.CompletedWithIssues => "已結束（含問題）", _ => "未知" };
+    private static string MemberStatus(AgentRolloutMemberStatus value) => value switch
+    { AgentRolloutMemberStatus.Pending => "等待指派", AgentRolloutMemberStatus.Assigned => "已指派，等待結果", AgentRolloutMemberStatus.Succeeded => "更新成功", AgentRolloutMemberStatus.Failed => "更新失敗", AgentRolloutMemberStatus.Conflict => "需要處理", _ => "未知" };
+    private static string Problem(AgentRolloutProblem? value) => value switch
+    { AgentRolloutProblem.AssignmentChanged => "單台指派已變更", AgentRolloutProblem.AgentUnavailable => "Agent 或設備不再可用", AgentRolloutProblem.PackageUnavailable => "套件不可用", AgentRolloutProblem.UpdateFailed => "更新或回復失敗", _ => "—" };
+    private static string Action(AgentRolloutAction value) => value switch
+    { AgentRolloutAction.Created => "建立", AgentRolloutAction.Paused => "暫停", AgentRolloutAction.Resumed => "繼續", AgentRolloutAction.Cancelled => "取消", AgentRolloutAction.AutomaticallyPaused => "自動暫停", AgentRolloutAction.ResumeRemaining => "略過問題並繼續", _ => "未知" };
+    protected override Task OnParametersSetAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        loading = true; error = null;
+        try { summaries = await Client.ListAsync(GroupId, lifetime.Token); packages = await Versions.PackagesAsync(1, lifetime.Token); }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load group Agent rollouts"); error = "無法讀取更新紀錄，請稍後再試。"; }
+        finally { loading = false; }
+    }
+    private void PackageChanged(ChangeEventArgs args) { packageId = args.Value?.ToString() ?? ""; preview = null; message = null; }
+    private async Task PagePackagesAsync(int page)
+    {
+        if (busy) return;
+        busy = true;
+        try { packages = await Versions.PackagesAsync(page, lifetime.Token); packageId = ""; preview = null; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to load Agent packages"); message = "無法讀取套件清單。"; messageError = true; }
+        finally { busy = false; }
+    }
+    private Task PreviousPackagesAsync() => PagePackagesAsync(packages.Page - 1);
+    private Task NextPackagesAsync() => PagePackagesAsync(packages.Page + 1);
+    private async Task PreviewAsync()
+    {
+        if (busy || !Guid.TryParse(packageId, out var package)) return;
+        busy = true; message = null;
+        try { preview = await Client.PreviewAsync(GroupId, package, lifetime.Token); if (preview is null) { message = "群組或套件目前不可用。"; messageError = true; } }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to preview Agent rollout"); message = "無法預覽適用設備。"; messageError = true; }
+        finally { busy = false; }
+    }
+    private async Task CreateAsync()
+    {
+        if (busy || !Guid.TryParse(packageId, out var package) || preview is null) return;
+        if (pilotSize is < 1 or > 100 || batchSize is < 1 or > 100) { message = "試行及每批設備數須介於 1 到 100。"; messageError = true; return; }
+        busy = true;
+        try
+        {
+            var result = await Client.CreateAsync(new(GroupId, package, pilotSize, batchSize), lifetime.Token);
+            messageError = result.Result != AgentRolloutResult.Saved;
+            message = messageError ? "無法建立更新；請重新預覽並確認套件仍可用。" : $"已建立更新：納入 {result.Included} 台，未納入 {result.Excluded} 台。";
+            if (!messageError && result.Id is { } id) { summaries = await Client.ListAsync(GroupId, lifetime.Token); selected = await Client.GetAsync(id, lifetime.Token); preview = null; }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to create Agent rollout"); message = "無法建立更新。"; messageError = true; }
+        finally { busy = false; }
+    }
+    private async Task RefreshAsync()
+    {
+        if (busy) return;
+        busy = true;
+        try { summaries = await Client.ListAsync(GroupId, lifetime.Token); if (selected is not null) selected = await Client.GetAsync(selected.Id, lifetime.Token); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh Agent rollout"); error = "無法讀取更新紀錄，請稍後再試。"; }
+        finally { busy = false; }
+    }
+    private async Task SelectAsync(Guid id)
+    {
+        if (busy) return;
+        busy = true; actionMessage = null;
+        try { selected = await Client.GetAsync(id, lifetime.Token); }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent rollout details"); error = "無法讀取更新詳情，請稍後再試。"; }
+        finally { busy = false; }
+    }
+    private async Task ChangeAsync(AgentRolloutAction action)
+    {
+        if (busy || selected is null) return;
+        busy = true; actionMessage = null;
+        try
+        {
+            var result = await Client.ChangeAsync(selected.Id, new(selected.Revision, action), lifetime.Token);
+            actionError = result != AgentRolloutResult.Saved;
+            actionMessage = actionError ? "更新狀態已變更，請重新整理後再試。" : "已更新批次狀態。";
+            selected = await Client.GetAsync(selected.Id, lifetime.Token);
+            summaries = await Client.ListAsync(GroupId, lifetime.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to change Agent rollout"); actionMessage = "無法更新批次狀態。"; actionError = true; }
+        finally { busy = false; }
+    }
+    public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
+}
