@@ -1361,6 +1361,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("Aggregated")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("BatchId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1395,6 +1398,10 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("RowId")
+                        .HasDatabaseName("IX_HostMetrics_Unaggregated")
+                        .HasFilter("[Aggregated] = 0");
+
                     b.HasIndex("AgentId", "MessageId")
                         .IsUnique();
 
@@ -1403,6 +1410,68 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("AgentId", "Kind", "OccurredAt", "RowId");
 
                     b.ToTable("HostMetrics", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricRollup", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Count")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Dimension")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte[]>("DimensionBytes")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(512)")
+                        .HasComputedColumnSql("CONVERT(varbinary(512), [Dimension])", true);
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("LastOccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<double>("Maximum")
+                        .HasColumnType("float");
+
+                    b.Property<double>("Minimum")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<byte[]>("SourceBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [Source])", true);
+
+                    b.Property<double>("Sum")
+                        .HasColumnType("float");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "Kind", "WindowStart", "SourceBytes", "DimensionBytes")
+                        .IsUnique();
+
+                    b.ToTable("HostMetricRollups", "agent");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricThreshold", b =>
@@ -1823,6 +1892,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetric", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricRollup", b =>
                 {
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
                         .WithMany()

@@ -15,6 +15,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.Resources.Application;
@@ -867,6 +868,88 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
         Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 9, null, MetricLoss: newer), token));
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+    });
+
+    [TestMethod]
+    public Task HostMetricRollup_BackfillsDistinctSeriesAndRetriesAfterFailure() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var start = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300).AddHours(-1);
+        var device = new Device("rollup", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var batch = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            db.HostMetrics.AddRange(
+                new HostMetric(agent.Id, batch, 0, new(Guid.CreateVersion7(), start.AddSeconds(1), AgentMetricKind.CpuCorePercent, "cpu", "core", 10), now),
+                new HostMetric(agent.Id, batch, 1, new(Guid.CreateVersion7(), start.AddSeconds(2), AgentMetricKind.CpuCorePercent, "cpu", "core", 20), now),
+                new HostMetric(agent.Id, batch, 2, new(Guid.CreateVersion7(), start.AddSeconds(3), AgentMetricKind.CpuCorePercent, "CPU", "core", 30), now),
+                new HostMetric(agent.Id, batch, 3, new(Guid.CreateVersion7(), start.AddSeconds(4), AgentMetricKind.CpuCorePercent, "cpu ", "core", 40), now));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(4, await backfill.RunBatchAsync(token));
+        Assert.AreEqual(0, await backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var buckets = await db.HostMetricRollups.AsNoTracking().ToArrayAsync(token);
+            Assert.HasCount(3, buckets);
+            var exact = buckets.Single(x => x.Source == "cpu");
+            Assert.AreEqual(2L, exact.Count);
+            Assert.AreEqual(30d, exact.Sum);
+            Assert.AreEqual(10d, exact.Minimum);
+            Assert.AreEqual(20d, exact.Maximum);
+            Assert.IsTrue(await db.HostMetrics.AllAsync(x => x.Aggregated, token));
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 4,
+                new(Guid.CreateVersion7(), start.AddSeconds(1), AgentMetricKind.CpuCorePercent, "cpu", "core", 5), now));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE agent.HostMetricRollups ADD CONSTRAINT CK_TestRollupFailure CHECK ([Count] <= 2)", token);
+        }
+        await Assert.ThrowsAsync<DbUpdateException>(() => backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => !x.Aggregated, token));
+            Assert.AreEqual(2L, (await db.HostMetricRollups.AsNoTracking().ToArrayAsync(token)).Single(x => x.Source == "cpu").Count);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE agent.HostMetricRollups DROP CONSTRAINT CK_TestRollupFailure", token);
+        }
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        await using var verify = agents.CreateDbContext();
+        var updated = (await verify.HostMetricRollups.AsNoTracking().ToArrayAsync(token)).Single(x => x.Source == "cpu");
+        Assert.AreEqual(3L, updated.Count);
+        Assert.AreEqual(35d, updated.Sum);
+        Assert.AreEqual(5d, updated.Minimum);
+    });
+
+    [TestMethod]
+    public Task HostMetricRollup_ReceiptRetriesDoNotDuplicateMeasurements() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("metric rollup receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var point = new AgentMetricPoint(Guid.CreateVersion7(), clock.Now, AgentMetricKind.MemoryAvailableBytes, "linux.proc", null, 4096);
+        var batch = new AgentMetricBatch(2, Guid.CreateVersion7(), clock.Now, [point]);
+        var payload = AgentMetricBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        Assert.AreEqual(0, await backfill.RunBatchAsync(token));
+        await using var verify = agents.CreateDbContext();
+        var rollup = await verify.HostMetricRollups.SingleAsync(token);
+        Assert.AreEqual(1L, rollup.Count);
+        Assert.AreEqual(4096d, rollup.Sum);
+        Assert.AreEqual(agentId, rollup.AgentId);
     });
 
     [TestMethod]

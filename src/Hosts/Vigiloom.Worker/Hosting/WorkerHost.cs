@@ -21,6 +21,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
@@ -83,6 +84,8 @@ public static class WorkerHost
         builder.Services.AddScoped<SpeedRetentionCleanup>();
         builder.Services.AddScoped<SpeedRetentionJob>();
         builder.Services.AddScoped<AgentInboxCleanup>();
+        builder.Services.AddScoped<HostMetricRollupBackfill>();
+        builder.Services.AddScoped<HostMetricRollupJob>();
         builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
         builder.Services.AddScoped<UpdateTrustStore>();
         builder.Services.AddScoped<AgentPackageSourceSettings>();
@@ -166,6 +169,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<PingRollupBackfillSchedule>();
+        builder.Services.AddHostedService<HostMetricRollupSchedule>();
         builder.Services.AddHostedService<PingRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         builder.Services.AddHostedService<MetricRollupSchedule>();
