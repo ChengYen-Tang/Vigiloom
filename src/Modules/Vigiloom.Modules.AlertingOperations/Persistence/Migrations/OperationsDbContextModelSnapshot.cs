@@ -23,6 +23,53 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.AuditRetentionSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Days")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Slot")
+                        .IsUnique();
+
+                    b.ToTable("AuditRetentionSettings", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_AuditRetentionSettings_Days", "[Days] BETWEEN 1 AND 3650");
+
+                            t.HasCheckConstraint("CK_AuditRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_AuditRetentionSettings_Slot", "[Slot] = 1");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.LineDelivery", b =>
                 {
                     b.Property<Guid>("Id")

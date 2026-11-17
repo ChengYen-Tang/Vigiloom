@@ -31,6 +31,34 @@ public sealed class PingHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task AuditRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/audit-retention/preview", new AuditRetentionPreviewRequest(30, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/audit/retention", token);
+        var fields = Hidden(await FormAsync(page, "audit-retention", token));
+        fields["Input.Days"] = "30";
+        using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
+        confirm["Input.Days"] = "30";
+        using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        Assert.AreEqual(30, (await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token))?.Days);
+        using var audit = await admin.GetAsync("/settings/audit?source=audit-retention", token);
+        Assert.Contains("設定操作紀錄保存：365 → 30 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task SettingsAuthorizationAndActualPingDisplay() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
