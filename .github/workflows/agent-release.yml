@@ -46,6 +46,8 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version }}
       RELEASE_RID: ${{ matrix.rid }}
+      BOOTSTRAP_ROOT_BASE64: ${{ vars.VIGILOOM_BOOTSTRAP_ROOT_BASE64 }}
+      BOOTSTRAP_ROOT_SHA256: ${{ vars.VIGILOOM_BOOTSTRAP_ROOT_SHA256 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -65,10 +67,34 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Agent publishing failed.' }
           python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" --output-directory "$env:RUNNER_TEMP/agent-package-$env:RELEASE_RID" --rid $env:RELEASE_RID --version $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
+      - name: Build installer bundle
+        shell: pwsh
+        run: |
+          if (-not $env:BOOTSTRAP_ROOT_BASE64 -or $env:BOOTSTRAP_ROOT_SHA256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Configure the independently verified bootstrap root and fingerprint.' }
+          $root = Join-Path $env:RUNNER_TEMP 'agent-bootstrap-root.json'
+          [IO.File]::WriteAllBytes($root, [Convert]::FromBase64String($env:BOOTSTRAP_ROOT_BASE64))
+          if ((Get-FileHash -LiteralPath $root -Algorithm SHA256).Hash -ne $env:BOOTSTRAP_ROOT_SHA256) { throw 'Bootstrap root fingerprint mismatch.' }
+          $updater = Join-Path $env:RUNNER_TEMP "updater-publish-$env:RELEASE_RID"
+          $agent = Join-Path $env:RUNNER_TEMP "agent-publish-$env:RELEASE_RID"
+          $output = Join-Path $env:RUNNER_TEMP "installer-$env:RELEASE_RID"
+          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime $env:RELEASE_RID --self-contained true --output $updater "-p:Version=$env:RELEASE_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw 'Updater publishing failed.' }
+          if ($IsWindows) {
+            & ./packaging/agent/windows/bundle.ps1 -AgentPublish $agent -UpdaterPublish $updater -TrustedRoot $root -RootSha256 $env:BOOTSTRAP_ROOT_SHA256 -OutputDirectory $output
+          } else {
+            bash ./packaging/agent/linux/bundle.sh $agent $updater $root $env:BOOTSTRAP_ROOT_SHA256 $output
+            if ($LASTEXITCODE -ne 0) { throw 'Linux installer bundling failed.' }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: agent-${{ matrix.rid }}
           path: ${{ runner.temp }}/agent-package-${{ matrix.rid }}/agent-${{ matrix.rid }}.zip
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.rid }}
+          path: ${{ runner.temp }}/installer-${{ matrix.rid }}/vigiloom-agent-*
           if-no-files-found: error
           retention-days: 7
 
@@ -84,6 +110,8 @@ jobs:
     # A dedicated private runner owns the single-host publication store.
     runs-on: [self-hosted, Linux, vigiloom-release]
     environment: agent-release
+    permissions:
+      contents: write
     timeout-minutes: 45
     env:
       RELEASE_OPERATION: ${{ inputs.operation || 'refresh' }}
@@ -98,6 +126,8 @@ jobs:
       VIGILOOM_SNAPSHOT_KEY_PEM: ${{ secrets.VIGILOOM_SNAPSHOT_KEY_PEM }}
       VIGILOOM_TIMESTAMP_KEY_PEM: ${{ secrets.VIGILOOM_TIMESTAMP_KEY_PEM }}
       VIGILOOM_RELEASE_KEY_PASSWORD: ${{ secrets.VIGILOOM_RELEASE_KEY_PASSWORD }}
+      BOOTSTRAP_ROOT_SHA256: ${{ vars.VIGILOOM_BOOTSTRAP_ROOT_SHA256 }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -109,6 +139,25 @@ jobs:
           pattern: agent-*
           path: ${{ runner.temp }}/vigiloom-release-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: inputs.operation == 'release'
+        with:
+          pattern: installer-*
+          path: ${{ runner.temp }}/vigiloom-installer-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          merge-multiple: true
+      - name: Prepare draft installer release
+        if: inputs.operation == 'release'
+        shell: bash
+        env:
+          INSTALLERS: ${{ runner.temp }}/vigiloom-installer-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          : "${VIGILOOM_RELEASE_BOOTSTRAP:?Configure the trusted bootstrap root path}"
+          : "${BOOTSTRAP_ROOT_SHA256:?Configure the independently verified bootstrap fingerprint}"
+          actual=$(sha256sum -- "$VIGILOOM_RELEASE_BOOTSTRAP" | cut -d ' ' -f 1)
+          [[ "${actual,,}" == "${BOOTSTRAP_ROOT_SHA256,,}" ]] || { echo 'Publisher and installer bootstrap roots do not match.' >&2; exit 1; }
+          gh release create "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Agent $RELEASE_VERSION" --notes "Vigiloom Agent installation packages." \
+            "$INSTALLERS/vigiloom-agent-win-x64.zip" "$INSTALLERS/vigiloom-agent-win-x86.zip" "$INSTALLERS/vigiloom-agent-linux-x64.tar.gz"
       - name: Sign and atomically publish
         shell: bash
         env:
@@ -137,6 +186,10 @@ jobs:
             *) echo 'Unsupported publication operation.' >&2; exit 1 ;;
           esac
           "$work/venv/bin/python" tools/agent-release/run_release.py "${args[@]}"
+      - name: Publish installer release
+        if: inputs.operation == 'release'
+        shell: bash
+        run: gh release edit "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
       - name: Remove this run's downloaded archives
         if: always() && inputs.operation == 'release'
         shell: bash
@@ -145,4 +198,6 @@ jobs:
           : "${RUNNER_TEMP:?Runner temporary directory is required}"
           case "$RUNNER_TEMP" in /*) ;; *) echo 'Runner temporary directory must be absolute.' >&2; exit 1 ;; esac
           target="$RUNNER_TEMP/vigiloom-release-artifacts-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf -- "$target"
+          target="$RUNNER_TEMP/vigiloom-installer-artifacts-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           rm -rf -- "$target"
