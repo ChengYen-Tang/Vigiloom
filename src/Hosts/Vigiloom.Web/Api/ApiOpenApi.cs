@@ -91,9 +91,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             }
             else if (path.Equals("/api/v1/agent/enroll", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [];
-            else if (path.Equals("/api/v1/agents/{agentId}/version-assignment", StringComparison.OrdinalIgnoreCase) ||
-                     path.Equals("/api/v1/agent-rollouts", StringComparison.OrdinalIgnoreCase) ||
-                     path.StartsWith("/api/v1/agent-rollouts/", StringComparison.OrdinalIgnoreCase))
+            else if (path.Equals("/api/v1/agents/{agentId}/version-assignment", StringComparison.OrdinalIgnoreCase))
             {
                 var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
                 if (method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))

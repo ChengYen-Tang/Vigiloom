@@ -8,7 +8,6 @@ internal static class AgentVersionEndpoints
 {
     public static void MapAgentVersionEndpoints(this WebApplication app)
     {
-        app.MapAgentRolloutEndpoints();
         app.MapGet("/api/v1/agent/version-assignment", async (AgentVersionAssignments assignments, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";

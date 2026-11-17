@@ -22,7 +22,6 @@ builder.Services.AddScoped<ISpeedHistoryClient, BrowserSpeedHistoryClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, BrowserPingHistoryClient>();
 builder.Services.AddScoped<IHostMonitoringClient, BrowserHostMonitoringClient>();
 builder.Services.AddScoped<IAgentVersionClient, BrowserAgentVersionClient>();
-builder.Services.AddScoped<IAgentRolloutClient, BrowserAgentRolloutClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Vulnerabilities.IVulnerabilityClient, BrowserVulnerabilityClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, BrowserServiceDetailsClient>();
 
