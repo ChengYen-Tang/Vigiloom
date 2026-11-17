@@ -16,10 +16,9 @@
         <section class="version-panel">
             <h2>Agent 版本資訊</h2>
             <dl class="version-summary">
-                <div><dt>指定版本</dt><dd>@(current?.PackageVersion ?? "尚未指派")</dd></div>
-                <div><dt>上次盤點的 Agent 版本</dt><dd>@(inventoryError ? "無法讀取" : observedVersion ?? "尚無盤點資料")</dd></div>
-                <div><dt>指派時間（UTC）</dt><dd>@(current?.PackageId is null ? "—" : current.AssignedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"))</dd></div>
-                <div><dt>版本盤點時間（UTC）</dt><dd>@(observedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
+                <div><dt>指定版本</dt><dd>@(current?.PackageVersion ?? "尚未指派")</dd><dd class="version-time">指派時間（UTC）：@(current?.PackageId is null ? "—" : current.AssignedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"))</dd></div>
+                <div><dt>心跳回報的 Agent 版本</dt><dd>@(current?.ReportedVersion is null ? "尚無回報" : $"{current.ReportedVersion} ({current.ReportedRuntimeIdentifier})")</dd><dd class="version-time">回報時間（UTC）：@(current?.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
+                <div><dt>上次盤點的 Agent 版本</dt><dd>@(inventoryError ? "無法讀取" : observedVersion ?? "尚無盤點資料")</dd><dd class="version-time">盤點時間（UTC）：@(observedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
             </dl>
             @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
             <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>

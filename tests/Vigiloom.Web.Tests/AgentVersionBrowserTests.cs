@@ -11,6 +11,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -61,6 +62,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.Locator(".version-assignment[data-interactive='true']").WaitForAsync();
+        Assert.AreEqual("尚無回報", await page.GetByText("心跳回報的 Agent 版本", new() { Exact = true }).Locator("..").Locator("dd").First.InnerTextAsync());
         await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "指派版本", Exact = true }).ClickAsync();
         await page.GetByText("已儲存版本指派；設備是否安裝仍以實際回報為準。", new() { Exact = true }).WaitForAsync();
@@ -80,8 +82,17 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
             Assert.AreEqual(InventoryStageResult.Accepted, stored);
             await transaction.CommitAsync(token);
         }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            var registered = await db.Agents.SingleAsync(x => x.Id == agent.AgentId.Value, token);
+            registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64"), observed);
+            await db.SaveChangesAsync(token);
+        }
         await page.ReloadAsync();
         await page.GetByText("1.1.0", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("1.1.1 (win-x64)", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual($"回報時間（UTC）：{observed.ToUniversalTime():yyyy-MM-dd HH:mm:ss}",
+            await page.GetByText("心跳回報的 Agent 版本", new() { Exact = true }).Locator("..").Locator(".version-time").InnerTextAsync());
         await using (var readerContext = await browser.NewContextAsync())
         {
             var reader = await readerContext.NewPageAsync();
@@ -95,9 +106,11 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         }
         var evidence = Environment.GetEnvironmentVariable("VIGILOOM_VERSION_EVIDENCE_DIR") ?? Path.Combine(testContext.TestRunDirectory!, "agent-version-ui");
         Directory.CreateDirectory(evidence);
+        await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "desktop.png"), FullPage = true });
         await page.SetViewportSizeAsync(390, 844);
         await page.ReloadAsync();
+        await page.Locator(".version-assignment[data-interactive='true']").WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "取消指派", Exact = true }).WaitForAsync();
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "mobile.png"), FullPage = true });

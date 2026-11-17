@@ -36,7 +36,7 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.Id == agentId && x.RevokedAt == null)
-            .Select(x => new { x.DeviceId, x.DeviceGeneration }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.DeviceId, x.DeviceGeneration, x.RuntimeVersion, x.RuntimeIdentifier, x.RuntimeReportedAt }).SingleOrDefaultAsync(token);
         if (agent is null) return null;
         var device = await devices.GetAsync(agent.DeviceId, token);
         if (device is null || !device.Eligible || device.Generation != agent.DeviceGeneration) return null;
@@ -47,9 +47,9 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             select new { assignment.AgentId, assignment.PackageId, PackageVersion = package == null ? null : package.Version,
                 RuntimeIdentifier = package == null ? null : package.RuntimeIdentifier, assignment.AssignedAt, assignment.Version,
                 Available = package != null && package.Listed && !package.Revoked && package.VerifiedUntil > clock.GetUtcNow() }).SingleOrDefaultAsync(token);
-        if (row is null) return new(agentId, null, null, null, default, "", false);
+        if (row is null) return new(agentId, null, null, null, default, "", false, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt);
         return new(row.AgentId, row.PackageId, row.PackageVersion, row.RuntimeIdentifier, row.AssignedAt,
-            Convert.ToBase64String(row.Version), row.Available);
+            Convert.ToBase64String(row.Version), row.Available, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt);
     }
 
     public async Task<VersionAssignmentResult> SetAsync(Guid agentId, Guid? packageId, string? revision, Guid actorId, CancellationToken token)
