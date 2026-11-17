@@ -272,6 +272,10 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                         .IsUnicode(false)
                         .HasColumnType("varchar(32)");
 
+                    b.Property<string>("RuntimeModuleFailuresJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<DateTimeOffset?>("RuntimeReportedAt")
                         .HasColumnType("datetimeoffset");
 

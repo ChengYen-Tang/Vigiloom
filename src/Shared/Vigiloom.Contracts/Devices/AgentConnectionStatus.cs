@@ -15,7 +15,8 @@ public sealed record AgentConnectionStatus(Guid DeviceId, AgentConnectionState S
     AgentProcessMetrics? Process = null);
 
 /// <summary>Agent process resource usage from the last accepted heartbeat.</summary>
-public sealed record AgentProcessMetrics(double? CpuPercent, long? WorkingSetBytes, DateTimeOffset ReceivedAt);
+public sealed record AgentProcessMetrics(double? CpuPercent, long? WorkingSetBytes, DateTimeOffset ReceivedAt,
+    IReadOnlyList<AgentModuleFailure>? ModuleFailures = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<AgentReplayIssue>))]
 public enum AgentReplayIssue { ClockUncertain = 1, TimestampAhead = 2, Expired = 3 }

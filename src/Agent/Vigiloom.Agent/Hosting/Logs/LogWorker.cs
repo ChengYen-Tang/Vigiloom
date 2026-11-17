@@ -14,7 +14,7 @@ namespace Vigiloom.Agent.Hosting.Logs;
 /// <summary>Collects enabled host sources while holding the state directory's exclusive log producer lease.</summary>
 internal sealed class LogWorker(AgentLogSettingsRuntime settings, AgentMetricSettingsRuntime metrics, IConfiguration configuration,
     TimeProvider clock, ILogger<LogWorker> logger, IMetricResourceMonitor? monitor = null, SamplingBudgetCoordinator? sharedBudget = null,
-    AgentLogStatusRuntime? statusRuntime = null) : BackgroundService
+    AgentLogStatusRuntime? statusRuntime = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
@@ -97,6 +97,8 @@ internal sealed class LogWorker(AgentLogSettingsRuntime settings, AgentMetricSet
                                     foreach (var removed in last.Keys.Where(id => !activeIds.Contains(id)).ToArray()) last.Remove(removed);
                                     foreach (var result in results)
                                     {
+                                        if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.Conflict)
+                                            failures?.Record(owner, AgentModule.Logs);
                                         if (last.TryGetValue(result.SourceId, out var prior) && prior == result.Status) continue;
                                         last[result.SourceId] = result.Status;
                                         if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.Full or LogSourceCycleStatus.Conflict)
@@ -119,7 +121,7 @@ internal sealed class LogWorker(AgentLogSettingsRuntime settings, AgentMetricSet
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                     UnauthorizedAccessException or System.Text.Json.JsonException or CryptographicException or System.Data.Common.DbException or Win32Exception or PlatformNotSupportedException)
-                { logger.LogWarning("Agent log collection failed: {ErrorType}.", ex.GetType().Name); }
+                { failures?.Record(activeOwner, AgentModule.Logs); logger.LogWarning("Agent log collection failed: {ErrorType}.", ex.GetType().Name); }
                 try { await Task.Delay(delay, clock, stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             }

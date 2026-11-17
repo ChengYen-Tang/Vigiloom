@@ -113,7 +113,7 @@ public sealed class AgentIdentitySqlTests
         var epoch = Guid.CreateVersion7();
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(null, epoch), token));
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential,
-            new(1, epoch, 1, null, Runtime: new("1.0.0", "win-x64", 25.5, 4096)), token));
+            new(1, epoch, 1, null, Runtime: new("1.0.0", "win-x64", 25.5, 4096, [new(AgentModule.Metrics, clock.Now)])), token));
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.RecordHeartbeatAsync(credential,
             new(1, epoch, 1, null, Runtime: new("9.0.0", "linux-x64")), token));
         var observed = await assignments.GetAsync(agentId, token);
@@ -125,6 +125,8 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(25.5, process.CpuPercent);
         Assert.AreEqual(4096, process.WorkingSetBytes);
         Assert.AreEqual(clock.Now, process.ReceivedAt);
+        Assert.HasCount(1, process.ModuleFailures!);
+        Assert.AreEqual(AgentModule.Metrics, process.ModuleFailures![0].Module);
         var newEpoch = Guid.CreateVersion7();
         Assert.AreEqual(AgentIdentityStatus.Success, await identity.BeginQueueSessionAsync(credential, new(epoch, newEpoch), token));
         Assert.IsNull((await assignments.GetAsync(agentId, token))!.ReportedVersion);
