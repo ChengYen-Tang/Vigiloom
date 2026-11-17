@@ -156,6 +156,15 @@ jobs:
           : "${BOOTSTRAP_ROOT_SHA256:?Configure the independently verified bootstrap fingerprint}"
           actual=$(sha256sum -- "$VIGILOOM_RELEASE_BOOTSTRAP" | cut -d ' ' -f 1)
           [[ "${actual,,}" == "${BOOTSTRAP_ROOT_SHA256,,}" ]] || { echo 'Publisher and installer bootstrap roots do not match.' >&2; exit 1; }
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/agent-v$RELEASE_VERSION" >/dev/null
+          tag_status=$?
+          set -e
+          case "$tag_status" in
+            0) echo 'The release tag already exists; inspect the previous release before retrying.' >&2; exit 1 ;;
+            2) ;;
+            *) echo 'Could not check the release tag.' >&2; exit "$tag_status" ;;
+          esac
           gh release create "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Agent $RELEASE_VERSION" --notes "Vigiloom Agent installation packages." \
             "$INSTALLERS/vigiloom-agent-win-x64.zip" "$INSTALLERS/vigiloom-agent-win-x86.zip" "$INSTALLERS/vigiloom-agent-linux-x64.tar.gz"
       - name: Sign and atomically publish
