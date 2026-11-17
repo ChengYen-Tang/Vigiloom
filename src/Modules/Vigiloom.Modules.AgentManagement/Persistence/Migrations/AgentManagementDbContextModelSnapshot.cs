@@ -1405,11 +1405,63 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasIndex("AgentId", "MessageId")
                         .IsUnique();
 
+                    b.HasIndex("OccurredAt", "RowId")
+                        .HasDatabaseName("IX_HostMetrics_Retention")
+                        .HasFilter("[Aggregated] = 1");
+
                     b.HasIndex("AgentId", "OccurredAt", "RowId");
 
                     b.HasIndex("AgentId", "Kind", "OccurredAt", "RowId");
 
                     b.ToTable("HostMetrics", "agent");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricRetentionSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RawDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RollupDays")
+                        .HasColumnType("int");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Slot")
+                        .IsUnique();
+
+                    b.ToTable("HostMetricRetentionSettings", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_HostMetricRetentionSettings_Days", "[RawDays] BETWEEN 1 AND 3650 AND [RollupDays] BETWEEN [RawDays] AND 3650");
+
+                            t.HasCheckConstraint("CK_HostMetricRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_HostMetricRetentionSettings_Slot", "[Slot] = 1");
+                        });
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostMetricRollup", b =>
@@ -1467,6 +1519,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("WindowStart", "RowId")
+                        .HasDatabaseName("IX_HostMetricRollups_Retention");
 
                     b.HasIndex("AgentId", "Kind", "WindowStart", "SourceBytes", "DimensionBytes")
                         .IsUnique();
