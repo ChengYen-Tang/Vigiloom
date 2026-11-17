@@ -15,6 +15,7 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -125,6 +126,12 @@ public sealed class PingHttpTests
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         var device = await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+        {
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlerts (Id, DeviceId, Target, OpenedAt, RecoveredAt) VALUES ({Guid.CreateVersion7()}, {device.Id}, {"test"}, {old}, {old})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({Guid.CreateVersion7()}, {Guid.CreateVersion7()}, {"ping"}, {old}, {"title"}, {"detail"})", token);
+        }
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>().CreateDbContextAsync(token))
         {
             var actor = Guid.CreateVersion7();
@@ -177,11 +184,14 @@ public sealed class PingHttpTests
         using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
         Assert.Contains("預計有 6 筆操作紀錄", await TextAsync(preview, token));
+        Assert.Contains("預計清理 1 筆已恢復告警及 1 筆通知", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
         Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
         Assert.AreEqual(30, (await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token))?.Days);
+        using var notifications = await reader.GetAsync("/notifications", token);
+        Assert.Contains("通知及已恢復告警保存 30 天", await TextAsync(notifications, token));
         using var audit = await admin.GetAsync("/settings/audit?source=audit-retention", token);
         Assert.Contains("操作紀錄保存：365 → 30 天", await TextAsync(audit, token));
     }, TestContext.CancellationToken);
