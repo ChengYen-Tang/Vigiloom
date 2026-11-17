@@ -171,10 +171,30 @@ public sealed class HostDetailsBrowserTests
             await page.ScreenshotAsync(new() { Path = Path.Combine(metricEvidence, "metric-year-desktop.png"), FullPage = true });
         }
         await page.SetViewportSizeAsync(390, 844);
+        await page.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= window.innerWidth", null, new() { Timeout = 10000 });
         Assert.IsLessThanOrEqualTo(390, await page.EvaluateAsync<int>("() => document.documentElement.scrollWidth"));
         if (Environment.GetEnvironmentVariable("VIGILOOM_HOST_UI_EVIDENCE_DIR") is { Length: > 0 } mobileEvidence)
             await page.ScreenshotAsync(new() { Path = Path.Combine(mobileEvidence, "metric-year-mobile.png"), FullPage = true });
         await page.SetViewportSizeAsync(1440, 1024);
+        string shortenedVersion;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var retention = scope.ServiceProvider.GetRequiredService<HostMetricRetentionSettings>();
+            var current = await retention.GetAsync(token);
+            var actor = Guid.CreateVersion7();
+            var preview = await retention.PreviewAsync(new(30, 60, current.Version), actor, token);
+            Assert.IsNotNull(preview);
+            var saved = await retention.UpdateAsync(new(30, 60, current.Version, preview.ConfirmationToken), actor, token);
+            Assert.IsNotNull(saved);
+            shortenedVersion = saved.Version;
+        }
+        await page.Locator("#host-range").SelectOptionAsync("720");
+        await page.GetByText("原始樣本保存 30 天，五分鐘彙總保存 60 天。", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual(0, await page.Locator("#host-range option[value='8760']").CountAsync());
+        await page.Locator("#host-range").SelectOptionAsync("1440");
+        await page.Locator(".time-series-chart table").GetByText("17", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        await using (var scope = factory.Services.CreateAsyncScope())
+            Assert.IsNotNull(await scope.ServiceProvider.GetRequiredService<HostMetricRetentionSettings>().UpdateAsync(new(30, 365, shortenedVersion, null), Guid.CreateVersion7(), token));
         await page.Locator("#metric-kind").SelectOptionAsync(((int)AgentMetricKind.SwapTotalBytes).ToString());
         await page.GetByText("這段時間沒有此指標。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();

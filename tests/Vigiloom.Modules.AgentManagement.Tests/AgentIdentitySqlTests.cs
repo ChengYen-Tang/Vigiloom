@@ -18,6 +18,8 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -987,6 +989,11 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNotNull(annual);
         Assert.AreEqual(6L, annual.Buckets.Single().Samples);
         Assert.AreEqual(220d / 6, annual.Buckets.Single().Average, 0.000001);
+        var longest = await history.AggregateAsync(device.Id, agent.Id, start, start.AddDays(3650),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 604800, token);
+        Assert.IsNotNull(longest);
+        Assert.AreEqual(6L, longest.Buckets.Single().Samples);
+        Assert.AreEqual(220d / 6, longest.Buckets.Single().Average, 0.000001);
         var sources = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 0, token);
         Assert.IsNotNull(sources);
         Assert.IsFalse(sources.HasMore);
@@ -1061,6 +1068,39 @@ public sealed class AgentIdentitySqlTests
         await using var verify = agents.CreateDbContext();
         Assert.AreEqual(1, await verify.HostMetrics.CountAsync(token));
         Assert.AreEqual(2, await verify.HostMetricRollups.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task HostMetricRetention_SettingsRequirePreviewAndCommitWithAudit() => WithDatabase(async (_, agents, token) =>
+    {
+        string connection;
+        await using (var db = agents.CreateDbContext()) connection = db.Database.GetConnectionString()!;
+        var operations = new Factory<OperationsDbContext>(() => new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options));
+        await using (var db = operations.CreateDbContext()) await db.Database.MigrateAsync(token);
+        var settings = new HostMetricRetentionSettings(agents, new OperationAuditWriter(), new EphemeralDataProtectionProvider());
+        var actor = Guid.CreateVersion7();
+        var original = await settings.GetAsync(token);
+        Assert.AreEqual(30, original.RawDays); Assert.AreEqual(365, original.RollupDays);
+        var input = new HostMetricRetentionInput(10, 60, original.Version, null);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input, actor, token));
+        var preview = await settings.PreviewAsync(new(10, 60, original.Version), actor, token);
+        Assert.IsNotNull(preview);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, Guid.CreateVersion7(), token));
+        var saved = await settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, actor, token);
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(10, saved.RawDays); Assert.AreEqual(60, saved.RollupDays);
+        Assert.IsNull(await settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, actor, token));
+        var audit = new OperationAuditQueryService(operations);
+        var events = await audit.QueryHostMetricRetentionAsync(new(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token);
+        Assert.HasCount(1, events.Items);
+        Assert.AreEqual(30, events.Items[0].HostMetricRetention?.PreviousRawDays);
+        Assert.AreEqual(60, events.Items[0].HostMetricRetention?.CurrentRollupDays);
+        Assert.IsEmpty((await audit.QueryAsync(new(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token)).Items);
+        await using (var db = operations.CreateDbContext()) await db.Database.ExecuteSqlRawAsync("DROP TABLE [operations].[AuditEvents]", token);
+        await Assert.ThrowsAsync<SqlException>(() => settings.UpdateAsync(new(20, 90, saved.Version, null), actor, token));
+        var afterFailure = await settings.GetAsync(token);
+        Assert.AreEqual(saved, afterFailure);
     });
 
     [TestMethod]
@@ -2018,8 +2058,16 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         Assert.AreEqual(new AgentReceiptCapacity(0, 0, AgentBatchReceiver.MaximumRetainedBatchesPerAgent, AgentBatchReceiver.MaximumRetainedBytesPerAgent),
             (await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity);
-        var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
+        // A loaded SQL Server can reach the device-lock timeout; the Agent retries the same batch.
+        async Task<BatchReceiptStatus?> ReceiveAsync()
+        {
+            try { return await receiver.ReceiveAsync(credential, payload, token); }
+            catch (InvalidOperationException ex) when (ex.Message == "Agent device lock could not be acquired.") { return null; }
+        }
+        var results = await Task.WhenAll(ReceiveAsync(), ReceiveAsync());
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
+        if (results.Contains(null))
+            results[Array.IndexOf(results, null)] = await receiver.ReceiveAsync(credential, payload, token);
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
         Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
         Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);

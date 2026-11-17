@@ -15,7 +15,11 @@ public sealed record HostMetricPage(IReadOnlyList<HostMetricValue> Items, string
 public sealed record HostMetricSeries(Guid AgentId, string Source, string? Dimension);
 
 /// <summary>A page of metric sources available in the requested history.</summary>
-public sealed record HostMetricSeriesPage(IReadOnlyList<HostMetricSeries> Items, bool HasMore);
+public sealed record HostMetricSeriesPage(IReadOnlyList<HostMetricSeries> Items, bool HasMore)
+{
+    public int RawRetentionDays { get; init; } = 30;
+    public int RollupRetentionDays { get; init; } = 365;
+}
 
 /// <summary>A populated UTC time bucket for a single Agent and metric series.</summary>
 public sealed record HostMetricBucket(DateTimeOffset Start, DateTimeOffset LastObservedAt,

@@ -104,7 +104,10 @@ public partial class HostDetails
     }
     private async Task ChangeRangeAsync(ChangeEventArgs args)
     {
-        if (int.TryParse(args.Value?.ToString(), out var value) && (value is 24 or 168 or 720 || value == 8760 && tab == "metrics")) { rangeHours = value; await ReloadAsync(); }
+        if (int.TryParse(args.Value?.ToString(), out var value) &&
+            (tab == "metrics" ? metricPage is { } p && value > 0 && value <= p.RollupRetentionDays * 24 &&
+                (value is 24 or 168 or 720 or 8760 || value == p.RollupRetentionDays * 24) : value is 24 or 168 or 720))
+        { rangeHours = value; await ReloadAsync(); }
     }
     private Task NextDetectionsAsync() => detectionPage?.NextCursor is { } cursor ? NavigateDetectionsAsync(cursor, true) : Task.CompletedTask;
     private Task PreviousDetectionsAsync() => detectionCursors.TryPeek(out var cursor) ? NavigateDetectionsAsync(cursor, false) : Task.CompletedTask;
@@ -163,6 +166,18 @@ public partial class HostDetails
         var page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token);
         token.ThrowIfCancellationRequested();
         metricPage = page ?? throw new InvalidOperationException("Device missing");
+        var retentionHours = page.RollupRetentionDays * 24;
+        if (rangeHours > retentionHours || (rangeHours is not (24 or 168 or 720 or 8760) && rangeHours != retentionHours))
+        {
+            var available = Math.Min(rangeHours, retentionHours);
+            rangeHours = available == retentionHours ? available : available >= 8760 ? 8760 : available >= 720 ? 720 : available >= 168 ? 168 : 24;
+            from = until.AddHours(-rangeHours);
+            pageNumber = 0;
+            page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token)
+                ?? throw new InvalidOperationException("Device missing");
+            token.ThrowIfCancellationRequested();
+            metricPage = page;
+        }
         metricPageNumber = pageNumber;
         series = page.Items;
         seriesIndex = 0; points = []; metricThreshold = null; metricIncomplete = false;
@@ -178,7 +193,7 @@ public partial class HostDetails
     private async Task LoadSeriesAsync(CancellationToken token)
     {
         var item = series[seriesIndex];
-        var bucketSeconds = rangeHours <= 24 ? 300 : rangeHours <= 168 ? 3600 : rangeHours <= 720 ? 14400 : 86400;
+        var bucketSeconds = rangeHours <= 24 ? 300 : rangeHours <= 168 ? 3600 : rangeHours <= 720 ? 14400 : rangeHours <= 999 * 24 ? 86400 : 604800;
         var result = await Monitoring.AggregateMetricsAsync(DeviceId, item.AgentId, from, until, metricKind, item.Source, item.Dimension, bucketSeconds, token);
         token.ThrowIfCancellationRequested();
         if (result is null) throw new InvalidOperationException("Agent missing");

@@ -127,6 +127,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
         {
             var point = new AgentMetricPoint(Guid.CreateVersion7(), old, AgentMetricKind.MemoryAvailableBytes, "system", null, 42);
             db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, point, old));
+            var expired = point with { MessageId = Guid.CreateVersion7(), OccurredAt = old.AddDays(-31), Dimension = "old" };
+            db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, expired, old));
             await db.SaveChangesAsync(token);
         }
         var credential = $"vla_{agentId:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
@@ -174,10 +176,20 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 if (state == "Succeeded" && pingState == "Succeeded" && auditState == "Succeeded" && hostRollupState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
+            var hostRetentionId = jobs.Enqueue<HostMetricRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            while (true)
+            {
+                var state = connection.GetStateData(hostRetentionId)?.Name;
+                Assert.AreNotEqual("Failed", state);
+                if (state == "Succeeded") break;
+                await Task.Delay(100, deadline.Token);
+            }
             await using var check = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(0, await check.ReceivedBatches.CountAsync(token));
             Assert.AreEqual(1, await check.RuntimeObservations.CountAsync(token));
-            Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(token)).Sum);
+            Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(x => x.Dimension == null, token)).Sum);
+            Assert.AreEqual(0, await check.HostMetrics.CountAsync(x => x.Dimension == "old", token));
+            Assert.AreEqual(1, await check.HostMetricRollups.CountAsync(x => x.Dimension == "old", token));
             var agent = await check.Agents.SingleAsync(x => x.Id == agentId, token);
             Assert.AreEqual(1L, agent.InboxDeletedTotal);
             Assert.IsNotNull(agent.ReplayCleanedBefore);
@@ -200,6 +212,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-settings-audit-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-rollup'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);

@@ -1,7 +1,5 @@
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application.HostMetrics;
@@ -13,7 +11,7 @@ public sealed class HostMetricRetentionCleanup(IDbContextFactory<AgentManagement
 
     public async Task<(long Samples, long Rollups)> RunAsync(CancellationToken token)
     {
-        await EnsureAsync(contexts, token);
+        await HostMetricRetentionSettings.EnsureAsync(contexts, token);
         long samples = 0, rollups = 0;
         while (true)
         {
@@ -48,12 +46,4 @@ public sealed class HostMetricRetentionCleanup(IDbContextFactory<AgentManagement
         }
     }
 
-    internal static async Task EnsureAsync(IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token)
-    {
-        await using var db = await contexts.CreateDbContextAsync(token);
-        if (await db.HostMetricRetentionSettings.AnyAsync(x => x.Slot == 1, token)) return;
-        db.HostMetricRetentionSettings.Add(new HostMetricRetentionSetting());
-        try { await db.SaveChangesAsync(token); }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { }
-    }
 }
