@@ -15,6 +15,7 @@ using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Contracts.Services;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
@@ -52,13 +53,19 @@ public sealed class HealthRunnerTests(TestContext context)
             for (var i = 0; i < 3; i++) await Observe(HealthObservationKind.Timeout);
             var operationOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString).Options;
             await using var operations = new OperationsDbContext(operationOptions);
+            var reader = new NotificationReader(new PooledDbContextFactory<OperationsDbContext>(operationOptions));
             Assert.AreEqual(1, await operations.Set<ServiceHealthAlert>().CountAsync(x => x.RecoveredAt == null, token));
             Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
+            var open = Assert.ContainsSingle((await reader.GetEpisodesAsync(new NotificationQuery(1, "service-health"), token)).Items);
+            Assert.AreEqual(targetId, open.CheckId);
+            Assert.IsNull(open.RecoveredAt);
             await Observe(HealthObservationKind.Healthy);
             Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
             await Observe(HealthObservationKind.Healthy);
             Assert.AreEqual(1, await operations.Set<ServiceHealthAlert>().CountAsync(x => x.RecoveredAt != null, token));
             Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
+            var recovered = Assert.ContainsSingle((await reader.GetEpisodesAsync(new NotificationQuery(1), token)).Items);
+            Assert.IsNotNull(recovered.RecoveredAt);
             Assert.IsTrue(await operations.Set<Notification>().AllAsync(x => x.Source == "service-health" && x.Detail.Contains("Operations"), token));
         }, context.CancellationToken);
 

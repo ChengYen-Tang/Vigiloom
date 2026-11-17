@@ -63,4 +63,40 @@
             }
         </section>
     }
+    @if (episodes is not null)
+    {
+        <section class="notifications-panel" aria-labelledby="alert-episodes">
+            <h2 id="alert-episodes">Ping 與服務告警生命週期</h2>
+            <p>同一設備目標尚未恢復時，不重複建立 Ping 不可達通知。服務檢查的相同異常狀態不重複通知；異常狀態改變時仍會通知。未知狀態不代表恢復。</p>
+            <p>「尚未恢復」表示告警尚未關閉，不代表一定有最新的異常量測；日期依告警開始時間篩選。</p>
+            @if (episodes.Items.Count == 0) { <p>沒有符合條件的 Ping 或服務告警。</p> }
+            else
+            {
+                <p class="scroll-hint">左右滑動查看完整告警。</p>
+                <div class="notifications-table" role="region" aria-label="告警生命週期，可左右捲動" tabindex="0">
+                    <table><thead><tr><th>開始時間（UTC）</th><th>來源</th><th>監控目標</th><th>最後告警狀態</th><th>結束時間（UTC）</th><th>相關對象</th></tr></thead><tbody>
+                    @foreach (var episode in episodes.Items)
+                    {
+                        <tr @key="episode.Id">
+                            <td>@episode.OpenedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
+                            <td><span class="source-badge">@SourceLabel(episode.Source)</span></td>
+                            <td>@(episode.Target ?? $"服務檢查 {episode.CheckId:D}")</td>
+                            <td>@EpisodeState(episode)</td>
+                            <td>@(episode.RecoveredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "尚未恢復")</td>
+                            <td><a href="@($"/{(episode.Source == "ping" ? "devices" : "services")}/{episode.ResourceId:D}")">@(episode.Source == "ping" ? "查看設備" : "查看服務")</a></td>
+                        </tr>
+                    }
+                    </tbody></table>
+                </div>
+                @if (episodes.Page > 1 || episodes.HasMore)
+                {
+                    <nav class="notification-pages" aria-label="告警生命週期分頁">
+                        @if (episodes.Page > 1) { <a href="@AlertPageUrl(episodes.Page - 1)">上一頁</a> }
+                        <span>第 @episodes.Page 頁</span>
+                        @if (episodes.HasMore) { <a href="@AlertPageUrl(episodes.Page + 1)">下一頁</a> }
+                    </nav>
+                }
+            }
+        </section>
+    }
 </main>
