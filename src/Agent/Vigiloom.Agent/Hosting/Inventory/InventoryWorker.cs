@@ -5,6 +5,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Hosting.Inventory;
 
@@ -12,7 +13,7 @@ namespace Vigiloom.Agent.Hosting.Inventory;
 internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentMetricSettingsRuntime settings, InventorySettingsRuntime inventorySettings,
     SamplingBudgetCoordinator budget, IConfiguration configuration, TimeProvider clock, ILogger<InventoryWorker> logger,
     IMetricResourceMonitor? resourceMonitor = null,
-    Func<InventorySource, CancellationToken, Task<InventoryReadResult<InventoryEntry>>>? collectOverride = null) : BackgroundService
+    Func<InventorySource, CancellationToken, Task<InventoryReadResult<InventoryEntry>>>? collectOverride = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
@@ -54,18 +55,26 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
                         {
                             var result = await cycle.RunAsync(vault, uri, selectedSource, CollectAsync, stoppingToken, owner, ContinueUnderBudget);
                             if (result.Kind == InventoryCycleKind.QueuedFailure)
-                                logger.LogWarning("Agent inventory source {Source} exceeded a collection or queue limit; a failed read was queued.", result.Source);
+                            { failures?.Record(owner, AgentModule.Inventory); logger.LogWarning("Agent inventory source {Source} exceeded a collection or queue limit; a failed read was queued.", result.Source); }
                             if (result.Kind is InventoryCycleKind.Complete or InventoryCycleKind.Rejected or InventoryCycleKind.TooLarge or InventoryCycleKind.ServerUnsupported)
                             {
                                 if (result.Kind is InventoryCycleKind.Rejected or InventoryCycleKind.TooLarge)
+                                {
+                                    failures?.Record(owner, AgentModule.Inventory);
                                     logger.LogWarning("Agent inventory source {Source} was rejected; it will be retried on the next pass.", result.Source);
+                                }
                                 schedule.FinishSource(result.Source);
                             }
 
                             async Task<InventoryReadResult<InventoryEntry>> CollectAsync(InventorySource source, CancellationToken token)
-                                => await WithBudget(inner =>
+                            {
+                                var result = await WithBudget(inner =>
                                     CollectWithCurrentPolicy(inventorySettings, owner, clock, source,
                                         (selected, enabled, ct) => collectOverride is null ? collector.ReadAsync(selected, ct, enabled) : collectOverride(selected, ct), inner), token, true);
+                                if (result.Status is InventoryReadStatus.Error or InventoryReadStatus.PermissionDenied)
+                                    failures?.Record(owner, AgentModule.Inventory);
+                                return result;
+                            }
 
                             async Task<Vigiloom.Agent.Core.Transport.EnqueueResult> ContinueUnderBudget(
                                 Func<CancellationToken, Task<Vigiloom.Agent.Core.Transport.EnqueueResult>> action, CancellationToken token)
@@ -109,7 +118,7 @@ internal sealed class InventoryWorker(InventoryStatusClient statusClient, AgentM
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                     UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException or Win32Exception)
-                { logger.LogWarning("Agent inventory collection is unavailable: {ErrorType}.", ex.GetType().Name); }
+                { failures?.Record(active, AgentModule.Inventory); logger.LogWarning("Agent inventory collection is unavailable: {ErrorType}.", ex.GetType().Name); }
                 try { await Task.Delay(PollInterval, clock, stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             }

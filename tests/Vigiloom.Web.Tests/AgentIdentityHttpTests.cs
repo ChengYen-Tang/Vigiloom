@@ -1114,6 +1114,10 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
             using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
+            using (var forgedAssignment = await admin.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, forgedAssignment.StatusCode);
+            using (var readerAssignment = await reader.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, readerAssignment.StatusCode);
             using (var forgedPackageSource = await admin.PutAsJsonAsync("/api/v1/agent-management/package-source/",
                 new AgentPackageSourceUpdate("https://packages.example.test/", PackageCredentialAction.Keep, null, ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedPackageSource.StatusCode);
@@ -1147,6 +1151,8 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
                 var doc = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("管理 Agent 身分", doc.Body!.TextContent);
+                Assert.Contains(device.Id.ToString(), doc.Body.TextContent);
+                Assert.Contains("正式安裝包下載功能尚未提供", doc.Body.TextContent);
                 var issueForm = doc.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "agent-issue");
                 var fields = issueForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(e => e.GetAttribute("name")!, e => e.GetAttribute("value") ?? "");
                 fields["Issue.Confirm"] = "true";
@@ -1298,6 +1304,13 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
+            using (var target = await agent.GetAsync("/api/v1/agent/version-assignment", token))
+            {
+                Assert.AreEqual(HttpStatusCode.NoContent, target.StatusCode);
+                Assert.IsTrue(target.Headers.CacheControl?.NoStore);
+            }
+            using (var readerTarget = await reader.GetAsync("/api/v1/agent/version-assignment", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, readerTarget.StatusCode);
             using (var missingMetadata = await agent.GetAsync("/api/v1/agent/update/metadata/timestamp.json", token)) Assert.AreEqual(HttpStatusCode.NotFound, missingMetadata.StatusCode);
             using (var forbiddenCatalogue = await agent.GetAsync("/api/v1/agent/update/metadata/catalog.json", token)) Assert.AreEqual(HttpStatusCode.NotFound, forbiddenCatalogue.StatusCode);
             using (var rootResponse = await agent.GetAsync("/api/v1/agent/update/metadata/1.root.json", token))

@@ -1,0 +1,42 @@
+namespace Vigiloom.Updater.Core.Updates;
+
+/// <summary>Removes only a completed rollback's updater-created staging directory.</summary>
+public static class PreparedPackageCleanup
+{
+    public static void RemoveRolledBack(UpdateState state, string installationRoot)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.Phase != UpdatePhase.RolledBack) return;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var staging = Path.GetFullPath(Path.Combine(installationRoot, "staging"));
+        var target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.TargetDirectory));
+        var previous = Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.PreviousDirectory));
+        var name = Path.GetFileName(target);
+        if (string.Equals(target, previous, comparison) || !string.Equals(Path.GetDirectoryName(target), staging, comparison) ||
+            !Guid.TryParseExact(name, "N", out var id) || id.Version != 7) return;
+        if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
+    }
+
+    /// <summary>After a successful switch, keep the selected and previous versions for recovery.</summary>
+    public static void RemoveSuperseded(UpdateState state, string installationRoot, string selectedDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.Phase != UpdatePhase.Succeeded) return;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.TargetDirectory));
+        var previous = Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.PreviousDirectory));
+        var selected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(selectedDirectory));
+        if (!string.Equals(target, selected, comparison))
+            throw new InvalidOperationException("The selected Agent version does not match the completed update.");
+        var staging = new DirectoryInfo(Path.Combine(Path.GetFullPath(installationRoot), "staging"));
+        if (!staging.Exists || (staging.Attributes & FileAttributes.ReparsePoint) != 0) return;
+        foreach (var directory in staging.EnumerateDirectories())
+        {
+            if (!Guid.TryParseExact(directory.Name, "N", out var id) || id.Version != 7 ||
+                (directory.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+            var path = Path.TrimEndingDirectorySeparator(directory.FullName);
+            if (!string.Equals(path, target, comparison) && !string.Equals(path, previous, comparison))
+                directory.Delete(recursive: true);
+        }
+    }
+}

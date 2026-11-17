@@ -21,7 +21,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         {
             var rows = await db.Audits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
-                .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.AgentId, x.Action }).ToArrayAsync(token);
+                .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.AgentId, x.Action, x.PreviousPackageId, x.PackageId }).ToArrayAsync(token);
             more = rows.Length > AuditFeedLimits.PageSize;
             entries = rows.Take(AuditFeedLimits.PageSize).Select(row => new AuditFeedEntry(row.OccurredAt, row.ActorId, row.DeviceId,
                 row.Action switch
@@ -32,8 +32,11 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
                     "AgentRevoked" => AuditFeedAction.AgentRevoked,
                     "RotationStarted" => AuditFeedAction.RotationStarted,
                     "RotationFinished" => AuditFeedAction.RotationFinished,
+                    "VersionAssigned" => AuditFeedAction.AgentVersionAssigned,
+                    "VersionAssignmentCancelled" => AuditFeedAction.AgentVersionAssignmentCancelled,
                     _ => AuditFeedAction.Unknown
-                }, AuditFeedOutcome.Recorded, AgentId: row.AgentId)).ToArray();
+                }, AuditFeedOutcome.Recorded, AgentId: row.AgentId,
+                AgentVersion: row.Action is "VersionAssigned" or "VersionAssignmentCancelled" ? new(row.PreviousPackageId, row.PackageId) : null)).ToArray();
         }
         else if (source == AuditFeedSource.HostMetricThresholds)
         {

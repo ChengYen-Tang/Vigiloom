@@ -70,8 +70,10 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     operation.Description = "Requires a signed-in Administrator session; mutations also require an antiforgery token.";
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/version-assignment", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/update/metadata/{name}", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/heartbeat", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/agent/update-results", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/queue-session", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/inventory/status", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/settings", StringComparison.OrdinalIgnoreCase) ||
@@ -89,6 +91,21 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             }
             else if (path.Equals("/api/v1/agent/enroll", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [];
+            else if (path.Equals("/api/v1/agents/{agentId}/version-assignment", StringComparison.OrdinalIgnoreCase))
+            {
+                var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
+                if (method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
+                {
+                    operation.Security = [session, new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
+                    operation.Description = "Requires an Administrator or Read only session, or an API credential with monitoring.read.";
+                }
+                else
+                {
+                    session[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
+                    operation.Security = [session];
+                    operation.Description = "Requires an Administrator session and an antiforgery token.";
+                }
+            }
             else if (path.Equals("/api/v1/access", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ApiBearer", document)] = [] }];
             else if (path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) &&

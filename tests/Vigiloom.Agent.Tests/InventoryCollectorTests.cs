@@ -1,5 +1,6 @@
 using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Hosting.Inventory;
+using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent.Inventory;
 
 namespace Vigiloom.Agent.Tests;
@@ -69,7 +70,7 @@ public sealed class InventoryCollectorTests
     [DataRow("1.2.3-rc.2+abc123", "1.2.3-rc.2")]
     [DataRow("1.2.3+abc123", "1.2.3")]
     public void AgentVersion_PreservesPrereleaseButDropsBuildMetadata(string value, string expected) =>
-        Assert.AreEqual(expected, InventoryCollector.NormalizeAgentVersion(value));
+        Assert.AreEqual(expected, AgentRuntimeInfo.NormalizeVersion(value));
 
     [TestMethod]
     public async Task Host_MapsIntoAValidInventoryChunk()

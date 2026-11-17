@@ -6,6 +6,7 @@ using Vigiloom.Agent.Core.Integrity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Hosting.Integrity;
 
@@ -13,7 +14,7 @@ namespace Vigiloom.Agent.Hosting.Integrity;
 internal sealed class IntegrityWorker(IntegrityStatusClient statusClient, AgentIntegritySettingsRuntime settings,
     AgentMetricSettingsRuntime metricSettings, SamplingBudgetCoordinator budget, IConfiguration configuration,
     TimeProvider clock, ILogger<IntegrityWorker> logger, IMetricResourceMonitor? resourceMonitor = null,
-    Func<IntegrityScope, CancellationToken, Task<IntegrityReadResult>>? collectOverride = null) : BackgroundService
+    Func<IntegrityScope, CancellationToken, Task<IntegrityReadResult>>? collectOverride = null, AgentModuleFailures? failures = null) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
@@ -74,13 +75,17 @@ internal sealed class IntegrityWorker(IntegrityStatusClient statusClient, AgentI
                                         if (result.Kind == IntegrityCycleKind.Queued) schedule.Finish(selected);
                                         else schedule.Defer(selected, PollInterval);
                                         if (result.Kind is IntegrityCycleKind.TooLarge or IntegrityCycleKind.QueueFull)
+                                        {
+                                            failures?.Record(owner, AgentModule.Integrity);
                                             logger.LogWarning("Agent integrity scope {ScopeId} could not be queued: {Reason}.", selected.Id, result.Kind);
+                                        }
                                     }
                                     catch (IntegrityDeferredException) { schedule.Defer(selected, PollInterval); }
                                     catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                                         UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException or Win32Exception)
                                     {
                                         schedule.Defer(selected, PollInterval);
+                                        failures?.Record(owner, AgentModule.Integrity);
                                         logger.LogWarning("Agent integrity scope {ScopeId} is unavailable: {ErrorType}.", selected.Id, ex.GetType().Name);
                                     }
                                 }
@@ -90,6 +95,8 @@ internal sealed class IntegrityWorker(IntegrityStatusClient statusClient, AgentI
                                 => await WithBudget(async inner =>
                                 {
                                     var result = await (collectOverride ?? IntegrityCollector.ReadAsync)(selected, inner);
+                                    if (result.Outcome is IntegrityScanOutcome.Error or IntegrityScanOutcome.PermissionDenied)
+                                        failures?.Record(owner, AgentModule.Integrity);
                                     // Snapshot comparisons cannot observe transient changes between passes.
                                     return result with { CoverageGap = true };
                                 }, token, true);
@@ -134,7 +141,7 @@ internal sealed class IntegrityWorker(IntegrityStatusClient statusClient, AgentI
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
                     UnauthorizedAccessException or CryptographicException or System.Data.Common.DbException or Win32Exception)
-                { logger.LogWarning("Agent integrity collection is unavailable: {ErrorType}.", ex.GetType().Name); }
+                { failures?.Record(active, AgentModule.Integrity); logger.LogWarning("Agent integrity collection is unavailable: {ErrorType}.", ex.GetType().Name); }
                 try { await Task.Delay(PollInterval, clock, stoppingToken); }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             }
