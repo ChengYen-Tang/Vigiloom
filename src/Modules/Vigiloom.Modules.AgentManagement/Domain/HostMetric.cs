@@ -25,6 +25,9 @@ public sealed class HostMetric
     public string Source { get; private set; } = "";
     public string? Dimension { get; private set; }
     public double Value { get; private set; }
+    public bool Aggregated { get; private set; }
+
+    internal void MarkAggregated() => Aggregated = true;
 
     public bool Matches(AgentMetricPoint point) => OccurredAt == point.OccurredAt && Kind == point.Kind &&
         string.Equals(Source, point.Source, StringComparison.Ordinal) &&

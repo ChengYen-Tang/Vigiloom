@@ -27,6 +27,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Agent;
@@ -122,6 +123,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var secret = RandomNumberGenerator.GetBytes(32);
         var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
         var agentId = registered.AgentId!.Value;
+        await using (var db = await agents.CreateDbContextAsync(token))
+        {
+            var point = new AgentMetricPoint(Guid.CreateVersion7(), old, AgentMetricKind.MemoryAvailableBytes, "system", null, 42);
+            db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, point, old));
+            await db.SaveChangesAsync(token);
+        }
         var credential = $"vla_{agentId:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
         var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
         var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
@@ -150,6 +157,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
             var pingRetentionId = jobs.Enqueue<PingRetentionJob>(job => job.RunAsync(CancellationToken.None));
             var auditRetentionId = jobs.Enqueue<AuditRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var hostRollupId = jobs.Enqueue<HostMetricRollupJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(60));
@@ -158,15 +166,18 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 var state = connection.GetStateData(id)?.Name;
                 var pingState = connection.GetStateData(pingRetentionId)?.Name;
                 var auditState = connection.GetStateData(auditRetentionId)?.Name;
+                var hostRollupState = connection.GetStateData(hostRollupId)?.Name;
                 Assert.AreNotEqual("Failed", state);
                 Assert.AreNotEqual("Failed", pingState);
                 Assert.AreNotEqual("Failed", auditState);
-                if (state == "Succeeded" && pingState == "Succeeded" && auditState == "Succeeded") break;
+                Assert.AreNotEqual("Failed", hostRollupState);
+                if (state == "Succeeded" && pingState == "Succeeded" && auditState == "Succeeded" && hostRollupState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
             await using var check = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(0, await check.ReceivedBatches.CountAsync(token));
             Assert.AreEqual(1, await check.RuntimeObservations.CountAsync(token));
+            Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(token)).Sum);
             var agent = await check.Agents.SingleAsync(x => x.Id == agentId, token);
             Assert.AreEqual(1L, agent.InboxDeletedTotal);
             Assert.IsNotNull(agent.ReplayCleanedBefore);
@@ -187,6 +198,8 @@ public sealed class HostLifecycleTests(TestContext testContext)
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-ping-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-settings-audit-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-rollup'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);

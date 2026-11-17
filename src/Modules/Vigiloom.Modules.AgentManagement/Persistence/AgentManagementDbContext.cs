@@ -13,6 +13,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
+    public DbSet<HostMetricRollup> HostMetricRollups => Set<HostMetricRollup>();
     public DbSet<HostMetricThreshold> HostMetricThresholds => Set<HostMetricThreshold>();
     public DbSet<HostMetricThresholdAudit> HostMetricThresholdAudits => Set<HostMetricThresholdAudit>();
     public DbSet<HostLog> HostLogs => Set<HostLog>();
@@ -220,7 +221,21 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         metric.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
         metric.HasIndex(x => new { x.AgentId, x.OccurredAt, x.RowId });
         metric.HasIndex(x => new { x.AgentId, x.Kind, x.OccurredAt, x.RowId });
+        metric.HasIndex(x => x.RowId).HasFilter("[Aggregated] = 0").HasDatabaseName("IX_HostMetrics_Unaggregated");
         metric.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+
+        var metricRollup = modelBuilder.Entity<HostMetricRollup>();
+        metricRollup.ToTable("HostMetricRollups");
+        metricRollup.HasKey(x => x.RowId).IsClustered();
+        metricRollup.Property(x => x.RowId).UseIdentityColumn();
+        metricRollup.Property(x => x.Source).HasMaxLength(128).IsRequired();
+        metricRollup.Property(x => x.Dimension).HasMaxLength(256);
+        metricRollup.Property(x => x.SourceBytes).HasColumnType("varbinary(256)")
+            .HasComputedColumnSql("CONVERT(varbinary(256), [Source])", stored: true);
+        metricRollup.Property(x => x.DimensionBytes).HasColumnType("varbinary(512)")
+            .HasComputedColumnSql("CONVERT(varbinary(512), [Dimension])", stored: true);
+        metricRollup.HasIndex(x => new { x.AgentId, x.Kind, x.WindowStart, x.SourceBytes, x.DimensionBytes }).IsUnique().HasFilter(null);
+        metricRollup.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
 
         var log = modelBuilder.Entity<HostLog>();
         log.ToTable("HostLogs", table => table.HasCheckConstraint("CK_HostLogs_Gap", """
