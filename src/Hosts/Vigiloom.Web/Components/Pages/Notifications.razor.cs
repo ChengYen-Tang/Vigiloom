@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.WebUtilities;
 using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Services;
 
 namespace Vigiloom.Web.Components.Pages;
 
@@ -12,12 +13,15 @@ public partial class Notifications
     [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
     [SupplyParameterFromQuery(Name = "to")] public string? To { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public string? Page { get; set; }
+    [SupplyParameterFromQuery(Name = "alertPage")] public string? AlertPage { get; set; }
     private NotificationPage? result;
+    private AlertEpisodePage? episodes;
     private string? error;
 
     protected override async Task OnParametersSetAsync()
     {
         result = null;
+        episodes = null;
         error = null;
         if (!string.IsNullOrEmpty(Source) && Source is not ("ping" or "service-health" or "sigma" or "vulnerability"))
         { error = "請選擇有效的通知來源。"; return; }
@@ -27,7 +31,14 @@ public partial class Notifications
         var page = 1;
         if (Page is not null && (!int.TryParse(Page, NumberStyles.None, CultureInfo.InvariantCulture, out page) || page is < 1 or > 1000))
         { error = "頁碼無效，請重新查詢。"; return; }
-        try { result = await Reader.GetRecentAsync(new NotificationQuery(page, Source, from, to), HttpContext.RequestAborted); }
+        var alertPage = 1;
+        if (AlertPage is not null && (!int.TryParse(AlertPage, NumberStyles.None, CultureInfo.InvariantCulture, out alertPage) || alertPage is < 1 or > 1000))
+        { error = "頁碼無效，請重新查詢。"; return; }
+        try
+        {
+            result = await Reader.GetRecentAsync(new NotificationQuery(page, Source, from, to), HttpContext.RequestAborted);
+            episodes = await Reader.GetEpisodesAsync(new NotificationQuery(alertPage, Source, from, to), HttpContext.RequestAborted);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Notification query failed: {ExceptionType}", ex.GetType().Name);
@@ -49,6 +60,14 @@ public partial class Notifications
         "ping" => "Ping", "service-health" => "服務健康", "sigma" => "行為規則", "vulnerability" => "漏洞評估", _ => source
     };
 
+    private static string EpisodeState(AlertEpisode episode) => episode.RecoveredAt is not null ? "已恢復" : episode.Source switch
+    {
+        "ping" => "不可達",
+        "service-health" when episode.State == (int)ServiceHealthState.Degraded => "降級",
+        "service-health" when episode.State == (int)ServiceHealthState.Unhealthy => "異常",
+        _ => "未知"
+    };
+
     private static string? ResourceLink(NotificationView entry) => entry.ResourceId is not { } id ? null : entry.Source switch
     {
         "service-health" => $"/services/{id:D}",
@@ -58,6 +77,10 @@ public partial class Notifications
 
     private string PageUrl(int page) => QueryHelpers.AddQueryString("/notifications", new Dictionary<string, string?>
     {
-        ["source"] = Source, ["from"] = From, ["to"] = To, ["page"] = page.ToString(CultureInfo.InvariantCulture)
+        ["source"] = Source, ["from"] = From, ["to"] = To, ["page"] = page.ToString(CultureInfo.InvariantCulture), ["alertPage"] = AlertPage
+    });
+    private string AlertPageUrl(int page) => QueryHelpers.AddQueryString("/notifications", new Dictionary<string, string?>
+    {
+        ["source"] = Source, ["from"] = From, ["to"] = To, ["page"] = Page, ["alertPage"] = page.ToString(CultureInfo.InvariantCulture)
     });
 }
