@@ -12,6 +12,8 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -103,6 +105,11 @@ public sealed class HostDetailsBrowserTests
             var beforeJson = System.Text.Json.JsonSerializer.Serialize(before);
             var afterJson = System.Text.Json.JsonSerializer.Serialize(after);
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [security].[InventoryChanges] ([AgentId], [DeviceId], [Source], [Generation], [ObservedAt], [RecordedAt], [Kind], [Key], [BeforeJson], [AfterJson]) VALUES ({agent.Id}, {device.Id}, {(int)InventorySource.LinuxDpkg}, {1L}, {now}, {now}, {(int)InventoryChangeType.Modified}, {before.Key}, {beforeJson}, {afterJson})", token);
+            var item = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), IntegrityItemKind.File, new string('a', 64));
+            db.IntegrityChanges.Add(new IntegrityChangeRecord { AgentId = agent.Id, DeviceId = device.Id,
+                ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = now, RecordedAt = now,
+                Kind = (int)IntegrityChangeType.Added, Key = item.Key, AfterJson = System.Text.Json.JsonSerializer.Serialize(item) });
+            await db.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
         using var playwright = await Playwright.CreateAsync();
@@ -161,6 +168,7 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
         await page.GetByText("尚未設定完整性監控範圍。", new() { Exact = true }).WaitForAsync();
+        await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
         Assert.AreEqual(0, await page.GetByRole(AriaRole.Link, new() { Name = "管理完整性監控" }).CountAsync());
         await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
@@ -182,6 +190,8 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("未知：樣本已過期", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
+        await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
         var thresholdUrl = $"{url}/devices/{device.Id:D}/metric-threshold?agentId={agent.Id:D}&kind=1&source=test.cpu";
         await page.GotoAsync(thresholdUrl);
         Assert.AreNotEqual(thresholdUrl, page.Url);
