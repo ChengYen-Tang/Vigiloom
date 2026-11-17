@@ -11,7 +11,7 @@
 <main class="device-page device-form-page">
     <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理操作紀錄、告警與通知的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於中央設定、設備、Agent、安全設定、背景工作、帳號與 API 憑證的操作紀錄，以及告警與通知。情報版本及安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與尚未結束的背景工作操作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
+        <p>此期限適用於中央設定、設備、Agent、安全設定、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知與已結束的背景工作。情報版本及安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的背景工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
@@ -25,6 +25,7 @@
                 {
                     <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆操作紀錄符合清理條件；實際數量可能變動。</p>
                     <p>預計清理 @impact.AlertEpisodes 筆已恢復告警及 @impact.Notifications 筆通知。</p>
+                    <p>預計清理 @impact.BackgroundJobs 筆已結束的背景工作及其派送紀錄。</p>
                     <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
                     <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/audit/retention">取消</a></div>
                 }

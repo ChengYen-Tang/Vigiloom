@@ -20,6 +20,7 @@ public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext>
             var policy = await AuditRetentionSettings.LockAsync(db, token);
             var cutoff = (await AuditRetentionSettings.NowAsync(db, token)).AddDays(-policy.Days);
             var alertsRemoved = await AlertRetention.DeleteBatchAsync(db, cutoff, BatchSize, token);
+            var jobsRemoved = await BackgroundHistoryRetention.DeleteBatchAsync(db, cutoff, BatchSize, token);
             var ids = db.AuditEvents.Where(x => x.OccurredAt < cutoff).OrderBy(x => x.OccurredAt).ThenBy(x => x.RowId)
                 .Select(x => x.RowId).Take(BatchSize);
             var removed = await db.AuditEvents.Where(x => ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
@@ -27,8 +28,8 @@ public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext>
             foreach (var source in sources)
                 sourceRemoved += await source.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), cutoff, BatchSize, token);
             await tx.CommitAsync(token);
-            total += removed + alertsRemoved + sourceRemoved;
-            if (removed < BatchSize && alertsRemoved < BatchSize && sourceRemoved < BatchSize) return total;
+            total += removed + alertsRemoved + jobsRemoved + sourceRemoved;
+            if (removed < BatchSize && alertsRemoved < BatchSize && jobsRemoved < BatchSize && sourceRemoved < BatchSize) return total;
         }
     }
 }

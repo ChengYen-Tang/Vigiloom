@@ -152,6 +152,7 @@ public sealed class PingHttpTests
             var actor = Guid.CreateVersion7();
             var old = DateTimeOffset.UtcNow.AddDays(-40);
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({actor}, {old}, '/jobs/enqueued/delete', 'accepted'), ({actor}, {old}, '/jobs/enqueued/delete', 'started')", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[Outbox] ([MessageId], [MessageType], [Payload], [CreatedAt], [AvailableAt], [State], [Attempts], [CompletedAt]) VALUES ({Guid.CreateVersion7()}, {"agent.host-log.received.v1"}, {"{}"}, {old}, {old}, {2}, {1}, {old})", token);
         }
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
@@ -185,6 +186,7 @@ public sealed class PingHttpTests
         Assert.Contains("確認儲存", await TextAsync(preview, token));
         Assert.Contains("預計有 6 筆操作紀錄", await TextAsync(preview, token));
         Assert.Contains("預計清理 1 筆已恢復告警及 1 筆通知", await TextAsync(preview, token));
+        Assert.Contains("預計清理 1 筆已結束的背景工作", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
