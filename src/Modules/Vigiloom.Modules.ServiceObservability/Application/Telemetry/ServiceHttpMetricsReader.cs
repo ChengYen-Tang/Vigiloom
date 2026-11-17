@@ -32,8 +32,9 @@ public sealed class ServiceHttpMetricsReader(IDbContextFactory<ServiceObservabil
         var window = await db.MetricRollupWindows.AsNoTracking().Where(x => x.ServiceId == serviceId && x.WindowStart <= cutoff)
             .OrderByDescending(x => x.WindowStart).FirstOrDefaultAsync(token);
         if (window is null) return Unavailable("NoData");
-        var sourceId = await db.Services.AsNoTracking().Where(x => x.Id == serviceId).Select(x => (Guid?)x.SourceId).SingleOrDefaultAsync(token);
-        if (sourceId is null) return Unavailable("Incomplete");
+        var service = await db.Services.AsNoTracking().Where(x => x.Id == serviceId).Select(x => new { x.SourceId, x.MetricRetainedAfter }).SingleOrDefaultAsync(token);
+        if (service is null || service.MetricRetainedAfter > window.WindowStart) return Unavailable("Incomplete");
+        var sourceId = service.SourceId;
         MetricRollupSeries[] series;
         if (!window.RawPruned)
         {
@@ -42,7 +43,7 @@ public sealed class ServiceHttpMetricsReader(IDbContextFactory<ServiceObservabil
                 return Unavailable("Incomplete");
             var raw = await MetricWindowInputs.ReadAsync(db, serviceId, metricWindow, token, maxPoints: 1000, maxBytes: MaximumPayloadBytes);
             if (raw.CapacityExceeded) return Unavailable("Incomplete");
-            var grouped = MetricWindowGrouping.Group(sourceId.Value, serviceId, metricWindow, raw.Points);
+            var grouped = MetricWindowGrouping.Group(sourceId, serviceId, metricWindow, raw.Points);
             if (grouped.RequiresRaw || grouped.Series.Count > MaximumSeries) return Unavailable("Incomplete");
             var relevant = grouped.Series.Where(x => x.Metadata.Name == "http.server.request.duration").ToArray();
             var results = relevant.Select(x => MetricRollupEncoding.Encode(x, metricWindow)).ToArray();
@@ -118,7 +119,7 @@ public sealed class ServiceHttpMetricsReader(IDbContextFactory<ServiceObservabil
                     var instance = row.InstanceId.Value;
                     var metricMetadata = metric.Clone();
                     metricMetadata.Histogram.DataPoints.Clear();
-                    if (resource.Resource is null || !MetricSeriesIdentity.TryCreate(sourceId.Value, serviceId, instance, resource.Resource,
+                    if (resource.Resource is null || !MetricSeriesIdentity.TryCreate(sourceId, serviceId, instance, resource.Resource,
                         scope.Scope, resource.SchemaUrl, scope.SchemaUrl, metricMetadata, [], out var identity) || identity is null)
                         return Unavailable("AmbiguousSource");
                     var profile = (identity.Encoded, keys);

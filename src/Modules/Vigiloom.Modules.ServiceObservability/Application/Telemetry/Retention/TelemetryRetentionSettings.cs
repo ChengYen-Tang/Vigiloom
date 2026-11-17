@@ -33,12 +33,17 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
         await using var tx = await db.Database.BeginTransactionAsync(token);
         var policy = await LockAsync(db, token);
         if (!string.Equals(input.Version, Convert.ToBase64String(policy.Version), StringComparison.Ordinal)) return null;
+        var rawDays = input.MetricRawDays ?? policy.MetricRawDays;
+        var rollupDays = input.MetricRollupDays ?? policy.MetricRollupDays;
+        if (!TelemetryRetentionLimits.IsValidMetrics(rawDays, rollupDays)) throw new ArgumentException("Invalid metric retention settings.");
         var now = await NowAsync(db, token);
         var logs = await db.LogRecords.LongCountAsync(x => x.OccurredAt < now.AddDays(-input.LogDays), token);
         var spans = await db.TraceSpans.LongCountAsync(x => x.StartedAt < now.AddDays(-input.TraceDays), token);
+        var points = await db.MetricPoints.LongCountAsync(x => x.OccurredAt < now.AddDays(-rawDays), token);
+        var windows = await db.MetricRollupWindows.LongCountAsync(x => x.WindowStart < now.AddDays(-rollupDays), token);
         await tx.CommitAsync(token);
-        var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.LogDays, input.TraceDays, input.Version, now)));
-        return new(input.LogDays, input.TraceDays, now, logs, spans, input.Version, proof);
+        var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.LogDays, input.TraceDays, rawDays, rollupDays, input.Version, now)));
+        return new(input.LogDays, input.TraceDays, now, logs, spans, input.Version, proof, rawDays, rollupDays, points, windows);
     }
 
     public async Task<TelemetryRetentionSnapshot?> UpdateAsync(TelemetryRetentionInput input, Guid actor, CancellationToken token)
@@ -51,17 +56,24 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
         var policy = await LockAsync(db, token);
         var version = Convert.ToBase64String(policy.Version);
         if (!string.Equals(input.Version, version, StringComparison.Ordinal)) return null;
+        var rawDays = input.MetricRawDays ?? policy.MetricRawDays;
+        var rollupDays = input.MetricRollupDays ?? policy.MetricRollupDays;
+        if (!TelemetryRetentionLimits.IsValidMetrics(rawDays, rollupDays)) throw new ArgumentException("Invalid metric retention settings.");
         var now = await NowAsync(db, token);
-        if ((input.LogDays < policy.LogDays || input.TraceDays < policy.TraceDays) && !ValidProof(input, actor, now))
+        if ((input.LogDays < policy.LogDays || input.TraceDays < policy.TraceDays || rawDays < policy.MetricRawDays || rollupDays < policy.MetricRollupDays) &&
+            !ValidProof(input, rawDays, rollupDays, actor, now))
             throw new ArgumentException("A current preview is required when shortening retention.");
         var previousLogs = policy.LogDays;
         var previousTraces = policy.TraceDays;
+        var previousRaw = policy.MetricRawDays;
+        var previousRollup = policy.MetricRollupDays;
         policy.LogDays = input.LogDays; policy.TraceDays = input.TraceDays;
+        policy.MetricRawDays = rawDays; policy.MetricRollupDays = rollupDays;
         db.Entry(policy).Property(x => x.LogDays).IsModified = true;
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
             new OperationAudit(actor, policy.Id, now, new TelemetryRetentionChanged(previousLogs, previousTraces,
-                policy.LogDays, policy.TraceDays, version, Convert.ToBase64String(policy.Version))), token);
+                policy.LogDays, policy.TraceDays, version, Convert.ToBase64String(policy.Version), previousRaw, previousRollup, rawDays, rollupDays)), token);
         await tx.CommitAsync(token);
         return Snapshot(policy);
     }
@@ -75,13 +87,14 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { }
     }
 
-    private bool ValidProof(TelemetryRetentionInput input, Guid actor, DateTimeOffset now)
+    private bool ValidProof(TelemetryRetentionInput input, int rawDays, int rollupDays, Guid actor, DateTimeOffset now)
     {
         if (input.ConfirmationToken is not { Length: > 0 and <= 4096 }) return false;
         try
         {
             var proof = JsonSerializer.Deserialize<PreviewProof>(protector.Unprotect(input.ConfirmationToken));
             return proof is not null && proof.Actor == actor && proof.LogDays == input.LogDays && proof.TraceDays == input.TraceDays &&
+                proof.MetricRawDays == rawDays && proof.MetricRollupDays == rollupDays &&
                 string.Equals(proof.Version, input.Version, StringComparison.Ordinal) && proof.At.Offset == TimeSpan.Zero &&
                 proof.At <= now && now - proof.At <= TimeSpan.FromMinutes(5);
         }
@@ -93,6 +106,6 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
     private static Task<DateTimeOffset> NowAsync(ServiceObservabilityDbContext db, CancellationToken token) =>
         db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
     private static TelemetryRetentionSnapshot Snapshot(TelemetryRetentionSetting setting) =>
-        new(setting.LogDays, setting.TraceDays, Convert.ToBase64String(setting.Version));
-    private sealed record PreviewProof(Guid Actor, int LogDays, int TraceDays, string Version, DateTimeOffset At);
+        new(setting.LogDays, setting.TraceDays, Convert.ToBase64String(setting.Version), setting.MetricRawDays, setting.MetricRollupDays);
+    private sealed record PreviewProof(Guid Actor, int LogDays, int TraceDays, int MetricRawDays, int MetricRollupDays, string Version, DateTimeOffset At);
 }

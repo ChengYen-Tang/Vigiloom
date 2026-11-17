@@ -8,6 +8,8 @@ public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabi
 {
     private const int BatchSize = 500;
 
+    public Task<(long Pruned, long Expired)> RunMetricsAsync(CancellationToken token) => new MetricRetentionCleanup(contexts).RunAsync(token);
+
     public async Task<(long Logs, long Spans)> RunAsync(CancellationToken token)
     {
         await TelemetryRetentionSettings.EnsureAsync(contexts, token);

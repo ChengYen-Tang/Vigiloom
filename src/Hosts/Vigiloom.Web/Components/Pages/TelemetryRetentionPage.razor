@@ -9,9 +9,9 @@
 
 <PageTitle>應用服務資料保存 - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定應用服務 Logs 與 Traces 的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定應用服務指標、Logs 與 Traces 的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機日誌與效能指標不受此設定影響。</p>
+        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機日誌與主機效能指標不受此設定影響。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
@@ -23,9 +23,14 @@
                 <InputNumber id="telemetry-log-days" @bind-Value="Input.LogDays" min="1" max="3650" required />
                 <label for="telemetry-trace-days">應用 Traces 保存天數（1～3650 天）</label>
                 <InputNumber id="telemetry-trace-days" @bind-Value="Input.TraceDays" min="1" max="3650" required />
+                <label for="telemetry-metric-raw-days">應用指標原始資料保存天數（1～3650 天）</label>
+                <InputNumber id="telemetry-metric-raw-days" @bind-Value="Input.MetricRawDays" min="1" max="3650" required />
+                <label for="telemetry-metric-rollup-days">應用指標五分鐘彙總保存天數（不可短於原始資料）</label>
+                <InputNumber id="telemetry-metric-rollup-days" @bind-Value="Input.MetricRollupDays" min="1" max="3650" required />
                 @if (preview is { } impact)
                 {
                     <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.Logs 筆 Logs 及 @impact.Spans 筆 Trace spans 符合清理條件。實際數量會隨時間及資料變動。</p>
+                    <p>有 @impact.MetricPoints 筆原始指標及 @impact.MetricWindows 個指標時段已超過所選期限；實際清理會視彙總狀態進行。</p>
                     <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
                     <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/service-reception/retention">取消</a></div>
                 }
@@ -49,7 +54,7 @@
         try
         {
             snapshot = await Retention.GetAsync(HttpContext.RequestAborted);
-            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { LogDays = snapshot.LogDays, TraceDays = snapshot.TraceDays, Version = snapshot.Version };
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input = new() { LogDays = snapshot.LogDays, TraceDays = snapshot.TraceDays, MetricRawDays = snapshot.MetricRawDays, MetricRollupDays = snapshot.MetricRollupDays, Version = snapshot.Version };
         }
         catch (Exception ex) { Logger.LogWarning("Could not load telemetry retention: {ErrorType}", ex.GetType().Name); loadError = true; }
     }
@@ -57,19 +62,19 @@
     private async Task SubmitAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!TelemetryRetentionLimits.IsValid(Input.LogDays, Input.TraceDays) || Input.Version is null) { message = "請輸入有效的保存天數。"; return; }
+        if (!TelemetryRetentionLimits.IsValid(Input.LogDays, Input.TraceDays) || !TelemetryRetentionLimits.IsValidMetrics(Input.MetricRawDays, Input.MetricRollupDays) || Input.Version is null) { message = "請輸入有效的保存天數；指標彙總期限不可短於原始資料。"; return; }
         try
         {
             if (string.IsNullOrEmpty(Input.ConfirmationToken))
             {
-                preview = await Retention.PreviewAsync(new(Input.LogDays, Input.TraceDays, Input.Version), actor, HttpContext.RequestAborted);
+                preview = await Retention.PreviewAsync(new(Input.LogDays, Input.TraceDays, Input.Version, Input.MetricRawDays, Input.MetricRollupDays), actor, HttpContext.RequestAborted);
                 if (preview is null) { message = "設定已被其他操作變更，請重新整理後再試。"; return; }
                 Input.ConfirmationToken = preview.ConfirmationToken;
             }
-            else if (await Retention.UpdateAsync(new(Input.LogDays, Input.TraceDays, Input.Version, Input.ConfirmationToken), actor, HttpContext.RequestAborted) is { } saved)
+            else if (await Retention.UpdateAsync(new(Input.LogDays, Input.TraceDays, Input.Version, Input.ConfirmationToken, Input.MetricRawDays, Input.MetricRollupDays), actor, HttpContext.RequestAborted) is { } saved)
             {
                 snapshot = saved;
-                Input = new() { LogDays = saved.LogDays, TraceDays = saved.TraceDays, Version = saved.Version };
+                Input = new() { LogDays = saved.LogDays, TraceDays = saved.TraceDays, MetricRawDays = saved.MetricRawDays, MetricRollupDays = saved.MetricRollupDays, Version = saved.Version };
                 message = "保存設定已儲存。";
             }
             else { Input.ConfirmationToken = null; message = "設定已被其他操作變更，請重新整理後再試。"; }
@@ -82,6 +87,8 @@
     {
         public int LogDays { get; set; } = 14;
         public int TraceDays { get; set; } = 7;
+        public int MetricRawDays { get; set; } = 30;
+        public int MetricRollupDays { get; set; } = 365;
         public string? Version { get; set; }
         public string? ConfirmationToken { get; set; }
     }

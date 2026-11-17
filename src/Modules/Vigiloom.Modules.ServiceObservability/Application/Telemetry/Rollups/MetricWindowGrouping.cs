@@ -75,7 +75,7 @@ internal static class MetricWindowGrouping
         internal InstrumentationScope? Scope { get; set; }
     }
 
-    private static bool TryParse(byte kind, Metric metadata, byte[] payload, out IMessage point,
+    internal static bool TryParse(byte kind, Metric metadata, byte[] payload, out IMessage point,
         out RepeatedField<KeyValue> attributes, out ulong timestamp, out bool delta)
     {
         delta = false;

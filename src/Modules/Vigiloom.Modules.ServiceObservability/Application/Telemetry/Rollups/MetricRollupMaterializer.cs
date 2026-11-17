@@ -30,6 +30,8 @@ public sealed class MetricRollupMaterializer(IDbContextFactory<ServiceObservabil
         if (sourceId is null) return MetricRollupStatus.ServiceNotFound;
         if (!await ServiceInstanceResolver.LockServiceAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), serviceId, token))
             return MetricRollupStatus.Busy;
+        var retainedAfter = await db.Services.AsNoTracking().Where(x => x.Id == serviceId).Select(x => x.MetricRetainedAfter).SingleAsync(token);
+        if (retainedAfter is { } boundary && windowStart < boundary) return MetricRollupStatus.RawPruned;
         var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         if (windowStart.AddMinutes(5) > now) return MetricRollupStatus.WindowOpen;
 

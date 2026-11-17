@@ -294,7 +294,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         {
             table.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
             table.HasCheckConstraint("CK_TelemetryRetentionSettings_Slot", "[Slot] = 1");
-            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650");
+            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650");
         });
         telemetryRetention.HasKey(x => x.Id).IsClustered(false);
         telemetryRetention.Property(x => x.Id).ValueGeneratedNever();
@@ -302,6 +302,8 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         telemetryRetention.HasIndex(x => x.RowId).IsUnique().IsClustered();
         telemetryRetention.HasIndex(x => x.Slot).IsUnique();
         telemetryRetention.Property(x => x.Version).IsRowVersion();
+        telemetryRetention.Property(x => x.MetricRawDays).HasDefaultValue(30);
+        telemetryRetention.Property(x => x.MetricRollupDays).HasDefaultValue(365);
 
         var metricContext = modelBuilder.Entity<MetricContext>();
         metricContext.ToTable("MetricContexts", table => table.HasCheckConstraint("CK_MetricContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536 AND DATALENGTH([MetricPayload]) <= 65536"));
@@ -351,6 +353,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         window.Property(x => x.Version).IsRowVersion();
         window.HasAlternateKey(x => new { x.RowId, x.ServiceId });
         window.HasIndex(x => new { x.ServiceId, x.WindowStart }).IsUnique();
+        window.HasIndex(x => x.WindowStart).IncludeProperties(x => new { x.ServiceId, x.RawPruned });
         window.HasOne<MonitoredService>().WithMany().HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
 
         var rollupSeries = modelBuilder.Entity<MetricRollupSeries>();
