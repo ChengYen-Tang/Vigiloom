@@ -65,17 +65,20 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                     ConnectTimeout = TimeSpan.FromSeconds(10), PooledConnectionLifetime = TimeSpan.FromMinutes(5)
                 }) { Timeout = Timeout.InfiniteTimeSpan };
                 var clock = TimeProvider.System;
+                var delivery = new UpdateResultDelivery(http, journal, clock);
                 var processor = new UpdateRequestProcessor(new CentralAssignmentClient(http, clock),
                     new CentralPackageAcquirer(options!.Server, options.TrustDirectory, options.CacheDirectory,
                         4L * 1024 * 1024 * 1024, clock),
                     new UpdateTransaction(http, journal, runtime, clock), journal, runtime, options.Server,
                     options.DeviceId, root!, options.RuntimeIdentifier, options.UpdaterVersion,
-                    new UpdateResultDelivery(http, journal, clock));
+                    delivery);
                 await RunListenerAsync(listener, async (request, token) =>
                 {
                     var result = await processor.ProcessAsync(request, token);
                     logger.LogInformation("Updater request result: {Assignment}, {Phase}.", result.Assignment, result.State?.Phase);
-                }, token => RecoverAsync(coordinator, runtime, root!, token), logger, stoppingToken);
+                }, (request, token) => RecoverAndDeliverAsync(request,
+                    recoveryToken => RecoverAsync(coordinator, runtime, root!, recoveryToken), delivery,
+                    options.Server, logger, token), logger, stoppingToken);
                 if (!stoppingToken.IsCancellationRequested) lifetime.StopApplication();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -125,8 +128,21 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
         return false;
     }
 
+    internal static async Task<bool> RecoverAndDeliverAsync(UpdateHandoff request, Func<CancellationToken, Task<bool>> recover,
+        UpdateResultDelivery delivery, Uri server, ILogger logger, CancellationToken token)
+    {
+        var recovered = await recover(token);
+        try { await delivery.FlushAsync(server, request.Credential, token); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            logger.LogWarning("Updater could not deliver recovery results: {ErrorType}.", error.GetType().Name);
+        }
+        return recovered;
+    }
+
     internal static async Task RunListenerAsync(ILocalUpdateListener listener,
-        Func<UpdateHandoff, CancellationToken, Task> process, Func<CancellationToken, Task<bool>> recover,
+        Func<UpdateHandoff, CancellationToken, Task> process, Func<UpdateHandoff, CancellationToken, Task<bool>> recover,
         ILogger logger, CancellationToken stoppingToken)
     {
         using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -139,7 +155,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
                 catch (Exception error) { logger.LogWarning("Updater request failed: {ErrorType}.", error.GetType().Name); }
                 // Recover immediately, even when the stopped Agent cannot send another request.
-                if (!await recover(stoppingToken)) break;
+                if (!await recover(request, stoppingToken)) break;
             }
         }
         finally
