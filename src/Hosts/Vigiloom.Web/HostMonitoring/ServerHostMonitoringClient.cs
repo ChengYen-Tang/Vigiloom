@@ -38,6 +38,11 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
         await AuthorizeAsync(token);
         return await metrics.GetAsync(deviceId, from, until, cursor, kind, token);
     }
+    public async Task<HostMetricSeriesPage?> GetMetricSeriesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, int page, CancellationToken token)
+    {
+        await AuthorizeAsync(token);
+        return await metrics.GetSeriesAsync(deviceId, from, until, kind, page, token);
+    }
     public async Task<HostMetricThresholdStatus?> GetMetricThresholdAsync(Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension, CancellationToken token)
     {
         await AuthorizeAsync(token);

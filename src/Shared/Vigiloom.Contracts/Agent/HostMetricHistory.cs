@@ -11,6 +11,12 @@ public sealed record HostMetricValue(DateTimeOffset OccurredAt, DateTimeOffset R
 /// <summary>One bounded page of host measurements; the continuation token is opaque.</summary>
 public sealed record HostMetricPage(IReadOnlyList<HostMetricValue> Items, string? NextCursor);
 
+/// <summary>A distinct metric source from one Agent registration.</summary>
+public sealed record HostMetricSeries(Guid AgentId, string Source, string? Dimension);
+
+/// <summary>A page of metric sources available in the requested history.</summary>
+public sealed record HostMetricSeriesPage(IReadOnlyList<HostMetricSeries> Items, bool HasMore);
+
 /// <summary>A populated UTC time bucket for a single Agent and metric series.</summary>
 public sealed record HostMetricBucket(DateTimeOffset Start, DateTimeOffset LastObservedAt,
     double Minimum, double Maximum, double Average, long Samples);

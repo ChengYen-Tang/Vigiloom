@@ -22,7 +22,7 @@
     }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
-        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></div>
+        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option>@if (tab == "metrics") { <option value="8760">最近 1 年</option> }</select></div>
     }
     @if (loading) { <p role="status">正在載入…</p> }
     else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
@@ -100,10 +100,10 @@
             @if (metricIncomplete) { <p role="status">部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。</p> }
             @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@HostMetricUnits.For(metricKind)" Points="points" /> }
             else { <p>此時間範圍沒有可繪製的資料。</p> }
-            @if (metricPage.NextCursor is not null) { <p>來源選項來自本頁資料；可查看較早資料中的其他來源。</p> }
+            @if (metricPage.HasMore) { <p>還有其他資料來源，可切換下一頁查看。</p> }
         }
         else { <p>這段時間沒有此指標。</p> }
-        @if (metricPage is not null && (metricCursors.Count > 0 || metricPage.NextCursor is not null)) { <button type="button" disabled="@(metricCursors.Count == 0)" @onclick="PreviousMetricsAsync">查看較新來源</button><button type="button" disabled="@(metricPage.NextCursor is null)" @onclick="NextMetricsAsync">查看較早來源</button> }
+        @if (metricPage is not null && (metricPageNumber > 0 || metricPage.HasMore)) { <button type="button" disabled="@(metricPageNumber == 0)" @onclick="PreviousMetricsAsync">上一頁來源</button><button type="button" disabled="@(!metricPage.HasMore)" @onclick="NextMetricsAsync">下一頁來源</button> }
     }
     else if (tab == "logs")
     {

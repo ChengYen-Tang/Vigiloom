@@ -7,6 +7,20 @@ public static class HostMetricEndpoints
 {
     public static void MapHostMetricEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/devices/{deviceId:guid}/host-metrics/series", async (Guid deviceId,
+            DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, int? page, HttpContext context,
+            HostMetricHistory history, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            try
+            {
+                var result = await history.GetSeriesAsync(deviceId, from, until, kind, page ?? 0, token);
+                return result is null ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Device not found") : Results.Ok(result);
+            }
+            catch (ArgumentException) { return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid metric series query"); }
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<HostMetricSeriesPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
+            .WithSummary("List metric sources with samples or retained history");
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-metrics/aggregate", async (Guid deviceId, Guid agentId,
             DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension,
             int bucketSeconds, HttpContext context, HostMetricHistory history, CancellationToken token) =>
