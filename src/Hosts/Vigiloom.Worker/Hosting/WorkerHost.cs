@@ -58,10 +58,6 @@ public static class WorkerHost
         builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
         builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
         builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
-        builder.Services.AddSingleton<IGroupAgentSource, GroupAgentSource>();
-        builder.Services.AddScoped<AgentRollouts>();
-        builder.Services.AddScoped<AgentRolloutJob>();
-        builder.Services.AddHostedService<AgentRolloutSchedule>();
         builder.Services.AddScoped<Vigiloom.Contracts.Agent.Inventory.IAgentOwnerFence, AgentOwnerFence>();
         builder.Services.AddScoped<Vigiloom.Contracts.Agent.Inventory.IAgentOwnerResolver, AgentOwnerResolver>();
         builder.Services.AddScoped<PingSettings>();

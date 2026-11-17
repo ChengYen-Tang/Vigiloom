@@ -1118,11 +1118,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedAssignment.StatusCode);
             using (var readerAssignment = await reader.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, readerAssignment.StatusCode);
-            var rolloutInput = new AgentRolloutInput(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, 10);
-            using (var forgedRollout = await admin.PostAsJsonAsync("/api/v1/agent-rollouts", rolloutInput, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, forgedRollout.StatusCode);
-            using (var readerRollout = await reader.PostAsJsonAsync("/api/v1/agent-rollouts", rolloutInput, token))
-                Assert.AreEqual(HttpStatusCode.Forbidden, readerRollout.StatusCode);
             using (var forgedPackageSource = await admin.PutAsJsonAsync("/api/v1/agent-management/package-source/",
                 new AgentPackageSourceUpdate("https://packages.example.test/", PackageCredentialAction.Keep, null, ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedPackageSource.StatusCode);

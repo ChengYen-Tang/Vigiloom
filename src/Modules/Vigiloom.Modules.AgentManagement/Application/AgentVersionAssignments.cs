@@ -82,7 +82,16 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             var package = await db.Packages.FromSqlInterpolated($"SELECT * FROM [agent].[Packages] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {selected}")
                 .SingleOrDefaultAsync(token);
             if (package is null || !package.Listed || package.Revoked || package.VerifiedUntil <= clock.GetUtcNow()) return VersionAssignmentResult.Conflict;
-            Assign(db, agent, current, package, actorId, clock.GetUtcNow());
+            if (current is null) db.VersionAssignments.Add(current = new AgentVersionAssignment { AgentId = agentId });
+            current.PackageId = selected;
+            current.UpdateId = Guid.CreateVersion7();
+            current.AssignedBy = actorId;
+            current.AssignedAt = clock.GetUtcNow().ToUniversalTime();
+            db.UpdateTargets.Add(new AgentUpdateTarget
+            {
+                Id = current.UpdateId.Value, AgentId = agentId, PackageId = package.Id, Version = package.Version,
+                RuntimeIdentifier = package.RuntimeIdentifier, ManifestSha256 = package.ManifestSha256, AssignedAt = current.AssignedAt
+            });
         }
         else
         {
@@ -92,30 +101,11 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             current.UpdateId = null;
             current.AssignedBy = actorId;
             current.AssignedAt = clock.GetUtcNow().ToUniversalTime();
-            db.Audits.Add(new AgentAudit(agent.DeviceId, agent.Id, actorId, "VersionAssignmentCancelled",
-                clock.GetUtcNow(), previousPackageId, null));
         }
+        db.Audits.Add(new AgentAudit(agent.DeviceId, agent.Id, actorId, packageId is null ? "VersionAssignmentCancelled" : "VersionAssigned",
+            clock.GetUtcNow(), previousPackageId, packageId));
         try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
         catch (DbUpdateConcurrencyException) { return VersionAssignmentResult.Conflict; }
         return VersionAssignmentResult.Saved;
-    }
-
-    /// <summary>Writes an assignment into the caller's locked transaction, including its audit and immutable target.</summary>
-    internal static Guid Assign(AgentManagementDbContext db, Agent agent, AgentVersionAssignment? current,
-        AgentPackage package, Guid actorId, DateTimeOffset now)
-    {
-        var previousPackageId = current?.PackageId;
-        if (current is null) db.VersionAssignments.Add(current = new AgentVersionAssignment { AgentId = agent.Id });
-        current.PackageId = package.Id;
-        current.UpdateId = Guid.CreateVersion7();
-        current.AssignedBy = actorId;
-        current.AssignedAt = now.ToUniversalTime();
-        db.UpdateTargets.Add(new AgentUpdateTarget
-        {
-            Id = current.UpdateId.Value, AgentId = agent.Id, PackageId = package.Id, Version = package.Version,
-            RuntimeIdentifier = package.RuntimeIdentifier, ManifestSha256 = package.ManifestSha256, AssignedAt = current.AssignedAt
-        });
-        db.Audits.Add(new AgentAudit(agent.DeviceId, agent.Id, actorId, "VersionAssigned", now, previousPackageId, package.Id));
-        return current.UpdateId.Value;
     }
 }

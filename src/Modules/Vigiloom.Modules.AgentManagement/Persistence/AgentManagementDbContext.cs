@@ -29,46 +29,12 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
     public DbSet<AgentUpdateTarget> UpdateTargets => Set<AgentUpdateTarget>();
     public DbSet<AgentUpdateReceipt> UpdateReceipts => Set<AgentUpdateReceipt>();
-    public DbSet<AgentRollout> Rollouts => Set<AgentRollout>();
-    public DbSet<AgentRolloutMember> RolloutMembers => Set<AgentRolloutMember>();
-    public DbSet<AgentRolloutAudit> RolloutAudits => Set<AgentRolloutAudit>();
     public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
     public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("agent");
-        var rollout = modelBuilder.Entity<AgentRollout>();
-        rollout.ToTable("Rollouts", table =>
-        {
-            table.HasCheckConstraint("CK_Rollouts_BatchSize", "[PilotSize] > 0 AND [BatchSize] > 0");
-            table.HasCheckConstraint("CK_Rollouts_Status", "[Status] IN (1, 2, 3, 4, 5)");
-        });
-        rollout.HasKey(x => x.Id).IsClustered(false);
-        rollout.Property(x => x.Id).ValueGeneratedNever();
-        rollout.Property(x => x.RowId).UseIdentityColumn();
-        rollout.HasIndex(x => x.RowId).IsUnique().IsClustered();
-        rollout.HasIndex(x => new { x.Status, x.RowId });
-        rollout.Property(x => x.Version).IsRowVersion();
-        rollout.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
-        var rolloutMember = modelBuilder.Entity<AgentRolloutMember>();
-        rolloutMember.ToTable("RolloutMembers", table =>
-        {
-            table.HasCheckConstraint("CK_RolloutMembers_Status", "[Status] IN (1, 2, 3, 4, 5)");
-            table.HasCheckConstraint("CK_RolloutMembers_Order", "[Batch] >= 0 AND [Position] >= 0");
-        });
-        rolloutMember.HasKey(x => new { x.RolloutId, x.AgentId }).IsClustered();
-        rolloutMember.HasIndex(x => new { x.RolloutId, x.Batch, x.Position }).IsUnique();
-        rolloutMember.Property(x => x.DeviceName).HasMaxLength(256).IsRequired();
-        rolloutMember.Property(x => x.ExpectedAssignmentVersion).HasColumnType("binary(8)");
-        rolloutMember.HasOne<AgentRollout>().WithMany().HasForeignKey(x => x.RolloutId).OnDelete(DeleteBehavior.NoAction);
-        rolloutMember.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
-        var rolloutAudit = modelBuilder.Entity<AgentRolloutAudit>();
-        rolloutAudit.ToTable("RolloutAudits");
-        rolloutAudit.HasKey(x => x.RowId).IsClustered();
-        rolloutAudit.Property(x => x.RowId).UseIdentityColumn();
-        rolloutAudit.HasIndex(x => new { x.RolloutId, x.OccurredAt, x.RowId });
-        rolloutAudit.HasOne<AgentRollout>().WithMany().HasForeignKey(x => x.RolloutId).OnDelete(DeleteBehavior.NoAction);
         var trust = modelBuilder.Entity<UpdateTrustState>();
         trust.ToTable("UpdateTrustStates", table =>
         {
