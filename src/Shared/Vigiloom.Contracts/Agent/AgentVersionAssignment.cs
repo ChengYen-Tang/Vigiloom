@@ -8,7 +8,7 @@ public sealed record AgentVersionAssignmentView(Guid AgentId, Guid? PackageId, s
     string? ReportedVersion = null, string? ReportedRuntimeIdentifier = null, DateTimeOffset? ReportedAt = null,
     AgentUpdateResultView? LatestResult = null);
 
-/// <summary>The latest received terminal result for one previously assigned update.</summary>
+/// <summary>The latest received stage or terminal result for one previously assigned update.</summary>
 public sealed record AgentUpdateResultView(Guid UpdateId, string PackageVersion, AgentUpdateResultKind Result,
     DateTimeOffset OccurredAt, DateTimeOffset ReceivedAt, bool RetryAllowed, AgentUpdateFailure? Failure);
 

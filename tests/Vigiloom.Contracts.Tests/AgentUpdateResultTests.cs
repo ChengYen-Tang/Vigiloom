@@ -18,5 +18,8 @@ public sealed class AgentUpdateResultTests
         Assert.IsFalse((result with { Failure = AgentUpdateFailure.Other }).IsValid());
         Assert.IsFalse((result with { OccurredAt = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)) }).IsValid());
         Assert.IsTrue((result with { Result = AgentUpdateResultKind.RolledBack, RetryAllowed = true, Failure = AgentUpdateFailure.Interrupted }).IsValid());
+        Assert.IsTrue((result with { Result = AgentUpdateResultKind.Switching }).IsValid());
+        Assert.IsFalse((result with { Result = AgentUpdateResultKind.Switching, RetryAllowed = true }).IsValid());
+        Assert.IsFalse((result with { Result = AgentUpdateResultKind.Switching, Failure = AgentUpdateFailure.Other }).IsValid());
     }
 }

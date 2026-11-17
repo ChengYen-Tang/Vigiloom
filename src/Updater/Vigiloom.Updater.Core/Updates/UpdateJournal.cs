@@ -6,7 +6,7 @@ namespace Vigiloom.Updater.Core.Updates;
 
 public enum UpdatePhase { Prepared, Stopping, Switching, Starting, Verifying, RollingBack, Succeeded, RolledBack, RollbackFailed }
 
-public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Error);
+public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Error, Guid? MessageId = null);
 
 /// <summary>Local recovery information for the single update handled by an Updater service.</summary>
 public sealed record UpdateState(Guid Id, string PreviousDirectory, string TargetDirectory, UpdatePhase Phase,

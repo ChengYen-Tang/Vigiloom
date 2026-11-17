@@ -48,8 +48,8 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
         await EnsureAuthorizedAsync(isCurrent, id, token);
         var now = clock.GetUtcNow();
         var steps = existing?.Id == id && existing.RetryAllowed
-            ? existing.Steps.Append(new(UpdatePhase.Prepared, now, null)).ToArray()
-            : [new(UpdatePhase.Prepared, now, null)];
+            ? existing.Steps.Append(new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())).ToArray()
+            : [new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())];
         var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps, Provenance: provenance);
         await journal.WriteAsync(state, token);
         try
@@ -121,7 +121,7 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
     private async Task<UpdateState> AdvanceAsync(UpdateState state, UpdatePhase phase, CancellationToken token)
     {
         var now = clock.GetUtcNow();
-        state = state with { Phase = phase, UpdatedAt = now, Steps = [.. state.Steps, new(phase, now, state.Error)] };
+        state = state with { Phase = phase, UpdatedAt = now, Steps = [.. state.Steps, new(phase, now, state.Error, Guid.CreateVersion7())] };
         await journal.WriteAsync(state, token);
         return state;
     }
