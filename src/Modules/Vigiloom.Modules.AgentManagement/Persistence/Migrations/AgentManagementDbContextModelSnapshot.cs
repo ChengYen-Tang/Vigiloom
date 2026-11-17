@@ -264,6 +264,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
 
+                    b.Property<double?>("RuntimeCpuPercent")
+                        .HasColumnType("float");
+
                     b.Property<string>("RuntimeIdentifier")
                         .HasMaxLength(32)
                         .IsUnicode(false)
@@ -275,6 +278,9 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<string>("RuntimeVersion")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("RuntimeWorkingSetBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<byte[]>("Verifier")
                         .IsRequired()

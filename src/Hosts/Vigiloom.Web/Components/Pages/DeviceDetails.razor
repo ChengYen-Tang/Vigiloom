@@ -35,6 +35,9 @@
             {
                 <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
                 <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                <div><dt>Agent CPU（單一邏輯處理器為 100%）</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : "尚無資料")</dd></div>
+                <div><dt>Agent 記憶體工作集</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : "尚無資料")</dd></div>
+                <div><dt>Agent 資源回報（UTC）</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
             }
         </dl>
             @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><a href="@($"/devices/{Id:D}/agent-version")">查看 Agent 版本</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }

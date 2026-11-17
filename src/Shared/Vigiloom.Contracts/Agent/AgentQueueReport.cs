@@ -29,10 +29,13 @@ public sealed record AgentHeartbeatReport([property: JsonRequired] int Version, 
 }
 
 /// <summary>The currently running Agent, not a confirmation that a specific update succeeded.</summary>
-public sealed record AgentRuntimeReport([property: JsonRequired] string Version, [property: JsonRequired] string RuntimeIdentifier)
+public sealed record AgentRuntimeReport([property: JsonRequired] string Version, [property: JsonRequired] string RuntimeIdentifier,
+    double? CpuPercent = null, long? WorkingSetBytes = null)
 {
     public bool IsValid() => !string.IsNullOrWhiteSpace(Version) && Version.Length <= 128 && !Version.Any(char.IsControl) &&
-        RuntimeIdentifier is "win-x64" or "win-x86" or "linux-x64";
+        RuntimeIdentifier is "win-x64" or "win-x86" or "linux-x64" &&
+        (CpuPercent is null || double.IsFinite(CpuPercent.Value) && CpuPercent >= 0) &&
+        (WorkingSetBytes is null || WorkingSetBytes >= 0);
 }
 
 /// <summary>The baseline policy actually observed by the worker and its most recent sync failure.</summary>

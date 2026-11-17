@@ -16,6 +16,8 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         string? previous = null;
+        using var resources = new MetricResourceMonitor();
+        var selfMetrics = new AgentSelfMetrics(resources, clock);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(AgentSettings.Default.HeartbeatSeconds), clock);
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -64,7 +66,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                         if (timer.Period != initialPeriod) timer.Period = initialPeriod;
                         var logReport = logStatus?.ForOwner(owner);
                         if (owner is null || logs.ForOwner(owner)?.Revision != logReport?.Report.Revision) logReport = null;
-                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken, AgentRuntimeInfo.Report)).ToString();
+                        status = (await client.SendAsync(vault, uri, settings.Report(), capacity.Report(), metrics.LossWriterFor(owner), logReport, inventory?.Report(owner), integrity?.Report(owner), baseline?.Report(owner), stoppingToken, selfMetrics.Read(AgentRuntimeInfo.Report))).ToString();
                     }
                 }
             }
