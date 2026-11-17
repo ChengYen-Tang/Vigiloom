@@ -28,6 +28,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentPackage> Packages => Set<AgentPackage>();
     public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
     public DbSet<AgentUpdateTarget> UpdateTargets => Set<AgentUpdateTarget>();
+    public DbSet<AgentUpdateReceipt> UpdateReceipts => Set<AgentUpdateReceipt>();
     public DbSet<UpdateRoot> UpdateRoots => Set<UpdateRoot>();
     public DbSet<AgentPackageSource> PackageSources => Set<AgentPackageSource>();
 
@@ -107,6 +108,16 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         target.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         target.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
         target.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
+        var receipt = modelBuilder.Entity<AgentUpdateReceipt>();
+        receipt.ToTable("UpdateReceipts", table => table.HasCheckConstraint("CK_UpdateReceipts_Result",
+            "[Sequence] > 0 AND [Result] IN (1, 2, 3) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] <> 1 OR ([RetryAllowed] = 0 AND [Failure] IS NULL))"));
+        receipt.HasKey(x => x.RowId).IsClustered();
+        receipt.Property(x => x.RowId).UseIdentityColumn();
+        receipt.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        receipt.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
+        receipt.HasIndex(x => new { x.UpdateId, x.Sequence }).IsUnique();
+        receipt.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        receipt.HasOne<AgentUpdateTarget>().WithMany().HasForeignKey(x => x.UpdateId).OnDelete(DeleteBehavior.NoAction);
         var agent = modelBuilder.Entity<Agent>();
         agent.ToTable("Agents", table =>
         {

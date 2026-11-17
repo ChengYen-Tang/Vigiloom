@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Updates;
 
@@ -23,7 +24,24 @@ public enum UpdateFailure { Interrupted = 1, AuthorizationUnavailable = 2, Other
 
 /// <summary>An immutable terminal observation awaiting central acknowledgement.</summary>
 public sealed record UpdateOutcome(Guid MessageId, Guid UpdateId, UpdateProvenance Provenance, int Sequence,
-    UpdatePhase Phase, DateTimeOffset OccurredAt, bool RetryAllowed, UpdateFailure? Failure);
+    UpdatePhase Phase, DateTimeOffset OccurredAt, bool RetryAllowed, UpdateFailure? Failure)
+{
+    public AgentUpdateResult ToReport() => new(MessageId, UpdateId, Provenance.PackageId, Provenance.ManifestSha256, Sequence,
+        Phase switch
+        {
+            UpdatePhase.Succeeded => AgentUpdateResultKind.Succeeded,
+            UpdatePhase.RolledBack => AgentUpdateResultKind.RolledBack,
+            UpdatePhase.RollbackFailed => AgentUpdateResultKind.RollbackFailed,
+            _ => throw new InvalidDataException("The update outcome is not terminal.")
+        }, OccurredAt, RetryAllowed, Failure switch
+        {
+            null => null,
+            UpdateFailure.Interrupted => AgentUpdateFailure.Interrupted,
+            UpdateFailure.AuthorizationUnavailable => AgentUpdateFailure.AuthorizationUnavailable,
+            UpdateFailure.Other => AgentUpdateFailure.Other,
+            _ => throw new InvalidDataException("The update failure category is invalid.")
+        });
+}
 
 public interface IUpdateJournal
 {

@@ -31,9 +31,10 @@ internal sealed class AgentUpdateWorker(AgentVersionClient client, AgentSettings
                     var vault = new IdentityVault(directory);
                     var fetched = await client.GetAsync(vault, uri, stoppingToken);
                     var status = fetched.Status.ToString();
-                    if (fetched is { Status: AgentVersionFetchStatus.Available } && fetched.Target?.RuntimeIdentifier == rid)
+                    if (fetched.Status is AgentVersionFetchStatus.NoAssignment or AgentVersionFetchStatus.Available)
                     {
-                        var handoff = await client.CreateHandoffAsync(vault, uri, fetched, stoppingToken);
+                        var incompatible = fetched.Status == AgentVersionFetchStatus.Available && fetched.Target?.RuntimeIdentifier != rid;
+                        var handoff = await client.CreateHandoffAsync(vault, uri, fetched, stoppingToken, incompatible);
                         // A changed runtime configuration must not send an old target or credential.
                         if (handoff is not null && directory == configuration["Vigiloom:Agent:StateDirectory"] &&
                             server == configuration["Vigiloom:Agent:Server"] && socket == configuration["Vigiloom:Agent:UpdaterSocket"] &&
@@ -41,10 +42,10 @@ internal sealed class AgentUpdateWorker(AgentVersionClient client, AgentSettings
                         {
                             if (OperatingSystem.IsLinux()) status = (await LinuxUpdaterClient.SubmitAsync(socket!, handoff, stoppingToken)).ToString();
                             else if (OperatingSystem.IsWindows()) status = (await WindowsUpdaterClient.SubmitAsync(handoff, stoppingToken)).ToString();
+                            if (incompatible) status = "IncompatiblePlatform";
                         }
                         else status = "IdentityChanged";
                     }
-                    else if (fetched.Status == AgentVersionFetchStatus.Available) status = "IncompatiblePlatform";
                     if (status != previousStatus)
                     {
                         logger.LogInformation("Agent update handoff status: {Status}.", status);

@@ -69,7 +69,8 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                     new CentralPackageAcquirer(options!.Server, options.TrustDirectory, options.CacheDirectory,
                         4L * 1024 * 1024 * 1024, clock),
                     new UpdateTransaction(http, journal, runtime, clock), journal, runtime, options.Server,
-                    options.DeviceId, root!, options.RuntimeIdentifier, options.UpdaterVersion);
+                    options.DeviceId, root!, options.RuntimeIdentifier, options.UpdaterVersion,
+                    new UpdateResultDelivery(http, journal, clock));
                 await RunListenerAsync(listener, async (request, token) =>
                 {
                     var result = await processor.ProcessAsync(request, token);

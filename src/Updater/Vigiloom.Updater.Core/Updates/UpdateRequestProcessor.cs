@@ -9,11 +9,13 @@ public sealed record UpdateRequestResult(CurrentAssignmentStatus Assignment, Upd
 /// <remarks>All settings are installer-owned. Requests are processed sequentially after recovery.</remarks>
 public sealed class UpdateRequestProcessor(CentralAssignmentClient central, CentralPackageAcquirer packages,
     UpdateTransaction transaction, IUpdateJournal journal, IAgentUpdateRuntime runtime, Uri server, Guid deviceId,
-    string installationRoot, string runtimeIdentifier, string updaterVersion)
+    string installationRoot, string runtimeIdentifier, string updaterVersion, UpdateResultDelivery? delivery = null)
 {
     public async Task<UpdateRequestResult> ProcessAsync(UpdateHandoff request, CancellationToken token)
     {
         var assignment = await central.GetAsync(server, deviceId, request, token);
+        if (assignment.Status is CurrentAssignmentStatus.Available or CurrentAssignmentStatus.Changed && delivery is not null)
+            await delivery.FlushAsync(server, request.Credential, token);
         if (assignment is not { Status: CurrentAssignmentStatus.Available, Target: not null })
             return new(assignment.Status);
 
@@ -34,6 +36,7 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
             updaterVersion, currentVersion, request.Credential, token);
         var result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
             installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
+        if (delivery is not null) await delivery.FlushAsync(server, request.Credential, token);
         return new(CurrentAssignmentStatus.Available, result);
     }
 }

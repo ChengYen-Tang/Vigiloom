@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Net;
 using Vigiloom.Updater.Core.Updates;
 
 namespace Vigiloom.Updater.Core.Tests;
@@ -77,5 +78,37 @@ public sealed class UpdateOutcomeTests(TestContext context)
             Assert.IsEmpty(await journal.ReadPendingAsync(target.AgentId, 10, context.CancellationToken));
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task OlderServerDoesNotAcknowledgePendingOutcome()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"update-outcomes-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var agentId = Guid.CreateVersion7();
+            var target = new UpdateProvenance(agentId, Guid.CreateVersion7(), new string('d', 64));
+            var state = new UpdateState(Guid.CreateVersion7(), Path.Combine(directory, "old"), Path.Combine(directory, "new"),
+                UpdatePhase.Succeeded, now, [new(UpdatePhase.Succeeded, now, null)], Provenance: target);
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(state, context.CancellationToken);
+            var before = (await journal.ReadPendingAsync(agentId, 10, context.CancellationToken)).Single();
+            using var http = new HttpClient(new OlderServerHandler());
+            var credential = $"vla_{agentId:D}.{new string('a', 43)}";
+            Assert.AreEqual(0, await new UpdateResultDelivery(http, journal, TimeProvider.System)
+                .FlushAsync(new Uri("https://example.test/"), credential, context.CancellationToken));
+            var pending = await journal.ReadPendingAsync(agentId, 10, context.CancellationToken);
+            Assert.HasCount(1, pending);
+            Assert.AreEqual(before.MessageId, pending[0].MessageId);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class OlderServerHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
 }

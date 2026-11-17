@@ -25,6 +25,9 @@ public sealed class UpdateHandoffTests(TestContext context)
         Assert.AreEqual(credential, read.Credential);
         Assert.IsFalse(new UpdateHandoff { UpdateId = Guid.Empty, Credential = credential }.IsValid());
         Assert.IsFalse(new UpdateHandoff { UpdateId = message.UpdateId, Credential = credential + "x" }.IsValid());
+        Assert.IsTrue(new UpdateHandoff { UpdateId = Guid.Empty, Credential = credential, SyncOnly = true }.IsValid());
+        Assert.IsFalse(new UpdateHandoff { UpdateId = message.UpdateId, Credential = credential, SyncOnly = true }.IsValid());
+        Assert.DoesNotContain("syncOnly", JsonSerializer.Serialize(message, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
     [TestMethod]

@@ -86,11 +86,16 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         {
             var registered = await db.Agents.SingleAsync(x => x.Id == agent.AgentId.Value, token);
             registered.RecordRuntime(new AgentRuntimeReport("1.1.1", "win-x64"), observed);
+            var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
+            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
+                MessageId = Guid.CreateVersion7(), Sequence = 1, Result = AgentUpdateResultKind.Succeeded,
+                OccurredAt = observed, ReceivedAt = observed });
             await db.SaveChangesAsync(token);
         }
         await page.ReloadAsync();
         await page.GetByText("1.1.0", new() { Exact = true }).WaitForAsync();
         await page.GetByText("1.1.1 (win-x64)", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("1.2.3：已通過本機健康檢查", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual($"回報時間（UTC）：{observed.ToUniversalTime():yyyy-MM-dd HH:mm:ss}",
             await page.GetByText("心跳回報的 Agent 版本", new() { Exact = true }).Locator("..").Locator(".version-time").InnerTextAsync());
         await using (var readerContext = await browser.NewContextAsync())

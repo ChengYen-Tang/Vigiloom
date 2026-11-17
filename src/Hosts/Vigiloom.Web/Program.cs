@@ -130,6 +130,7 @@ builder.Services.AddScoped<AgentMetricConfiguration>();
 builder.Services.AddScoped<HostLogConfiguration>();
 builder.Services.AddScoped<AgentPackageQuery>();
 builder.Services.AddScoped<AgentVersionAssignments>();
+builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<UpdateTrustStore>();
 builder.Services.AddScoped<AgentPackageSourceSettings>();
