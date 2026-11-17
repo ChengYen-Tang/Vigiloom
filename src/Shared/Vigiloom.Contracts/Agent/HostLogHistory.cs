@@ -7,4 +7,4 @@ public sealed record HostLogEntry(Guid AgentId, Guid MessageId, Guid SourceId, A
     AgentLogGap? Gap);
 
 /// <summary>A bounded receipt-time page; the continuation token is opaque to clients.</summary>
-public sealed record HostLogPage(IReadOnlyList<HostLogEntry> Items, string? NextCursor);
+public sealed record HostLogPage(IReadOnlyList<HostLogEntry> Items, string? NextCursor, int RetentionDays = 14);

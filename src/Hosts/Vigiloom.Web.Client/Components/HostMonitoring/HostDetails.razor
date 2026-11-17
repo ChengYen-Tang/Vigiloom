@@ -115,7 +115,7 @@
     }
     else if (tab == "logs")
     {
-        <p>依中央接收時間排序；記錄來源時間可能未知。</p>
+        <p>依中央接收時間排序；記錄來源時間可能未知。@if (logs is not null) { <text>保存期限 @logs.RetentionDays 天；安全偵測所需資料可能延長保留。</text> }</p>
         @if (logs?.Items.Count > 0)
         {
             <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="日誌表格，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>來源</th><th>內容</th></tr></thead><tbody>

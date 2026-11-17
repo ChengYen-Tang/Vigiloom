@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
@@ -13,7 +14,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection, IHostLogRetention? hostLogs = null)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.TelemetryRetention.Preview.v1");
 
@@ -39,6 +40,7 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
         if (!TelemetryRetentionLimits.IsValidMetrics(rawDays, rollupDays) || !TelemetryRetentionLimits.IsValidHealth(healthDays)) throw new ArgumentException("Invalid retention settings.");
         var now = await NowAsync(db, token);
         var logs = await db.LogRecords.LongCountAsync(x => x.OccurredAt < now.AddDays(-input.LogDays), token);
+        var hostLogCount = hostLogs is null ? 0 : await hostLogs.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, input.LogDays, token);
         var spans = await db.TraceSpans.LongCountAsync(x => x.StartedAt < now.AddDays(-input.TraceDays), token);
         var points = await db.MetricPoints.LongCountAsync(x => x.OccurredAt < now.AddDays(-rawDays), token);
         var windows = await db.MetricRollupWindows.LongCountAsync(x => x.WindowStart < now.AddDays(-rollupDays), token);
@@ -48,7 +50,7 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
             !db.HealthSchedules.Any(schedule => schedule.TargetId == x.TargetId && schedule.LastEvaluatedAt == x.ObservedAt), token);
         await tx.CommitAsync(token);
         var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.LogDays, input.TraceDays, rawDays, rollupDays, healthDays, input.Version, now)));
-        return new(input.LogDays, input.TraceDays, now, logs, spans, input.Version, proof, rawDays, rollupDays, points, windows, healthDays, observations, intervals);
+        return new(input.LogDays, input.TraceDays, now, logs, spans, input.Version, proof, rawDays, rollupDays, points, windows, healthDays, observations, intervals, hostLogCount);
     }
 
     public async Task<TelemetryRetentionSnapshot?> UpdateAsync(TelemetryRetentionInput input, Guid actor, CancellationToken token)

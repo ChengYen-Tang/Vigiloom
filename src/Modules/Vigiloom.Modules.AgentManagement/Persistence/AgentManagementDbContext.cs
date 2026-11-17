@@ -270,6 +270,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         log.Property(x => x.User).HasMaxLength(256);
         log.Property(x => x.Process).HasMaxLength(256);
         log.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        log.HasIndex(x => new { x.ReceivedAt, x.RowId });
         log.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
         log.HasIndex(x => new { x.AgentId, x.SourceId, x.ReceivedAt, x.RowId });
         log.HasIndex(x => new { x.AgentId, x.SourceId, x.OccurredAt, x.RowId });
