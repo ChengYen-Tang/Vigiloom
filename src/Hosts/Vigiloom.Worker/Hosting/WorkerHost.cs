@@ -17,6 +17,7 @@ using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -66,6 +67,10 @@ public static class WorkerHost
         builder.Services.AddScoped<PingRunner>();
         builder.Services.AddScoped<PingRollupBackfill>();
         builder.Services.AddScoped<PingRollupBackfillJob>();
+        builder.Services.AddScoped<MetricRollupMaterializer>();
+        builder.Services.AddScoped<MetricWindowBackfill>();
+        builder.Services.AddScoped<MetricRollupCoordinator>();
+        builder.Services.AddScoped<MetricRollupJob>();
         builder.Services.AddScoped<SpeedSettings>();
         builder.Services.AddScoped<SpeedQueue>();
         builder.Services.AddScoped<SpeedRunner>();
@@ -155,6 +160,7 @@ public static class WorkerHost
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<PingWorker>();
         builder.Services.AddHostedService<PingRollupBackfillSchedule>();
+        builder.Services.AddHostedService<MetricRollupSchedule>();
         builder.Services.AddSingleton<HealthRunner>();
         builder.Services.AddHostedService<HealthPolicyWorker>();
         builder.Services.AddHostedService<HealthExpiryWorker>();
