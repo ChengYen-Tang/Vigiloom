@@ -97,6 +97,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         healthInterval.Property(x => x.RowId).UseIdentityColumn();
         healthInterval.HasIndex(x => x.TargetId).IsUnique().HasFilter("[EndedAt] IS NULL");
         healthInterval.HasIndex(x => new { x.TargetId, x.StartedAt, x.RowId });
+        healthInterval.HasIndex(x => x.EndedAt).HasFilter("[EndedAt] IS NOT NULL");
         healthInterval.HasOne<HealthTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Restrict);
 
         var healthObservation = modelBuilder.Entity<HealthObservation>();
@@ -110,6 +111,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         healthObservation.Property(x => x.TargetVersion).HasColumnType("binary(8)").IsRequired();
         healthObservation.Property(x => x.NetworkVersion).HasColumnType("binary(8)").IsRequired();
         healthObservation.HasIndex(x => new { x.TargetId, x.ObservedAt, x.RowId });
+        healthObservation.HasIndex(x => x.ObservedAt);
         healthObservation.HasIndex(x => new { x.TargetId, x.LeaseGeneration }).IsUnique();
         healthObservation.HasOne<HealthTarget>().WithMany().HasForeignKey(x => x.TargetId).OnDelete(DeleteBehavior.Restrict);
 
@@ -294,7 +296,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         {
             table.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
             table.HasCheckConstraint("CK_TelemetryRetentionSettings_Slot", "[Slot] = 1");
-            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650");
+            table.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650 AND [HealthDays] BETWEEN 1 AND 3650");
         });
         telemetryRetention.HasKey(x => x.Id).IsClustered(false);
         telemetryRetention.Property(x => x.Id).ValueGeneratedNever();
@@ -304,6 +306,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         telemetryRetention.Property(x => x.Version).IsRowVersion();
         telemetryRetention.Property(x => x.MetricRawDays).HasDefaultValue(30);
         telemetryRetention.Property(x => x.MetricRollupDays).HasDefaultValue(365);
+        telemetryRetention.Property(x => x.HealthDays).HasDefaultValue(365);
 
         var metricContext = modelBuilder.Entity<MetricContext>();
         metricContext.ToTable("MetricContexts", table => table.HasCheckConstraint("CK_MetricContexts_Payload", "DATALENGTH([ResourcePayload]) <= 65536 AND DATALENGTH([ScopePayload]) <= 65536 AND DATALENGTH([MetricPayload]) <= 65536"));

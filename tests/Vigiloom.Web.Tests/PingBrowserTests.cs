@@ -96,6 +96,7 @@ public sealed class PingBrowserTests
             await page.Locator("#telemetry-trace-days").FillAsync("5");
             await page.Locator("#telemetry-metric-raw-days").FillAsync("20");
             await page.Locator("#telemetry-metric-rollup-days").FillAsync("300");
+            await page.Locator("#telemetry-health-days").FillAsync("180");
             await page.GetByRole(AriaRole.Button, new() { Name = "預覽變更" }).ClickAsync();
             await page.GetByRole(AriaRole.Button, new() { Name = "確認儲存" }).ClickAsync();
             await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "保存設定已儲存" }).WaitForAsync();

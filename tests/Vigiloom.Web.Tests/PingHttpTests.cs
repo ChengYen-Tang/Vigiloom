@@ -52,20 +52,22 @@ public sealed class PingHttpTests
             Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
         using var page = await admin.GetAsync("/settings/service-reception/retention", token);
         var fields = Hidden(await FormAsync(page, "telemetry-retention", token));
-        fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5"; fields["Input.MetricRawDays"] = "20"; fields["Input.MetricRollupDays"] = "300";
+        fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5"; fields["Input.MetricRawDays"] = "20"; fields["Input.MetricRollupDays"] = "300"; fields["Input.HealthDays"] = "180";
         using var preview = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(fields), token);
         Assert.Contains("確認儲存", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "telemetry-retention", token));
-        confirm["Input.LogDays"] = "10"; confirm["Input.TraceDays"] = "5"; confirm["Input.MetricRawDays"] = "20"; confirm["Input.MetricRollupDays"] = "300";
+        confirm["Input.LogDays"] = "10"; confirm["Input.TraceDays"] = "5"; confirm["Input.MetricRawDays"] = "20"; confirm["Input.MetricRollupDays"] = "300"; confirm["Input.HealthDays"] = "180";
         using var saved = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(confirm), token);
         Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
         var current = await admin.GetFromJsonAsync<TelemetryRetentionSnapshot>("/api/v1/settings/telemetry/retention", token);
         Assert.AreEqual(10, current?.LogDays); Assert.AreEqual(5, current?.TraceDays);
         Assert.AreEqual(20, current?.MetricRawDays); Assert.AreEqual(300, current?.MetricRollupDays);
+        Assert.AreEqual(180, current?.HealthDays);
         using var audit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token);
         Assert.Contains("應用 Logs 保存：14 → 10 天", await TextAsync(audit, token));
         Assert.Contains("應用 Traces 保存：7 → 5 天", await TextAsync(audit, token));
         Assert.Contains("應用指標原始資料保存：30 → 20 天", await TextAsync(audit, token));
+        Assert.Contains("服務健康歷史保存：365 → 180 天", await TextAsync(audit, token));
     }, TestContext.CancellationToken);
 
     [TestMethod]

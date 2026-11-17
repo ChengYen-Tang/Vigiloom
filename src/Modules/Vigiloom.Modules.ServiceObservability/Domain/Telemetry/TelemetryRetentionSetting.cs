@@ -11,5 +11,6 @@ public sealed class TelemetryRetentionSetting
     public int TraceDays { get; set; } = 7;
     public int MetricRawDays { get; set; } = 30;
     public int MetricRollupDays { get; set; } = 365;
+    public int HealthDays { get; set; } = 365;
     public byte[] Version { get; private set; } = [];
 }

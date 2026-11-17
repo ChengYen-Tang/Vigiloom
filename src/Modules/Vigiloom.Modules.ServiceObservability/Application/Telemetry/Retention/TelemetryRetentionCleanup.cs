@@ -10,6 +10,36 @@ public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabi
 
     public Task<(long Pruned, long Expired)> RunMetricsAsync(CancellationToken token) => new MetricRetentionCleanup(contexts).RunAsync(token);
 
+    public async Task<(long Observations, long Intervals)> RunHealthAsync(CancellationToken token)
+    {
+        await TelemetryRetentionSettings.EnsureAsync(contexts, token);
+        long observations = 0, intervals = 0;
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+            var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var cutoff = now.AddDays(-policy.HealthDays);
+            var observationIds = db.HealthObservations.Where(x => x.ObservedAt < cutoff &&
+                    !db.HealthSchedules.Any(schedule => schedule.TargetId == x.TargetId && schedule.LastEvaluatedAt == x.ObservedAt))
+                .OrderBy(x => x.ObservedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(BatchSize);
+            var intervalIds = db.HealthStateIntervals.Where(x => x.EndedAt != null && x.EndedAt < cutoff)
+                .OrderBy(x => x.EndedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(BatchSize);
+            var removedObservations = await db.HealthObservations.Where(x => observationIds.Contains(x.RowId)).ExecuteDeleteAsync(token);
+            var removedIntervals = await db.HealthStateIntervals.Where(x => intervalIds.Contains(x.RowId)).ExecuteDeleteAsync(token);
+            if (removedIntervals > 0)
+            {
+                // The existing history reader uses this version to detect concurrent cleanup.
+                db.Entry(policy).Property(x => x.HealthDays).IsModified = true;
+                await db.SaveChangesAsync(token);
+            }
+            await tx.CommitAsync(token);
+            observations += removedObservations; intervals += removedIntervals;
+            if (removedObservations < BatchSize && removedIntervals < BatchSize) return (observations, intervals);
+        }
+    }
+
     public async Task<(long Logs, long Spans)> RunAsync(CancellationToken token)
     {
         await TelemetryRetentionSettings.EnsureAsync(contexts, token);

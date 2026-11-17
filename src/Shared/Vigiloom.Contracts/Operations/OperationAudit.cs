@@ -25,7 +25,8 @@ public sealed record HostMetricRetentionChanged(int PreviousRawDays, int Previou
 public sealed record TelemetryRetentionChanged(int PreviousLogDays, int PreviousTraceDays,
     int CurrentLogDays, int CurrentTraceDays, string PreviousVersion, string CurrentVersion,
     int? PreviousMetricRawDays = null, int? PreviousMetricRollupDays = null,
-    int? CurrentMetricRawDays = null, int? CurrentMetricRollupDays = null) : OperationAuditDetails;
+    int? CurrentMetricRawDays = null, int? CurrentMetricRollupDays = null,
+    int? PreviousHealthDays = null, int? CurrentHealthDays = null) : OperationAuditDetails;
 
 public sealed record PingSettingsAuditValues(int IntervalSeconds, int TimeoutSeconds, int FailureThreshold, int SuccessThreshold, int MaxConcurrency,
     int? RawRetentionDays = null, int? RollupRetentionDays = null);
