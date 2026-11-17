@@ -32,10 +32,10 @@
             <p>建立短效加入資料後，在這台設備執行 Agent 註冊。重新建立會撤銷先前的加入資料；每台設備一次只能有一個有效 Agent 身分。</p>
             <p>設備 ID：<code>@Id</code></p>
             <ol>
-                <li>取得與設備相符的 Agent 安裝包，以及發布者信任根的 SHA-256 指紋。正式安裝包下載功能尚未提供。</li>
+                <li>前往 <a href="https://github.com/ChengYen-Tang/Vigiloom/releases" target="_blank" rel="noopener noreferrer">Vigiloom 官方版本下載頁</a>，下載符合設備的安裝包：Windows x64、Windows x86 或 Linux x64。若尚無對應檔案，表示該版本尚未發布。</li>
                 <li>建立下方的短效加入資料，並以安全方式交給設備管理員。</li>
                 <li>在設備上解壓安裝包。Windows 請以系統管理員身分開啟 Windows PowerShell 5.1 並執行 <code>.\install.ps1</code>；Linux 請以 root 執行 <code>bash ./install.sh</code>。</li>
-                <li>依安裝程式提示輸入平台 HTTPS 網址、上述設備 ID、信任根指紋及加入資料。安裝完成後回到設備詳情查看 Agent 狀態。</li>
+                <li>依安裝程式提示輸入平台 HTTPS 網址、上述設備 ID、由可信管道獨立確認的發布者信任根 SHA-256 指紋及加入資料。安裝完成後回到設備詳情查看 Agent 狀態。</li>
             </ol>
             @if (!device.DeepMonitoring || !device.Enabled || device.Archived) { <p>請先將設備設定為已啟用的深入監控模式。</p> }
             else
