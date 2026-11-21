@@ -92,6 +92,7 @@ jobs:
           set -euo pipefail
           dotnet build tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj --configuration Release
           dotnet_executable=$(command -v dotnet)
+          findmnt -T /run -no TARGET,OPTIONS
           results_dir=$(mktemp -d "$RUNNER_TEMP/vigiloom-root-tests.XXXXXX")
           trap 'sudo rm -rf -- "$results_dir"' EXIT
           mkdir "$results_dir/vstest"

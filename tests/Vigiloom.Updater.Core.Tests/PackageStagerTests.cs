@@ -68,7 +68,10 @@ public sealed class PackageStagerTests(TestContext context)
             var manifest = Manifest(archive, "linux-x64");
             var prepared = await PackageStager.PrepareAsync(archive, manifest, Target(manifest), root,
                 "linux-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken);
-            Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", Path.Combine(prepared, "Vigiloom.Agent")));
+            var executable = Path.Combine(prepared, "Vigiloom.Agent");
+            Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", executable),
+                $"Modes: /run={File.GetUnixFileMode("/run")}, root={File.GetUnixFileMode(root)}, " +
+                $"staging={File.GetUnixFileMode(Path.Combine(root, "staging"))}, version={File.GetUnixFileMode(prepared)}, executable={File.GetUnixFileMode(executable)}");
             Assert.AreEqual(0, await TestAsUnprivilegedAsync("-r", Path.Combine(prepared, "runtimes", "native.dll")));
             Assert.AreEqual(0, await TestAsUnprivilegedAsync("-x", Path.Combine(prepared, "tools", "createdump")));
             Assert.AreNotEqual(0, await TestAsUnprivilegedAsync("-w", Path.Combine(prepared, "Vigiloom.Agent")));
