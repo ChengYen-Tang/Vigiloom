@@ -38,6 +38,7 @@
                 <li>在設備上解壓安裝包。Windows 請以系統管理員身分開啟 Windows PowerShell 5.1 並執行 <code>.\install.ps1</code>；Linux 請以 root 執行 <code>bash ./install.sh</code>。</li>
                 <li>依安裝程式提示輸入平台 HTTPS 網址、上述設備 ID、由可信管道獨立確認的發布者信任根 SHA-256 指紋及加入資料。安裝完成後回到設備詳情查看 Agent 狀態。</li>
             </ol>
+            <p>如需修復已安裝的 Updater，請使用可信的同架構安裝包：Windows 以系統管理員執行 <code>.\repair-updater.ps1</code>；Linux 以 root 執行 <code>bash ./repair-updater.sh</code>。此操作保留 Agent 身分及待傳資料。</p>
             @if (!device.DeepMonitoring || !device.Enabled || device.Archived) { <p>請先將設備設定為已啟用的深入監控模式。</p> }
             else
             {
