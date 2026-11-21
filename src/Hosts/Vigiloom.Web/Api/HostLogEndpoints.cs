@@ -1,5 +1,6 @@
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 namespace Vigiloom.Web.Api;
 
@@ -8,13 +9,13 @@ internal static class HostLogEndpoints
     public static void MapHostLogEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-logs", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, string? cursor, Guid? sourceId, HttpContext context, HostLogHistory history, CancellationToken token) =>
+            DateTimeOffset until, string? cursor, Guid? sourceId, HttpContext context, HostLogHistory history, TelemetryRetentionSettings retention, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
             {
                 var page = await history.GetAsync(deviceId, from, until, cursor, sourceId, token);
-                return page is null ? Results.Problem(statusCode: 404, title: "Device not found") : Results.Ok(page);
+                return page is null ? Results.Problem(statusCode: 404, title: "Device not found") : Results.Ok(page with { RetentionDays = (await retention.GetAsync(token)).LogDays });
             }
             catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid host log query"); }
         }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")

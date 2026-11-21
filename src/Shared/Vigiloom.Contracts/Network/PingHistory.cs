@@ -7,7 +7,8 @@ public sealed record PingHistorySample(DateTimeOffset OccurredAt, DateTimeOffset
 public sealed record PingHistoryBucket(DateTimeOffset Start, long Attempts, long Successes, long Timeouts, long Unreachable,
     long DnsErrors, long PermissionDenied, long MonitorErrors, long UnknownFailures, double? AverageMilliseconds, double? MinimumMilliseconds, double? MaximumMilliseconds, bool LatencyOverflow, DateTimeOffset LastOccurredAt);
 public sealed record PingHistoryPage(IReadOnlyList<PingHistoryOption> Options, bool OptionsTruncated, IReadOnlyList<PingHistorySample> Items,
-    int Page, int PageSize, long Total, IReadOnlyList<PingHistoryBucket> Buckets, bool RollupsPending, DateTimeOffset? LastObservedAt);
+    int Page, int PageSize, long Total, IReadOnlyList<PingHistoryBucket> Buckets, bool RollupsPending, DateTimeOffset? LastObservedAt,
+    int RawRetentionDays = 30, int RollupRetentionDays = 365);
 
 public interface IPingHistoryClient
 {

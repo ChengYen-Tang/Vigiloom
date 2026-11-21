@@ -36,10 +36,12 @@ public sealed class InstanceManagementTests(TestContext context)
             {
                 await db.Database.MigrateAsync(token);
                 db.Sources.Add(source); db.Services.Add(service); await db.SaveChangesAsync(token);
-                await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261114003446_ServicePublicationPeriod", token));
+                var error = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => db.GetService<IMigrator>().MigrateAsync("20261114003446_ServicePublicationPeriod", token));
+                Assert.AreEqual(51000, error.Number);
+                Assert.Contains("Cannot roll back service archive", error.Message);
             }
             await using var check = new ServiceObservabilityDbContext(options);
-            Assert.IsNotNull((await check.Services.SingleAsync(x => x.Id == service.Id, token)).ArchivedAt);
+            Assert.IsNotNull(await check.Database.SqlQuery<DateTimeOffset?>($"SELECT [ArchivedAt] AS [Value] FROM [service].[Services] WHERE [Id] = {service.Id}").SingleAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

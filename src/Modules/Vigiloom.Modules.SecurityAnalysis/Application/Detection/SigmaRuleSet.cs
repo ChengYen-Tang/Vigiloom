@@ -68,7 +68,7 @@ internal sealed class SigmaRuleSetLoader(ISigmaCatalog catalog)
                 if (metadata.IsCorrelation)
                 {
                     references.Add(new(metadata.Id, metadata.Name, null));
-                    var correlation = CorrelationCompiler.Compile(item.Content, TimeSpan.FromDays(7));
+                    var correlation = CorrelationCompiler.Compile(item.Content, Vigiloom.Contracts.Intelligence.SigmaCorrelationLimits.MaximumWindow);
                     if (correlation.Rule is { } parsed) correlationSources.Add((item.Rule, parsed));
                     else rejected.Add(new(item.Rule, correlation.Error ?? "Unsupported correlation."));
                     continue;

@@ -22,7 +22,14 @@
     }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
-        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync"><option value="24">最近 24 小時</option><option value="168">最近 7 天</option><option value="720">最近 30 天</option></select></div>
+        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync">
+            <option value="24">最近 24 小時</option>
+            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 7) { <option value="168">最近 7 天</option> }
+            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 30) { <option value="720">最近 30 天</option> }
+            @if (tab == "metrics" && metricPage?.RollupRetentionDays >= 365) { <option value="8760">最近 1 年</option> }
+            @if (tab == "metrics" && metricPage is { } retention && retention.RollupRetentionDays is not (1 or 7 or 30 or 365))
+            { <option value="@(retention.RollupRetentionDays * 24)">最近 @retention.RollupRetentionDays 天（保存期限）</option> }
+        </select></div>
     }
     @if (loading) { <p role="status">正在載入…</p> }
     else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
@@ -74,6 +81,7 @@
             @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
         </select></div>
         <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。</p>
+        @if (metricPage is { } retentionPeriod) { <p>原始樣本保存 @retentionPeriod.RawRetentionDays 天，五分鐘彙總保存 @retentionPeriod.RollupRetentionDays 天。</p> }
         @if (metricPage?.Items.Count > 0)
         {
             <label for="metric-series">來源與 Agent</label><select id="metric-series" value="@seriesIndex" @onchange="ChangeSeriesAsync">
@@ -97,16 +105,17 @@
                     <AuthorizeView Roles="Administrator"><Authorized><a href="@ThresholdEditUrl(series[seriesIndex])">設定此來源的閾值</a></Authorized></AuthorizeView>
                 </section>
             }
+            @if (metricIncomplete) { <p role="status">部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。</p> }
             @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@HostMetricUnits.For(metricKind)" Points="points" /> }
             else { <p>此時間範圍沒有可繪製的資料。</p> }
-            @if (metricPage.NextCursor is not null) { <p>來源選項來自本頁資料；可查看較早資料中的其他來源。</p> }
+            @if (metricPage.HasMore) { <p>還有其他資料來源，可切換下一頁查看。</p> }
         }
         else { <p>這段時間沒有此指標。</p> }
-        @if (metricPage is not null && (metricCursors.Count > 0 || metricPage.NextCursor is not null)) { <button type="button" disabled="@(metricCursors.Count == 0)" @onclick="PreviousMetricsAsync">查看較新來源</button><button type="button" disabled="@(metricPage.NextCursor is null)" @onclick="NextMetricsAsync">查看較早來源</button> }
+        @if (metricPage is not null && (metricPageNumber > 0 || metricPage.HasMore)) { <button type="button" disabled="@(metricPageNumber == 0)" @onclick="PreviousMetricsAsync">上一頁來源</button><button type="button" disabled="@(!metricPage.HasMore)" @onclick="NextMetricsAsync">下一頁來源</button> }
     }
     else if (tab == "logs")
     {
-        <p>依中央接收時間排序；記錄來源時間可能未知。</p>
+        <p>依中央接收時間排序；記錄來源時間可能未知。@if (logs is not null) { <text>保存期限 @logs.RetentionDays 天；安全偵測所需資料可能延長保留。</text> }</p>
         @if (logs?.Items.Count > 0)
         {
             <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="日誌表格，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>來源</th><th>內容</th></tr></thead><tbody>

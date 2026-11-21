@@ -7,6 +7,7 @@ using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Services;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;
 
@@ -27,6 +28,9 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         {
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
+            AuditRetentionChanged change when IsValid(change) => (AuditKinds.AuditRetentionChangedV1, JsonSerializer.Serialize(change)),
+            HostMetricRetentionChanged change when IsValid(change) => (AuditKinds.HostMetricRetentionChangedV1, JsonSerializer.Serialize(change)),
+            TelemetryRetentionChanged change when IsValid(change) => (AuditKinds.TelemetryRetentionChangedV1, JsonSerializer.Serialize(change)),
             PingSettingsChanged change when IsValid(change) => (AuditKinds.PingSettingsChangedV1, JsonSerializer.Serialize(change)),
             AgentReplayPolicyChanged change when IsValid(change) => (AuditKinds.AgentReplayPolicyChangedV1, JsonSerializer.Serialize(change)),
             AgentInboxSettingsChanged change when IsValid(change) => (AuditKinds.AgentInboxSettingsChangedV1, JsonSerializer.Serialize(change)),
@@ -104,6 +108,27 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         SpeedRetentionLimits.IsValid(change.PreviousDays) && SpeedRetentionLimits.IsValid(change.CurrentDays) &&
         IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
 
+    internal static bool IsValid(AuditRetentionChanged change) =>
+        AuditRetentionLimits.IsValid(change.PreviousDays) && AuditRetentionLimits.IsValid(change.CurrentDays) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(HostMetricRetentionChanged change) =>
+        HostMetricRetentionLimits.IsValid(change.PreviousRawDays, change.PreviousRollupDays) &&
+        HostMetricRetentionLimits.IsValid(change.CurrentRawDays, change.CurrentRollupDays) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
+    internal static bool IsValid(TelemetryRetentionChanged change) =>
+        TelemetryRetentionLimits.IsValid(change.PreviousLogDays, change.PreviousTraceDays) &&
+        TelemetryRetentionLimits.IsValid(change.CurrentLogDays, change.CurrentTraceDays) &&
+        (change.PreviousMetricRawDays is null && change.PreviousMetricRollupDays is null && change.CurrentMetricRawDays is null && change.CurrentMetricRollupDays is null ||
+         change.PreviousMetricRawDays is int previousRaw && change.PreviousMetricRollupDays is int previousRollup &&
+         change.CurrentMetricRawDays is int currentRaw && change.CurrentMetricRollupDays is int currentRollup &&
+         TelemetryRetentionLimits.IsValidMetrics(previousRaw, previousRollup) && TelemetryRetentionLimits.IsValidMetrics(currentRaw, currentRollup)) &&
+        (change.PreviousHealthDays is null && change.CurrentHealthDays is null ||
+         change.PreviousHealthDays is int previousHealth && change.CurrentHealthDays is int currentHealth &&
+         TelemetryRetentionLimits.IsValidHealth(previousHealth) && TelemetryRetentionLimits.IsValidHealth(currentHealth)) &&
+        IsVersion(change.PreviousVersion) && IsVersion(change.CurrentVersion);
+
     internal static bool IsValid(GroupChanged change) => change.Action is >= GroupAction.Created and <= GroupAction.ServicesChanged &&
         change.Added is >= 0 and <= 100 && change.Removed is >= 0 and <= 100 && change.Added + change.Removed <= 100 &&
         (change.Action is GroupAction.DevicesChanged or GroupAction.ServicesChanged || (change.Added == 0 && change.Removed == 0));
@@ -145,7 +170,12 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(PingSettingsChanged change) => change.Previous is not null && change.Current is not null &&
         PingSettingsLimits.IsValid(change.Current.IntervalSeconds, change.Current.TimeoutSeconds, change.Current.FailureThreshold,
             change.Current.SuccessThreshold, change.Current.MaxConcurrency) &&
+        ValidPingRetention(change.Previous) && ValidPingRetention(change.Current) &&
         (change.PreviousVersion == "" || IsVersion(change.PreviousVersion)) && IsVersion(change.CurrentVersion);
+
+    private static bool ValidPingRetention(PingSettingsAuditValues value) =>
+        value.RawRetentionDays is null && value.RollupRetentionDays is null ||
+        value.RawRetentionDays is int raw && value.RollupRetentionDays is int rollup && PingRetentionLimits.IsValid(raw, rollup);
 
     internal static bool IsValid(AgentReplayPolicyChanged change) =>
         change.ActivatedAt.Offset == TimeSpan.Zero && change.GraceUntil.Offset == TimeSpan.Zero &&

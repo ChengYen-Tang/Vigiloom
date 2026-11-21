@@ -37,6 +37,8 @@ public sealed class MonitoredService
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
     public DateTimeOffset? ArchivedAt { get; private set; }
+    // Old metric windows cannot be re-created after their retained history is removed.
+    public DateTimeOffset? MetricRetainedAfter { get; set; }
     public bool IsPublic { get; private set; }
     public DateTimeOffset? PublicSince { get; private set; }
     public string? PublicDisplayName { get; private set; }

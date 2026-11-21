@@ -110,9 +110,21 @@ public sealed class HostMetricHttpTests
         var from = Uri.EscapeDataString(now.AddMinutes(-1).ToString("O"));
         var until = Uri.EscapeDataString(now.AddMinutes(1).ToString("O"));
         var url = $"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}";
+        var seriesUrl = $"/api/v1/devices/{device.Id:D}/host-metrics/series?from={from}&until={until}&kind=MemoryTotalBytes";
         using var anonymous = PingTestSite.Client(factory);
         using (var response = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await anonymous.GetAsync(seriesUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using var reader = PingTestSite.Client(factory); await PingTestSite.LoginAsync(reader, "reader", token);
+        using (var response = await reader.GetAsync(seriesUrl, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            var series = await response.Content.ReadFromJsonAsync<HostMetricSeriesPage>(cancellationToken: token);
+            Assert.IsNotNull(series);
+            Assert.AreEqual(new HostMetricSeries(metricAgentId, "test", null), series.Items.Single());
+        }
+        using (var invalid = await reader.GetAsync(seriesUrl + "&page=-1", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using (var unknown = await reader.GetAsync(seriesUrl.Replace(device.Id.ToString("D"), Guid.CreateVersion7().ToString("D")), token)) Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
         using (var response = await reader.GetAsync(url, token))
         {
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);

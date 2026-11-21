@@ -12,6 +12,7 @@ public sealed class MetricContext
     // the original name remains intact in MetricPayload.
     public string? MetricName { get; set; }
     public byte[]? MetricNameBytes { get; private set; }
+    public bool WindowsTracked { get; set; }
     public required string ResourceSchemaUrl { get; set; }
     public required string ScopeSchemaUrl { get; set; }
 }

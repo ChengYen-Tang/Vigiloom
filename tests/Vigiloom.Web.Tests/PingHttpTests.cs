@@ -10,9 +10,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -29,6 +38,165 @@ namespace Vigiloom.Web.Tests;
 public sealed class PingHttpTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public Task TelemetryRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        var device = await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        var now = DateTimeOffset.UtcNow;
+        var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
+        var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now.AddDays(-20), Guid.CreateVersion7(), AgentLogSourceKind.Journal,
+            "system", 1, [new(Guid.CreateVersion7(), now.AddDays(-20), "old", null, null, null, null, null)]);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        { db.Agents.Add(agent); db.HostLogs.Add(new HostLog(agent.Id, batch, 0, now.AddDays(-20))); await db.SaveChangesAsync(token); }
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/telemetry/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/telemetry/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<TelemetryRetentionSnapshot>("/api/v1/settings/telemetry/retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/telemetry/retention/preview", new TelemetryRetentionPreviewRequest(10, 5, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/service-reception/retention", token);
+        var fields = Hidden(await FormAsync(page, "telemetry-retention", token));
+        fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5"; fields["Input.MetricRawDays"] = "20"; fields["Input.MetricRollupDays"] = "300"; fields["Input.HealthDays"] = "180";
+        using var preview = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        Assert.Contains("1 筆主機日誌", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "telemetry-retention", token));
+        confirm["Input.LogDays"] = "10"; confirm["Input.TraceDays"] = "5"; confirm["Input.MetricRawDays"] = "20"; confirm["Input.MetricRollupDays"] = "300"; confirm["Input.HealthDays"] = "180";
+        using var saved = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        var current = await admin.GetFromJsonAsync<TelemetryRetentionSnapshot>("/api/v1/settings/telemetry/retention", token);
+        Assert.AreEqual(10, current?.LogDays); Assert.AreEqual(5, current?.TraceDays);
+        Assert.AreEqual(20, current?.MetricRawDays); Assert.AreEqual(300, current?.MetricRollupDays);
+        Assert.AreEqual(180, current?.HealthDays);
+        var from = Uri.EscapeDataString(now.AddDays(-1).ToString("O")); var until = Uri.EscapeDataString(now.AddDays(1).ToString("O"));
+        var hostLogs = await reader.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}", token);
+        Assert.AreEqual(10, hostLogs?.RetentionDays);
+        using var audit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token);
+        Assert.Contains("應用與主機 Logs 保存：14 → 10 天", await TextAsync(audit, token));
+        Assert.Contains("應用 Traces 保存：7 → 5 天", await TextAsync(audit, token));
+        Assert.Contains("應用指標原始資料保存：30 → 20 天", await TextAsync(audit, token));
+        Assert.Contains("服務健康歷史保存：365 → 180 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task HostMetricRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/host-metrics/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/host-metrics/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<HostMetricRetentionSnapshot>("/api/v1/settings/host-metrics/retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/host-metrics/retention/preview", new HostMetricRetentionPreviewRequest(10, 60, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/agents/metric-retention", token);
+        var fields = Hidden(await FormAsync(page, "host-metric-retention", token));
+        fields["Input.RawDays"] = "10"; fields["Input.RollupDays"] = "60";
+        using var preview = await admin.PostAsync("/settings/agents/metric-retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "host-metric-retention", token));
+        confirm["Input.RawDays"] = "10"; confirm["Input.RollupDays"] = "60";
+        using var saved = await admin.PostAsync("/settings/agents/metric-retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        var current = await admin.GetFromJsonAsync<HostMetricRetentionSnapshot>("/api/v1/settings/host-metrics/retention", token);
+        Assert.AreEqual(10, current?.RawDays); Assert.AreEqual(60, current?.RollupDays);
+        using var audit = await admin.GetAsync("/settings/audit?source=host-metric-retention", token);
+        Assert.Contains("原始樣本保存：30 → 10 天", await TextAsync(audit, token));
+        Assert.Contains("五分鐘彙總保存：365 → 60 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
+
+    [TestMethod]
+    public Task AuditRetentionAuthorizationAndForm() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        var device = await PingTestSite.InitializeAsync(factory, token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+        {
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlerts (Id, DeviceId, Target, OpenedAt, RecoveredAt) VALUES ({Guid.CreateVersion7()}, {device.Id}, {"test"}, {old}, {old})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({Guid.CreateVersion7()}, {Guid.CreateVersion7()}, {"ping"}, {old}, {"title"}, {"detail"})", token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>().CreateDbContextAsync(token))
+        {
+            var actor = Guid.CreateVersion7();
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            db.AccountAuditEvents.Add(new AccountAuditEvent(actor, actor, "AccountRenamed", old));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(null, actor, "InitialAdministratorCreated", old));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(actor, Guid.CreateVersion7(), "ApiCredentialIssued", old));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "updated", DateTimeOffset.UtcNow.AddDays(-40)));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            var actor = Guid.CreateVersion7();
+            var old = DateTimeOffset.UtcNow.AddDays(-40);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({actor}, {old}, '/jobs/enqueued/delete', 'accepted'), ({actor}, {old}, '/jobs/enqueued/delete', 'started')", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[Outbox] ([MessageId], [MessageType], [Payload], [CreatedAt], [AvailableAt], [State], [Attempts], [CompletedAt]) VALUES ({Guid.CreateVersion7()}, {"agent.host-log.received.v1"}, {"{}"}, {old}, {old}, {2}, {1}, {old})", token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            db.Audits.Add(new AgentAudit(device.Id, null, Guid.CreateVersion7(), "EnrollmentIssued", DateTimeOffset.UtcNow.AddDays(-40)));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            var actor = Guid.CreateVersion7();
+            var setting = new InventorySetting { DeviceId = device.Id, UpdatedBy = actor, UpdatedAt = DateTimeOffset.UtcNow };
+            db.InventorySettings.Add(setting);
+            db.InventorySettingAudits.Add(new InventorySettingAudit { SettingId = setting.Id, DeviceId = device.Id, ActorId = actor,
+                OccurredAt = DateTimeOffset.UtcNow.AddDays(-40), EffectiveScanIntervalSeconds = 3600, EffectiveRevision = "test", ChangeVersion = new byte[8] });
+            await db.SaveChangesAsync(token);
+        }
+        using var anonymous = Client(factory);
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using var reader = Client(factory); await LoginAsync(reader, "reader", token);
+        using (var denied = await reader.GetAsync("/api/v1/settings/audit-retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var admin = Client(factory); await LoginAsync(admin, "admin", token);
+        var initial = await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token);
+        Assert.IsNotNull(initial);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/audit-retention/preview", new AuditRetentionPreviewRequest(30, initial.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var page = await admin.GetAsync("/settings/audit/retention", token);
+        var fields = Hidden(await FormAsync(page, "audit-retention", token));
+        fields["Input.Days"] = "30";
+        using var preview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(fields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        Assert.Contains("預計有 6 筆操作紀錄", await TextAsync(preview, token));
+        Assert.Contains("預計清理 1 筆已恢復告警及 1 筆通知", await TextAsync(preview, token));
+        Assert.Contains("預計清理 1 筆已結束的背景工作", await TextAsync(preview, token));
+        var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
+        confirm["Input.Days"] = "30";
+        using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(saved, token));
+        Assert.AreEqual(30, (await admin.GetFromJsonAsync<AuditRetentionSnapshot>("/api/v1/settings/audit-retention", token))?.Days);
+        using var notifications = await reader.GetAsync("/notifications", token);
+        Assert.Contains("通知及已恢復告警保存 30 天", await TextAsync(notifications, token));
+        using var audit = await admin.GetAsync("/settings/audit?source=audit-retention", token);
+        Assert.Contains("操作紀錄保存：365 → 30 天", await TextAsync(audit, token));
+    }, TestContext.CancellationToken);
 
     [TestMethod]
     public Task SettingsAuthorizationAndActualPingDisplay() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -119,6 +287,32 @@ public sealed class PingHttpTests
         using var list = await reader.GetAsync("/devices", token);
         var listText = (await new HtmlParser().ParseDocumentAsync(await list.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
         Assert.Contains("主要目標 Ping", listText); Assert.Contains("可達", listText);
+
+        using (var denied = await anonymous.GetAsync("/api/v1/settings/ping/retention", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        using (var denied = await reader.GetAsync("/api/v1/settings/ping/retention", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        var initialRetention = await admin.GetFromJsonAsync<PingRetentionSnapshot>("/api/v1/settings/ping/retention", token);
+        Assert.IsNotNull(initialRetention);
+        using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/ping/retention/preview", new PingRetentionPreviewRequest(20, 300, initialRetention.Version), token))
+            Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        using var retentionPage = await admin.GetAsync("/settings/ping/retention", token);
+        var retentionFields = Hidden(await FormAsync(retentionPage, "ping-retention", token));
+        retentionFields["Input.RawDays"] = "20"; retentionFields["Input.RollupDays"] = "300";
+        using var preview = await admin.PostAsync("/settings/ping/retention", new FormUrlEncodedContent(retentionFields), token);
+        Assert.Contains("確認儲存", await TextAsync(preview, token));
+        var confirmation = Hidden(await FormAsync(preview, "ping-retention", token));
+        confirmation["Input.RawDays"] = "20"; confirmation["Input.RollupDays"] = "300";
+        using var retentionSaved = await admin.PostAsync("/settings/ping/retention", new FormUrlEncodedContent(confirmation), token);
+        Assert.Contains("保存設定已儲存", await TextAsync(retentionSaved, token));
+        var savedRetention = await admin.GetFromJsonAsync<PingRetentionSnapshot>("/api/v1/settings/ping/retention", token);
+        Assert.IsNotNull(savedRetention);
+        Assert.AreEqual(20, savedRetention.RawDays);
+        Assert.AreEqual(300, savedRetention.RollupDays);
+        var historyWithRetention = await reader.GetFromJsonAsync<PingHistoryPage>(historyUrl, token);
+        Assert.IsNotNull(historyWithRetention);
+        Assert.AreEqual(20, historyWithRetention.RawRetentionDays);
+        Assert.AreEqual(300, historyWithRetention.RollupRetentionDays);
+        using var retentionAudit = await admin.GetAsync("/settings/audit?source=ping", token);
+        Assert.Contains("原始 Ping 保存", await TextAsync(retentionAudit, token));
     }, TestContext.CancellationToken);
 
     private static async Task<string> TextAsync(HttpResponseMessage response, CancellationToken token) =>

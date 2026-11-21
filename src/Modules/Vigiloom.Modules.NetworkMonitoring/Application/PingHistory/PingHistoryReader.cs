@@ -38,6 +38,9 @@ public sealed class PingHistoryReader(IDbContextFactory<NetworkDbContext> contex
                 x.LatencyMin, x.LatencyMax, x.LatencyOverflow, x.LastOccurredAt)).ToArrayAsync(token);
         var latestBucket = buckets.Max(x => (DateTimeOffset?)x.LastOccurredAt);
         var latest = latestRaw is null ? latestBucket : latestBucket is null || latestRaw > latestBucket ? latestRaw : latestBucket;
-        return new(options.Take(MaximumOptions).Select(x => new PingHistoryOption(x.Target, x.Location)).ToArray(), options.Length > MaximumOptions, rows, query.Page, PageSize, count, buckets, pending, latest);
+        var policy = await db.PingSettings.AsNoTracking().Where(x => x.Name == "central")
+            .Select(x => new { x.RawRetentionDays, x.RollupRetentionDays }).SingleOrDefaultAsync(token);
+        return new(options.Take(MaximumOptions).Select(x => new PingHistoryOption(x.Target, x.Location)).ToArray(), options.Length > MaximumOptions, rows, query.Page, PageSize, count, buckets, pending, latest,
+            policy?.RawRetentionDays ?? 30, policy?.RollupRetentionDays ?? 365);
     }
 }

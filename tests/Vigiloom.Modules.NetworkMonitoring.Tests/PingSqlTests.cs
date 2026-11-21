@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using Vigiloom.Infrastructure.Persistence;
@@ -220,6 +221,14 @@ public sealed class PingSqlTests
         Assert.AreEqual(1, concurrent.Count(x => x is not null));
         Assert.HasCount(2, (await query.QueryPingAsync(range, token)).Items);
 
+        await networkDb.Database.ExecuteSqlRawAsync("""
+            UPDATE operations.AuditEvents SET Details = JSON_MODIFY(JSON_MODIFY(JSON_MODIFY(JSON_MODIFY(Details,
+                '$.Previous.RawRetentionDays', NULL), '$.Previous.RollupRetentionDays', NULL),
+                '$.Current.RawRetentionDays', NULL), '$.Current.RollupRetentionDays', NULL) WHERE Kind = 2
+            """, token);
+        var legacy = await query.QueryPingAsync(range, token);
+        Assert.HasCount(2, legacy.Items);
+        Assert.IsTrue(legacy.Items.All(x => x.PingSettings is not null && x.PingSettings.Current.RawRetentionDays is null));
         await networkDb.Database.ExecuteSqlInterpolatedAsync($"UPDATE operations.AuditEvents SET Details = {"{\"Current\":{}}"} WHERE Kind = 2", token);
         var damaged = await query.QueryPingAsync(range, token);
         Assert.HasCount(2, damaged.Items);
@@ -309,6 +318,75 @@ public sealed class PingSqlTests
         Assert.AreEqual("資料過期", stale.Targets[0].DisplayState);
         Assert.AreEqual(other.Id, (await store.GetStatusAsync(other.Id, [other.Address], Convert.ToBase64String(other.Version), token)).DeviceId);
     }, snapshotReads);
+
+    [TestMethod]
+    public Task PingRetention_PreviewsAndAuditsShortenedPolicy() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var (device, _) = await SeedAsync(resources, token);
+        var now = DateTimeOffset.UtcNow;
+        var ping = new PingSettings(network, TimeProvider.System, new OperationAuditWriter());
+        var protection = new EphemeralDataProtectionProvider();
+        var retention = new PingRetentionSettings(network, ping, new OperationAuditWriter(), protection);
+        var initial = await retention.GetAsync(token);
+        Assert.AreEqual(30, initial.RawDays);
+        Assert.AreEqual(365, initial.RollupDays);
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.AddRange(new PingSample(device.Id, "central", now.AddDays(-40), now.AddDays(-40), true, 1),
+                new PingSample(device.Id, "central", now.AddDays(-10), now.AddDays(-10), true, 2));
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(2, await new PingRollupBackfill(network).RunBatchAsync(token));
+        var actor = Guid.CreateVersion7();
+        var input = new PingRetentionPreviewRequest(20, 300, initial.Version);
+        var preview = await retention.PreviewAsync(input, actor, token);
+        Assert.IsNotNull(preview);
+        Assert.AreEqual(1L, preview.Samples);
+        Assert.AreEqual(0L, preview.Rollups);
+        await Assert.ThrowsAsync<ArgumentException>(() => retention.UpdateAsync(new(20, 300, initial.Version, null), actor, token));
+        await Assert.ThrowsAsync<ArgumentException>(() => retention.UpdateAsync(new(20, 300, initial.Version, preview.ConfirmationToken), Guid.CreateVersion7(), token));
+        var saved = await retention.UpdateAsync(new(20, 300, initial.Version, preview.ConfirmationToken), actor, token);
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(20, saved.RawDays);
+        Assert.IsNull(await retention.UpdateAsync(new(20, 300, initial.Version, preview.ConfirmationToken), actor, token));
+        await using var networkDb = network.CreateDbContext();
+        var options = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(networkDb.Database.GetConnectionString()).Options;
+        var audit = new OperationAuditQueryService(new Factory<OperationsDbContext>(() => new OperationsDbContext(options)));
+        var page = await audit.QueryPingAsync(new(now.AddDays(-1), now.AddDays(1)), token);
+        Assert.HasCount(1, page.Items);
+        var change = page.Items[0].PingSettings;
+        Assert.IsNotNull(change);
+        Assert.AreEqual(30, change.Previous.RawRetentionDays);
+        Assert.AreEqual(20, change.Current.RawRetentionDays);
+        Assert.AreEqual(365, change.Previous.RollupRetentionDays);
+        Assert.AreEqual(300, change.Current.RollupRetentionDays);
+        var next = await retention.PreviewAsync(new(10, 300, saved.Version), actor, token);
+        Assert.IsNotNull(next);
+        var failing = new PingRetentionSettings(network, ping, new FailingAuditWriter(), protection);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.UpdateAsync(new(10, 300, saved.Version, next.ConfirmationToken), actor, token));
+        Assert.AreEqual(saved, await retention.GetAsync(token));
+    });
+
+    [TestMethod]
+    public Task PingRetention_ConcurrentCleanupProcessesAllExpiredRows() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var (device, _) = await SeedAsync(resources, token);
+        var at = DateTimeOffset.UtcNow.AddDays(-40);
+        var settings = new PingSettings(network, TimeProvider.System, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        await using (var db = network.CreateDbContext())
+        {
+            for (var index = 1; index <= 501; index++)
+                db.PingSamples.Add(new PingSample(device.Id, "bulk", null, "central", index, at, at, PingOutcome.Success, 1));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("UPDATE [network].[PingSamples] SET [Aggregated] = 1 WHERE [Target] = N'bulk'", token);
+        }
+        var cleanup = new PingRetentionCleanup(network, settings);
+        var results = await Task.WhenAll(cleanup.RunAsync(token), cleanup.RunAsync(token));
+        Assert.AreEqual(501L, results.Sum(x => x.Samples));
+        await using var verify = network.CreateDbContext();
+        Assert.AreEqual(0, await verify.PingSamples.CountAsync(x => x.Target == "bulk", token));
+    });
 
     [TestMethod]
     public Task FencingDeviceChangesAndSettingsConflicts() => WithReusableDatabase(async (resources, network, token) =>
@@ -498,6 +576,53 @@ public sealed class PingSqlTests
             Task.FromResult(target.EndsWith(".invalid", StringComparison.Ordinal)
                 ? new PingMeasurement(PingOutcome.DnsError, null, null) : new(PingOutcome.Success, target, 1));
     }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task PingRetention_PreservesPendingSamplesAndTheirRollups(bool snapshotReads) => WithOptionalSnapshotDatabase(async (resources, network, token) =>
+    {
+        var (device, _) = await SeedAsync(resources, token);
+        var now = DateTimeOffset.UtcNow;
+        var aligned = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300);
+        var veryOld = aligned.AddDays(-400);
+        var old = aligned.AddDays(-60);
+        var recent = aligned.AddDays(-10);
+        var settings = new PingSettings(network, TimeProvider.System, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.AddRange(
+                new PingSample(device.Id, "router", null, "central", 1, veryOld, veryOld, PingOutcome.Success, 1),
+                new PingSample(device.Id, "router", null, "central", 2, old, old, PingOutcome.Success, 2),
+                new PingSample(device.Id, "router", null, "central", 3, recent, recent, PingOutcome.Success, 3),
+                new PingSample(device.Id, "central", veryOld, veryOld, true, 7));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new PingRollupBackfill(network);
+        Assert.AreEqual(4, await backfill.RunBatchAsync(token));
+        await using (var db = network.CreateDbContext())
+        {
+            db.PingSamples.Add(new PingSample(device.Id, "router", null, "central", 4, veryOld.AddMinutes(1), veryOld, PingOutcome.Success, 4));
+            db.PingSamples.Add(new PingSample(device.Id, "central", veryOld.AddMinutes(1), veryOld, true, 8));
+            await db.SaveChangesAsync(token);
+        }
+        var cleanup = new PingRetentionCleanup(network, settings);
+        Assert.AreEqual((3L, 0L), await cleanup.RunAsync(token));
+        await using (var check = network.CreateDbContext())
+        {
+            Assert.AreEqual(3, await check.PingSamples.CountAsync(token));
+            Assert.AreEqual(4, await check.PingRollups.CountAsync(token));
+            Assert.IsTrue(await check.PingSamples.AnyAsync(x => !x.Aggregated && x.OccurredAt == veryOld.AddMinutes(1), token));
+        }
+        Assert.AreEqual(2, await backfill.RunBatchAsync(token));
+        Assert.AreEqual((2L, 2L), await cleanup.RunAsync(token));
+        await using var final = network.CreateDbContext();
+        Assert.AreEqual(1, await final.PingSamples.CountAsync(token));
+        Assert.AreEqual(2, await final.PingRollups.CountAsync(token));
+        Assert.IsFalse(await final.PingRollups.AnyAsync(x => x.WindowStart == veryOld, token));
+        Assert.IsTrue(await final.PingRollups.AnyAsync(x => x.WindowStart == old, token));
+    }, snapshotReads);
 
     [TestMethod]
     [DataRow(false)]

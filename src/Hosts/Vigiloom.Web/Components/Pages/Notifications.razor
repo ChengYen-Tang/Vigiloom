@@ -35,6 +35,7 @@
     {
         <section class="notifications-panel" aria-labelledby="notifications-results">
             <h2 id="notifications-results">通知紀錄</h2>
+            <p>通知及已恢復告警保存 @result.RetentionDays 天；尚未排入派送的通知與進行中的告警會保留。</p>
             @if (result.Items.Count == 0) { <p>沒有符合條件的通知紀錄。</p> }
             else
             {

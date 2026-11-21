@@ -94,7 +94,7 @@ internal sealed class MetricIngestion(IDbContextFactory<ServiceObservabilityDbCo
         var shared = new MetricContext { ServiceId = binding.Service!.ServiceId, ResourcePayload = resource.Resource.ToByteArray(),
             ScopePayload = scope.Scope?.ToByteArray() ?? [], MetricPayload = data.Metadata.ToByteArray(),
             MetricName = data.Metadata.Name.Length <= 256 ? data.Metadata.Name : null,
-            ResourceSchemaUrl = resource.SchemaUrl, ScopeSchemaUrl = scope.SchemaUrl };
+            ResourceSchemaUrl = resource.SchemaUrl, ScopeSchemaUrl = scope.SchemaUrl, WindowsTracked = true };
         foreach (var point in data.Points)
         {
             TryTime(point.Time, out var occurred);
