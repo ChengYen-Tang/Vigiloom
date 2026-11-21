@@ -29,6 +29,10 @@ cleanup() {
     local status=$?
     trap - EXIT
     local unit state pid
+    # Emit only the known, non-secret status messages; never dump service journals.
+    journalctl -u vigiloom-agent.service -u vigiloom-updater.service --no-pager -o cat 2>/dev/null \
+        | grep -E '^[[:space:]]*(Agent update handoff (status|unavailable): [A-Za-z]+\.|Updater (request result: [A-Za-z]+, [A-Za-z]*\.|request failed: [A-Za-z]+\.|recovery state: [A-Za-z]+\.))$' \
+        | tail -n 50 | sed 's/^[[:space:]]*/SYSTEMD_TEST /' >&2 || true
     # Stop the controller first so it cannot restart the Agent during cleanup.
     for unit in vigiloom-updater.service vigiloom-agent.service; do
         state=$(systemctl show "$unit" --property=LoadState --value)

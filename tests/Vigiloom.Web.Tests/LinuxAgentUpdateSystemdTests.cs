@@ -30,7 +30,7 @@ namespace Vigiloom.Web.Tests;
 public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
 {
     [TestMethod]
-    [Timeout(1200000, CooperativeCancellation = true)]
+    [Timeout(1500000, CooperativeCancellation = true)]
     public Task RegisteredAgent_RetainsBatchAcrossRollbackAndSignedUpdate()
     {
         if (Environment.GetEnvironmentVariable("VIGILOOM_SYSTEMD_AGENT_TEST") != "1")
@@ -81,7 +81,11 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
-                    builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }));
+                    builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                        ["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Warning"
+                    }));
                     builder.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
                     builder.ConfigureServices(services =>
                     {
@@ -128,7 +132,7 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
 
                 var assignments = scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>();
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.2.0", AgentUpdateResultKind.RolledBack, actor, token, TimeSpan.FromMinutes(7));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token);
+                await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);

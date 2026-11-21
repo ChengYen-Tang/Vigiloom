@@ -48,8 +48,10 @@ internal sealed class SystemdAgentProcess(Process process, Task<string> errors) 
                 await process.WaitForExitAsync(deadline.Token);
             }
             var diagnostic = await errors;
+            foreach (var line in diagnostic.Split('\n'))
+                if (line.StartsWith("SYSTEMD_TEST ", StringComparison.Ordinal)) Console.WriteLine(line);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException($"The isolated Agent installation or cleanup failed: {diagnostic}");
+                throw new InvalidOperationException("The isolated Agent installation or cleanup failed.");
         }
         finally { process.Dispose(); }
     }
