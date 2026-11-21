@@ -40,14 +40,14 @@ internal sealed class AgentBatchGate : IStartupFilter
             var payload = decoded.ToArray();
             if (AgentMetricBatchCodec.TryRead(payload, out _))
             {
-                if (reject) blocked.TrySetResult(payload);
-                else if (blocked.Task.IsCompletedSuccessfully && payload.AsSpan().SequenceEqual(blocked.Task.Result))
+                if (reject)
+                {
+                    blocked.TrySetResult(payload);
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    return;
+                }
+                if (blocked.Task.IsCompletedSuccessfully && payload.AsSpan().SequenceEqual(blocked.Task.Result))
                     retried.TrySetResult(payload);
-            }
-            if (reject)
-            {
-                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                return;
             }
             wire.Position = 0;
             context.Request.Body = wire;
