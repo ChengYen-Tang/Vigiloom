@@ -195,6 +195,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                         (x.UpdateId == cancelled.Value || x.UpdateId == replaced.Value), token));
 
                 var agentPidBeforeRepair = await ServicePidAsync(windows, agent: true, token);
+                Assert.AreNotEqual("0", agentPidBeforeRepair);
                 if (windows)
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(bundle, "repair-updater.ps1"));
