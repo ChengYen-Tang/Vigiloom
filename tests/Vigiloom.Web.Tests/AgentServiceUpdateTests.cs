@@ -55,7 +55,9 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             var updater = Required(prefix + "UPDATER");
             var archivePath = Required(prefix + "UPDATE_ARCHIVE");
             var initialArchivePath = Required(prefix + "INITIAL_ARCHIVE");
-            var rid = windows ? "win-x64" : "linux-x64";
+            var rid = windows ? Required("VIGILOOM_WINDOWS_RID") : "linux-x64";
+            if (windows && rid is not ("win-x64" or "win-x86"))
+                throw new InvalidOperationException("The Windows service test requires a supported runtime identifier.");
             var path = Path.Combine(Required("RUNNER_TEMP"), $"vigiloom-service-{Guid.CreateVersion7():N}");
             Directory.CreateDirectory(path);
             try
@@ -73,7 +75,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial, "-UpdaterPublish", updater,
                         "-TrustedRoot", rootPath, "-RootSha256", fingerprint, "-OutputDirectory", output);
-                    ZipFile.ExtractToDirectory(Path.Combine(output, "vigiloom-agent-win-x64.zip"), bundle);
+                    ZipFile.ExtractToDirectory(Path.Combine(output, $"vigiloom-agent-{rid}.zip"), bundle);
                     await VerifyWindowsRuntimePreflightAsync(bundle, token);
                 }
                 else
@@ -151,7 +153,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await using var installed = windows
                     ? await ServiceAgentProcess.InstallWindowsAsync(script, bundle, caDerPath, server, device.Id, fingerprint, issued.Secret!, token)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
-                var agentId = await WaitForAgentAsync(agents, device.Id, token);
+                var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -204,14 +206,14 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         }, context.CancellationToken);
     }
 
-    private static async Task<Guid> WaitForAgentAsync(IDbContextFactory<AgentManagementDbContext> contexts, Guid deviceId, CancellationToken token)
+    private static async Task<Guid> WaitForAgentAsync(IDbContextFactory<AgentManagementDbContext> contexts, Guid deviceId, string rid, CancellationToken token)
     {
         Guid agentId = default;
         await WaitUntilAsync(async () =>
         {
             await using var db = await contexts.CreateDbContextAsync(token);
             var agent = await db.Agents.AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.RevokedAt == null, token);
-            if (agent?.LastHeartbeatAt is null) return false;
+            if (agent?.LastHeartbeatAt is null || agent.RuntimeIdentifier != rid) return false;
             agentId = agent.Id; return true;
         }, token);
         return agentId;

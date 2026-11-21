@@ -135,29 +135,35 @@ jobs:
         run: docker rm -f vigiloom-systemd-sql > /dev/null 2>&1 || true
 
   windows_agent_service:
-    name: Windows Agent service integration
+    name: Windows Agent service integration (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-x86]
     runs-on: windows-latest
     timeout-minutes: 50
+    env:
+      VIGILOOM_WINDOWS_RID: ${{ matrix.rid }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-test-setup
       - name: Build real Agent packages
         shell: pwsh
         run: |
-          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/agent-initial" -p:Version=1.0.0
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime $env:VIGILOOM_WINDOWS_RID --self-contained true --output "$env:RUNNER_TEMP/agent-initial" -p:Version=1.0.0
           if ($LASTEXITCODE -ne 0) { throw 'Initial Agent publish failed.' }
-          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/agent-update" -p:Version=1.1.0
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime $env:VIGILOOM_WINDOWS_RID --self-contained true --output "$env:RUNNER_TEMP/agent-update" -p:Version=1.1.0
           if ($LASTEXITCODE -ne 0) { throw 'Updated Agent publish failed.' }
-          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/updater" -p:Version=1.0.0
+          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime $env:VIGILOOM_WINDOWS_RID --self-contained true --output "$env:RUNNER_TEMP/updater" -p:Version=1.0.0
           if ($LASTEXITCODE -ne 0) { throw 'Updater publish failed.' }
-          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-initial" --output-directory "$env:RUNNER_TEMP/agent-initial-archive" --rid win-x64 --version 1.0.0
+          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-initial" --output-directory "$env:RUNNER_TEMP/agent-initial-archive" --rid $env:VIGILOOM_WINDOWS_RID --version 1.0.0
           if ($LASTEXITCODE -ne 0) { throw 'Initial Agent archive failed.' }
-          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-update" --output-directory "$env:RUNNER_TEMP/agent-archive" --rid win-x64 --version 1.1.0
+          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-update" --output-directory "$env:RUNNER_TEMP/agent-archive" --rid $env:VIGILOOM_WINDOWS_RID --version 1.1.0
           if ($LASTEXITCODE -ne 0) { throw 'Updated Agent archive failed.' }
           "VIGILOOM_WINDOWS_INITIAL_AGENT=$env:RUNNER_TEMP/agent-initial" >> $env:GITHUB_ENV
           "VIGILOOM_WINDOWS_UPDATER=$env:RUNNER_TEMP/updater" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_INITIAL_ARCHIVE=$env:RUNNER_TEMP/agent-initial-archive/agent-win-x64.zip" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_UPDATE_ARCHIVE=$env:RUNNER_TEMP/agent-archive/agent-win-x64.zip" >> $env:GITHUB_ENV
+          "VIGILOOM_WINDOWS_INITIAL_ARCHIVE=$env:RUNNER_TEMP/agent-initial-archive/agent-$($env:VIGILOOM_WINDOWS_RID).zip" >> $env:GITHUB_ENV
+          "VIGILOOM_WINDOWS_UPDATE_ARCHIVE=$env:RUNNER_TEMP/agent-archive/agent-$($env:VIGILOOM_WINDOWS_RID).zip" >> $env:GITHUB_ENV
       - name: Test installed Agent update and rollback
         shell: pwsh
         env:
