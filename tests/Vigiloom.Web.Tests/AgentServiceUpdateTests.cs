@@ -154,6 +154,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     ? await ServiceAgentProcess.InstallWindowsAsync(script, bundle, caDerPath, server, device.Id, fingerprint, issued.Secret!, token)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
+                if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -190,6 +191,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
                 Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
+                if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsFalse(await db.UpdateReceipts.AnyAsync(x => x.AgentId == agentId &&
                         (x.UpdateId == cancelled.Value || x.UpdateId == replaced.Value), token));
@@ -235,6 +237,11 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     private static Task<string> ServicePidAsync(bool windows, bool agent, CancellationToken token) => windows
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
+
+    private static Task<string> VerifyLinuxInstallationPermissionsAsync(CancellationToken token) =>
+        RunAsync("sudo", token, "-n", "-u", "nobody", "--", "/bin/sh", "-c",
+            "test -r \"$1\" && test -x \"$1\" && test ! -w \"$1\" && test -d \"$2\" && test ! -w \"$2\" && test -d \"$3\" && test ! -w \"$3\"",
+            "sh", "/opt/vigiloom/agent/current/Vigiloom.Agent", "/opt/vigiloom/agent/current", "/opt/vigiloom/agent");
 
     private static async Task VerifyWindowsRuntimePreflightAsync(string bundle, CancellationToken token)
     {
