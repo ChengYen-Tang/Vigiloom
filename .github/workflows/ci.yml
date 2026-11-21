@@ -91,6 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           dotnet build tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj --configuration Release
+          dotnet build tests/Vigiloom.Agent.Tests/Vigiloom.Agent.Tests.csproj --configuration Release
           dotnet_executable=$(command -v dotnet)
           results_dir=$(mktemp -d "$RUNNER_TEMP/vigiloom-root-tests.XXXXXX")
           trap 'sudo rm -rf -- "$results_dir"' EXIT
@@ -98,7 +99,11 @@ jobs:
           sudo -n env VIGILOOM_RUN_ROOT_IPC_TESTS=1 VSTEST_ARTIFACTS_BASE_DIRECTORY="$results_dir/vstest" TMPDIR="$results_dir/vstest" "$dotnet_executable" test tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj \
             --configuration Release --no-build --no-restore --results-directory "$results_dir" --logger 'trx;LogFileName=ipc.trx' \
             --filter 'FullyQualifiedName~Vigiloom.Updater.Core.Tests.LinuxUpdateListenerTests'
+          sudo -n env VIGILOOM_RUN_ROOT_IPC_TESTS=1 VIGILOOM_TEST_SOCKET_ROOT=/run VSTEST_ARTIFACTS_BASE_DIRECTORY="$results_dir/vstest" TMPDIR="$results_dir/vstest" "$dotnet_executable" test tests/Vigiloom.Agent.Tests/Vigiloom.Agent.Tests.csproj \
+            --configuration Release --no-build --no-restore --results-directory "$results_dir" --logger 'trx;LogFileName=handoff.trx' \
+            --filter 'FullyQualifiedName~Vigiloom.Agent.Tests.AgentUpdateWorkerTests.IncompatibleAssignmentStillRequestsResultSync|FullyQualifiedName~Vigiloom.Agent.Tests.AgentUpdateWorkerTests.StoppingWorkerCancelsPendingUpdaterResponse'
           sudo -n python3 -c 'import sys, xml.etree.ElementTree as ET; c = ET.parse(sys.argv[1]).getroot().find(".//{*}Counters"); assert c is not None and int(c.get("passed", 0)) >= 5 and int(c.get("notExecuted", 0)) == 0' "$results_dir/ipc.trx"
+          sudo -n python3 -c 'import sys, xml.etree.ElementTree as ET; c = ET.parse(sys.argv[1]).getroot().find(".//{*}Counters"); assert c is not None and int(c.get("passed", 0)) >= 2 and int(c.get("notExecuted", 0)) == 0' "$results_dir/handoff.trx"
       - name: Start isolated SQL Server
         id: systemd_sql
         shell: bash
