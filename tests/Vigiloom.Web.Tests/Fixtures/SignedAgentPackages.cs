@@ -7,17 +7,30 @@ using Vigiloom.UpdateSecurity.Tests;
 namespace Vigiloom.Web.Tests.Fixtures;
 
 /// <summary>Test-only publisher with real Agent archives and an intentionally failing version.</summary>
-internal sealed class SignedLinuxPackages : IDisposable
+internal sealed class SignedAgentPackages : IDisposable
 {
     private readonly ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly Dictionary<string, byte[]> archives = [];
 
-    internal SignedLinuxPackages(byte[] initialArchive, byte[] agentArchive)
+    internal SignedAgentPackages(byte[] initialArchive, byte[] agentArchive, string runtimeIdentifier)
     {
         using var failure = new MemoryStream();
         using (var zip = new ZipArchive(failure, ZipArchiveMode.Create, leaveOpen: true))
-        using (var writer = new StreamWriter(zip.CreateEntry("Vigiloom.Agent").Open()))
-            writer.Write("#!/bin/sh\nexit 1\n");
+        {
+            if (runtimeIdentifier == "linux-x64")
+            {
+                using var writer = new StreamWriter(zip.CreateEntry("Vigiloom.Agent").Open());
+                writer.Write("#!/bin/sh\nexit 1\n");
+            }
+            else
+            {
+                // A real apphost without its managed DLL fails to start on Windows.
+                using var initial = new ZipArchive(new MemoryStream(initialArchive), ZipArchiveMode.Read);
+                using var input = (initial.GetEntry("Vigiloom.Agent.exe") ?? throw new InvalidDataException("Agent apphost is missing.")).Open();
+                using var output = zip.CreateEntry("Vigiloom.Agent.exe").Open();
+                input.CopyTo(output);
+            }
+        }
 
         var targets = new Dictionary<string, byte[]>();
         var packages = new List<object>();
@@ -34,13 +47,13 @@ internal sealed class SignedLinuxPackages : IDisposable
             var hash = Convert.ToHexStringLower(SHA256.HashData(archive));
             var manifest = JsonSerializer.SerializeToUtf8Bytes(new
             {
-                schema = 1, version, rid = "linux-x64", size = archive.Length, sha256 = hash,
+                schema = 1, version, rid = runtimeIdentifier, size = archive.Length, sha256 = hash,
                 minimumUpdaterVersion = "1.0.0", minimumAgentVersion = (string?)null, maximumAgentVersion = (string?)null
             });
             var digest = Convert.ToHexStringLower(SHA256.HashData(manifest));
             archives.Add(hash, archive);
             targets.Add(digest + ".json", manifest);
-            packages.Add(new { version, rid = "linux-x64", size = archive.Length, sha256 = hash, manifestSha256 = digest, revoked = false });
+            packages.Add(new { version, rid = runtimeIdentifier, size = archive.Length, sha256 = hash, manifestSha256 = digest, revoked = false });
         }
     }
 

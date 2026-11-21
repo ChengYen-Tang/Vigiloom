@@ -122,7 +122,7 @@ jobs:
           trap restore_opt EXIT
           sudo chown root:root /opt
           sudo chmod go-w /opt
-          dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~LinuxAgentUpdateSystemdTests
+          dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~AgentServiceUpdateTests.Linux_
       - name: Verify test database cleanup
         if: always() && steps.systemd_sql.outcome == 'success'
         shell: bash
@@ -132,6 +132,36 @@ jobs:
       - name: Remove isolated SQL Server
         if: always()
         run: docker rm -f vigiloom-systemd-sql > /dev/null 2>&1 || true
+
+  windows_agent_service:
+    name: Windows Agent service integration
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/windows-test-setup
+      - name: Build real Agent packages
+        shell: pwsh
+        run: |
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/agent-initial" -p:Version=1.0.0
+          if ($LASTEXITCODE -ne 0) { throw 'Initial Agent publish failed.' }
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/agent-update" -p:Version=1.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Agent publish failed.' }
+          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime win-x64 --self-contained true --output "$env:RUNNER_TEMP/updater" -p:Version=1.0.0
+          if ($LASTEXITCODE -ne 0) { throw 'Updater publish failed.' }
+          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-initial" --output-directory "$env:RUNNER_TEMP/agent-initial-archive" --rid win-x64 --version 1.0.0
+          if ($LASTEXITCODE -ne 0) { throw 'Initial Agent archive failed.' }
+          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-update" --output-directory "$env:RUNNER_TEMP/agent-archive" --rid win-x64 --version 1.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Agent archive failed.' }
+          "VIGILOOM_WINDOWS_INITIAL_AGENT=$env:RUNNER_TEMP/agent-initial" >> $env:GITHUB_ENV
+          "VIGILOOM_WINDOWS_UPDATER=$env:RUNNER_TEMP/updater" >> $env:GITHUB_ENV
+          "VIGILOOM_WINDOWS_INITIAL_ARCHIVE=$env:RUNNER_TEMP/agent-initial-archive/agent-win-x64.zip" >> $env:GITHUB_ENV
+          "VIGILOOM_WINDOWS_UPDATE_ARCHIVE=$env:RUNNER_TEMP/agent-archive/agent-win-x64.zip" >> $env:GITHUB_ENV
+      - name: Test installed Agent update and rollback
+        shell: pwsh
+        env:
+          VIGILOOM_WINDOWS_AGENT_TEST: '1'
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~AgentServiceUpdateTests.Windows_
 
   ubuntu:
     name: Ubuntu build and test

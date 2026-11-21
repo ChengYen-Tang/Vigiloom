@@ -3,23 +3,40 @@ using System.Diagnostics;
 namespace Vigiloom.Web.Tests.Fixtures;
 
 /// <summary>Owns the disposable hosted-runner service installation for one integration test.</summary>
-internal sealed class SystemdAgentProcess(Process process, Task<string> errors) : IAsyncDisposable
+internal sealed class ServiceAgentProcess(Process process, Task<string> errors) : IAsyncDisposable
 {
-    internal static async Task<SystemdAgentProcess> InstallAsync(string script, string bundle, string certificate,
+    internal static Task<ServiceAgentProcess> InstallLinuxAsync(string script, string bundle, string certificate,
         Uri server, Guid deviceId, string fingerprint, string enrollment, CancellationToken token)
     {
-        var start = new ProcessStartInfo("sudo")
+        var start = StartInfo("sudo");
+        foreach (var argument in new[] { "-n", "--preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT", "bash", script, bundle, certificate })
+            start.ArgumentList.Add(argument);
+        return InstallAsync(start, server, deviceId, fingerprint, enrollment, token);
+    }
+
+    internal static Task<ServiceAgentProcess> InstallWindowsAsync(string script, string bundle, string certificate,
+        Uri server, Guid deviceId, string fingerprint, string enrollment, CancellationToken token)
+    {
+        var start = StartInfo("powershell.exe");
+        foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, bundle, certificate })
+            start.ArgumentList.Add(argument);
+        return InstallAsync(start, server, deviceId, fingerprint, enrollment, token);
+    }
+
+    private static ProcessStartInfo StartInfo(string executable) => new(executable)
         {
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        foreach (var argument in new[] { "-n", "--preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT", "bash", script, bundle, certificate })
-            start.ArgumentList.Add(argument);
+
+    private static async Task<ServiceAgentProcess> InstallAsync(ProcessStartInfo start, Uri server, Guid deviceId,
+        string fingerprint, string enrollment, CancellationToken token)
+    {
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the isolated Agent installer.");
         var errors = process.StandardError.ReadToEndAsync();
-        var owner = new SystemdAgentProcess(process, errors);
+        var owner = new ServiceAgentProcess(process, errors);
         try
         {
             // Enrollment data goes through stdin, never the process command line or test output.
@@ -49,7 +66,8 @@ internal sealed class SystemdAgentProcess(Process process, Task<string> errors) 
             }
             var diagnostic = await errors;
             foreach (var line in diagnostic.Split('\n'))
-                if (line.StartsWith("SYSTEMD_TEST ", StringComparison.Ordinal)) Console.WriteLine(line);
+                if (line.StartsWith("SYSTEMD_TEST ", StringComparison.Ordinal) ||
+                    line.StartsWith("WINDOWS_TEST ", StringComparison.Ordinal)) Console.WriteLine(line);
             if (process.ExitCode != 0)
                 throw new InvalidOperationException("The isolated Agent installation or cleanup failed.");
         }

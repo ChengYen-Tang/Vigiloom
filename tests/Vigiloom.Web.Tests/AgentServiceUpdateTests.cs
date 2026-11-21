@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -27,39 +28,57 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Integration")]
 [TestCategory("Database")]
 [DoNotParallelize]
-public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
+public sealed class AgentServiceUpdateTests(TestContext context)
 {
     [TestMethod]
     [Timeout(1800000, CooperativeCancellation = true)]
-    public Task RegisteredAgent_RetainsBatchAcrossRollbackUpgradeAndDowngrade()
+    public Task Linux_RetainsBatchAcrossRollbackUpgradeAndDowngrade() => RunScenarioAsync(windows: false);
+
+    [TestMethod]
+    [Timeout(1800000, CooperativeCancellation = true)]
+    public Task Windows_RetainsBatchAcrossRollbackUpgradeAndDowngrade() => RunScenarioAsync(windows: true);
+
+    private Task RunScenarioAsync(bool windows)
     {
-        if (Environment.GetEnvironmentVariable("VIGILOOM_SYSTEMD_AGENT_TEST") != "1")
-            Assert.Inconclusive("This test runs only in the dedicated disposable systemd runner.");
-        if (!OperatingSystem.IsLinux() || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
+        if (Environment.GetEnvironmentVariable(windows ? "VIGILOOM_WINDOWS_AGENT_TEST" : "VIGILOOM_SYSTEMD_AGENT_TEST") != "1")
+            Assert.Inconclusive("This test runs only in its dedicated disposable service runner.");
+        if ((windows ? !OperatingSystem.IsWindows() : !OperatingSystem.IsLinux()) || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
             Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted")
-            throw new InvalidOperationException("The systemd test requires a disposable GitHub-hosted Linux runner.");
+            throw new InvalidOperationException("The service test requires its dedicated GitHub-hosted runner.");
 
         return SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             var workspace = Required("GITHUB_WORKSPACE");
-            var initial = Required("VIGILOOM_SYSTEMD_INITIAL_AGENT");
-            var updater = Required("VIGILOOM_SYSTEMD_UPDATER");
-            var archivePath = Required("VIGILOOM_SYSTEMD_UPDATE_ARCHIVE");
-            var initialArchivePath = Required("VIGILOOM_SYSTEMD_INITIAL_ARCHIVE");
-            var path = Path.Combine(Required("RUNNER_TEMP"), $"vigiloom-systemd-{Guid.CreateVersion7():N}");
+            var prefix = windows ? "VIGILOOM_WINDOWS_" : "VIGILOOM_SYSTEMD_";
+            var initial = Required(prefix + "INITIAL_AGENT");
+            var updater = Required(prefix + "UPDATER");
+            var archivePath = Required(prefix + "UPDATE_ARCHIVE");
+            var initialArchivePath = Required(prefix + "INITIAL_ARCHIVE");
+            var rid = windows ? "win-x64" : "linux-x64";
+            var path = Path.Combine(Required("RUNNER_TEMP"), $"vigiloom-service-{Guid.CreateVersion7():N}");
             Directory.CreateDirectory(path);
             try
             {
-                using var packages = new SignedLinuxPackages(await File.ReadAllBytesAsync(initialArchivePath, token),
-                    await File.ReadAllBytesAsync(archivePath, token));
+                using var packages = new SignedAgentPackages(await File.ReadAllBytesAsync(initialArchivePath, token),
+                    await File.ReadAllBytesAsync(archivePath, token), rid);
                 var rootPath = Path.Combine(path, "publisher-root.json");
                 await File.WriteAllBytesAsync(rootPath, packages.Root, token);
                 var fingerprint = Convert.ToHexStringLower(SHA256.HashData(packages.Root));
                 var output = Path.Combine(path, "output");
                 var bundle = Path.Combine(path, "bundle");
                 Directory.CreateDirectory(bundle);
-                await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial, updater, rootPath, fingerprint, output);
-                await RunAsync("tar", token, "-xzf", Path.Combine(output, "vigiloom-agent-linux-x64.tar.gz"), "-C", bundle);
+                if (windows)
+                {
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                        Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial, "-UpdaterPublish", updater,
+                        "-TrustedRoot", rootPath, "-RootSha256", fingerprint, "-OutputDirectory", output);
+                    ZipFile.ExtractToDirectory(Path.Combine(output, "vigiloom-agent-win-x64.zip"), bundle);
+                }
+                else
+                {
+                    await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial, updater, rootPath, fingerprint, output);
+                    await RunAsync("tar", token, "-xzf", Path.Combine(output, "vigiloom-agent-linux-x64.tar.gz"), "-C", bundle);
+                }
 
                 using var caKey = RSA.Create(2048);
                 var caRequest = new CertificateRequest("CN=Vigiloom Systemd Test CA", caKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -68,6 +87,8 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 using var ca = caRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
                 var caPath = Path.Combine(path, "ca.pem");
                 await File.WriteAllTextAsync(caPath, ca.ExportCertificatePem(), token);
+                var caDerPath = Path.Combine(path, "ca.cer");
+                await File.WriteAllBytesAsync(caDerPath, ca.Export(X509ContentType.Cert), token);
                 using var serverKey = RSA.Create(2048);
                 var serverRequest = new CertificateRequest("CN=Vigiloom Systemd Test", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
                 var san = new SubjectAlternativeNameBuilder(); san.AddIpAddress(IPAddress.Loopback);
@@ -76,7 +97,10 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 serverRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
                 serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
                 using var unsigned = serverRequest.Create(ca, DateTimeOffset.UtcNow.AddMinutes(-4), DateTimeOffset.UtcNow.AddHours(1), RandomNumberGenerator.GetBytes(16));
-                using var certificate = unsigned.CopyWithPrivateKey(serverKey);
+                using var generatedCertificate = unsigned.CopyWithPrivateKey(serverKey);
+                var pfx = generatedCertificate.Export(X509ContentType.Pfx);
+                using var certificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
+                CryptographicOperations.ZeroMemory(pfx);
                 var gate = new AgentBatchGate();
                 using var publisher = packages.CreateClient();
                 var transport = new PackageLibraryTransport(Path.Combine(path, "cache"), 2L * 1024 * 1024 * 1024, TimeProvider.System, publisher);
@@ -121,14 +145,16 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 var origin = new Uri("https://publisher.test/");
                 await trust.RefreshCatalogueAsync(new TrustedCatalogueReader(origin, origin, packages.Repository), TimeProvider.System, Convert.FromBase64String(source.Version), cancellationToken: token);
 
-                var script = Path.Combine(workspace, "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
-                await using var installed = await SystemdAgentProcess.InstallAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
+                var script = Path.Combine(workspace, windows ? "tests/Vigiloom.Web.Tests/Fixtures/windows-service-agent.ps1" : "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
+                await using var installed = windows
+                    ? await ServiceAgentProcess.InstallWindowsAsync(script, bundle, caDerPath, server, device.Id, fingerprint, issued.Secret!, token)
+                    : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
-                var updaterPid = await RunAsync("systemctl", token, "show", "vigiloom-updater.service", "--property=MainPID", "--value");
-                var originalAgentPid = await RunAsync("systemctl", token, "show", "vigiloom-agent.service", "--property=MainPID", "--value");
+                var updaterPid = await ServicePidAsync(windows, agent: false, token);
+                var originalAgentPid = await ServicePidAsync(windows, agent: true, token);
                 Assert.AreNotEqual("0", updaterPid);
                 Assert.AreNotEqual("0", originalAgentPid);
 
@@ -146,8 +172,8 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
-                Assert.AreEqual(updaterPid, await RunAsync("systemctl", token, "show", "vigiloom-updater.service", "--property=MainPID", "--value"));
-                Assert.AreNotEqual(originalAgentPid, await RunAsync("systemctl", token, "show", "vigiloom-agent.service", "--property=MainPID", "--value"));
+                Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
+                Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
                 gate.Allow();
                 var replay = await gate.Retried.WaitAsync(TimeSpan.FromMinutes(3), token);
                 CollectionAssert.AreEqual(blocked, replay);
@@ -173,6 +199,10 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
         }, token);
         return agentId;
     }
+
+    private static Task<string> ServicePidAsync(bool windows, bool agent, CancellationToken token) => windows
+        ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
+        : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
 
     private static async Task AssignAndWaitAsync(IDbContextFactory<AgentManagementDbContext> contexts,
         AgentVersionAssignments assignments, Guid agentId, string version, AgentUpdateResultKind result, Guid actor, CancellationToken token,
