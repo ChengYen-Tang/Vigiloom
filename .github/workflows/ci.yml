@@ -79,9 +79,11 @@ jobs:
           dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/updater" -p:Version=1.0.0
           python -m venv "$RUNNER_TEMP/agent-python"
           "$RUNNER_TEMP/agent-python/bin/python" -m pip install --require-hashes -r tools/agent-release/requirements.txt
+          "$RUNNER_TEMP/agent-python/bin/python" tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-initial" --output-directory "$RUNNER_TEMP/agent-initial-archive" --rid linux-x64 --version 1.0.0
           "$RUNNER_TEMP/agent-python/bin/python" tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-update" --output-directory "$RUNNER_TEMP/agent-archive" --rid linux-x64 --version 1.1.0
           echo "VIGILOOM_SYSTEMD_INITIAL_AGENT=$RUNNER_TEMP/agent-initial" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_UPDATER=$RUNNER_TEMP/updater" >> "$GITHUB_ENV"
+          echo "VIGILOOM_SYSTEMD_INITIAL_ARCHIVE=$RUNNER_TEMP/agent-initial-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_UPDATE_ARCHIVE=$RUNNER_TEMP/agent-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
       - name: Start isolated SQL Server
         id: systemd_sql

@@ -6,13 +6,13 @@ using Vigiloom.UpdateSecurity.Tests;
 
 namespace Vigiloom.Web.Tests.Fixtures;
 
-/// <summary>Test-only publisher with a real Agent archive and an intentionally failing version.</summary>
+/// <summary>Test-only publisher with real Agent archives and an intentionally failing version.</summary>
 internal sealed class SignedLinuxPackages : IDisposable
 {
     private readonly ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly Dictionary<string, byte[]> archives = [];
 
-    internal SignedLinuxPackages(byte[] agentArchive)
+    internal SignedLinuxPackages(byte[] initialArchive, byte[] agentArchive)
     {
         using var failure = new MemoryStream();
         using (var zip = new ZipArchive(failure, ZipArchiveMode.Create, leaveOpen: true))
@@ -21,6 +21,7 @@ internal sealed class SignedLinuxPackages : IDisposable
 
         var targets = new Dictionary<string, byte[]>();
         var packages = new List<object>();
+        Add("1.0.0", initialArchive);
         Add("1.1.0", agentArchive);
         Add("1.2.0", failure.ToArray());
         var catalog = JsonSerializer.SerializeToUtf8Bytes(new { schema = 1, packages });

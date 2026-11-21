@@ -30,8 +30,8 @@ namespace Vigiloom.Web.Tests;
 public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
 {
     [TestMethod]
-    [Timeout(1500000, CooperativeCancellation = true)]
-    public Task RegisteredAgent_RetainsBatchAcrossRollbackAndSignedUpdate()
+    [Timeout(1800000, CooperativeCancellation = true)]
+    public Task RegisteredAgent_RetainsBatchAcrossRollbackUpgradeAndDowngrade()
     {
         if (Environment.GetEnvironmentVariable("VIGILOOM_SYSTEMD_AGENT_TEST") != "1")
             Assert.Inconclusive("This test runs only in the dedicated disposable systemd runner.");
@@ -45,11 +45,13 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
             var initial = Required("VIGILOOM_SYSTEMD_INITIAL_AGENT");
             var updater = Required("VIGILOOM_SYSTEMD_UPDATER");
             var archivePath = Required("VIGILOOM_SYSTEMD_UPDATE_ARCHIVE");
+            var initialArchivePath = Required("VIGILOOM_SYSTEMD_INITIAL_ARCHIVE");
             var path = Path.Combine(Required("RUNNER_TEMP"), $"vigiloom-systemd-{Guid.CreateVersion7():N}");
             Directory.CreateDirectory(path);
             try
             {
-                using var packages = new SignedLinuxPackages(await File.ReadAllBytesAsync(archivePath, token));
+                using var packages = new SignedLinuxPackages(await File.ReadAllBytesAsync(initialArchivePath, token),
+                    await File.ReadAllBytesAsync(archivePath, token));
                 var rootPath = Path.Combine(path, "publisher-root.json");
                 await File.WriteAllBytesAsync(rootPath, packages.Root, token);
                 var fingerprint = Convert.ToHexStringLower(SHA256.HashData(packages.Root));
@@ -137,6 +139,12 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
+                }, token);
+                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await WaitUntilAsync(async () =>
+                {
+                    await using var db = await agents.CreateDbContextAsync(token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
                 Assert.AreEqual(updaterPid, await RunAsync("systemctl", token, "show", "vigiloom-updater.service", "--property=MainPID", "--value"));
                 Assert.AreNotEqual(originalAgentPid, await RunAsync("systemctl", token, "show", "vigiloom-agent.service", "--property=MainPID", "--value"));
