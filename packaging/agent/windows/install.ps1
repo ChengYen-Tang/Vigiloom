@@ -45,6 +45,13 @@ if ((Test-Path -LiteralPath $programRoot) -or (Test-Path -LiteralPath $stateRoot
     throw 'An existing Vigiloom Agent installation or state was found. It will not be overwritten.'
 }
 
+# Check both self-contained runtimes before requesting enrollment or creating services.
+foreach ($executable in @((Join-Path $agentSource 'Vigiloom.Agent.exe'), (Join-Path $updaterSource 'Vigiloom.Updater.exe'))) {
+    try { & $executable check-runtime }
+    catch { throw "The bundled Agent or Updater could not start. Check the Windows runtime dependencies. $($_.Exception.Message)" }
+    if ($LASTEXITCODE -ne 0) { throw 'The bundled Agent or Updater could not start. Check the Windows runtime dependencies.' }
+}
+
 $serverText = Read-Host 'Vigiloom server HTTPS URL'
 $server = $null
 if (-not [Uri]::TryCreate($serverText, [UriKind]::Absolute, [ref]$server) -or $server.Scheme -ne 'https' -or

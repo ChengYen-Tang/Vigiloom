@@ -74,6 +74,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                         Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial, "-UpdaterPublish", updater,
                         "-TrustedRoot", rootPath, "-RootSha256", fingerprint, "-OutputDirectory", output);
                     ZipFile.ExtractToDirectory(Path.Combine(output, "vigiloom-agent-win-x64.zip"), bundle);
+                    await VerifyWindowsRuntimePreflightAsync(bundle, token);
                 }
                 else
                 {
@@ -219,6 +220,23 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     private static Task<string> ServicePidAsync(bool windows, bool agent, CancellationToken token) => windows
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
+
+    private static async Task VerifyWindowsRuntimePreflightAsync(string bundle, CancellationToken token)
+    {
+        foreach (var (directory, executable) in new[] { ("agent", "Vigiloom.Agent"), ("updater", "Vigiloom.Updater") })
+        {
+            var config = Path.Combine(bundle, "payload", directory, executable + ".runtimeconfig.json");
+            var original = await File.ReadAllBytesAsync(config, token);
+            try
+            {
+                await File.WriteAllTextAsync(config, "{", token);
+                var error = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => RunAsync("powershell.exe", token,
+                    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(bundle, "install.ps1")));
+                Assert.Contains("The bundled Agent or Updater could not start", error.Message);
+            }
+            finally { await File.WriteAllBytesAsync(config, original, CancellationToken.None); }
+        }
+    }
 
     private static async Task SetServiceRunningAsync(bool windows, bool running, CancellationToken token)
     {
