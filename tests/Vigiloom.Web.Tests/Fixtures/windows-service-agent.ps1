@@ -28,6 +28,7 @@ $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($c
 $store = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
 $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
 $addedCertificate = $false
+$startedAt = Get-Date
 try {
     if ($store.Certificates.Find('FindByThumbprint', $certificate.Thumbprint, $false).Count -ne 0) {
         throw 'The test CA is already present.'
@@ -48,6 +49,15 @@ try {
 }
 finally {
     try {
+        # Only emit fixed, non-secret status messages; never dump the Windows event log.
+        try {
+            $events = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = @('Vigiloom.Agent', 'Vigiloom.Updater'); StartTime = $startedAt } -ErrorAction SilentlyContinue | Select-Object -First 100
+            foreach ($event in $events) {
+                if ($event.Message -match '(?m)^\s*((?:Agent installation enrollment (?:completed\.|is pending: [A-Za-z]+\.)|Agent update handoff (?:status|unavailable): [A-Za-z]+\.|Updater (?:request result: [A-Za-z]+, [A-Za-z]*\.|request failed: [A-Za-z]+\.|recovery state: [A-Za-z]+\.)))\s*$') {
+                    [Console]::Error.WriteLine("WINDOWS_TEST $($Matches[1])")
+                }
+            }
+        } catch { }
         . (Join-Path $bundlePath 'service-operations.ps1')
         . (Join-Path $bundlePath 'native.ps1')
         # Stop the controller first; it must not restart the Agent during cleanup.
