@@ -142,6 +142,12 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             Assert.AreEqual(result.Id, saved.Id);
             Assert.AreEqual(result.Phase, saved.Phase);
             CollectionAssert.AreEqual(result.Steps.ToArray(), saved.Steps.ToArray());
+            // Startup recovery uses the local journal and must leave a completed update running.
+            var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(UpdatePhase.Succeeded, recovered.Phase);
+            Assert.AreEqual("new", runtime.Selected);
+            Assert.HasCount(4, runtime.Actions);
             Assert.AreEqual(result.Phase, (await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken)).Phase);
             Assert.HasCount(4, runtime.Actions);
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => coordinator.ApplyAsync(id, "old", "different", Authorized, context.CancellationToken));
