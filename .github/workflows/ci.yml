@@ -108,7 +108,19 @@ jobs:
       - name: Test installed Agent update and rollback
         env:
           VIGILOOM_SYSTEMD_AGENT_TEST: '1'
-        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~LinuxAgentUpdateSystemdTests
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The hosted image permits writes to /opt; the production installer requires
+          # a root-owned parent. Restore the original VM permissions on every exit.
+          test -d /opt && test ! -L /opt
+          opt_owner=$(stat -c '%u:%g' /opt)
+          opt_mode=$(stat -c '%a' /opt)
+          restore_opt() { sudo chown "$opt_owner" /opt; sudo chmod "$opt_mode" /opt; }
+          trap restore_opt EXIT
+          sudo chown root:root /opt
+          sudo chmod go-w /opt
+          dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~LinuxAgentUpdateSystemdTests
       - name: Verify test database cleanup
         if: always() && steps.systemd_sql.outcome == 'success'
         shell: bash
