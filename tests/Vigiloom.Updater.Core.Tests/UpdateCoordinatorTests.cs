@@ -288,6 +288,34 @@ public sealed class UpdateCoordinatorTests(TestContext context)
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    [TestMethod]
+    public async Task StopTimeoutNeverSwitchesVersionAndRecoveryIsBounded()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var runtime = new FakeRuntime { OnAction = action => { if (action == "stop") throw new TimeoutException(); } };
+            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
+            var state = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
+
+            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
+            Assert.AreEqual(nameof(TimeoutException), state.Error);
+            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
+            Assert.DoesNotContain("select:new", runtime.Actions);
+
+            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
+            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
+            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
+            Assert.AreEqual(UpdatePhase.RollbackFailed, state.Phase);
+            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
+            Assert.DoesNotContain("select:new", runtime.Actions);
+            var actions = runtime.Actions.Count;
+            Assert.AreEqual(UpdatePhase.RollbackFailed, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
+            Assert.HasCount(actions, runtime.Actions);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     private string CreateDirectory()
     {
         var path = Path.Combine(context.TestRunDirectory!, $"update-{Guid.NewGuid():N}");
