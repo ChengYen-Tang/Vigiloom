@@ -18,6 +18,7 @@ internal sealed class ServiceAgentProcess(Process process, Task<string> errors) 
         Uri server, Guid deviceId, string fingerprint, string enrollment, CancellationToken token)
     {
         var start = StartInfo("powershell.exe");
+        WindowsPowerShell.Configure(start);
         foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, bundle, certificate })
             start.ArgumentList.Add(argument);
         return InstallAsync(start, server, deviceId, fingerprint, enrollment, token);

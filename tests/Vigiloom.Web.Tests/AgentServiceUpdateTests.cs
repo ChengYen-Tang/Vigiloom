@@ -235,6 +235,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     private static async Task<string> RunAsync(string file, CancellationToken token, params string[] arguments)
     {
         var start = new ProcessStartInfo(file) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        if (OperatingSystem.IsWindows() && file.Equals("powershell.exe", StringComparison.OrdinalIgnoreCase)) WindowsPowerShell.Configure(start);
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException($"Could not start {file}.");
         var output = process.StandardOutput.ReadToEndAsync();
