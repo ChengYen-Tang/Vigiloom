@@ -51,6 +51,7 @@
     </section>
     <section class="device-panel">
         <h2>主機效能採樣</h2>
+        @if (Id is null) { <p><a href="/settings/agents/metric-retention">管理主機效能資料保存期限</a></p> }
         @if (metricLoadError) { <p class="device-alert" role="alert">無法讀取採樣設定，請稍後重新整理。</p> }
         else if (metricCurrent is null) { <p role="alert">找不到此設備。</p> }
         else

@@ -12,22 +12,31 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
+using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Domain.SpeedTests;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.IdentityAccess.Persistence;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Agent;
 using System.Security.Cryptography;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -87,20 +96,127 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var services = host.Services;
         var resources = services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
         var agents = services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+        var identityDb = services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
         await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         await using (var db = await services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        await using (var db = await identityDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+        var securityDb = services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
+        await using (var db = await securityDb.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
         var old = DateTimeOffset.UtcNow.AddDays(-10);
+        var initialAdminId = Guid.CreateVersion7();
+        await using (var db = await identityDb.CreateDbContextAsync(token))
+        {
+            db.AccountAuditEvents.Add(new AccountAuditEvent(null, initialAdminId, "InitialAdministratorCreated", old.AddDays(-400)));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(initialAdminId, initialAdminId, "AccountRenamed", old.AddDays(-400)));
+            db.AccountAuditEvents.Add(new AccountAuditEvent(initialAdminId, initialAdminId, "PasswordChanged", old));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(initialAdminId, Guid.CreateVersion7(), "ApiCredentialIssued", old.AddDays(-400)));
+            db.ApiCredentialAuditEvents.Add(new ApiCredentialAuditEvent(initialAdminId, Guid.CreateVersion7(), "ApiCredentialRevoked", old));
+            await db.SaveChangesAsync(token);
+        }
         var device = new Device("inbox worker", "127.0.0.1", true, old);
-        await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        await using (var db = await resources.CreateDbContextAsync(token))
+        {
+            db.Devices.Add(device);
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "updated", old.AddDays(-400)));
+            db.DeviceAudits.Add(new DeviceAudit(device.Id, Guid.CreateVersion7(), "created", old));
+            await db.SaveChangesAsync(token);
+        }
+        var network = services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
+        var operations = services.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+        var auditActor = Guid.CreateVersion7();
+        var auditTarget = Guid.CreateVersion7();
+        var schedulingActor = Guid.CreateVersion7();
+        var completedWork = Guid.CreateVersion7();
+        var openAlert = Guid.CreateVersion7(); var closedAlert = Guid.CreateVersion7(); var oldNotification = Guid.CreateVersion7();
+        await using (var db = await operations.CreateDbContextAsync(token))
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.AuditEvents (ActorId, ResourceId, OccurredAt, Kind, Details) VALUES ({auditActor}, {auditTarget}, {old.AddDays(-400)}, {1}, {"{}"})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.PingAlerts (Id, DeviceId, Target, OpenedAt, RecoveredAt) VALUES ({openAlert}, {device.Id}, {"open"}, {old.AddDays(-400)}, {null}), ({closedAlert}, {device.Id}, {"closed"}, {old.AddDays(-400)}, {old.AddDays(-400)})", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.Notifications (Id, MessageId, Source, OccurredAt, Title, Detail) VALUES ({oldNotification}, {Guid.CreateVersion7()}, {"ping"}, {old.AddDays(-400)}, {"title"}, {"detail"})", token);
+        }
+        await using (var db = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'accepted'), ({schedulingActor}, {old.AddDays(-400)}, '/jobs/enqueued/delete', 'started'), ({schedulingActor}, {old}, '/jobs/enqueued/delete', 'accepted')", token);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[Outbox] ([MessageId], [MessageType], [Payload], [CreatedAt], [AvailableAt], [State], [Attempts], [CompletedAt]) VALUES ({completedWork}, {"agent.host-log.received.v1"}, {"{}"}, {old.AddDays(-400)}, {old.AddDays(-400)}, {2}, {1}, {old.AddDays(-400)})", token);
+        }
+        var oldPing = new PingSample(device.Id, "central", old.AddDays(-30), old.AddDays(-30), true, 1);
+        await using (var db = await network.CreateDbContextAsync(token)) { db.PingSamples.Add(oldPing); await db.SaveChangesAsync(token); }
+        Assert.AreEqual(1, await new PingRollupBackfill(network).RunBatchAsync(token));
         var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), TimeProvider.System);
         var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
         var secret = RandomNumberGenerator.GetBytes(32);
         var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
         var agentId = registered.AgentId!.Value;
+        await using (var db = await agents.CreateDbContextAsync(token))
+        {
+            var settings = new AgentSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var queue = new AgentQueueCapacitySetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var metrics = new AgentMetricSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var logSource = new HostLogSource(device.Id, AgentLogSourceKind.WindowsEvent, "System", "System", true, null, auditActor, old.AddDays(-400));
+            var threshold = new HostMetricThreshold { DeviceId = device.Id, AgentId = agentId, Kind = AgentMetricKind.MemoryAvailableBytes,
+                Source = "system", SeriesHash = new byte[32], Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 1, FreshnessSeconds = 30 };
+            db.Settings.Add(settings); db.QueueCapacitySettings.Add(queue); db.MetricSettings.Add(metrics);
+            db.HostLogSources.Add(logSource); db.HostMetricThresholds.Add(threshold);
+            await db.SaveChangesAsync(token);
+            db.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Created));
+            logSource.Update("System updated", true, null, auditActor, old);
+            await db.SaveChangesAsync(token);
+            db.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Updated));
+            foreach (var time in new[] { old.AddDays(-400), old })
+            {
+                db.Audits.Add(new AgentAudit(device.Id, agentId, auditActor, "AgentEnrolled", time));
+                db.SettingAudits.Add(new AgentSettingAudit { SettingId = settings.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.QueueCapacityAudits.Add(new AgentQueueCapacityAudit { SettingId = queue.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.MetricSettingAudits.Add(new AgentMetricSettingAudit { SettingId = metrics.Id, DeviceId = device.Id, ActorId = auditActor, OccurredAt = time,
+                    EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.HostMetricThresholdAudits.Add(new HostMetricThresholdAudit { ThresholdId = threshold.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 1, FreshnessSeconds = 30, Version = new byte[8] });
+            }
+            var point = new AgentMetricPoint(Guid.CreateVersion7(), old, AgentMetricKind.MemoryAvailableBytes, "system", null, 42);
+            db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, point, old));
+            var expired = point with { MessageId = Guid.CreateVersion7(), OccurredAt = old.AddDays(-31), Dimension = "old" };
+            db.HostMetrics.Add(new HostMetric(agentId, Guid.CreateVersion7(), 0, expired, old));
+            var logBatch = new AgentLogBatch(3, Guid.CreateVersion7(), old, Guid.CreateVersion7(), AgentLogSourceKind.Journal,
+                "system", 1, [new(Guid.CreateVersion7(), old, "expired", null, null, null, null, null),
+                    new(Guid.CreateVersion7(), old, "recent", null, null, null, null, null)]);
+            db.HostLogs.Add(new HostLog(agentId, logBatch, 0, old.AddDays(-20)));
+            db.HostLogs.Add(new HostLog(agentId, logBatch, 1, old));
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = await securityDb.CreateDbContextAsync(token))
+        {
+            var inventory = new InventorySetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old };
+            var integrity = new IntegrityScopeSetting { DeviceId = device.Id, UpdatedBy = auditActor, UpdatedAt = old, Revision = 1, DefinitionJson = "{}" };
+            db.InventorySettings.Add(inventory); db.IntegrityScopes.Add(integrity);
+            foreach (var time in new[] { old.AddDays(-400), old })
+            {
+                db.InventorySettingAudits.Add(new InventorySettingAudit { SettingId = inventory.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, EffectiveScanIntervalSeconds = 3600, EffectiveRevision = "test", ChangeVersion = new byte[8] });
+                db.IntegrityScopeAudits.Add(new IntegrityScopeAudit { ScopeId = integrity.Id, DeviceId = device.Id, ActorId = auditActor,
+                    OccurredAt = time, Revision = 1, Action = IntegrityScopeAction.Created, Enabled = true });
+            }
+            await db.SaveChangesAsync(token);
+        }
+        var serviceDb = services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        await using (var db = await serviceDb.CreateDbContextAsync(token))
+        {
+            var source = new ServiceSource("telemetry worker", new byte[32], old.AddDays(-30));
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "worker", "test", "Worker", old.AddDays(-30)), old.AddDays(-30));
+            db.Sources.Add(source); db.Services.Add(service);
+            db.LogRecords.Add(new LogRecord { ServiceId = service.Id, Context = new LogContext { ServiceId = service.Id,
+                ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" },
+                OccurredAt = old.AddDays(-10), ReceivedAt = old, RecordPayload = [] });
+            db.TraceSpans.Add(new TraceSpan { ServiceId = service.Id, Context = new TraceContext { ServiceId = service.Id,
+                ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" },
+                StartedAt = old, EndedAt = old, ReceivedAt = old, TraceId = new byte[16], SpanId = new byte[8], SpanPayload = [] });
+            await db.SaveChangesAsync(token);
+        }
         var credential = $"vla_{agentId:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
         var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, old, "test", "X64", ".NET 10");
         var payload = AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), old, [message]));
@@ -123,29 +239,115 @@ public sealed class HostLifecycleTests(TestContext testContext)
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<EpssRefreshJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<LinuxReassessmentJob>());
             Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<WindowsReassessmentJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<MetricRollupJob>());
+            Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<AuditRetentionJob>());
             var jobs = scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>();
             var id = jobs.Enqueue<AgentInboxRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var pingRetentionId = jobs.Enqueue<PingRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var auditRetentionId = jobs.Enqueue<AuditRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var hostRollupId = jobs.Enqueue<HostMetricRollupJob>(job => job.RunAsync(CancellationToken.None));
             using var connection = scope.ServiceProvider.GetRequiredService<JobStorage>().GetConnection();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(60));
             while (true)
             {
                 var state = connection.GetStateData(id)?.Name;
+                var pingState = connection.GetStateData(pingRetentionId)?.Name;
+                var auditState = connection.GetStateData(auditRetentionId)?.Name;
+                var hostRollupState = connection.GetStateData(hostRollupId)?.Name;
                 Assert.AreNotEqual("Failed", state);
-                if (state == "Succeeded") break;
+                Assert.AreNotEqual("Failed", pingState);
+                Assert.AreNotEqual("Failed", auditState);
+                Assert.AreNotEqual("Failed", hostRollupState);
+                if (state == "Succeeded" && pingState == "Succeeded" && auditState == "Succeeded" && hostRollupState == "Succeeded") break;
+                await Task.Delay(100, deadline.Token);
+            }
+            var hostRetentionId = jobs.Enqueue<HostMetricRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            var telemetryRetentionId = jobs.Enqueue<TelemetryRetentionJob>(job => job.RunAsync(CancellationToken.None));
+            while (true)
+            {
+                var state = connection.GetStateData(hostRetentionId)?.Name;
+                var telemetryState = connection.GetStateData(telemetryRetentionId)?.Name;
+                Assert.AreNotEqual("Failed", state);
+                Assert.AreNotEqual("Failed", telemetryState);
+                if (state == "Succeeded" && telemetryState == "Succeeded") break;
                 await Task.Delay(100, deadline.Token);
             }
             await using var check = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(0, await check.ReceivedBatches.CountAsync(token));
             Assert.AreEqual(1, await check.RuntimeObservations.CountAsync(token));
+            Assert.AreEqual("recent", (await check.HostLogs.SingleAsync(token)).Content);
+            Assert.AreEqual(42d, (await check.HostMetricRollups.SingleAsync(x => x.Dimension == null, token)).Sum);
+            Assert.AreEqual(0, await check.HostMetrics.CountAsync(x => x.Dimension == "old", token));
+            Assert.AreEqual(1, await check.HostMetricRollups.CountAsync(x => x.Dimension == "old", token));
+            Assert.AreEqual(1, await check.Audits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.HostLogSourceAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.SettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.QueueCapacityAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.MetricSettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+            Assert.AreEqual(1, await check.HostMetricThresholdAudits.CountAsync(x => x.ActorId == auditActor, token));
+            await using (var checkSecurity = await securityDb.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await checkSecurity.InventorySettingAudits.CountAsync(x => x.ActorId == auditActor, token));
+                Assert.AreEqual(1, await checkSecurity.IntegrityScopeAudits.CountAsync(x => x.ActorId == auditActor, token));
+            }
+            await using (var telemetry = await serviceDb.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await telemetry.LogRecords.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.TraceSpans.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.LogContexts.CountAsync(token));
+                Assert.AreEqual(0, await telemetry.TraceContexts.CountAsync(token));
+            }
             var agent = await check.Agents.SingleAsync(x => x.Id == agentId, token);
             Assert.AreEqual(1L, agent.InboxDeletedTotal);
             Assert.IsNotNull(agent.ReplayCleanedBefore);
             Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(credential, payload, token));
+            await using (var checkNetwork = await network.CreateDbContextAsync(token))
+                Assert.IsFalse(await checkNetwork.PingSamples.AnyAsync(x => x.RowId == oldPing.RowId, token));
+            await using (var checkOperations = await operations.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents WHERE ResourceId = {auditTarget}").SingleAsync(token));
+                Assert.AreEqual(1, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlerts WHERE Id = {openAlert}").SingleAsync(token));
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.PingAlerts WHERE Id = {closedAlert}").SingleAsync(token));
+                Assert.AreEqual(0, await checkOperations.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.Notifications WHERE Id = {oldNotification}").SingleAsync(token));
+            }
+            await using (var checkScheduling = await services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            {
+                var cutoff = DateTimeOffset.UtcNow.AddDays(-365);
+                Assert.AreEqual(0, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[Outbox] WHERE [MessageId] = {completedWork}").SingleAsync(token));
+                Assert.AreEqual(0, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] < {cutoff}").SingleAsync(token));
+                Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'started'").SingleAsync(token));
+                Assert.AreEqual(1, await checkScheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM [scheduling].[DashboardAudit] WHERE [ActorId] = {schedulingActor} AND [Result] = 'accepted' AND [OccurredAt] >= {cutoff}").SingleAsync(token));
+            }
+            await using (var checkIdentity = await identityDb.CreateDbContextAsync(token))
+            {
+                Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.SubjectId == initialAdminId && x.Action == "InitialAdministratorCreated", token));
+                Assert.IsFalse(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.Action == "AccountRenamed", token));
+                Assert.IsTrue(await checkIdentity.AccountAuditEvents.AnyAsync(x => x.Action == "PasswordChanged", token));
+                Assert.IsFalse(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialIssued", token));
+                Assert.IsTrue(await checkIdentity.ApiCredentialAuditEvents.AnyAsync(x => x.Action == "ApiCredentialRevoked", token));
+            }
+            await using (var checkResources = await resources.CreateDbContextAsync(token))
+            {
+                Assert.IsFalse(await checkResources.DeviceAudits.AnyAsync(x => x.DeviceId == device.Id && x.Action == "updated", token));
+                Assert.IsTrue(await checkResources.DeviceAudits.AnyAsync(x => x.DeviceId == device.Id && x.Action == "created", token));
+            }
             await using var sql = new SqlConnection(database.ConnectionString);
             await sql.OpenAsync(token);
             await using var command = sql.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-agent-inbox-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-metric-rollup'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-ping-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-settings-audit-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-rollup'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-host-metric-retention'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-telemetry-retention'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
             command.CommandText = "SELECT COUNT(*) FROM hangfire.[Set] WHERE [Key]='recurring-jobs' AND [Value]='vigiloom-advisory-refresh'";
             Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);

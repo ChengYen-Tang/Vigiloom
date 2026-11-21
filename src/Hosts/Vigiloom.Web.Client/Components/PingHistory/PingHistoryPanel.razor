@@ -23,6 +23,7 @@
     else if (error is not null) { <section class="device-panel" role="alert"><p>@error</p><button type="button" @onclick="ReloadAsync">重新載入</button></section> }
     else if (result is not null)
     {
+        <p>目前設定保留原始樣本 @result.RawRetentionDays 天、五分鐘彙總 @result.RollupRetentionDays 天。到期後依排程清理；尚未彙總的樣本可能保留較久。</p>
         @if (query is not null) { <p>目前結果：@query.From.ToString("yyyy-MM-dd HH:mm") 至 @query.To.ToString("yyyy-MM-dd HH:mm")（UTC，不含結束時間）；@OptionName(new PingHistoryOption(query.Target, query.Location))。此範圍最後量測（UTC）：@(result.LastObservedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")。</p> }
         @if (result.OptionsTruncated) { <p role="status">此範圍的目標與位置超過 100 組，請縮小日期範圍。</p> }
         @if (result.RollupsPending) { <p role="status">舊資料仍在補算，趨勢可能尚不完整；原始紀錄仍可查看。</p> }

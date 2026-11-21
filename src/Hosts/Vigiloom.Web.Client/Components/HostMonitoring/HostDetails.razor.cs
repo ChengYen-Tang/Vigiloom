@@ -28,14 +28,14 @@ public partial class HostDetails
     private DateTimeOffset? snapshotAt;
     private int chunkIndex;
     private InventorySnapshotChunkView? chunk;
-    private HostMetricPage? metricPage;
+    private HostMetricSeriesPage? metricPage;
     private HostMetricThresholdStatus? metricThreshold;
-    private readonly Stack<string?> metricCursors = new();
-    private string? metricCursor;
+    private int metricPageNumber;
     private AgentMetricKind metricKind = AgentMetricKind.CpuTotalPercent;
-    private List<HostMetricValue> series = [];
+    private IReadOnlyList<HostMetricSeries> series = [];
     private int seriesIndex;
     private IReadOnlyList<TimeSeriesPoint> points = [];
+    private bool metricIncomplete;
     private HostLogPage? logs;
     private readonly Stack<string?> logCursors = new();
     private string? logCursor;
@@ -63,7 +63,7 @@ public partial class HostDetails
         await ReloadAsync();
     }
 
-    private async Task ChangeTabAsync(string value) { tab = value; await ReloadAsync(); }
+    private async Task ChangeTabAsync(string value) { tab = value; if (tab != "metrics" && rangeHours > 720) rangeHours = 720; await ReloadAsync(); }
     private async Task ReloadAsync()
     {
         until = DateTimeOffset.UtcNow;
@@ -104,7 +104,10 @@ public partial class HostDetails
     }
     private async Task ChangeRangeAsync(ChangeEventArgs args)
     {
-        if (int.TryParse(args.Value?.ToString(), out var value) && value is 24 or 168 or 720) { rangeHours = value; await ReloadAsync(); }
+        if (int.TryParse(args.Value?.ToString(), out var value) &&
+            (tab == "metrics" ? metricPage is { } p && value > 0 && value <= p.RollupRetentionDays * 24 &&
+                (value is 24 or 168 or 720 or 8760 || value == p.RollupRetentionDays * 24) : value is 24 or 168 or 720))
+        { rangeHours = value; await ReloadAsync(); }
     }
     private Task NextDetectionsAsync() => detectionPage?.NextCursor is { } cursor ? NavigateDetectionsAsync(cursor, true) : Task.CompletedTask;
     private Task PreviousDetectionsAsync() => detectionCursors.TryPeek(out var cursor) ? NavigateDetectionsAsync(cursor, false) : Task.CompletedTask;
@@ -157,25 +160,31 @@ public partial class HostDetails
     {
         if (int.TryParse(args.Value?.ToString(), out var value)) { metricKind = (AgentMetricKind)value; await RunAsync(LoadMetricsAsync); }
     }
-    private Task LoadMetricsAsync(CancellationToken token) { metricCursors.Clear(); metricCursor = null; return LoadMetricPageAsync(null, token); }
-    private async Task LoadMetricPageAsync(string? cursor, CancellationToken token)
+    private Task LoadMetricsAsync(CancellationToken token) => LoadMetricPageAsync(0, token);
+    private async Task LoadMetricPageAsync(int pageNumber, CancellationToken token)
     {
-        var page = await Monitoring.GetMetricsAsync(DeviceId, from, until, cursor, metricKind, token);
+        var page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token);
         token.ThrowIfCancellationRequested();
         metricPage = page ?? throw new InvalidOperationException("Device missing");
-        series = page.Items.DistinctBy(x => (x.AgentId, x.Source, x.Dimension)).ToList();
-        seriesIndex = 0; points = []; metricThreshold = null;
+        var retentionHours = page.RollupRetentionDays * 24;
+        if (rangeHours > retentionHours || (rangeHours is not (24 or 168 or 720 or 8760) && rangeHours != retentionHours))
+        {
+            var available = Math.Min(rangeHours, retentionHours);
+            rangeHours = available == retentionHours ? available : available >= 8760 ? 8760 : available >= 720 ? 720 : available >= 168 ? 168 : 24;
+            from = until.AddHours(-rangeHours);
+            pageNumber = 0;
+            page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token)
+                ?? throw new InvalidOperationException("Device missing");
+            token.ThrowIfCancellationRequested();
+            metricPage = page;
+        }
+        metricPageNumber = pageNumber;
+        series = page.Items;
+        seriesIndex = 0; points = []; metricThreshold = null; metricIncomplete = false;
         if (series.Count > 0) await LoadSeriesAsync(token);
     }
-    private Task NextMetricsAsync() => metricPage?.NextCursor is { } cursor ? NavigateMetricsAsync(cursor, true) : Task.CompletedTask;
-    private Task PreviousMetricsAsync() => metricCursors.TryPeek(out var cursor) ? NavigateMetricsAsync(cursor, false) : Task.CompletedTask;
-    private Task NavigateMetricsAsync(string? cursor, bool forward) => RunAsync(async token =>
-    {
-        await LoadMetricPageAsync(cursor, token);
-        token.ThrowIfCancellationRequested();
-        if (forward) metricCursors.Push(metricCursor); else metricCursors.Pop();
-        metricCursor = cursor;
-    });
+    private Task NextMetricsAsync() => metricPage?.HasMore == true ? RunAsync(token => LoadMetricPageAsync(metricPageNumber + 1, token)) : Task.CompletedTask;
+    private Task PreviousMetricsAsync() => metricPageNumber > 0 ? RunAsync(token => LoadMetricPageAsync(metricPageNumber - 1, token)) : Task.CompletedTask;
     private Task RefreshMetricAsync() => RunAsync(LoadSeriesAsync);
     private async Task ChangeSeriesAsync(ChangeEventArgs args)
     {
@@ -184,7 +193,7 @@ public partial class HostDetails
     private async Task LoadSeriesAsync(CancellationToken token)
     {
         var item = series[seriesIndex];
-        var bucketSeconds = rangeHours <= 24 ? 300 : rangeHours <= 168 ? 3600 : 14400;
+        var bucketSeconds = rangeHours <= 24 ? 300 : rangeHours <= 168 ? 3600 : rangeHours <= 720 ? 14400 : rangeHours <= 999 * 24 ? 86400 : 604800;
         var result = await Monitoring.AggregateMetricsAsync(DeviceId, item.AgentId, from, until, metricKind, item.Source, item.Dimension, bucketSeconds, token);
         token.ThrowIfCancellationRequested();
         if (result is null) throw new InvalidOperationException("Agent missing");
@@ -198,9 +207,10 @@ public partial class HostDetails
         var threshold = await Monitoring.GetMetricThresholdAsync(DeviceId, item.AgentId, metricKind, item.Source, item.Dimension, token);
         token.ThrowIfCancellationRequested();
         points = output;
+        metricIncomplete = result.HasIncompleteBuckets;
         metricThreshold = threshold ?? throw new InvalidOperationException("Agent missing");
     }
-    private string ThresholdEditUrl(HostMetricValue item) => $"/devices/{DeviceId:D}/metric-threshold?agentId={item.AgentId:D}&kind={(int)metricKind}&source={Uri.EscapeDataString(item.Source)}{(item.Dimension is null ? "" : $"&dimension={Uri.EscapeDataString(item.Dimension)}")}";
+    private string ThresholdEditUrl(HostMetricSeries item) => $"/devices/{DeviceId:D}/metric-threshold?agentId={item.AgentId:D}&kind={(int)metricKind}&source={Uri.EscapeDataString(item.Source)}{(item.Dimension is null ? "" : $"&dimension={Uri.EscapeDataString(item.Dimension)}")}";
     private static string ThresholdStateName(HostMetricThresholdStatus status) => status.State switch
     {
         HostMetricThresholdState.NotConfigured => "未設定閾值",
@@ -291,6 +301,6 @@ public partial class HostDetails
         }
         return string.Join(" · ", fields);
     }
-    private static string SeriesName(HostMetricValue item) => $"{item.Source}{(item.Dimension is null ? "" : " · " + item.Dimension)} · Agent {item.AgentId:D}";
+    private static string SeriesName(HostMetricSeries item) => $"{item.Source}{(item.Dimension is null ? "" : " · " + item.Dimension)} · Agent {item.AgentId:D}";
 
 }

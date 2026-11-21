@@ -15,8 +15,11 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -867,6 +870,294 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
         Assert.AreEqual(AgentIdentityStatus.Conflict, await identity.RecordHeartbeatAsync(credential, new(1, epoch, 9, null, MetricLoss: newer), token));
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.MetricLoss);
+    });
+
+    [TestMethod]
+    public Task HostMetricRollup_BackfillsDistinctSeriesAndRetriesAfterFailure() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var start = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300).AddHours(-1);
+        var device = new Device("rollup", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var batch = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            db.HostMetrics.AddRange(
+                new HostMetric(agent.Id, batch, 0, new(Guid.CreateVersion7(), start.AddSeconds(1), AgentMetricKind.CpuCorePercent, "cpu", "core", 10), now),
+                new HostMetric(agent.Id, batch, 1, new(Guid.CreateVersion7(), start.AddSeconds(2), AgentMetricKind.CpuCorePercent, "cpu", "core", 20), now),
+                new HostMetric(agent.Id, batch, 2, new(Guid.CreateVersion7(), start.AddSeconds(3), AgentMetricKind.CpuCorePercent, "CPU", "core", 30), now),
+                new HostMetric(agent.Id, batch, 3, new(Guid.CreateVersion7(), start.AddSeconds(4), AgentMetricKind.CpuCorePercent, "cpu ", "core", 40), now));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(4, await backfill.RunBatchAsync(token));
+        Assert.AreEqual(0, await backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            var buckets = await db.HostMetricRollups.AsNoTracking().ToArrayAsync(token);
+            Assert.HasCount(3, buckets);
+            var exact = buckets.Single(x => x.Source == "cpu");
+            Assert.AreEqual(2L, exact.Count);
+            Assert.AreEqual(30d, exact.Sum);
+            Assert.AreEqual(10d, exact.Minimum);
+            Assert.AreEqual(20d, exact.Maximum);
+            Assert.IsTrue(await db.HostMetrics.AllAsync(x => x.Aggregated, token));
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 4,
+                new(Guid.CreateVersion7(), start.AddSeconds(1), AgentMetricKind.CpuCorePercent, "cpu", "core", 5), now));
+            await db.SaveChangesAsync(token);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE agent.HostMetricRollups ADD CONSTRAINT CK_TestRollupFailure CHECK ([Count] <= 2)", token);
+        }
+        await Assert.ThrowsAsync<DbUpdateException>(() => backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => !x.Aggregated, token));
+            Assert.AreEqual(2L, (await db.HostMetricRollups.AsNoTracking().ToArrayAsync(token)).Single(x => x.Source == "cpu").Count);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE agent.HostMetricRollups DROP CONSTRAINT CK_TestRollupFailure", token);
+        }
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        await using var verify = agents.CreateDbContext();
+        var updated = (await verify.HostMetricRollups.AsNoTracking().ToArrayAsync(token)).Single(x => x.Source == "cpu");
+        Assert.AreEqual(3L, updated.Count);
+        Assert.AreEqual(35d, updated.Sum);
+        Assert.AreEqual(5d, updated.Minimum);
+    });
+
+    [TestMethod]
+    public Task HostMetricAggregate_CombinesRollupsWithRawAndMarksUnavailableEdges() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        var device = new Device("metric history", "127.0.0.1", true, start);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], start);
+        var batch = Guid.CreateVersion7();
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            void Add(int ordinal, int minute, string source, double value) => db.HostMetrics.Add(new HostMetric(agent.Id, batch, ordinal,
+                new(Guid.CreateVersion7(), start.AddMinutes(minute), AgentMetricKind.CpuCorePercent, source, null, value), start));
+            Add(0, 1, "cpu", 10); Add(1, 2, "cpu", 20); Add(2, 6, "cpu", 30);
+            Add(3, 7, "cpu", 50); Add(4, 11, "cpu", 70); Add(5, 6, "CPU", 99);
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(6, await new HostMetricRollupBackfill(agents).RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 6,
+                new(Guid.CreateVersion7(), start.AddMinutes(8), AgentMetricKind.CpuCorePercent, "cpu", null, 40), start));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var result = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 300, token);
+        Assert.IsNotNull(result);
+        Assert.IsFalse(result.HasIncompleteBuckets);
+        Assert.HasCount(3, result.Buckets);
+        Assert.AreEqual(15d, result.Buckets[0].Average);
+        Assert.AreEqual(40d, result.Buckets[1].Average);
+        Assert.AreEqual(3L, result.Buckets[1].Samples);
+        Assert.AreEqual(70d, result.Buckets[2].Average);
+        var combined = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 600, token);
+        Assert.IsNotNull(combined);
+        Assert.AreEqual(30d, combined.Buckets[0].Average);
+        Assert.AreEqual(5L, combined.Buckets[0].Samples);
+        await using (var db = agents.CreateDbContext())
+            await db.HostMetrics.Where(x => x.AgentId == agent.Id && x.Aggregated && x.OccurredAt < start.AddMinutes(10)).ExecuteDeleteAsync(token);
+        result = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 300, token);
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.HasIncompleteBuckets);
+        Assert.HasCount(2, result.Buckets);
+        Assert.AreEqual(start.AddMinutes(5), result.Buckets[0].Start);
+        Assert.AreEqual(3L, result.Buckets[0].Samples);
+        Assert.AreEqual(40d, result.Buckets[0].Average);
+        combined = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 600, token);
+        Assert.IsNotNull(combined);
+        Assert.IsTrue(combined.HasIncompleteBuckets);
+        Assert.HasCount(1, combined.Buckets);
+        Assert.AreEqual(start.AddMinutes(10), combined.Buckets[0].Start);
+        var rawOnly = await history.AggregateAsync(device.Id, agent.Id, start.AddMinutes(1), start.AddMinutes(14),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 60, token);
+        Assert.IsNotNull(rawOnly);
+        Assert.IsTrue(rawOnly.HasIncompleteBuckets);
+        Assert.IsEmpty(rawOnly.Buckets);
+        var annual = await history.AggregateAsync(device.Id, agent.Id, start, start.AddDays(365),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 86400, token);
+        Assert.IsNotNull(annual);
+        Assert.AreEqual(6L, annual.Buckets.Single().Samples);
+        Assert.AreEqual(220d / 6, annual.Buckets.Single().Average, 0.000001);
+        var longest = await history.AggregateAsync(device.Id, agent.Id, start, start.AddDays(3650),
+            AgentMetricKind.CpuCorePercent, "cpu", null, 604800, token);
+        Assert.IsNotNull(longest);
+        Assert.AreEqual(6L, longest.Buckets.Single().Samples);
+        Assert.AreEqual(220d / 6, longest.Buckets.Single().Average, 0.000001);
+        var sources = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 0, token);
+        Assert.IsNotNull(sources);
+        Assert.IsFalse(sources.HasMore);
+        Assert.HasCount(2, sources.Items);
+        Assert.IsTrue(sources.Items.Any(x => x.Source == "cpu" && x.AgentId == agent.Id));
+        Assert.IsTrue(sources.Items.Any(x => x.Source == "CPU" && x.AgentId == agent.Id));
+    });
+
+    [TestMethod]
+    public Task HostMetricSeries_PagesDistinctExactSourcesFromRollupsAndRaw() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        var device = new Device("metric sources", "127.0.0.1", true, start);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], start);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            var batch = Guid.CreateVersion7();
+            for (var i = 0; i < 203; i++)
+                db.HostMetrics.Add(new HostMetric(agent.Id, batch, i,
+                    new(Guid.CreateVersion7(), start.AddMinutes(1), AgentMetricKind.CpuCorePercent, "cpu", $"core-{i}", i), start));
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 203,
+                new(Guid.CreateVersion7(), start.AddMinutes(1), AgentMetricKind.CpuCorePercent, "cpu ", null, 1), start));
+            await db.SaveChangesAsync(token);
+        }
+        var history = new HostMetricHistory(agents, new DeviceAgentSource(resources));
+        var first = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 0, token);
+        var second = await history.GetSeriesAsync(device.Id, start, start.AddDays(365), AgentMetricKind.CpuCorePercent, 1, token);
+        Assert.IsNotNull(first); Assert.IsNotNull(second);
+        Assert.HasCount(200, first.Items); Assert.IsTrue(first.HasMore);
+        Assert.HasCount(4, second.Items); Assert.IsFalse(second.HasMore);
+        Assert.AreEqual(204, first.Items.Concat(second.Items).Distinct().Count());
+        Assert.IsTrue(first.Items.Concat(second.Items).Any(x => x.Source == "cpu "));
+    });
+
+    [TestMethod]
+    public Task HostMetricRetention_KeepsPendingSamplesAndExpiresSummariesAfterBackfill() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("metric retention", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        var batch = Guid.CreateVersion7();
+        var old = DateTimeOffset.FromUnixTimeSeconds(now.AddDays(-400).ToUnixTimeSeconds() / 300 * 300).AddMinutes(1);
+        await using (var db = agents.CreateDbContext())
+        {
+            db.Agents.Add(agent);
+            db.HostMetrics.AddRange(
+                new HostMetric(agent.Id, batch, 0, new(Guid.CreateVersion7(), old, AgentMetricKind.CpuTotalPercent, "cpu", null, 1), now),
+                new HostMetric(agent.Id, batch, 1, new(Guid.CreateVersion7(), now.AddDays(-40), AgentMetricKind.CpuTotalPercent, "cpu", null, 2), now),
+                new HostMetric(agent.Id, batch, 2, new(Guid.CreateVersion7(), now.AddDays(-10), AgentMetricKind.CpuTotalPercent, "cpu", null, 3), now));
+            await db.SaveChangesAsync(token);
+        }
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(3, await backfill.RunBatchAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            db.HostMetrics.Add(new HostMetric(agent.Id, batch, 3, new(Guid.CreateVersion7(), old.AddSeconds(1), AgentMetricKind.CpuTotalPercent, "cpu", null, 4), now));
+            await db.SaveChangesAsync(token);
+        }
+        var cleanup = new HostMetricRetentionCleanup(agents);
+        Assert.AreEqual((2L, 0L), await cleanup.RunAsync(token));
+        await using (var db = agents.CreateDbContext())
+        {
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => !x.Aggregated, token));
+            Assert.AreEqual(3, await db.HostMetricRollups.CountAsync(token));
+            Assert.AreEqual(1, await db.HostMetrics.CountAsync(x => x.Aggregated, token));
+        }
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        Assert.AreEqual((1L, 1L), await cleanup.RunAsync(token));
+        await using var verify = agents.CreateDbContext();
+        Assert.AreEqual(1, await verify.HostMetrics.CountAsync(token));
+        Assert.AreEqual(2, await verify.HostMetricRollups.CountAsync(token));
+    });
+
+    [TestMethod]
+    public Task HostMetricRetention_SettingsRequirePreviewAndCommitWithAudit() => WithDatabase(async (_, agents, token) =>
+    {
+        string connection;
+        await using (var db = agents.CreateDbContext()) connection = db.Database.GetConnectionString()!;
+        var operations = new Factory<OperationsDbContext>(() => new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(150).MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options));
+        await using (var db = operations.CreateDbContext()) await db.Database.MigrateAsync(token);
+        var settings = new HostMetricRetentionSettings(agents, new OperationAuditWriter(), new EphemeralDataProtectionProvider());
+        var actor = Guid.CreateVersion7();
+        var original = await settings.GetAsync(token);
+        Assert.AreEqual(30, original.RawDays); Assert.AreEqual(365, original.RollupDays);
+        var input = new HostMetricRetentionInput(10, 60, original.Version, null);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input, actor, token));
+        var preview = await settings.PreviewAsync(new(10, 60, original.Version), actor, token);
+        Assert.IsNotNull(preview);
+        await Assert.ThrowsAsync<ArgumentException>(() => settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, Guid.CreateVersion7(), token));
+        var saved = await settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, actor, token);
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(10, saved.RawDays); Assert.AreEqual(60, saved.RollupDays);
+        Assert.IsNull(await settings.UpdateAsync(input with { ConfirmationToken = preview.ConfirmationToken }, actor, token));
+        var audit = new OperationAuditQueryService(operations);
+        var events = await audit.QueryHostMetricRetentionAsync(new(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token);
+        Assert.HasCount(1, events.Items);
+        Assert.AreEqual(30, events.Items[0].HostMetricRetention?.PreviousRawDays);
+        Assert.AreEqual(60, events.Items[0].HostMetricRetention?.CurrentRollupDays);
+        Assert.IsEmpty((await audit.QueryAsync(new(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1)), token)).Items);
+        await using (var db = operations.CreateDbContext()) await db.Database.ExecuteSqlRawAsync("DROP TABLE [operations].[AuditEvents]", token);
+        await Assert.ThrowsAsync<SqlException>(() => settings.UpdateAsync(new(20, 90, saved.Version, null), actor, token));
+        var afterFailure = await settings.GetAsync(token);
+        Assert.AreEqual(saved, afterFailure);
+    });
+
+    [TestMethod]
+    public Task HostMetricRollup_FullBatchUpdatesManyDistinctSeries() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var device = new Device("rollup batch", "127.0.0.1", true, now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var agent = new Agent(device.Id, 1, new byte[32], now);
+        await using (var db = agents.CreateDbContext()) { db.Agents.Add(agent); await db.SaveChangesAsync(token); }
+        var backfill = new HostMetricRollupBackfill(agents);
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var batchId = Guid.CreateVersion7();
+            await using (var db = agents.CreateDbContext())
+            {
+                for (var index = 0; index < HostMetricRollupBackfill.BatchSize; index++)
+                    db.HostMetrics.Add(new HostMetric(agent.Id, batchId, index,
+                        new(Guid.CreateVersion7(), now, AgentMetricKind.CpuCorePercent, "cpu", $"core-{index}", pass + 1), now));
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual(HostMetricRollupBackfill.BatchSize, await backfill.RunBatchAsync(token));
+        }
+        await using var verify = agents.CreateDbContext();
+        var rollups = await verify.HostMetricRollups.AsNoTracking().ToArrayAsync(token);
+        Assert.HasCount(HostMetricRollupBackfill.BatchSize, rollups);
+        Assert.IsTrue(rollups.All(x => x.Count == 2 && x.Sum == 3));
+    });
+
+    [TestMethod]
+    public Task HostMetricRollup_ReceiptRetriesDoNotDuplicateMeasurements() => WithReusableDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("metric rollup receiver", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var identity = new AgentIdentity(agents, new DeviceAgentSource(resources), clock);
+        var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var agentId = registration.AgentId!.Value;
+        var credential = Credential(agentId, secret);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        var point = new AgentMetricPoint(Guid.CreateVersion7(), clock.Now, AgentMetricKind.MemoryAvailableBytes, "linux.proc", null, 4096);
+        var batch = new AgentMetricBatch(2, Guid.CreateVersion7(), clock.Now, [point]);
+        var payload = AgentMetricBatchCodec.Serialize(batch);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, payload, token));
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential,
+            AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() }), token));
+        var backfill = new HostMetricRollupBackfill(agents);
+        Assert.AreEqual(1, await backfill.RunBatchAsync(token));
+        Assert.AreEqual(0, await backfill.RunBatchAsync(token));
+        await using var verify = agents.CreateDbContext();
+        var rollup = await verify.HostMetricRollups.SingleAsync(token);
+        Assert.AreEqual(1L, rollup.Count);
+        Assert.AreEqual(4096d, rollup.Sum);
+        Assert.AreEqual(agentId, rollup.AgentId);
     });
 
     [TestMethod]
@@ -1767,8 +2058,16 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);
         Assert.AreEqual(new AgentReceiptCapacity(0, 0, AgentBatchReceiver.MaximumRetainedBatchesPerAgent, AgentBatchReceiver.MaximumRetainedBytesPerAgent),
             (await monitoring.GetAsync(device.Id, token))!.ReceiptCapacity);
-        var results = await Task.WhenAll(receiver.ReceiveAsync(credential, payload, token), receiver.ReceiveAsync(credential, payload, token));
+        // A loaded SQL Server can reach the device-lock timeout; the Agent retries the same batch.
+        async Task<BatchReceiptStatus?> ReceiveAsync()
+        {
+            try { return await receiver.ReceiveAsync(credential, payload, token); }
+            catch (InvalidOperationException ex) when (ex.Message == "Agent device lock could not be acquired.") { return null; }
+        }
+        var results = await Task.WhenAll(ReceiveAsync(), ReceiveAsync());
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.Accepted));
+        if (results.Contains(null))
+            results[Array.IndexOf(results, null)] = await receiver.ReceiveAsync(credential, payload, token);
         Assert.AreEqual(1, results.Count(x => x == BatchReceiptStatus.AlreadyAccepted));
         Assert.AreEqual(clock.Now, await receiverHealth.LastCommittedBatchAsync(token));
         Assert.AreEqual(clock.Now, (await monitoring.GetAsync(device.Id, token))!.LastCommittedBatchAt);

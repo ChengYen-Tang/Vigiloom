@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Data.SqlClient;
 using OpenTelemetry.Proto.Collector.Metrics.V1;
 using OpenTelemetry.Proto.Common.V1;
@@ -7,7 +8,9 @@ using OpenTelemetry.Proto.Metrics.V1;
 using OpenTelemetry.Proto.Resource.V1;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -18,6 +21,108 @@ namespace Vigiloom.Modules.ServiceObservability.Tests;
 [TestCategory("Database")]
 public sealed class MetricWindowRevisionTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task CoordinatorMaterializesClosedWindowsAndRevisitsLateData() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var current = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300);
+            var closed = current.AddMinutes(-10);
+            var source = new ServiceSource("monitor", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "test", "prod", "Test", now), now.AddHours(-1));
+            await using (var setup = new ServiceObservabilityDbContext(options))
+            {
+                await setup.Database.MigrateAsync(token);
+                setup.Sources.Add(source); setup.Services.Add(service);
+                setup.MetricRollupWindows.Add(new MetricRollupWindow { ServiceId = service.Id, WindowStart = current.AddMinutes(5), InputRevision = 1 });
+                await setup.SaveChangesAsync(token);
+            }
+            var resource = new ResourceMetrics { Resource = new Resource() };
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "test" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            var ingestion = new MetricIngestion(factory);
+            var coordinator = new MetricRollupCoordinator(factory, new MetricRollupMaterializer(factory),
+                new MetricWindowBackfill(factory, NullLogger<MetricWindowBackfill>.Instance), NullLogger<MetricRollupCoordinator>.Instance);
+            Metric Gauge(DateTimeOffset time, long value) => new() { Name = "gauge", Gauge = new Gauge { DataPoints = {
+                new NumberDataPoint { TimeUnixNano = (ulong)time.ToUnixTimeMilliseconds() * 1_000_000, AsInt = value } } } };
+            Assert.AreEqual(MetricIngestionStatus.Accepted, await ingestion.WriteAsync(source.Id, resource, new ScopeMetrics(), Gauge(closed.AddMinutes(1), 1), token));
+            await coordinator.RunAsync(token);
+            await using (var verify = new ServiceObservabilityDbContext(options))
+            {
+                var windows = await verify.MetricRollupWindows.OrderBy(x => x.WindowStart).ToArrayAsync(token);
+                Assert.HasCount(2, windows);
+                Assert.AreEqual(1L, windows[0].ProjectedRevision);
+                Assert.IsTrue(windows[0].IsComplete);
+                Assert.IsNull(windows[1].ProjectedRevision);
+                Assert.AreEqual(1, await verify.MetricPoints.CountAsync(token));
+            }
+            Assert.AreEqual(MetricIngestionStatus.Accepted, await ingestion.WriteAsync(source.Id, resource, new ScopeMetrics(), Gauge(closed.AddMinutes(2), 3), token));
+            await coordinator.RunAsync(token);
+            await using var final = new ServiceObservabilityDbContext(options);
+            var updated = await final.MetricRollupWindows.SingleAsync(x => x.WindowStart == closed, token);
+            Assert.AreEqual(2L, updated.InputRevision);
+            Assert.AreEqual(2L, updated.ProjectedRevision);
+            Assert.AreEqual(2, await final.MetricPoints.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task BackfillDiscoversLegacyDeltaBoundariesAndIsRepeatable() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var boundary = DateTimeOffset.FromUnixTimeSeconds(now.ToUnixTimeSeconds() / 300 * 300).AddMinutes(-5);
+            var nanos = (ulong)boundary.ToUnixTimeSeconds() * 1_000_000_000;
+            var source = new ServiceSource("monitor", new byte[32], now);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "test", "prod", "Test", now), now.AddHours(-1));
+            await using (var setup = new ServiceObservabilityDbContext(options))
+            {
+                await setup.Database.MigrateAsync(token);
+                setup.Sources.Add(source); setup.Services.Add(service);
+                await setup.SaveChangesAsync(token);
+            }
+            var resource = new ResourceMetrics { Resource = new Resource() };
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "test" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            var metric = new Metric { Name = "counter", Sum = new Sum { AggregationTemporality = AggregationTemporality.Delta,
+                DataPoints = { new NumberDataPoint { StartTimeUnixNano = nanos - 10, TimeUnixNano = nanos, AsInt = 1 },
+                    new NumberDataPoint { StartTimeUnixNano = nanos, TimeUnixNano = nanos + 1, AsInt = 2 } } } };
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            Assert.AreEqual(MetricIngestionStatus.Accepted, await new MetricIngestion(factory).WriteAsync(source.Id, resource, new ScopeMetrics(), metric, token));
+            await using (var legacy = new ServiceObservabilityDbContext(options))
+            {
+                await legacy.MetricRollupWindows.ExecuteDeleteAsync(token);
+                var contextRow = await legacy.MetricContexts.SingleAsync(token);
+                contextRow.WindowsTracked = false;
+                await legacy.SaveChangesAsync(token);
+                await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE [service].[MetricContexts] ADD CONSTRAINT [CK_TestBackfillFailure] CHECK ([WindowsTracked] = 0)", token);
+            }
+            var backfill = new MetricWindowBackfill(factory, NullLogger<MetricWindowBackfill>.Instance);
+            await backfill.RunAsync(token);
+            await using (var failed = new ServiceObservabilityDbContext(options))
+            {
+                Assert.AreEqual(0, await failed.MetricRollupWindows.CountAsync(token));
+                Assert.IsFalse((await failed.MetricContexts.SingleAsync(token)).WindowsTracked);
+                await failed.Database.ExecuteSqlRawAsync("ALTER TABLE [service].[MetricContexts] DROP CONSTRAINT [CK_TestBackfillFailure]", token);
+            }
+            await backfill.RunAsync(token);
+            await backfill.RunAsync(token);
+            await using var verify = new ServiceObservabilityDbContext(options);
+            var windows = await verify.MetricRollupWindows.OrderBy(x => x.WindowStart).ToArrayAsync(token);
+            Assert.HasCount(2, windows);
+            Assert.AreEqual(boundary.AddMinutes(-5), windows[0].WindowStart);
+            Assert.AreEqual(boundary, windows[1].WindowStart);
+            Assert.IsTrue(windows.All(x => x.InputRevision == 1));
+            Assert.IsTrue((await verify.MetricContexts.SingleAsync(token)).WindowsTracked);
+            Assert.AreEqual(2, await verify.MetricPoints.CountAsync(token));
+        }, context.CancellationToken);
+
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ConcurrentWritesToSameWindowDoNotLoseARevision() =>

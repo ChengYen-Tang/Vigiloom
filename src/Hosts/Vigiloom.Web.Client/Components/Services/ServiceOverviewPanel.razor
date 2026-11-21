@@ -23,6 +23,7 @@ else
     <header class="service-heading"><h1>@service.Name</h1><p>環境：@service.Environment · @(service.CollectionStopped ? "收集已停止" : service.SourceRevoked ? "來源已撤銷" : "已加入")</p><p><a href="@($"/services/connect?service={ServiceId:D}")">查看接入導引</a></p></header>
     <section class="service-card" aria-labelledby="health-heading">
         <h2 id="health-heading">服務健康</h2>
+        <p>健康歷史保存 @service.HealthRetentionDays 天；超過期限的資料可能已清除。進行中的狀態區間仍會保留。</p>
         <p class="service-state">目前狀態：<strong class="@HealthClass(health?.State)">@(healthError ? "無法讀取" : HealthName(health?.State))</strong></p>
         @if (health is { UnknownReasons: not ServiceHealthUnknownReason.None }) { <p>@HealthReasons(health.UnknownReasons)</p> }
         <p>健康狀態依已設定的檢查判斷，不代表主機或網路狀態。@(health is { UnknownParticipants: > 0 } ? $"有 {health.UnknownParticipants} 個檢查資料不足。" : "")</p>
@@ -111,7 +112,7 @@ else
     <section class="service-card" aria-labelledby="evidence-heading">
         <h2 id="evidence-heading">觀測與證據</h2>
         <p>最後接收（UTC）：Logs @LastReceived(service.LastLogReceivedAt) · Metrics @LastReceived(service.LastMetricReceivedAt) · Traces @LastReceived(service.LastTraceReceivedAt)</p>
-        <p>使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。資料受各自保存期限限制。</p>
+        <p>使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。Logs 保存 @service.LogRetentionDays 天，Traces 保存 @service.TraceRetentionDays 天；實際資料依接收及清理狀況而定。</p>
         <div class="service-actions"><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(false, 1)">查看 Logs</button><button type="button" disabled="@(!interactive)" @onclick="() => LoadEvidenceAsync(true, 1)">查看 Traces</button></div>
         @if (evidenceLoading) { <p role="status">正在載入證據…</p> }
         @if (evidenceError is not null) { <p role="alert">@evidenceError</p> }

@@ -241,6 +241,8 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("ObservedAt");
+
                     b.HasIndex("TargetId", "LeaseGeneration")
                         .IsUnique();
 
@@ -360,6 +362,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("EndedAt")
+                        .HasFilter("[EndedAt] IS NOT NULL");
 
                     b.HasIndex("TargetId")
                         .IsUnique()
@@ -528,6 +533,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.Property<bool>("IsPublic")
                         .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("MetricRetainedAfter")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("PublicDisplayName")
                         .HasMaxLength(256)
@@ -921,6 +929,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     b.HasIndex("InstanceId", "ServiceId");
 
+                    b.HasIndex("OccurredAt", "RowId")
+                        .HasDatabaseName("IX_LogRecords_Retention");
+
                     b.HasIndex("ServiceId", "ReceivedAt");
 
                     b.HasIndex("ServiceId", "OccurredAt", "RowId");
@@ -979,9 +990,16 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<Guid>("ServiceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("WindowsTracked")
+                        .HasColumnType("bit");
+
                     b.HasKey("RowId");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("RowId")
+                        .HasDatabaseName("IX_MetricContexts_UntrackedWindows")
+                        .HasFilter("[WindowsTracked] = 0");
 
                     b.HasIndex("ServiceId", "MetricNameBytes");
 
@@ -1155,6 +1173,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
 
+                    b.HasIndex("WindowStart");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("WindowStart"), new[] { "ServiceId", "RawPruned" });
+
                     b.HasIndex("ServiceId", "WindowStart")
                         .IsUnique();
 
@@ -1165,6 +1187,69 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                             t.HasCheckConstraint("CK_MetricRollupWindows_Revisions", "[InputRevision] > 0 AND (([ProjectedRevision] IS NULL AND [ProjectionVersion] IS NULL AND [ProjectedAt] IS NULL AND [IsComplete] = 0 AND [RawPruned] = 0) OR ([ProjectedRevision] IS NOT NULL AND [ProjectedRevision] > 0 AND [ProjectedRevision] <= [InputRevision] AND [ProjectionVersion] IS NOT NULL AND [ProjectionVersion] > 0 AND [ProjectedAt] IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_MetricRollupWindows_Utc", "DATEPART(TZOFFSET, [WindowStart]) = 0 AND ([ProjectedAt] IS NULL OR DATEPART(TZOFFSET, [ProjectedAt]) = 0)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TelemetryRetentionSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("HealthDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
+
+                    b.Property<int>("LogDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MetricRawDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
+
+                    b.Property<int>("MetricRollupDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(365);
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TraceDays")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Slot")
+                        .IsUnique();
+
+                    b.ToTable("TelemetryRetentionSettings", "service", t =>
+                        {
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Days", "[LogDays] BETWEEN 1 AND 3650 AND [TraceDays] BETWEEN 1 AND 3650 AND [MetricRawDays] BETWEEN 1 AND 3650 AND [MetricRollupDays] BETWEEN [MetricRawDays] AND 3650 AND [HealthDays] BETWEEN 1 AND 3650");
+
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_TelemetryRetentionSettings_Slot", "[Slot] = 1");
                         });
                 });
 
@@ -1259,6 +1344,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasIndex("InstanceId", "ServiceId");
 
                     b.HasIndex("ServiceId", "ReceivedAt");
+
+                    b.HasIndex("StartedAt", "RowId")
+                        .HasDatabaseName("IX_TraceSpans_Retention");
 
                     b.HasIndex("ServiceId", "StartedAt", "RowId");
 

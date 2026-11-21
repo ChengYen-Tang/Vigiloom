@@ -185,6 +185,9 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Description = "Requires a signed-in Administrator session.";
             }
             else if (path.Equals("/api/v1/operations/audit", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/audit-retention", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/host-metric-retention", StringComparison.OrdinalIgnoreCase) ||
+                     path.Equals("/api/v1/operations/audit/telemetry-retention", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/ping", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/agent-replay", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/operations/audit/agent-inbox", StringComparison.OrdinalIgnoreCase) ||

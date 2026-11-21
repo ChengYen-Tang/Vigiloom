@@ -51,6 +51,7 @@ public sealed class NotificationReader(IDbContextFactory<OperationsDbContext> co
             .Skip((query.Page - 1) * pageSize).Take(pageSize + 1)
             .Select(x => new NotificationView(x.Id, x.MessageId, x.Source, x.OccurredAt, x.Title, x.Detail,
                 x.ResourceId, x.EvidenceOwnerId, x.EvidenceId, x.RuleTestId)).ToArrayAsync(token);
-        return new(rows.Take(pageSize).ToArray(), query.Page, rows.Length > pageSize && query.Page < 1000);
+        var retentionDays = await db.AuditRetentionSettings.AsNoTracking().Select(x => (int?)x.Days).SingleOrDefaultAsync(token) ?? 365;
+        return new(rows.Take(pageSize).ToArray(), query.Page, rows.Length > pageSize && query.Page < 1000, retentionDays);
     }
 }

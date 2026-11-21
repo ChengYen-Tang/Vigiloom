@@ -6,6 +6,7 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence;
 public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> options) : DbContext(options)
 {
     internal DbSet<OperationAuditRecord> AuditEvents => Set<OperationAuditRecord>();
+    internal DbSet<AuditRetentionSetting> AuditRetentionSettings => Set<AuditRetentionSetting>();
     internal DbSet<WorkerDiagnosticSlot> WorkerDiagnosticSlots => Set<WorkerDiagnosticSlot>();
     internal DbSet<PingAlert> PingAlerts => Set<PingAlert>();
     internal DbSet<PingAlertEvent> PingAlertEvents => Set<PingAlertEvent>();
@@ -24,6 +25,21 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         audit.Property(x => x.RowId).UseIdentityColumn();
         audit.Property(x => x.Details).HasMaxLength(2048).IsRequired();
         audit.HasIndex(x => new { x.OccurredAt, x.RowId });
+
+        var retention = modelBuilder.Entity<AuditRetentionSetting>();
+        retention.ToTable("AuditRetentionSettings", table =>
+        {
+            table.HasCheckConstraint("CK_AuditRetentionSettings_Id", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_AuditRetentionSettings_Slot", "[Slot] = 1");
+            table.HasCheckConstraint("CK_AuditRetentionSettings_Days", "[Days] BETWEEN 1 AND 3650");
+        });
+        retention.HasKey(x => x.Id).IsClustered(false);
+        retention.Property(x => x.Id).ValueGeneratedNever();
+        retention.Property(x => x.RowId).UseIdentityColumn();
+        retention.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        retention.HasIndex(x => x.Slot).IsUnique();
+        retention.Property(x => x.Days).HasDefaultValue(365);
+        retention.Property(x => x.Version).IsRowVersion();
 
         var slot = modelBuilder.Entity<WorkerDiagnosticSlot>();
         slot.ToTable("WorkerDiagnosticSlots", table =>

@@ -36,6 +36,8 @@ internal static class MetricWindowRevisions
     {
         foreach (var (serviceId, windows) in changes.OrderBy(pair => pair.Key))
         {
+            var retainedAfter = await db.Services.AsNoTracking().Where(x => x.Id == serviceId).Select(x => x.MetricRetainedAfter).SingleAsync(token);
+            if (retainedAfter is { } cutoff && windows.Any(start => start < cutoff)) return WindowRevisionResult.RawPruned;
             var existing = new Dictionary<DateTimeOffset, MetricRollupWindow>();
             foreach (var chunk in windows.Chunk(QueryChunk))
             {

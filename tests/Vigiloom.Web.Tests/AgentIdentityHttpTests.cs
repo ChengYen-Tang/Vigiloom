@@ -31,6 +31,7 @@ using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -540,6 +541,7 @@ public sealed class AgentIdentityHttpTests
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
             await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var quota = factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
             await using (var db = await quota.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
@@ -919,6 +921,7 @@ public sealed class AgentIdentityHttpTests
             var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             await using (var db = await resources.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var rootMetadata = System.Text.Encoding.UTF8.GetBytes("""{"signed":{"_type":"root","version":1},"signatures":[{}]}""");
             await using (var scope = factory.Services.CreateAsyncScope())
                 await scope.ServiceProvider.GetRequiredService<UpdateTrustStore>().ProvisionAsync(rootMetadata, token);
