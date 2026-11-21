@@ -86,6 +86,18 @@ jobs:
           echo "VIGILOOM_SYSTEMD_UPDATER=$RUNNER_TEMP/updater" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_INITIAL_ARCHIVE=$RUNNER_TEMP/agent-initial-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_UPDATE_ARCHIVE=$RUNNER_TEMP/agent-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
+      - name: Test Linux Agent IPC permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj --configuration Release
+          dotnet_executable=$(command -v dotnet)
+          results_dir=$(mktemp -d "$RUNNER_TEMP/vigiloom-root-tests.XXXXXX")
+          trap 'sudo rm -rf -- "$results_dir"' EXIT
+          sudo -n env VIGILOOM_RUN_ROOT_IPC_TESTS=1 "$dotnet_executable" test tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj \
+            --configuration Release --no-build --no-restore --results-directory "$results_dir" --logger 'trx;LogFileName=ipc.trx' \
+            --filter 'FullyQualifiedName~Vigiloom.Updater.Core.Tests.LinuxUpdateListenerTests|FullyQualifiedName~Vigiloom.Updater.Core.Tests.PackageStagerTests.LinuxPackageIsAccessibleToUnprivilegedAgent'
+          sudo -n python3 -c 'import sys, xml.etree.ElementTree as ET; c = ET.parse(sys.argv[1]).getroot().find(".//{*}Counters"); assert c is not None and int(c.get("passed", 0)) >= 6 and int(c.get("notExecuted", 0)) == 0' "$results_dir/ipc.trx"
       - name: Start isolated SQL Server
         id: systemd_sql
         shell: bash
