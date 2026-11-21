@@ -50,6 +50,75 @@ jobs:
           test '${{ needs.windows_web.result }}' = 'success'
           test '${{ needs.windows_remaining.result }}' = 'success'
 
+  linux_agent_systemd:
+    name: Linux Agent systemd integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check disposable systemd host
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(ps -p 1 -o comm=)" = systemd
+          sudo -n true
+      - name: Build test and real Agent packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/agent-initial" -p:Version=1.0.0
+          dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/agent-update" -p:Version=1.1.0
+          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/updater" -p:Version=1.0.0
+          python -m venv "$RUNNER_TEMP/agent-python"
+          "$RUNNER_TEMP/agent-python/bin/python" -m pip install --require-hashes -r tools/agent-release/requirements.txt
+          "$RUNNER_TEMP/agent-python/bin/python" tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-update" --output-directory "$RUNNER_TEMP/agent-archive" --rid linux-x64 --version 1.1.0
+          echo "VIGILOOM_SYSTEMD_INITIAL_AGENT=$RUNNER_TEMP/agent-initial" >> "$GITHUB_ENV"
+          echo "VIGILOOM_SYSTEMD_UPDATER=$RUNNER_TEMP/updater" >> "$GITHUB_ENV"
+          echo "VIGILOOM_SYSTEMD_UPDATE_ARCHIVE=$RUNNER_TEMP/agent-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
+      - name: Start isolated SQL Server
+        id: systemd_sql
+        shell: bash
+        run: |
+          set -euo pipefail
+          password="Aa1!$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          export MSSQL_SA_PASSWORD="$password" SQLCMDPASSWORD="$password"
+          docker run -d --name vigiloom-systemd-sql -p 127.0.0.1:1433:1433 \
+            -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD mcr.microsoft.com/mssql/server:2022-latest > /dev/null
+          for attempt in $(seq 1 90); do
+            if docker exec -e SQLCMDPASSWORD vigiloom-systemd-sql /opt/mssql-tools18/bin/sqlcmd \
+                -S localhost -U sa -C -Q 'SELECT 1' > /dev/null 2>&1; then
+              echo 'VIGILOOM_TEST_SQL_ALLOW_SOURCE=localhost,1433' >> "$GITHUB_ENV"
+              echo "SQLCMDPASSWORD=$password" >> "$GITHUB_ENV"
+              printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'The isolated SQL Server did not become ready.' >&2
+          exit 1
+      - name: Test installed Agent update and rollback
+        env:
+          VIGILOOM_SYSTEMD_AGENT_TEST: '1'
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~LinuxAgentUpdateSystemdTests
+      - name: Verify test database cleanup
+        if: always() && steps.systemd_sql.outcome == 'success'
+        shell: bash
+        run: |
+          docker exec -e SQLCMDPASSWORD vigiloom-systemd-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -C -b -d master -Q "IF EXISTS (SELECT 1 FROM sys.databases WHERE name LIKE 'Vigiloom[_]Test[_]%') THROW 50001, 'Test database remains', 1;"
+      - name: Remove isolated SQL Server
+        if: always()
+        run: docker rm -f vigiloom-systemd-sql > /dev/null 2>&1 || true
+
   ubuntu:
     name: Ubuntu build and test
     runs-on: ubuntu-latest
