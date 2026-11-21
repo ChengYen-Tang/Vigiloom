@@ -16,6 +16,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.UpdateSecurity;
 using Vigiloom.Web.Tests.Fixtures;
@@ -94,6 +95,7 @@ public sealed class LinuxAgentUpdateSystemdTests(TestContext context)
                 var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
                 var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
                 await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                 await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                 var device = new Device("systemd test", "127.0.0.1", true, DateTimeOffset.UtcNow);
                 await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
