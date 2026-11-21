@@ -222,7 +222,10 @@ public sealed class PublicStatusBrowserTests(TestContext context)
         Assert.IsNotNull(stateBox);
         Assert.IsLessThan(40, stateBox.Height, "The status must stay readable beside a long service name.");
         await page.SetViewportSizeAsync(1280, 900);
-        await page.GetByRole(AriaRole.Button, new() { Name = "External group", Exact = false }).ClickAsync();
+        var selectedGroup = page.GetByRole(AriaRole.Button, new() { Name = "External group", Exact = false });
+        await selectedGroup.ClickAsync();
+        await Assertions.Expect(selectedGroup).ToHaveClassAsync("selected");
+        await Assertions.Expect(selectedGroup).ToBeEnabledAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "Public network", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "Public network", Exact = true }).WaitForAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { Name = "登入後查看設備詳情" })).ToHaveAttributeAsync("href", $"/devices/{device.Id:D}");
