@@ -94,7 +94,8 @@ jobs:
           dotnet_executable=$(command -v dotnet)
           results_dir=$(mktemp -d "$RUNNER_TEMP/vigiloom-root-tests.XXXXXX")
           trap 'sudo rm -rf -- "$results_dir"' EXIT
-          sudo -n env VIGILOOM_RUN_ROOT_IPC_TESTS=1 "$dotnet_executable" test tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj \
+          mkdir "$results_dir/vstest"
+          sudo -n env VIGILOOM_RUN_ROOT_IPC_TESTS=1 VSTEST_ARTIFACTS_BASE_DIRECTORY="$results_dir/vstest" TMPDIR="$results_dir/vstest" "$dotnet_executable" test tests/Vigiloom.Updater.Core.Tests/Vigiloom.Updater.Core.Tests.csproj \
             --configuration Release --no-build --no-restore --results-directory "$results_dir" --logger 'trx;LogFileName=ipc.trx' \
             --filter 'FullyQualifiedName~Vigiloom.Updater.Core.Tests.LinuxUpdateListenerTests|FullyQualifiedName~Vigiloom.Updater.Core.Tests.PackageStagerTests.LinuxPackageIsAccessibleToUnprivilegedAgent'
           sudo -n python3 -c 'import sys, xml.etree.ElementTree as ET; c = ET.parse(sys.argv[1]).getroot().find(".//{*}Counters"); assert c is not None and int(c.get("passed", 0)) >= 6 and int(c.get("notExecuted", 0)) == 0' "$results_dir/ipc.trx"

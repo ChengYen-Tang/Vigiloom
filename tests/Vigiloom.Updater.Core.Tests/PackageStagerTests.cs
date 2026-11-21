@@ -79,7 +79,7 @@ public sealed class PackageStagerTests(TestContext context)
 
     private async Task<int> TestAsUnprivilegedAsync(string mode, string path)
     {
-        var start = new ProcessStartInfo("/usr/sbin/setpriv")
+        var start = new ProcessStartInfo("setpriv")
         {
             UseShellExecute = false,
             ArgumentList = { "--reuid=65534", "--regid=65534", "--clear-groups", "/usr/bin/test", mode, path }
