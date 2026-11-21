@@ -20,6 +20,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.UpdateSecurity;
+using Vigiloom.Updater.Core.Updates;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -159,7 +160,19 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual("0", originalAgentPid);
 
                 var assignments = scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>();
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.2.0", AgentUpdateResultKind.RolledBack, actor, token, TimeSpan.FromMinutes(7));
+                await SetServiceRunningAsync(windows, running: false, token);
+                Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
+                var cancelled = await SetAssignmentAsync(agents, assignments, agentId, "1.0.0", actor, token);
+                Assert.IsNotNull(cancelled);
+                Assert.IsNull(await SetAssignmentAsync(agents, assignments, agentId, null, actor, token));
+                var replaced = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                Assert.IsNotNull(replaced);
+                var current = await SetAssignmentAsync(agents, assignments, agentId, "1.2.0", actor, token);
+                Assert.IsNotNull(current);
+                Assert.AreNotEqual(cancelled, replaced);
+                Assert.AreNotEqual(replaced, current);
+                await SetServiceRunningAsync(windows, running: true, token);
+                await WaitForResultAsync(agents, agentId, current.Value, AgentUpdateResultKind.RolledBack, token, TimeSpan.FromMinutes(7));
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
@@ -174,6 +187,9 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
                 Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
+                await using (var db = await agents.CreateDbContextAsync(token))
+                    Assert.IsFalse(await db.UpdateReceipts.AnyAsync(x => x.AgentId == agentId &&
+                        (x.UpdateId == cancelled.Value || x.UpdateId == replaced.Value), token));
                 gate.Allow();
                 var replay = await gate.Retried.WaitAsync(TimeSpan.FromMinutes(3), token);
                 CollectionAssert.AreEqual(blocked, replay);
@@ -204,20 +220,54 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
 
+    private static async Task SetServiceRunningAsync(bool windows, bool running, CancellationToken token)
+    {
+        if (windows && OperatingSystem.IsWindows())
+        {
+            var runtime = new WindowsAgentRuntime(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Agent"));
+            if (running) await runtime.StartAsync(token);
+            else await runtime.StopAsync(token);
+        }
+        else
+            await RunAsync("sudo", token, "-n", "systemctl", running ? "start" : "stop", "vigiloom-agent.service");
+    }
+
     private static async Task AssignAndWaitAsync(IDbContextFactory<AgentManagementDbContext> contexts,
         AgentVersionAssignments assignments, Guid agentId, string version, AgentUpdateResultKind result, Guid actor, CancellationToken token,
         TimeSpan? timeout = null)
     {
-        Guid package;
-        await using (var db = await contexts.CreateDbContextAsync(token)) package = await db.Packages.Where(x => x.Version == version).Select(x => x.Id).SingleAsync(token);
+        var updateId = await SetAssignmentAsync(contexts, assignments, agentId, version, actor, token);
+        Assert.IsNotNull(updateId);
+        await WaitForResultAsync(contexts, agentId, updateId.Value, result, token, timeout);
+    }
+
+    private static async Task<Guid?> SetAssignmentAsync(IDbContextFactory<AgentManagementDbContext> contexts,
+        AgentVersionAssignments assignments, Guid agentId, string? version, Guid actor, CancellationToken token)
+    {
+        Guid? package = null;
+        if (version is not null)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            package = await db.Packages.Where(x => x.Version == version).Select(x => x.Id).SingleAsync(token);
+        }
         var current = await assignments.GetAsync(agentId, token);
         Assert.IsNotNull(current);
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, package, current.Revision, actor, token));
+        await using var verify = await contexts.CreateDbContextAsync(token);
+        var assignment = await verify.VersionAssignments.AsNoTracking().SingleAsync(x => x.AgentId == agentId, token);
+        Assert.AreEqual(package, assignment.PackageId);
+        if (package is null) Assert.IsNull(assignment.UpdateId);
+        else Assert.IsNotNull(assignment.UpdateId);
+        return assignment.UpdateId;
+    }
+
+    private static async Task WaitForResultAsync(IDbContextFactory<AgentManagementDbContext> contexts,
+        Guid agentId, Guid updateId, AgentUpdateResultKind result, CancellationToken token, TimeSpan? timeout)
+    {
         await WaitUntilAsync(async () =>
         {
             await using var db = await contexts.CreateDbContextAsync(token);
-            return await (from receipt in db.UpdateReceipts join target in db.UpdateTargets on receipt.UpdateId equals target.Id
-                where receipt.AgentId == agentId && target.PackageId == package && receipt.Result == result select receipt.RowId).AnyAsync(token);
+            return await db.UpdateReceipts.AnyAsync(x => x.AgentId == agentId && x.UpdateId == updateId && x.Result == result, token);
         }, token, timeout);
     }
 
