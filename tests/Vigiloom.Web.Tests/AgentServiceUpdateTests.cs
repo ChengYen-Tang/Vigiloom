@@ -193,6 +193,18 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsFalse(await db.UpdateReceipts.AnyAsync(x => x.AgentId == agentId &&
                         (x.UpdateId == cancelled.Value || x.UpdateId == replaced.Value), token));
+
+                var agentPidBeforeRepair = await ServicePidAsync(windows, agent: true, token);
+                if (windows)
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                        Path.Combine(bundle, "repair-updater.ps1"));
+                else
+                    await RunAsync("sudo", token, "-n", "bash", Path.Combine(bundle, "repair-updater.sh"));
+                var repairedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
+                Assert.AreNotEqual("0", repairedUpdaterPid);
+                Assert.AreNotEqual(updaterPid, repairedUpdaterPid);
+                Assert.AreEqual(agentPidBeforeRepair, await ServicePidAsync(windows, agent: true, token));
+
                 gate.Allow();
                 var replay = await gate.Retried.WaitAsync(TimeSpan.FromMinutes(3), token);
                 CollectionAssert.AreEqual(blocked, replay);
