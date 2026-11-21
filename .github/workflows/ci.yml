@@ -41,14 +41,15 @@ jobs:
   windows:
     name: Windows build and test
     if: always()
-    needs: [windows_web, windows_remaining]
+    needs: [windows_web, windows_remaining, windows_agent_service]
     runs-on: ubuntu-latest
     steps:
-      - name: Require both Windows test jobs
+      - name: Require all Windows test jobs
         shell: bash
         run: |
           test '${{ needs.windows_web.result }}' = 'success'
           test '${{ needs.windows_remaining.result }}' = 'success'
+          test '${{ needs.windows_agent_service.result }}' = 'success'
 
   linux_agent_systemd:
     name: Linux Agent systemd integration
@@ -164,7 +165,7 @@ jobs:
         run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter FullyQualifiedName~AgentServiceUpdateTests.Windows_
 
   ubuntu:
-    name: Ubuntu build and test
+    name: Ubuntu tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -267,3 +268,15 @@ jobs:
       - name: Remove isolated SQL Server
         if: always()
         run: docker rm -f vigiloom-test-sql > /dev/null 2>&1 || true
+
+  ubuntu_required:
+    name: Ubuntu build and test
+    if: always()
+    needs: [ubuntu, linux_agent_systemd]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all Ubuntu test jobs
+        shell: bash
+        run: |
+          test '${{ needs.ubuntu.result }}' = 'success'
+          test '${{ needs.linux_agent_systemd.result }}' = 'success'
