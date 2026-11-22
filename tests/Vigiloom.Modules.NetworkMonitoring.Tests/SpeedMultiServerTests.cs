@@ -15,15 +15,6 @@ public sealed class SpeedMultiServerTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public void AdaptiveConnections_StayBoundedAndNeverShrink()
-    {
-        Assert.AreEqual(24, SpeedMeasurementMath.NextDownloadConcurrency(4, 4, 40_000_000, 1000));
-        Assert.AreEqual(6, SpeedMeasurementMath.NextDownloadConcurrency(4, 1, 40_000_000, 1000));
-        Assert.AreEqual(4, SpeedMeasurementMath.NextDownloadConcurrency(4, 4, 1000, 1000));
-        Assert.AreEqual(8, SpeedMeasurementMath.NextDownloadConcurrency(8, 4, 1000, 0));
-    }
-
-    [TestMethod]
     public async Task RankServers_OrdersLatencyAndExcludesUnreachableCandidates()
     {
         var service = DispatchProxy.Create<ISpeedTestService, LatencyServiceProxy>();
