@@ -1,20 +1,23 @@
 using Microsoft.AspNetCore.Components.Authorization;
+using System.Security.Claims;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Events;
 
 namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostMetricThresholds thresholds, HostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, TelemetryRetentionSettings retention) : IHostMonitoringClient
+    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, TelemetryRetentionSettings retention, EventTimelineAudit audit) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -56,9 +59,13 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     }
     public async Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
     {
-        await AuthorizeAsync(token);
+        var user = await AuthorizeAsync(token);
         var page = await logs.GetAsync(deviceId, from, until, cursor, null, token);
-        return page is null ? null : page with { RetentionDays = (await retention.GetAsync(token)).LogDays };
+        if (page is null) return null;
+        var result = page with { RetentionDays = (await retention.GetAsync(token)).LogDays };
+        if (!Guid.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new UnauthorizedAccessException();
+        await audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed("host-log-list", deviceId, deviceId), token);
+        return result;
     }
     public async Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token)
     {
@@ -94,9 +101,10 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
         var resolved = await ownership.ResolveAsync(deviceId, token);
         return resolved.Exists ? await changes.GetAsync(deviceId, from, until, null, cursor, token) : null;
     }
-    private async Task AuthorizeAsync(CancellationToken token)
+    private async Task<ClaimsPrincipal> AuthorizeAsync(CancellationToken token)
     {
         var state = await authentication.GetAuthenticationStateAsync();
         if (!SessionLifetime.IsCurrent(state.User) || await identities.GetAsync(state.User, token) is null) throw new UnauthorizedAccessException();
+        return state.User;
     }
 }

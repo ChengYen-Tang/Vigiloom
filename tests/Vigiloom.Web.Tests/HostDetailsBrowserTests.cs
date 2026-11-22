@@ -202,6 +202,19 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("這段時間沒有此指標。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await using (var adminContext = await browser.NewContextAsync())
+        {
+            var admin = await adminContext.NewPageAsync();
+            await admin.GotoAsync($"{url}/account/login");
+            await admin.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+            await admin.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+            await admin.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+            var auditUrl = $"/api/v1/operations/audit/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            var json = await admin.EvaluateAsync<string>("async url => { const response = await fetch(url); if (!response.ok) throw new Error(`Audit request failed: ${response.status}`); return await response.text(); }", auditUrl);
+            var audits = System.Text.Json.JsonSerializer.Deserialize<Vigiloom.Contracts.Operations.OperationAuditPage>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            Assert.IsNotNull(audits);
+            Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log-list" } e && e.DeviceId == device.Id));
+        }
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
             await db.HostLogs.Where(x => x.AgentId == agent.Id && x.Ordinal == 0).ExecuteDeleteAsync(token);
         await page.GetByRole(AriaRole.Button, new() { Name = "較早紀錄", Exact = true }).ClickAsync();
