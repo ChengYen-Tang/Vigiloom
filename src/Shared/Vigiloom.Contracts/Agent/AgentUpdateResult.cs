@@ -5,7 +5,7 @@ namespace Vigiloom.Contracts.Agent;
 public enum AgentUpdateResultKind
 {
     Succeeded = 1, RolledBack = 2, RollbackFailed = 3,
-    Prepared = 4, Stopping = 5, Switching = 6, Starting = 7, Verifying = 8, RollingBack = 9
+    Prepared = 4, Stopping = 5, Switching = 6, Starting = 7, Verifying = 8, RollingBack = 9, Failed = 10
 }
 public enum AgentUpdateFailure { Interrupted = 1, AuthorizationUnavailable = 2, Other = 3 }
 
@@ -19,5 +19,5 @@ public sealed record AgentUpdateResult([property: JsonRequired] Guid MessageId, 
         ManifestSha256 is { Length: 64 } && ManifestSha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') &&
         Sequence > 0 && OccurredAt != default && OccurredAt.Offset == TimeSpan.Zero && Enum.IsDefined(Result) &&
         (Failure is null || Enum.IsDefined(Failure.Value)) &&
-        (Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed || !RetryAllowed && Failure is null);
+        (Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed or AgentUpdateResultKind.Failed || !RetryAllowed && Failure is null);
 }

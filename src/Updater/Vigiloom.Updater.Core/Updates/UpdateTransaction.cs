@@ -18,8 +18,13 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
         var previous = Path.GetFullPath(previousDirectory);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var executable = runtimeIdentifier.StartsWith("win-", StringComparison.Ordinal) ? "Vigiloom.Agent.exe" : "Vigiloom.Agent";
-        if (!previous.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison) ||
-            !File.Exists(Path.Combine(previous, executable)))
+        if (!previous.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison))
+            throw new InvalidOperationException("The selected Agent version is outside the installation root.");
+        var existing = await journal.ReadAsync(token);
+        if (!File.Exists(Path.Combine(previous, executable)) &&
+            !(existing?.Phase == UpdatePhase.Failed &&
+              (string.Equals(Path.GetFullPath(existing.TargetDirectory), previous, comparison) ||
+               string.Equals(Path.GetFullPath(existing.PreviousDirectory), previous, comparison))))
             throw new InvalidOperationException("The previous Agent version is not available for recovery.");
         var manifest = PackageManifest.Parse(verified, clock.GetUtcNow());
         var verifier = new AssignmentVerifier(http, server, credential, target, manifest, clock);
@@ -27,17 +32,15 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
         if (authorization == UpdateAuthorization.Unavailable) throw new UpdateAuthorizationUnavailableException();
         if (authorization != UpdateAuthorization.Authorized) throw new InvalidOperationException("The update assignment is no longer authorized.");
 
-        var existing = await journal.ReadAsync(token);
         if (existing is not null)
         {
             if (existing.Id == target.UpdateId)
             {
                 if (!string.Equals(existing.PreviousDirectory, previousDirectory, comparison))
                     throw new InvalidOperationException("The update identifier already belongs to a different version selection.");
-                if (existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed ||
-                    existing.Phase == UpdatePhase.RolledBack && !existing.RetryAllowed) return existing;
+                if (existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed or UpdatePhase.RolledBack) return existing;
             }
-            if (existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack))
+            if (existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
                 throw new InvalidOperationException("The previous update must be recovered first.");
         }
 
@@ -53,7 +56,12 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
         // The coordinator records this directory before stopping the Agent. If the process is interrupted,
         // keep it for recovery; the installed version must never be deleted while it may be running.
         UpdateState result;
-        try { result = await coordinator.ApplyAsync(target.UpdateId, previousDirectory, prepared, verifier.CheckAsync, token, provenance); }
+        try
+        {
+            var pendingUpdater = UpdaterUpgrade.Select(prepared, runtimeIdentifier, updaterVersion, currentAgentVersion, target.PackageVersion);
+            result = await coordinator.ApplyAsync(target.UpdateId, previousDirectory, prepared, verifier.CheckAsync, token,
+                provenance, pendingUpdater, currentAgentVersion);
+        }
         catch (Exception failure)
         {
             UpdateState? recorded;
@@ -69,6 +77,12 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
             throw;
         }
         PreparedPackageCleanup.RemoveRolledBack(result, root);
+        PreparedPackageCleanup.RemoveRetainedFailures(result, root);
+        if (result.Phase == UpdatePhase.Succeeded && result.RetainedFailedDirectories is { Count: > 0 })
+        {
+            result = result with { RetainedFailedDirectories = null };
+            await journal.WriteAsync(result, token);
+        }
         return result;
     }
 }

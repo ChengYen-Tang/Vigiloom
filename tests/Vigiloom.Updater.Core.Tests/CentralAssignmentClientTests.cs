@@ -50,6 +50,37 @@ public sealed class CentralAssignmentClientTests(TestContext context)
     private static UpdateHandoff Request() => new()
     { UpdateId = Guid.CreateVersion7(), Credential = $"vla_{Guid.CreateVersion7():D}.{new string('a', 43)}" };
 
+    [TestMethod]
+    public async Task CurrentAssignmentRequiresMatchingDeviceAndReturnsCurrentTarget()
+    {
+        var request = Request();
+        var agent = Guid.ParseExact(request.Credential.AsSpan(4, 36), "D");
+        var device = Guid.CreateVersion7();
+        var target = new AgentVersionTarget(Guid.CreateVersion7(), Guid.CreateVersion7(), "1.0.0", "linux-x64",
+            new string('a', 64), Convert.ToBase64String(new byte[8]));
+        using var http = new HttpClient(new CurrentAssignmentHandler(agent, device, target));
+        var client = new CentralAssignmentClient(http, TimeProvider.System);
+        var server = new Uri("https://example.test/");
+
+        var current = await client.GetCurrentAsync(server, device, request.Credential, context.CancellationToken);
+        Assert.AreEqual(CurrentAssignmentStatus.Available, current.Status);
+        Assert.AreEqual(target, current.Target);
+        Assert.AreEqual(CurrentAssignmentStatus.Changed,
+            (await client.GetAsync(server, device, request, context.CancellationToken)).Status);
+        Assert.AreEqual(CurrentAssignmentStatus.WrongDevice,
+            (await client.GetCurrentAsync(server, Guid.CreateVersion7(), request.Credential, context.CancellationToken)).Status);
+        Assert.AreEqual(CurrentAssignmentStatus.Unauthorized,
+            (await client.GetCurrentAsync(server, device, "invalid", context.CancellationToken)).Status);
+    }
+
+    private sealed class CurrentAssignmentHandler(Guid agent, Guid device, AgentVersionTarget target) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(request.RequestUri!.AbsolutePath.EndsWith("/identity", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { AgentId = agent, DeviceId = device }) }
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(target) });
+    }
+
     private sealed class StalledHandler : HttpMessageHandler
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -23,7 +23,6 @@ try {
             if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unexpected Updater directory.' }
         }
     }
-    if ((Test-Path -LiteralPath $previous) -and -not (Test-Path -LiteralPath (Join-Path $previous 'Vigiloom.Updater.exe') -PathType Leaf)) { throw 'The previous Updater directory is invalid.' }
     if ((Test-Path -LiteralPath $next) -and -not (Test-Path -LiteralPath (Join-Path $next '.vigiloom-updater-stage') -PathType Leaf)) { throw 'An unexpected staging directory already exists.' }
     if (Test-Path -LiteralPath $previous) {
         Stop-VigiloomService 'Vigiloom Updater'
@@ -35,14 +34,20 @@ try {
             }
             Move-Item -LiteralPath $previous -Destination $current
         } finally { $lock.Dispose() }
-        Start-Service -Name 'Vigiloom Updater'
         if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Recurse -Force }
-        throw 'The previous Updater was restored after an interrupted repair. Run this command again to retry.'
+        if (Test-Path -LiteralPath (Join-Path $current 'Vigiloom.Updater.exe') -PathType Leaf) {
+            Start-Service -Name 'Vigiloom Updater'
+            throw 'The previous Updater was restored after an interrupted repair. Run this command again to retry.'
+        }
     }
-    $installedExe = Join-Path $current 'Vigiloom.Updater.exe'
+    $agentService = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Services\Vigiloom Agent'
+    if ($agentService.ImagePath -notmatch '^"([^"]+)"$') { throw 'Unexpected Agent service configuration.' }
+    $installedExe = $Matches[1]
+    if (-not $installedExe.StartsWith($agentRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($installedExe) -ne 'Vigiloom.Agent.exe') { throw 'Unexpected Agent service configuration.' }
     $sourceExe = Join-Path $source 'Vigiloom.Updater.exe'
     if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf) -or -not (Test-Path -LiteralPath $sourceExe -PathType Leaf) -or
-        (Get-AgentExecutableArchitecture $installedExe) -ne (Get-AgentExecutableArchitecture $sourceExe)) { throw 'The installed and bundled Updater architectures do not match.' }
+        (Get-AgentExecutableArchitecture $installedExe) -ne (Get-AgentExecutableArchitecture $sourceExe)) { throw 'The installed Agent and bundled Updater architectures do not match.' }
     & $sourceExe check-runtime
     if ($LASTEXITCODE -ne 0) { throw 'The bundled Updater cannot start.' }
     if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Recurse -Force }

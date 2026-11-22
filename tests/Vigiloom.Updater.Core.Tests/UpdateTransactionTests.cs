@@ -77,7 +77,7 @@ public sealed class UpdateTransactionTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task AssignmentChangedDuringStopRestoresOldAndRemovesPreparedFiles()
+    public async Task AssignmentChangedDuringStopPreservesPreparedFiles()
     {
         var root = CreateDirectory();
         try
@@ -90,9 +90,9 @@ public sealed class UpdateTransactionTests(TestContext context)
             var transaction = new UpdateTransaction(http, new UpdateJournal(Path.Combine(root, "state")), runtime, TimeProvider.System);
             var previous = Path.Combine(root, "old");
             var result = await ApplyAsync(transaction, verified, target, archive, root, previous);
-            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
-            Assert.AreEqual(previous, runtime.Selected);
-            Assert.IsFalse(Directory.Exists(result.TargetDirectory));
+            Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+            Assert.AreEqual(previous, await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
+            Assert.IsTrue(Directory.Exists(result.TargetDirectory));
             Assert.DoesNotContain("select:" + result.TargetDirectory, runtime.Actions);
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -137,7 +137,7 @@ public sealed class UpdateTransactionTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task TemporaryFailureAfterStopAllowsFreshPreparationForSameAssignment()
+    public async Task TemporaryFailureAfterStopPreservesPreparedFiles()
     {
         var root = CreateDirectory();
         try
@@ -150,19 +150,18 @@ public sealed class UpdateTransactionTests(TestContext context)
             var transaction = new UpdateTransaction(http, new UpdateJournal(Path.Combine(root, "state")), runtime, TimeProvider.System);
             var previous = Path.Combine(root, "old");
             var failed = await ApplyAsync(transaction, verified, target, archive, root, previous);
-            Assert.AreEqual(UpdatePhase.RolledBack, failed.Phase);
-            Assert.IsTrue(failed.RetryAllowed);
-            Assert.IsFalse(Directory.Exists(failed.TargetDirectory));
+            Assert.AreEqual(UpdatePhase.Failed, failed.Phase);
+            Assert.IsFalse(failed.RetryAllowed);
+            Assert.IsTrue(Directory.Exists(failed.TargetDirectory));
             var retried = await ApplyAsync(transaction, verified, target, archive, root, previous);
-            Assert.AreEqual(UpdatePhase.Succeeded, retried.Phase);
-            Assert.AreNotEqual(failed.TargetDirectory, retried.TargetDirectory);
-            Assert.IsTrue(retried.Steps.Any(step => step.Phase == UpdatePhase.RolledBack));
+            Assert.AreEqual(UpdatePhase.Failed, retried.Phase);
+            Assert.AreEqual(failed.TargetDirectory, retried.TargetDirectory);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
 
     [TestMethod]
-    public async Task RecoveredRollbackCleansOnlyItsOldStagingBeforeRetry()
+    public async Task InterruptedUpdatePreservesStagingAndDoesNotRetry()
     {
         var root = CreateDirectory();
         try
@@ -182,16 +181,78 @@ public sealed class UpdateTransactionTests(TestContext context)
             var runtime = new TestRuntime(root);
             var recovered = await new UpdateCoordinator(new UpdateJournal(Path.Combine(root, "state")), runtime).RecoverAsync(context.CancellationToken);
             Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
-            Assert.IsTrue(recovered.RetryAllowed);
+            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
+            Assert.IsFalse(recovered.RetryAllowed);
 
             using var http = new HttpClient(new AssignmentHandler(target));
             var transaction = new UpdateTransaction(http, journal, runtime, TimeProvider.System);
             var result = await ApplyAsync(transaction, verified, target, archive, root, previous);
-            Assert.AreEqual(UpdatePhase.Succeeded, result.Phase);
-            Assert.IsFalse(Directory.Exists(abandoned));
+            Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+            Assert.IsTrue(Directory.Exists(abandoned));
             Assert.IsTrue(Directory.Exists(unrelated));
             Assert.IsTrue(File.Exists(Path.Combine(previous, "Vigiloom.Agent.exe")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task NewAssignmentAfterFailureSwitchesAndCleansFailedFilesOnlyAfterSuccess()
+    {
+        var root = CreateDirectory();
+        try
+        {
+            using var archive = Archive();
+            var (verified, target) = Manifest(archive);
+            var failedDirectory = Path.Combine(root, "staging", Guid.CreateVersion7().ToString("N"));
+            Directory.CreateDirectory(failedDirectory);
+            await File.WriteAllTextAsync(Path.Combine(failedDirectory, "Vigiloom.Agent.exe"), "failed", context.CancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            var previous = Path.Combine(root, "old");
+            var journal = new UpdateJournal(Path.Combine(root, "state"));
+            await journal.WriteAsync(new UpdateState(Guid.CreateVersion7(), previous, failedDirectory, UpdatePhase.Failed,
+                now, [new(UpdatePhase.Failed, now, "Interrupted")]), context.CancellationToken);
+            var runtime = new TestRuntime(root);
+            await runtime.SelectVersionAsync(failedDirectory, context.CancellationToken);
+            using var http = new HttpClient(new AssignmentHandler(target));
+            var transaction = new UpdateTransaction(http, journal, runtime, TimeProvider.System);
+            var result = await ApplyAsync(transaction, verified, target, archive, root, failedDirectory);
+
+            Assert.AreEqual(UpdatePhase.Succeeded, result.Phase);
+            Assert.IsFalse(Directory.Exists(failedDirectory));
+            Assert.IsTrue(File.Exists(Path.Combine(previous, "Vigiloom.Agent.exe")));
+            Assert.IsTrue(File.Exists(Path.Combine(result.TargetDirectory, "Vigiloom.Agent.exe")));
+            Assert.AreEqual(result.TargetDirectory, runtime.Selected);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    public void CleanupRemovesAbandonedPreparationButKeepsSelectedAndFailedVersions()
+    {
+        var root = CreateDirectory();
+        try
+        {
+            var staging = Path.Combine(root, "staging");
+            var orphan = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var selected = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var previous = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var failed = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var retained = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var unowned = Path.Combine(staging, "unowned");
+            foreach (var path in new[] { orphan, selected, previous, failed, retained, unowned }) Directory.CreateDirectory(path);
+            var state = new UpdateState(Guid.CreateVersion7(), previous, failed, UpdatePhase.Failed,
+                DateTimeOffset.UtcNow, [], RetainedFailedDirectories: [retained]);
+
+            PreparedPackageCleanup.RemoveUnreferenced(state, root, selected);
+
+            Assert.IsFalse(Directory.Exists(orphan));
+            foreach (var path in new[] { selected, previous, failed, retained, unowned }) Assert.IsTrue(Directory.Exists(path));
+            var secondOrphan = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            Directory.CreateDirectory(secondOrphan);
+            PreparedPackageCleanup.RemoveUnreferenced(null, root, selected);
+            Assert.IsFalse(Directory.Exists(secondOrphan));
+            Assert.IsTrue(Directory.Exists(selected));
+            Assert.IsTrue(Directory.Exists(unowned));
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -260,6 +321,7 @@ public sealed class UpdateTransactionTests(TestContext context)
             Directory.CreateSymbolicLink(link, outside);
             var now = DateTimeOffset.UtcNow;
             var state = new UpdateState(Guid.CreateVersion7(), previous, current, UpdatePhase.Succeeded, now, []);
+            PreparedPackageCleanup.RemoveUnreferenced(state, root, current);
             PreparedPackageCleanup.RemoveSuperseded(state, root, current);
             Assert.IsTrue(File.Exists(Path.Combine(outside, "keep")));
             Assert.IsTrue(Directory.Exists(link));

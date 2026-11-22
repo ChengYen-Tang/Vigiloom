@@ -28,6 +28,15 @@ public sealed class LocalPackageCache(string directory, long maximumBytes, Packa
             token => downloader.DownloadManifestAsync(manifest, directory, clock, token), cancellationToken);
     }
 
+    /// <summary>Removes downloads left by a terminated process without touching cached packages.</summary>
+    public static async Task CleanupInterruptedDownloadsAsync(string directory, CancellationToken cancellationToken = default)
+    {
+        directory = Path.GetFullPath(directory);
+        if (!Directory.Exists(directory)) return;
+        await using var cacheLock = await ExclusiveLocalLock.AcquireAsync(Path.Combine(directory, ".cache.lock"), cancellationToken);
+        RemovePartialDownloads(directory);
+    }
+
     private async Task<Stream> OpenCoreAsync(CacheEntry entry, Func<CancellationToken, Task<string>> download, CancellationToken cancellationToken)
     {
         EnsureUnexpired(entry);
@@ -48,7 +57,7 @@ public sealed class LocalPackageCache(string directory, long maximumBytes, Packa
         }
         await using var cacheLock = await ExclusiveLocalLock.AcquireAsync(Path.Combine(directory, ".cache.lock"), cancellationToken);
         // Only the lock holder downloads, so any old staging file belongs to an interrupted download.
-        foreach (var partial in Directory.EnumerateFiles(directory, "*.download")) File.Delete(partial);
+        RemovePartialDownloads(directory);
         if (File.Exists(destination))
         {
             var verified = await TryOpenVerifiedAsync(destination, entry, cancellationToken);
@@ -89,6 +98,11 @@ public sealed class LocalPackageCache(string directory, long maximumBytes, Packa
     {
         if (catalogue.Expires <= clock.GetUtcNow() || entry.Revoked || !catalogue.Packages.Contains(entry))
             throw new InvalidOperationException("The package is not authorized by the current catalogue.");
+    }
+
+    private static void RemovePartialDownloads(string directory)
+    {
+        foreach (var partial in Directory.EnumerateFiles(directory, "*.download")) File.Delete(partial);
     }
 
     private void EnsureUnexpired(CacheEntry entry)

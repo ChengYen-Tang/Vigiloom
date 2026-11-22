@@ -196,12 +196,19 @@ public sealed class AgentIdentitySqlTests
         var earlier = result with { MessageId = Guid.CreateVersion7(), Sequence = 3, Result = AgentUpdateResultKind.RolledBack,
             OccurredAt = clock.Now.AddSeconds(-1), RetryAllowed = true, Failure = AgentUpdateFailure.Interrupted };
         Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, earlier, token));
+        var failed = result with { MessageId = Guid.CreateVersion7(), Sequence = 4, Result = AgentUpdateResultKind.Failed,
+            OccurredAt = clock.Now.AddMilliseconds(-500), Failure = AgentUpdateFailure.Interrupted };
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, failed, token));
+        var preparation = result with { MessageId = Guid.CreateVersion7(), Sequence = 1, Result = AgentUpdateResultKind.Failed,
+            OccurredAt = clock.Now.AddSeconds(-2), RetryAllowed = true, Failure = AgentUpdateFailure.Other };
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, preparation, token));
+        Assert.AreEqual(AgentUpdateResultStatus.Success, await results.ReceiveAsync(credential, preparation, token));
         var latest = (await assignments.GetAsync(agentId, token))!.LatestResult;
         Assert.IsNotNull(latest);
         Assert.AreEqual(target.Target.UpdateId, latest.UpdateId);
         Assert.AreEqual(AgentUpdateResultKind.Succeeded, latest.Result);
         await using var verify = agents.CreateDbContext();
-        Assert.AreEqual(2, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == result.UpdateId, token));
+        Assert.AreEqual(4, await verify.UpdateReceipts.CountAsync(x => x.UpdateId == result.UpdateId, token));
         var targets = await verify.UpdateTargets.Where(x => x.AgentId == agentId).OrderBy(x => x.RowId).ToArrayAsync(token);
         Assert.HasCount(2, targets);
         Assert.AreEqual(target.Target.UpdateId, targets[0].Id);

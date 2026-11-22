@@ -86,8 +86,7 @@ public sealed class WorkspaceBrowserTests
                 Assert.IsTrue((await users.AddToRoleAsync(reader, BuiltInRoles.Administrator)).Succeeded);
                 Assert.IsTrue((await users.UpdateSecurityStampAsync(reader)).Succeeded);
             }
-            await page.GetByRole(AriaRole.Button, new() { Name = "重新確認登入狀態" }).ClickAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = "登入已過期或權限已變更" }).WaitForAsync();
+            await ConfirmExpiredAsync(page);
             Assert.AreEqual(0, await page.Locator("#workspace-user").CountAsync());
             await page.GetByRole(AriaRole.Link, new() { Name = "前往登入" }).ClickAsync();
             await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("browser-reader");
@@ -134,8 +133,7 @@ public sealed class WorkspaceBrowserTests
                 Assert.IsNotNull(reader);
                 Assert.IsTrue((await users.UpdateSecurityStampAsync(reader)).Succeeded);
             }
-            await page.GetByRole(AriaRole.Button, new() { Name = "重新確認登入狀態" }).ClickAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = "登入已過期或權限已變更" }).WaitForAsync();
+            await ConfirmExpiredAsync(page);
             Assert.AreEqual(0, await page.Locator("#workspace-user").CountAsync());
         }, TestContext.CancellationToken);
 
@@ -169,8 +167,7 @@ public sealed class WorkspaceBrowserTests
             Assert.AreEqual("admin", await page.Locator("#workspace-user").InnerTextAsync());
             var remaining = beforeLogin.AddSeconds(17) - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
-            await page.GetByRole(AriaRole.Button, new() { Name = "重新確認登入狀態" }).ClickAsync();
-            await page.GetByRole(AriaRole.Heading, new() { Name = "登入已過期或權限已變更" }).WaitForAsync();
+            await ConfirmExpiredAsync(page);
             Assert.AreEqual(0, await page.Locator("#workspace-user").CountAsync());
         }, TestContext.CancellationToken);
 
@@ -193,6 +190,17 @@ public sealed class WorkspaceBrowserTests
         await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
         await page.ReloadAsync();
         await AssertChartAsync(page, "WebAssembly");
+    }
+
+    private static async Task ConfirmExpiredAsync(IPage page)
+    {
+        var expired = page.GetByRole(AriaRole.Heading, new() { Name = "登入已過期或權限已變更" });
+        if (!await expired.IsVisibleAsync())
+        {
+            try { await page.GetByRole(AriaRole.Button, new() { Name = "重新確認登入狀態" }).ClickAsync(new() { Timeout = 10000 }); }
+            catch (TimeoutException) { if (!await expired.IsVisibleAsync()) throw; }
+        }
+        await expired.WaitForAsync();
     }
 
     private static async Task AssertChartAsync(IPage page, string runtime)

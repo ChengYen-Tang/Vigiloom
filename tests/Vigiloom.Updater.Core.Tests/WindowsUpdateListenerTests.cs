@@ -75,4 +75,36 @@ public sealed class WindowsUpdateListenerTests(TestContext context)
         await BoundedJsonFrame.WriteAsync(client, request, context.CancellationToken);
         return (await BoundedJsonFrame.ReadAsync<UpdateHandoffResponse>(client, context.CancellationToken)).Status;
     }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    [Timeout(15000, CooperativeCancellation = true)]
+    public async Task CredentialStageAcknowledgesOnlyAfterStorageCompletes()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var name = $"vigiloom-test-{Guid.NewGuid():N}";
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stored = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var listener = new WindowsUpdateListener(identity.User!, name, async (_, token) =>
+        {
+            started.SetResult();
+            await stored.Task.WaitAsync(token);
+            return true;
+        });
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken);
+        var running = listener.RunAsync(stop.Token);
+        try
+        {
+            var agent = Guid.CreateVersion7();
+            var request = new UpdateHandoff { SyncOnly = true, StageCredential = true,
+                Credential = $"vla_{agent:D}.{new string('a', 43)}", PendingCredential = $"vla_{agent:D}.{new string('b', 43)}" };
+            var response = SendAsync(name, request);
+            await started.Task.WaitAsync(context.CancellationToken);
+            Assert.IsFalse(response.IsCompleted);
+            stored.SetResult();
+            Assert.AreEqual(UpdateHandoffStatus.CredentialStaged, await response);
+            Assert.IsFalse(listener.Requests.TryRead(out _));
+        }
+        finally { stop.Cancel(); await running; }
+    }
 }

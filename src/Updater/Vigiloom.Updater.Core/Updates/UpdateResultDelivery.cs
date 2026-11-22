@@ -5,7 +5,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Updates;
 
-/// <summary>Delivers retained outcomes without persisting the Agent credential.</summary>
+/// <summary>Delivers retained outcomes using the current Agent credential.</summary>
 /// <remarks>The caller supplies a client with redirects and cookies disabled and a verified installation server.</remarks>
 public sealed class UpdateResultDelivery(HttpClient http, UpdateJournal journal, TimeProvider clock)
 {
@@ -33,7 +33,7 @@ public sealed class UpdateResultDelivery(HttpClient http, UpdateJournal journal,
         };
         if (phase is null) return;
         var report = new AgentUpdateResult(messageId, state.Id, target.PackageId, target.ManifestSha256,
-            state.Steps.Count, phase.Value, step.At.ToUniversalTime(), false, null);
+            checked(state.Steps.Count + state.SequenceOffset), phase.Value, step.At.ToUniversalTime(), false, null);
         if (!report.IsValid()) throw new InvalidDataException("The retained update progress is invalid.");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5), clock);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);

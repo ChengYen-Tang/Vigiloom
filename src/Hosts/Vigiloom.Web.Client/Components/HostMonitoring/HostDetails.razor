@@ -80,7 +80,7 @@
         <div class="host-field"><label for="metric-kind">指標</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
             @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
         </select></div>
-        <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。</p>
+        <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。</p>
         @if (metricPage is { } retentionPeriod) { <p>原始樣本保存 @retentionPeriod.RawRetentionDays 天，五分鐘彙總保存 @retentionPeriod.RollupRetentionDays 天。</p> }
         @if (metricPage?.Items.Count > 0)
         {

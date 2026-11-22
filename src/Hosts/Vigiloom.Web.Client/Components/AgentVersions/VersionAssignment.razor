@@ -23,7 +23,7 @@
                 <div><dt>最近回報的更新階段</dt><dd>@ResultText(current?.LatestResult)</dd>
                     @if (current?.LatestResult is { } result)
                     {
-                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed) { <dd>原因：@FailureText(result.Failure)</dd> }
+                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed or AgentUpdateResultKind.Failed) { <dd>原因：@FailureText(result.Failure)</dd> }
                         <dd class="version-time">發生時間（UTC）：@result.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
                     }
                     <dd class="version-time">接收時間（UTC）：@(current?.LatestResult?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd>
@@ -32,7 +32,7 @@
             @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
             @if (current is { PackageId: not null } && ConnectionState is AgentConnectionState.Offline or AgentConnectionState.AwaitingFirstHeartbeat)
             {
-                <p class="version-note">Agent 目前尚未連線，指派將等待 Agent 重新連線後取得。重新整理頁面可查看連線狀態。</p>
+                <p class="version-note">Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。</p>
             }
             <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>
         </section>
@@ -41,6 +41,7 @@
                 <section class="version-panel">
                     <h2>指派 Agent 套件</h2>
                     <p>選擇與設備作業系統及架構相符的套件。</p>
+                    <p class="version-note">如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。</p>
                     <fieldset disabled="@(saving || paging || !RendererInfo.IsInteractive)">
                         <legend>選擇受信任的套件</legend>
                         <p class="version-scroll-hint">左右滑動查看套件資訊</p>
@@ -94,6 +95,8 @@
         AgentUpdateResultKind.RolledBack when result.RetryAllowed => "已回復，可重試",
         AgentUpdateResultKind.RolledBack => "已回復",
         AgentUpdateResultKind.RollbackFailed => "回復失敗",
+        AgentUpdateResultKind.Failed when result.RetryAllowed => "準備曾失敗，將自動重試；本次未停止 Agent",
+        AgentUpdateResultKind.Failed => "更新失敗，等待管理員處理",
         AgentUpdateResultKind.Prepared => "套件已準備",
         AgentUpdateResultKind.Stopping => "停止 Agent",
         AgentUpdateResultKind.Switching => "切換版本",

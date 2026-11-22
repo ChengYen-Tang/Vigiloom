@@ -20,7 +20,7 @@ flock -n "$repairLock" || fail 'Another Updater repair is already running.'
 [[ -f /etc/systemd/system/vigiloom-updater.service && ! -L /etc/systemd/system/vigiloom-updater.service ]] || fail 'The existing Updater service was not found.'
 grep -Fxq 'ExecStart=/opt/vigiloom/updater/Vigiloom.Updater' /etc/systemd/system/vigiloom-updater.service || fail 'Unexpected Updater service definition.'
 for path in "$current" "$previous" "$next"; do [[ ! -L $path ]] || fail 'The Updater paths cannot be symbolic links.'; done
-[[ ! -e $previous || -f $previous/Vigiloom.Updater ]] || fail 'The previous Updater directory is invalid.'
+[[ ! -e $previous || -d $previous ]] || fail 'The previous Updater path is not a directory.'
 [[ ! -e $next || -f $next/.vigiloom-updater-stage ]] || fail 'An unexpected staging directory already exists.'
 
 # Recover a replacement interrupted before it was confirmed, then require a retry.
@@ -34,11 +34,15 @@ if [[ -d $previous ]]; then
     fi
     mv -- "$previous" "$current"
     exec {ownership}>&-
-    systemctl start vigiloom-updater.service
     [[ ! -e $next ]] || rm -rf -- "$next"
-    fail 'The previous Updater was restored after an interrupted repair. Run this command again to retry.'
+    if [[ -x $current/Vigiloom.Updater ]]; then
+        systemctl start vigiloom-updater.service
+        fail 'The previous Updater was restored after an interrupted repair. Run this command again to retry.'
+    fi
+    # A repair of a missing executable was interrupted. Continue with the new bundle;
+    # the retained directory remains available for rollback until the replacement is ready.
 fi
-[[ -x $current/Vigiloom.Updater && -f $source/Vigiloom.Updater ]] || fail 'The installed or bundled Updater is missing.'
+[[ -d $current && -f $source/Vigiloom.Updater ]] || fail 'The installed Updater directory or bundled Updater is missing.'
 if ! (ulimit -c 0; env -u DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0 timeout 10s "$source/Vigiloom.Updater" check-runtime); then
     fail 'The bundled Updater cannot start. Check system ICU and other native dependencies.'
 fi
