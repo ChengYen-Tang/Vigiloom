@@ -17,6 +17,13 @@ done
 [[ $(systemctl show vigiloom-updater.service --property=LoadState --value) == not-found ]] || {
     echo 'A Vigiloom Updater service already exists.' >&2; exit 1;
 }
+for operation in 0199123456787abc8def123456789abc 0199123456787abc8def123456789abd; do
+    for prefix in vigiloom-updater-replace vigiloom-req20-test; do
+        [[ $(systemctl show "$prefix-$operation.service" --property=LoadState --value) == not-found ]] || {
+            echo 'A replacement test unit already exists.' >&2; exit 1;
+        }
+    done
+done
 created_opt=0; created_state=0
 current_helper=''
 [[ -d /opt/vigiloom ]] || { mkdir -p /opt/vigiloom; created_opt=1; }
