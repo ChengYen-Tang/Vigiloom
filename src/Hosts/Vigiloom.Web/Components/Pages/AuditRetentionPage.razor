@@ -11,7 +11,7 @@
 <main class="device-page device-form-page">
     <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理操作紀錄、告警與通知的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於中央設定、設備、Agent、安全設定、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知與已結束的背景工作。情報版本及安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的背景工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
+        <p>此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知與已結束的背景工作。情報版本及安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的背景工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {

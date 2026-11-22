@@ -107,6 +107,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
+builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();

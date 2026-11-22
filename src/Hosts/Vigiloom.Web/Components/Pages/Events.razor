@@ -2,11 +2,13 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
 @attribute [ExcludeFromInteractiveRouting]
 @using System.Globalization
+@using System.Security.Claims
 @using Microsoft.EntityFrameworkCore
 @using Vigiloom.Contracts.Events
 @using Vigiloom.Modules.Resources.Persistence
 @using Vigiloom.Web.Events
 @inject EventTimelineReader Reader
+@inject EventTimelineAudit Audit
 @inject IDbContextFactory<ResourcesDbContext> Resources
 @inject NavigationManager Navigation
 @inject ILogger<Events> Logger
@@ -40,6 +42,7 @@
                     }
                     </tbody></table>
                 </div>
+                <p><a href="@ExportUrl()">匯出目前頁 CSV</a></p>
                 @if (result.LimitReached) { <p>結果超過可顯示的範圍，請縮小日期或選擇來源後重新查詢。</p> }
                 @if (result.Page > 1 || result.HasMore)
                 {
@@ -78,11 +81,26 @@
             await using var db = await Resources.CreateDbContextAsync(HttpContext.RequestAborted);
             var rows = await db.Groups.AsNoTracking().OrderBy(x => x.Name).Select(x => new { x.Id, x.Name }).ToArrayAsync(HttpContext.RequestAborted);
             groups = rows.Select(x => (x.Id, x.Name)).ToArray();
-            result = await Reader.GetAsync(new(new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), groupId, Source, Page ?? 1), HttpContext.RequestAborted);
+            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) { error = "無法確認登入身分。"; return; }
+            var query = new EventTimelineQuery(new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), groupId, Source, Page ?? 1);
+            var page = await Reader.GetAsync(query, HttpContext.RequestAborted);
+            await Audit.RecordAsync(actor, query, page.Items.Count, false, HttpContext.RequestAborted);
+            result = page;
         }
         catch (ArgumentException) { error = "請確認篩選條件與頁碼。"; }
         catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Event query failed: {ExceptionType}", ex.GetType().Name); error = "無法載入事件，請稍後再試。"; }
     }
     private static string Label(string value) => Sources.FirstOrDefault(x => x.Key == value).Value ?? value;
     private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/events", new Dictionary<string, object?> { ["from"] = fromText, ["to"] = toText, ["group"] = Group, ["source"] = Source, ["page"] = page });
+    private string ExportUrl()
+    {
+        var from = DateOnly.ParseExact(fromText!, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var to = DateOnly.ParseExact(toText!, "yyyy-MM-dd", CultureInfo.InvariantCulture).AddDays(1);
+        return Navigation.GetUriWithQueryParameters("/api/v1/events/export", new Dictionary<string, object?>
+        {
+            ["from"] = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)).ToString("O", CultureInfo.InvariantCulture),
+            ["until"] = new DateTimeOffset(to.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)).ToString("O", CultureInfo.InvariantCulture),
+            ["groupId"] = Group, ["source"] = Source, ["page"] = result!.Page
+        });
+    }
 }
