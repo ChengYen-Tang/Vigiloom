@@ -32,7 +32,9 @@ public static class YaraScanner
             if (fileBytes > maximumBytes) return new(YaraScanStatus.FileTooLarge, "", "", false);
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             start.ArgumentList.Add("--no-follow-symlinks");
-            start.ArgumentList.Add("--timeout=" + Math.Ceiling(timeout.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // The Agent owns the deadline; leave the engine a little longer so its own timeout
+            // cannot be mistaken for an ordinary scan failure at the same instant.
+            start.ArgumentList.Add("--timeout=" + (Math.Ceiling(timeout.TotalSeconds) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
             start.ArgumentList.Add(rulePath);
             start.ArgumentList.Add(targetPath);
             using var process = Process.Start(start);
