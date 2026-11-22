@@ -92,6 +92,7 @@ public static class WorkerHost
         builder.Services.AddScoped<MetricRollupJob>();
         builder.Services.AddScoped<TelemetryRetentionCleanup>();
         builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
+        builder.Services.AddScoped<ISecurityDetectionRetention, SecurityDetectionRetention>();
         builder.Services.AddScoped<TelemetryRetentionJob>();
         builder.Services.AddScoped<SpeedSettings>();
         builder.Services.AddScoped<SpeedQueue>();

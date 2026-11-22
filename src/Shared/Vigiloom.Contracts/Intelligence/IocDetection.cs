@@ -5,4 +5,4 @@ public sealed record IocDetectionView(Guid AgentId, Guid MessageId, Guid SourceI
     string Kind, string Value, string Field, int SourceLine, string SourceUrl, string LicenseUrl,
     DateTimeOffset? OccurredAt, DateTimeOffset ReceivedAt, DateTimeOffset EvaluatedAt);
 
-public sealed record IocDetectionPage(IReadOnlyList<IocDetectionView> Items, int Page, bool HasMore);
+public sealed record IocDetectionPage(IReadOnlyList<IocDetectionView> Items, int Page, bool HasMore, int RetentionDays = 14);

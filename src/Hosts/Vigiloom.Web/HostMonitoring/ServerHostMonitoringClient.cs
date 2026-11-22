@@ -73,7 +73,8 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     public async Task<IocDetectionPage?> GetIocDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, int page, CancellationToken token)
     {
         await AuthorizeAsync(token);
-        return await iocDetections.GetAsync(deviceId, from, until, page, token);
+        var result = await iocDetections.GetAsync(deviceId, from, until, page, token);
+        return result is null ? null : result with { RetentionDays = (await retention.GetAsync(token)).LogDays };
     }
     public async Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token)
     {

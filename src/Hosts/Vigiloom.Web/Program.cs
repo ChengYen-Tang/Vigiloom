@@ -86,6 +86,7 @@ builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
 builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
+builder.Services.AddScoped<ISecurityDetectionRetention, SecurityDetectionRetention>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings>();
 builder.Services.AddScoped<IdentityAuditFeed>();
