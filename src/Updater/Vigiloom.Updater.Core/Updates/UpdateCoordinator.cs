@@ -15,16 +15,15 @@ public interface IAgentUpdateRuntime
     Task<bool> WaitHealthyAsync(CancellationToken token);
 }
 
-/// <summary>Switches a prepared version and restores the previous version after a failed or interrupted switch.</summary>
+/// <summary>Switches a prepared version and preserves failed or interrupted updates for administrator action.</summary>
 public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntime runtime, TimeProvider? clock = null)
 {
-    private const int MaximumRollbackAttempts = 3;
     private readonly TimeProvider clock = clock ?? TimeProvider.System;
 
     /// <param name="isCurrent">Checks the current authenticated assignment, revocation and manifest authorization for this update.</param>
     public async Task<UpdateState> ApplyAsync(Guid id, string previousDirectory, string targetDirectory,
         Func<Guid, CancellationToken, Task<UpdateAuthorization>> isCurrent, CancellationToken token,
-        UpdateProvenance? provenance = null)
+        UpdateProvenance? provenance = null, string? pendingUpdaterDirectory = null, string? previousAgentVersion = null)
     {
         ArgumentNullException.ThrowIfNull(isCurrent);
         if (id.Version != 7 || string.IsNullOrWhiteSpace(previousDirectory) || string.IsNullOrWhiteSpace(targetDirectory) ||
@@ -42,7 +41,7 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
                 throw new InvalidOperationException("The update identifier already belongs to a different version selection.");
             if (!retryable) return existing;
         }
-        if (existing is not null && existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack))
+        if (existing is not null && existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
             throw new InvalidOperationException("The previous update must be recovered first.");
         // A temporary inability to verify must not interrupt the running Agent or consume this update ID.
         await EnsureAuthorizedAsync(isCurrent, id, token);
@@ -50,7 +49,13 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
         var steps = existing?.Id == id && existing.RetryAllowed
             ? existing.Steps.Append(new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())).ToArray()
             : [new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())];
-        var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps, Provenance: provenance);
+        var retained = existing?.Phase == UpdatePhase.Failed
+            ? (existing.RetainedFailedDirectories ?? []).Append(existing.TargetDirectory).Distinct(
+                OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToArray()
+            : existing?.RetainedFailedDirectories;
+        var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps,
+            Provenance: provenance, RetainedFailedDirectories: retained, PendingUpdaterDirectory: pendingUpdaterDirectory,
+            PreviousAgentVersion: previousAgentVersion);
         await journal.WriteAsync(state, token);
         try
         {
@@ -70,7 +75,7 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
         catch (Exception error)
         {
             if (state.Phase == UpdatePhase.Prepared) throw;
-            return await RollBackAsync(state with { Error = error.GetType().Name, RetryAllowed = error is UpdateAuthorizationUnavailableException }, token);
+            return await AdvanceAsync(state with { Error = error.GetType().Name, RetryAllowed = false }, UpdatePhase.Failed, token);
         }
     }
 
@@ -86,36 +91,12 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
     }
 
 
-    /// <summary>Rolls back an interrupted switch on startup; no central connection is required.</summary>
+    /// <summary>Records an interrupted switch without changing the selected Agent version.</summary>
     public async Task<UpdateState?> RecoverAsync(CancellationToken token)
     {
         var state = await journal.ReadAsync(token);
-        if (state is null || state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed) return state;
-        if (state.Phase == UpdatePhase.Prepared)
-            return await AdvanceAsync(state with { Error = "InterruptedBeforeStop", RetryAllowed = true }, UpdatePhase.RolledBack, token);
-        return await RollBackAsync(state with { Error = state.Error ?? "Interrupted",
-            RetryAllowed = state.RetryAllowed || state.Phase == UpdatePhase.Stopping }, token);
-    }
-
-    private async Task<UpdateState> RollBackAsync(UpdateState state, CancellationToken token)
-    {
-        if (state.RollbackAttempts >= MaximumRollbackAttempts)
-            return await AdvanceAsync(state, UpdatePhase.RollbackFailed, token);
-        state = await AdvanceAsync(state with { RollbackAttempts = state.RollbackAttempts + 1 }, UpdatePhase.RollingBack, token);
-        try
-        {
-            await runtime.StopAsync(token);
-            await runtime.SelectVersionAsync(state.PreviousDirectory, token);
-            await runtime.StartAsync(token);
-            if (!await runtime.WaitHealthyAsync(token)) throw new InvalidOperationException("The previous Agent did not become healthy.");
-            return await AdvanceAsync(state, UpdatePhase.RolledBack, token);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Exception error)
-        {
-            state = state with { Error = error.GetType().Name };
-            return await AdvanceAsync(state, state.RollbackAttempts >= MaximumRollbackAttempts ? UpdatePhase.RollbackFailed : UpdatePhase.RollingBack, token);
-        }
+        if (state is null || state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed) return state;
+        return await AdvanceAsync(state with { Error = state.Error ?? "Interrupted", RetryAllowed = false }, UpdatePhase.Failed, token);
     }
 
     private async Task<UpdateState> AdvanceAsync(UpdateState state, UpdatePhase phase, CancellationToken token)

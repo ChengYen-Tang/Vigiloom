@@ -29,7 +29,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task HostRestoresPreparedUpdateOnStartupWithoutContactingServer()
+    public async Task HostPreservesPreparedUpdateOnStartupWithoutContactingServer()
     {
         var root = Path.Combine(testContext.TestRunDirectory!, $"recovery-{Guid.NewGuid():N}");
         var stateDirectory = Path.Combine(root, "state");
@@ -54,9 +54,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
             do
             {
                 state = await journal.ReadAsync(testContext.CancellationToken);
-                if (state?.Phase != UpdatePhase.RolledBack || Directory.Exists(prepared)) await Task.Delay(50, testContext.CancellationToken);
-            } while (state?.Phase != UpdatePhase.RolledBack || Directory.Exists(prepared));
-            Assert.AreEqual("InterruptedBeforeStop", state.Error);
+                if (state?.Phase != UpdatePhase.Failed) await Task.Delay(50, testContext.CancellationToken);
+            } while (state?.Phase != UpdatePhase.Failed);
+            Assert.IsTrue(Directory.Exists(prepared));
+            Assert.AreEqual("Interrupted", state.Error);
             await host.StopAsync(testContext.CancellationToken);
         }
         finally { Directory.Delete(root, recursive: true); }

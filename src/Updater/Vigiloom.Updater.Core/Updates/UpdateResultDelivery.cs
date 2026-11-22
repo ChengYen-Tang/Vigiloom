@@ -5,7 +5,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Updates;
 
-/// <summary>Delivers retained outcomes without persisting the Agent credential.</summary>
+/// <summary>Delivers retained outcomes using the current Agent credential.</summary>
 /// <remarks>The caller supplies a client with redirects and cookies disabled and a verified installation server.</remarks>
 public sealed class UpdateResultDelivery(HttpClient http, UpdateJournal journal, TimeProvider clock)
 {

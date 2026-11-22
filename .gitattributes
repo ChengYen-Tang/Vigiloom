@@ -12,4 +12,7 @@
 packaging/agent/linux/*.service text eol=lf
 packaging/agent/linux/*.sh text eol=lf
 tests/Vigiloom.Updater.Tests/linux-repair-integration.sh text eol=lf
+tests/Vigiloom.Updater.Tests/linux-replacement-integration.sh text eol=lf
+tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh text eol=lf
+src/Updater/Vigiloom.Updater/Maintenance/replace-linux.sh text eol=lf
 tests/Vigiloom.Modules.SecurityAnalysis.Tests/Intelligence/Fixtures/SignatureBase/* -text

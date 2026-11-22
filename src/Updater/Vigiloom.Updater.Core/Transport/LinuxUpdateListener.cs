@@ -17,17 +17,18 @@ public sealed partial class LinuxUpdateListener : ILocalUpdateListener
     private readonly FileStream ownership;
     private readonly string socketPath;
     private readonly uint agentUid;
+    private readonly Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential;
     private readonly Channel<UpdateHandoff> requests = Channel.CreateBounded<UpdateHandoff>(new BoundedChannelOptions(1)
     { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
     private int disposed;
 
-    private LinuxUpdateListener(Socket listener, FileStream ownership, string socketPath, uint agentUid) =>
-        (this.listener, this.ownership, this.socketPath, this.agentUid) = (listener, ownership, socketPath, agentUid);
+    private LinuxUpdateListener(Socket listener, FileStream ownership, string socketPath, uint agentUid, Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential) =>
+        (this.listener, this.ownership, this.socketPath, this.agentUid, this.stageCredential) = (listener, ownership, socketPath, agentUid, stageCredential);
 
     public ChannelReader<UpdateHandoff> Requests => requests.Reader;
 
     /// <remarks>The installer creates the root-owned, non-writable directory with the Agent group and setgid bit.</remarks>
-    public static LinuxUpdateListener Create(string directory, uint agentUid, uint agentGroupId)
+    public static LinuxUpdateListener Create(string directory, uint agentUid, uint agentGroupId, Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential = null)
     {
         if (GetEffectiveUserId() != 0 || RuntimeInformation.ProcessArchitecture != Architecture.X64)
             throw new UnauthorizedAccessException("The Linux Updater requires root on a supported architecture.");
@@ -53,7 +54,7 @@ public sealed partial class LinuxUpdateListener : ILocalUpdateListener
             if ((endpoint.Mode & 0xf000) != 0xc000 || endpoint.Owner != 0 || endpoint.Group != agentGroupId)
                 throw new UnauthorizedAccessException("The updater socket ownership is invalid.");
             socket.Listen(4);
-            return new LinuxUpdateListener(socket, ownership, socketPath, agentUid);
+            return new LinuxUpdateListener(socket, ownership, socketPath, agentUid, stageCredential);
         }
         catch
         {
@@ -84,8 +85,9 @@ public sealed partial class LinuxUpdateListener : ILocalUpdateListener
                         deadline.CancelAfter(TimeSpan.FromSeconds(15));
                         await using var stream = new NetworkStream(peer, ownsSocket: false);
                         var request = await BoundedJsonFrame.ReadAsync<UpdateHandoff>(stream, deadline.Token);
-                        var status = !request.IsValid() ? UpdateHandoffStatus.Rejected :
-                            requests.Writer.TryWrite(request) ? UpdateHandoffStatus.Accepted : UpdateHandoffStatus.Busy;
+                        var status = !request.IsValid() ? UpdateHandoffStatus.Rejected : request.StageCredential
+                            ? stageCredential is not null && await stageCredential(request, deadline.Token) ? UpdateHandoffStatus.CredentialStaged : UpdateHandoffStatus.Rejected
+                            : requests.Writer.TryWrite(request) ? UpdateHandoffStatus.Accepted : UpdateHandoffStatus.Busy;
                         await BoundedJsonFrame.WriteAsync(stream, new UpdateHandoffResponse { Status = status }, deadline.Token);
                     }
                     catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }

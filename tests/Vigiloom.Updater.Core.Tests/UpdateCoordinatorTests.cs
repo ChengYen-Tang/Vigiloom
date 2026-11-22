@@ -1,5 +1,6 @@
 using Vigiloom.Updater.Core.Updates;
 using Microsoft.Data.Sqlite;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Tests;
 
@@ -32,7 +33,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task ChangedAssignmentDuringStopRestoresPreviousVersion()
+    public async Task ChangedAssignmentDuringStopPreservesStoppedState()
     {
         var directory = CreateDirectory();
         try
@@ -42,10 +43,10 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
             var result = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new",
                 (_, _) => Task.FromResult(++checks == 1 ? UpdateAuthorization.Authorized : UpdateAuthorization.NoLongerAuthorized), context.CancellationToken);
-            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
-            Assert.AreEqual("old", runtime.Selected);
+            Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
             Assert.DoesNotContain("select:new", runtime.Actions);
-            CollectionAssert.AreEqual(new[] { "stop", "stop", "select:old", "start", "health" }, runtime.Actions);
+            CollectionAssert.AreEqual(new[] { "stop" }, runtime.Actions);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -70,7 +71,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task TemporaryAuthorizationFailureAfterStopCanRetrySameAssignment()
+    public async Task TemporaryAuthorizationFailureAfterStopWaitsForAdministrator()
     {
         var directory = CreateDirectory();
         try
@@ -82,43 +83,37 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var result = await coordinator.ApplyAsync(id, "old", "new", (_, _) => ++checks == 1
                 ? Task.FromResult(UpdateAuthorization.Authorized)
                 : Task.FromException<UpdateAuthorization>(new HttpRequestException()), context.CancellationToken);
-            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
-            Assert.AreEqual("old", runtime.Selected);
-            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken);
-            Assert.AreEqual(UpdatePhase.Succeeded, retry.Phase);
-            Assert.AreEqual("new", runtime.Selected);
-            Assert.IsTrue(retry.Steps.Any(step => step.Phase == UpdatePhase.RolledBack));
-            Assert.AreEqual(2, retry.Steps.Count(step => step.Phase == UpdatePhase.Prepared));
+            Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
+            Assert.AreEqual(result.Phase, (await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken)).Phase);
+            CollectionAssert.AreEqual(new[] { "stop" }, runtime.Actions);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
 
     [TestMethod]
-    public async Task TemporaryAuthorizationFailureRemainsRetryableAfterInterruptedRollback()
+    public async Task AuthorizationFailureIsDurablyReportedWithoutRollback()
     {
         var directory = CreateDirectory();
         try
         {
-            var recoveryChecks = 0;
-            var runtime = new FakeRuntime { Healthy = version => version != "old" || ++recoveryChecks > 1 };
+            var runtime = new FakeRuntime();
             var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
             var id = Guid.CreateVersion7();
             var provenance = new UpdateProvenance(Guid.CreateVersion7(), Guid.CreateVersion7(), new string('c', 64));
             var checks = 0;
             var first = await coordinator.ApplyAsync(id, "old", "new", (_, _) => Task.FromResult(++checks == 1
                 ? UpdateAuthorization.Authorized : UpdateAuthorization.Unavailable), context.CancellationToken, provenance);
-            Assert.AreEqual(UpdatePhase.RollingBack, first.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, first.Phase);
             var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
             Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
-            Assert.IsTrue(recovered.RetryAllowed);
-            var retry = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken, provenance);
-            Assert.AreEqual(UpdatePhase.Succeeded, retry.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
+            Assert.IsFalse(recovered.RetryAllowed);
             var pending = await new UpdateJournal(directory).ReadPendingAsync(provenance.AgentId, 10, context.CancellationToken);
-            Assert.HasCount(2, pending);
-            Assert.AreEqual(UpdatePhase.RolledBack, pending[0].Phase);
-            Assert.AreEqual(UpdatePhase.Succeeded, pending[1].Phase);
-            Assert.IsGreaterThan(pending[0].Sequence, pending[1].Sequence);
+            Assert.HasCount(1, pending);
+            Assert.AreEqual(UpdatePhase.Failed, pending[0].Phase);
+            Assert.AreEqual(AgentUpdateResultKind.Failed, pending[0].ToReport().Result);
+            CollectionAssert.AreEqual(new[] { "stop" }, runtime.Actions);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -156,7 +151,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task UnhealthyVersionRollsBackToPreviousVersion()
+    public async Task UnhealthyVersionRemainsSelectedForInvestigation()
     {
         var directory = CreateDirectory();
         try
@@ -164,9 +159,9 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var runtime = new FakeRuntime { Healthy = version => version == "old" };
             var journal = new UpdateJournal(directory);
             var result = await new UpdateCoordinator(journal, runtime).ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
-            Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
-            Assert.AreEqual("old", runtime.Selected);
-            CollectionAssert.AreEqual(new[] { "stop", "select:new", "start", "health", "stop", "select:old", "start", "health" }, runtime.Actions);
+            Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+            Assert.AreEqual("new", runtime.Selected);
+            CollectionAssert.AreEqual(new[] { "stop", "select:new", "start", "health" }, runtime.Actions);
             var saved = await journal.ReadAsync(context.CancellationToken);
             Assert.IsNotNull(saved);
             Assert.AreEqual(result.Phase, saved.Phase);
@@ -176,7 +171,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task InterruptedSwitchIsRecoveredWithoutCentralConnection()
+    public async Task InterruptedSwitchIsPreservedWithoutCentralConnection()
     {
         var directory = CreateDirectory();
         using var cancellation = new CancellationTokenSource();
@@ -189,8 +184,8 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             Assert.AreEqual(UpdatePhase.Switching, (await journal.ReadAsync(context.CancellationToken))!.Phase);
             var recovered = await coordinator.RecoverAsync(context.CancellationToken);
             Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
-            Assert.AreEqual("old", runtime.Selected);
+            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
+            Assert.AreEqual("new", runtime.Selected);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -200,7 +195,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     [DataRow("select:new", UpdatePhase.Switching)]
     [DataRow("start", UpdatePhase.Starting)]
     [DataRow("health", UpdatePhase.Verifying)]
-    public async Task InterruptionAtEachServiceOperationRestoresPreviousVersion(string interruptedAction, UpdatePhase recordedPhase)
+    public async Task InterruptionAtEachServiceOperationPreservesState(string interruptedAction, UpdatePhase recordedPhase)
     {
         var directory = CreateDirectory();
         using var cancellation = new CancellationTokenSource();
@@ -217,10 +212,9 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             runtime.OnAction = null;
             var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
             Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.RolledBack, recovered.Phase);
-            Assert.AreEqual("old", runtime.Selected);
-            Assert.AreEqual(recordedPhase == UpdatePhase.Stopping, recovered.RetryAllowed);
-            CollectionAssert.AreEqual(new[] { "stop", "select:old", "start", "health" }, runtime.Actions.TakeLast(4).ToArray());
+            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
+            Assert.IsFalse(recovered.RetryAllowed);
+            Assert.DoesNotContain("select:old", runtime.Actions);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -273,7 +267,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task FailedRollbackStopsAfterThreeRecoveryAttempts()
+    public async Task FailedUpdateDoesNotRetryOrRollBackOnRestart()
     {
         var directory = CreateDirectory();
         try
@@ -282,11 +276,7 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var journal = new UpdateJournal(directory);
             var coordinator = new UpdateCoordinator(journal, runtime);
             var state = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
-            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
-            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
-            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
-            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
-            Assert.AreEqual(UpdatePhase.RollbackFailed, state.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, state.Phase);
             var actionCount = runtime.Actions.Count;
             Assert.AreEqual(state.Phase, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
             Assert.HasCount(actionCount, runtime.Actions);
@@ -295,7 +285,31 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task StopTimeoutNeverSwitchesVersionAndRecoveryIsBounded()
+    public async Task LegacyRollbackFailureBecomesAdministratorActionWithoutChangingService()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var journal = new UpdateJournal(directory);
+            var id = Guid.CreateVersion7();
+            await journal.WriteAsync(new UpdateState(id, "old", "new", UpdatePhase.RollbackFailed, now,
+                [new(UpdatePhase.RollbackFailed, now, "Interrupted")], Error: "Interrupted"), context.CancellationToken);
+            var runtime = new FakeRuntime();
+            var recovered = await new UpdateCoordinator(journal, runtime).RecoverAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
+            Assert.AreEqual("Interrupted", recovered.Error);
+            Assert.IsEmpty(runtime.Actions);
+            var replacement = await new UpdateCoordinator(journal, runtime).ApplyAsync(Guid.CreateVersion7(), "old", "replacement",
+                Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.Succeeded, replacement.Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
+    public async Task StopTimeoutNeverSwitchesVersionOrRetriesOnRestart()
     {
         var directory = CreateDirectory();
         try
@@ -304,19 +318,17 @@ public sealed class UpdateCoordinatorTests(TestContext context)
             var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
             var state = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
 
-            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, state.Phase);
             Assert.AreEqual(nameof(TimeoutException), state.Error);
             Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
             Assert.DoesNotContain("select:new", runtime.Actions);
 
             state = (await coordinator.RecoverAsync(context.CancellationToken))!;
-            Assert.AreEqual(UpdatePhase.RollingBack, state.Phase);
-            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
-            Assert.AreEqual(UpdatePhase.RollbackFailed, state.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, state.Phase);
             Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
             Assert.DoesNotContain("select:new", runtime.Actions);
             var actions = runtime.Actions.Count;
-            Assert.AreEqual(UpdatePhase.RollbackFailed, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
             Assert.HasCount(actions, runtime.Actions);
         }
         finally { Directory.Delete(directory, recursive: true); }

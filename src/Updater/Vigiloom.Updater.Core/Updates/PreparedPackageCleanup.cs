@@ -3,6 +3,22 @@ namespace Vigiloom.Updater.Core.Updates;
 /// <summary>Removes only a completed rollback's updater-created staging directory.</summary>
 public static class PreparedPackageCleanup
 {
+    /// <summary>After a successful administrator-directed replacement, remove failed staging directories.</summary>
+    public static void RemoveRetainedFailures(UpdateState state, string installationRoot)
+    {
+        if (state.Phase != UpdatePhase.Succeeded || state.RetainedFailedDirectories is null) return;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var staging = Path.GetFullPath(Path.Combine(installationRoot, "staging"));
+        var selected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.TargetDirectory));
+        foreach (var retained in state.RetainedFailedDirectories)
+        {
+            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(retained));
+            if (string.Equals(path, selected, comparison) || !string.Equals(Path.GetDirectoryName(path), staging, comparison) ||
+                !Guid.TryParseExact(Path.GetFileName(path), "N", out var id) || id.Version != 7 || !Directory.Exists(path)) continue;
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0) Directory.Delete(path, recursive: true);
+        }
+    }
+
     public static void RemoveRolledBack(UpdateState state, string installationRoot)
     {
         ArgumentNullException.ThrowIfNull(state);

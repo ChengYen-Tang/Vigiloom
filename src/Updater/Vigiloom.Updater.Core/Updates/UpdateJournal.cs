@@ -4,17 +4,18 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Updates;
 
-public enum UpdatePhase { Prepared, Stopping, Switching, Starting, Verifying, RollingBack, Succeeded, RolledBack, RollbackFailed }
+public enum UpdatePhase { Prepared, Stopping, Switching, Starting, Verifying, RollingBack, Succeeded, RolledBack, RollbackFailed, Failed }
 
 public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Error, Guid? MessageId = null);
 
 /// <summary>Local recovery information for the single update handled by an Updater service.</summary>
 public sealed record UpdateState(Guid Id, string PreviousDirectory, string TargetDirectory, UpdatePhase Phase,
     DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, int RollbackAttempts = 0, string? Error = null, bool RetryAllowed = false,
-    UpdateProvenance? Provenance = null);
+    UpdateProvenance? Provenance = null, IReadOnlyList<string>? RetainedFailedDirectories = null,
+    string? PendingUpdaterDirectory = null, string? PreviousAgentVersion = null);
 
 /// <summary>Non-secret target identity retained across local recovery.</summary>
-public sealed record UpdateProvenance(Guid AgentId, Guid PackageId, string ManifestSha256)
+public sealed record UpdateProvenance(Guid AgentId, Guid PackageId, string ManifestSha256, string? PackageVersion = null)
 {
     public bool IsValid() => AgentId.Version == 7 && PackageId.Version == 7 && ManifestSha256 is { Length: 64 } &&
         ManifestSha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
@@ -32,6 +33,7 @@ public sealed record UpdateOutcome(Guid MessageId, Guid UpdateId, UpdateProvenan
             UpdatePhase.Succeeded => AgentUpdateResultKind.Succeeded,
             UpdatePhase.RolledBack => AgentUpdateResultKind.RolledBack,
             UpdatePhase.RollbackFailed => AgentUpdateResultKind.RollbackFailed,
+            UpdatePhase.Failed => AgentUpdateResultKind.Failed,
             _ => throw new InvalidDataException("The update outcome is not terminal.")
         }, OccurredAt, RetryAllowed, Failure switch
         {
@@ -79,7 +81,7 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
         command.CommandText = "INSERT INTO UpdateJournal (Id, State) VALUES (1, $state) ON CONFLICT(Id) DO UPDATE SET State = excluded.State";
         command.Parameters.AddWithValue("$state", JsonSerializer.Serialize(state));
         await command.ExecuteNonQueryAsync(token);
-        if (state.Provenance is { } provenance && state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed)
+        if (state.Provenance is { } provenance && state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed or UpdatePhase.Failed)
         {
             var outcome = new UpdateOutcome(Guid.CreateVersion7(), state.Id, provenance, state.Steps.Count, state.Phase,
                 state.UpdatedAt.ToUniversalTime(), state.RetryAllowed, Failure(state.Error));
