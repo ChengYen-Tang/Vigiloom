@@ -11,6 +11,44 @@ namespace Vigiloom.Updater.Core.Tests;
 public sealed class UpdateOutcomeTests(TestContext context)
 {
     [TestMethod]
+    public async Task CleanupRetainsCurrentAssignmentJournalAndUnacknowledgedOutcomes()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"outcome-cleanup-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var token = context.CancellationToken;
+            var now = DateTimeOffset.UtcNow;
+            var agent = Guid.CreateVersion7();
+            var target = new UpdateProvenance(agent, Guid.CreateVersion7(), new string('a', 64));
+            var journal = new UpdateJournal(directory);
+            var current = new UpdateState(Guid.CreateVersion7(), "old", "new", UpdatePhase.Failed, now,
+                [new(UpdatePhase.Failed, now, "Interrupted")], Error: "Interrupted", Provenance: target);
+            var active = Guid.CreateVersion7();
+            var obsolete = Guid.CreateVersion7();
+            var pendingId = Guid.CreateVersion7();
+            await journal.WriteAsync(current, token);
+            await journal.RecordPreparationFailureAsync(active, target, now, token);
+            await journal.RecordPreparationFailureAsync(obsolete, target, now, token);
+            await journal.RecordPreparationFailureAsync(pendingId, target, now, token);
+            var outcomes = await journal.ReadPendingAsync(agent, 10, token);
+            foreach (var item in outcomes.Where(x => x.UpdateId != pendingId))
+                await journal.AcknowledgeAsync(agent, item.MessageId, token);
+
+            await journal.PruneAcknowledgedAsync(active, token);
+            await journal.WriteAsync(current, token);
+            await journal.RecordPreparationFailureAsync(active, target, now.AddMinutes(1), token);
+            Assert.AreEqual(pendingId, (await journal.ReadPendingAsync(agent, 10, token)).Single().UpdateId);
+            await using var db = new SqliteConnection($"Data Source={Path.Combine(directory, "update.db")};Pooling=False");
+            await db.OpenAsync(token);
+            await using var command = db.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM UpdateOutbox";
+            Assert.AreEqual(3L, (long)(await command.ExecuteScalarAsync(token))!);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
     public async Task PreparationFailureIsDurableAndDoesNotReplaceEarlierRecoveryState()
     {
         var directory = Path.Combine(context.TestRunDirectory!, $"preparation-outcome-{Guid.CreateVersion7():N}");

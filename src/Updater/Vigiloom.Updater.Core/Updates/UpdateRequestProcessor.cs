@@ -22,6 +22,7 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
         if (assignment is not { Status: CurrentAssignmentStatus.Available, Target: not null })
             return new(assignment.Status);
 
+        await journal.PruneAcknowledgedAsync(assignment.Target.UpdateId, token);
         var existing = await journal.ReadAsync(token);
         if (existing?.Id == request.UpdateId && existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed or UpdatePhase.RolledBack)
             return new(CurrentAssignmentStatus.Available, existing);

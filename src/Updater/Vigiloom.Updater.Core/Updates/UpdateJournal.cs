@@ -159,6 +159,26 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
         await command.ExecuteNonQueryAsync(token);
     }
 
+    /// <summary>Removes delivered history while retaining the current journal and assignment for deduplication.</summary>
+    public async Task PruneAcknowledgedAsync(Guid activeUpdateId, CancellationToken token)
+    {
+        if (activeUpdateId.Version != 7) throw new ArgumentException("A valid update identifier is required.", nameof(activeUpdateId));
+        if (!File.Exists(PathName)) return;
+        await using var connection = Open(SqliteOpenMode.ReadWrite);
+        await using var transaction = connection.BeginTransaction();
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT State FROM UpdateJournal WHERE Id = 1";
+        var value = await command.ExecuteScalarAsync(token) as string;
+        var current = value is null ? null : JsonSerializer.Deserialize<UpdateState>(value)
+            ?? throw new InvalidDataException("The update journal is empty.");
+        command.CommandText = "DELETE FROM UpdateOutbox WHERE Acknowledged = 1 AND UpdateId <> $active AND UpdateId <> $current";
+        command.Parameters.AddWithValue("$active", activeUpdateId.ToString("D"));
+        command.Parameters.AddWithValue("$current", current?.Id.ToString("D") ?? "");
+        await command.ExecuteNonQueryAsync(token);
+        await transaction.CommitAsync(token);
+    }
+
     private static UpdateFailure? Failure(string? error) => error switch
     {
         null => null,
