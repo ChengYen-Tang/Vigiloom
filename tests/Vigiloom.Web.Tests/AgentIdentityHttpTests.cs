@@ -599,6 +599,14 @@ public sealed class AgentIdentityHttpTests
             var history = await response.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
             Assert.IsNotNull(history); Assert.HasCount(1, history.Items);
             Assert.AreEqual(item.Content, history.Items[0].Content);
+            var evidenceUrl = $"/devices/{device.Id:D}/host-logs/{history.Items[0].AgentId:D}/{item.MessageId:D}";
+            using (var evidence = await reader.GetAsync(evidenceUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, evidence.StatusCode);
+                Assert.Contains("event", await evidence.Content.ReadAsStringAsync(token));
+            }
+            using (var wrongDevice = await reader.GetAsync($"/devices/{Guid.CreateVersion7():D}/host-logs/{history.Items[0].AgentId:D}/{item.MessageId:D}", token))
+                Assert.Contains("找不到此事件", WebUtility.HtmlDecode(await wrongDevice.Content.ReadAsStringAsync(token)));
             await using (var serviceDb = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             {
                 var serviceSource = new Vigiloom.Modules.ServiceObservability.Domain.ServiceSource("events", new byte[32], now);
