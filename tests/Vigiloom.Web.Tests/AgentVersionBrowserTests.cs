@@ -66,7 +66,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "指派版本", Exact = true }).ClickAsync();
         await page.GetByText("已儲存版本指派；設備是否安裝仍以實際回報為準。", new() { Exact = true }).WaitForAsync();
-        await page.GetByText("Agent 目前尚未連線，指派將等待 Agent 重新連線後取得。重新整理頁面可查看連線狀態。", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。", new() { Exact = true }).WaitForAsync();
         Assert.Contains("尚無盤點資料", await page.Locator("main").InnerTextAsync());
         var observed = DateTimeOffset.UtcNow;
         var host = new InventoryEntry("host", "test", "1.0", "X64", OperatingSystem: "Linux", ProcessArchitecture: "X64",

@@ -32,7 +32,7 @@
             @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
             @if (current is { PackageId: not null } && ConnectionState is AgentConnectionState.Offline or AgentConnectionState.AwaitingFirstHeartbeat)
             {
-                <p class="version-note">Agent 目前尚未連線，指派將等待 Agent 重新連線後取得。重新整理頁面可查看連線狀態。</p>
+                <p class="version-note">Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。</p>
             }
             <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>
         </section>
@@ -41,6 +41,7 @@
                 <section class="version-panel">
                     <h2>指派 Agent 套件</h2>
                     <p>選擇與設備作業系統及架構相符的套件。</p>
+                    <p class="version-note">如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。</p>
                     <fieldset disabled="@(saving || paging || !RendererInfo.IsInteractive)">
                         <legend>選擇受信任的套件</legend>
                         <p class="version-scroll-hint">左右滑動查看套件資訊</p>
