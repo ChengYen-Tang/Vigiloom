@@ -57,15 +57,20 @@ public sealed class IocRetentionTests(TestContext context)
             SigmaDetectionResult Sigma(DateTimeOffset at) => new() { AgentId = agent, DeviceId = device, MessageId = Guid.CreateVersion7(),
                 TestId = ruleTest.Id, ActivationId = rule.Id, ActivationVersion = rule.Version, Result = 1, ReceivedAt = at, EvaluatedAt = at };
             verify.SigmaDetectionResults.AddRange(Sigma(now.AddDays(-2)), Sigma(now.AddDays(-9)));
+            SigmaCorrelationEvent Reference(DateTimeOffset at) => new() { TestId = ruleTest.Id, ActivationVersion = rule.Version,
+                AgentId = agent, DeviceId = device, MessageId = Guid.CreateVersion7(), DeviceGeneration = 0, ReceivedAt = at, OccurredAt = at };
+            verify.SigmaCorrelationEvents.AddRange(Reference(now.AddDays(-2)), Reference(now.AddDays(-9)));
             await verify.SaveChangesAsync(token);
             await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
             {
                 var retention = new SecurityDetectionRetention();
-                Assert.AreEqual(1L, await retention.CountAsync(connection, transaction, now, 1, token));
-                Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, transaction, now, 1, 500, token));
+                Assert.AreEqual(2L, await retention.CountAsync(connection, transaction, now, 1, token));
+                Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, transaction, now, 1, 1, token));
+                Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, transaction, now, 1, 1, token));
                 await transaction.CommitAsync(token);
             }
             verify.ChangeTracker.Clear();
             Assert.AreEqual(now.AddDays(-2), (await verify.SigmaDetectionResults.SingleAsync(token)).ReceivedAt);
+            Assert.AreEqual(now.AddDays(-2), (await verify.SigmaCorrelationEvents.SingleAsync(token)).ReceivedAt);
         }, context.CancellationToken);
 }

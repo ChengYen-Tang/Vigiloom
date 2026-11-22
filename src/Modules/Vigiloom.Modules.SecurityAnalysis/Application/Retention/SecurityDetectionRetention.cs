@@ -7,23 +7,26 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 
-/// <summary>Removes expired IOC and Sigma evidence in bounded batches.</summary>
+/// <summary>Removes expired IOC and Sigma evidence and correlation references in bounded batches.</summary>
 public sealed class SecurityDetectionRetention : ISecurityDetectionRetention
 {
     public async Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset now, int days, CancellationToken token)
     {
         var cutoff = now.AddDays(-days);
         var sigmaCutoff = now - (TimeSpan.FromDays(days) > SigmaCorrelationLimits.RequiredRetention ? TimeSpan.FromDays(days) : SigmaCorrelationLimits.RequiredRetention);
+        var correlationCutoff = now - SigmaCorrelationLimits.RequiredRetention;
         await using var db = await OpenAsync(connection, transaction, token);
         return await db.IocDetections.LongCountAsync(x => x.ReceivedAt < cutoff, token) +
             await db.SigmaDetectionResults.LongCountAsync(x => x.ReceivedAt < sigmaCutoff, token) +
-            await db.SigmaEventGaps.LongCountAsync(x => x.RecordedAt < cutoff, token);
+            await db.SigmaEventGaps.LongCountAsync(x => x.RecordedAt < cutoff, token) +
+            await db.SigmaCorrelationEvents.LongCountAsync(x => x.ReceivedAt < correlationCutoff, token);
     }
 
     public async Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset now, int days, int batchSize, CancellationToken token)
     {
         var cutoff = now.AddDays(-days);
         var sigmaCutoff = now - (TimeSpan.FromDays(days) > SigmaCorrelationLimits.RequiredRetention ? TimeSpan.FromDays(days) : SigmaCorrelationLimits.RequiredRetention);
+        var correlationCutoff = now - SigmaCorrelationLimits.RequiredRetention;
         await using var db = await OpenAsync(connection, transaction, token);
         // Correlation evaluates and publishes under this same source lock.
         await db.IntelligenceSources.FromSqlRaw("SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Key] = 'sigmahq-rules'")
@@ -39,6 +42,11 @@ public sealed class SecurityDetectionRetention : ISecurityDetectionRetention
         {
             var gapIds = db.SigmaEventGaps.Where(x => x.RecordedAt < cutoff).OrderBy(x => x.RecordedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
             removed += await db.SigmaEventGaps.Where(x => gapIds.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
+        if (removed < batchSize)
+        {
+            var references = db.SigmaCorrelationEvents.Where(x => x.ReceivedAt < correlationCutoff).OrderBy(x => x.ReceivedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.SigmaCorrelationEvents.Where(x => references.Contains(x.RowId)).ExecuteDeleteAsync(token);
         }
         return removed;
     }
