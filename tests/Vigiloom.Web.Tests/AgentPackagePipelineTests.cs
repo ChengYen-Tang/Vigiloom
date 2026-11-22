@@ -63,6 +63,8 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             var credential = $"vla_{agent.AgentId.Value:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
             var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
             Assert.IsTrue(await library.CacheAsync("1.0.0", "win-x64", token));
+            // The central library must continue serving the assignment without GitHub.
+            github.Dispose();
             Guid packageId;
             string digest;
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
