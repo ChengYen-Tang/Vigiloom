@@ -10,6 +10,21 @@ internal static class AgentPackageUiEndpoints
 {
     public static void MapAgentPackageUiEndpoints(this WebApplication app)
     {
+        app.MapPost("/settings/agent-packages/{id:guid}/download", async (Guid id, HttpContext context, PackageLibrary library,
+            ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
+        {
+            try
+            {
+                var page = int.TryParse(context.Request.Query["page"], out var number) && number > 0 ? number : 1;
+                var cached = await library.CacheAsync(id, token);
+                return Results.Redirect($"/settings/agent-packages?releases={page}&download={(cached ? "saved" : "unavailable")}");
+            }
+            catch (Exception error) when (error is IOException or HttpRequestException or TufException or InvalidOperationException)
+            {
+                logger.LogWarning("Could not download Agent package: {ErrorType}", error.GetType().Name);
+                return Results.Redirect("/settings/agent-packages?releases=1&download=error");
+            }
+        }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, PackageLibrary library,
             ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
         {

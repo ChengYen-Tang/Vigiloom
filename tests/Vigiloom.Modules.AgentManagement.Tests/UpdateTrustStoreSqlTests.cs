@@ -187,6 +187,9 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
         Assert.IsTrue(first.HasMore);
         Assert.HasCount(1, second.Items);
         Assert.IsFalse(second.HasMore);
+        var matched = await query.GetVersionsAsync(["1.0.10"], token);
+        Assert.HasCount(1, matched);
+        Assert.AreEqual("1.0.10", matched[0].Version);
         var revoked = first.Items.Concat(second.Items).Single(x => x.Version == "1.0.50");
         Assert.IsFalse(revoked.Listed);
         Assert.IsTrue(revoked.Revoked);

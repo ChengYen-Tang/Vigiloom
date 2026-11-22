@@ -4,10 +4,12 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Web.AgentPackages
 @inject AgentPackageSourceSettings Sources
 @inject AgentPackageQuery Packages
 @inject UpdateTrustStore Trust
 @inject PackageLibrary Library
+@inject GitHubAgentReleases Releases
 @inject TimeProvider Clock
 @inject ILogger<AgentPackages> Logger
 
@@ -62,6 +64,35 @@
 
         <section class="device-panel" aria-labelledby="package-list-title">
             <h2 id="package-list-title">套件版本</h2>
+            <p>從 GitHub 查看 Agent 發布版本，再從下方已驗證的套件清單選擇平台下載。</p>
+            <EditForm Model="ReleaseSyncInput" FormName="release-sync" method="post" OnSubmit="SyncReleasesAsync" class="package-action">
+                <button type="submit">同步 GitHub 發布版本</button>
+            </EditForm>
+            @if (DownloadMessage is not null) { <p class="package-status" role="status">@DownloadMessage</p> }
+            @if (releaseError) { <p role="alert">無法取得 GitHub 發布版本，請檢查網路後重試；已下載套件不受影響。</p> }
+            else if (releases is not null)
+            {
+                @if (releases.Items.Count == 0) { <p>此頁沒有 Agent 發布版本。</p> }
+                else
+                {
+                    <div class="device-table-wrap" role="region" aria-label="GitHub Agent 發布版本，可左右捲動" tabindex="0"><table>
+                        <thead><tr><th>版本</th><th>類型</th><th>平台與下載</th></tr></thead>
+                        <tbody>@foreach (var release in releases.Items)
+                        {
+                            var matched = releasePackages.Where(x => x.Version == release.Version).ToArray();
+                            <tr @key="release.Version"><td>@release.Version</td><td>@(release.Preview ? "Preview" : "正式版")</td><td>
+                                @if (matched.Length == 0) { <span>尚無已驗證套件，請先設定或刷新套件來源。</span> }
+                                else { @foreach (var package in matched) { <div>@package.RuntimeIdentifier · @(package.Cached ? "已下載" : Status(package))
+                                    @if (!package.Cached && package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow())
+                                    { <form method="post" action="@($"/settings/agent-packages/{package.Id:D}/download?page={releases.Page}")" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='下載中…'"><AntiforgeryToken /><button type="submit" aria-label="@($"下載 {release.Version} {package.RuntimeIdentifier}")">下載</button></form> }
+                                </div> } }
+                            </td></tr>
+                        }</tbody>
+                    </table></div>
+                }
+                @if (releases.Page > 1) { <a href="@($"?releases={releases.Page - 1}")">上一頁發布版本</a> }
+                @if (releases.HasMore) { <a href="@($"?releases={releases.Page + 1}")">下一頁發布版本</a> }
+            }
             <p>此處顯示發布者清單；是否能套用到設備，仍取決於平台、相容性與版本指派。</p>
             @if (RemoveMessage is not null) { <p class="package-status" role="status">@RemoveMessage</p> }
             @if (cacheMessage is not null) { <p class="package-status" role="status">@cacheMessage</p> }
@@ -78,9 +109,9 @@
             else if (page?.Page > 1) { <p>此頁沒有套件版本。</p><a href="@($"?page={page.Page - 1}")">上一頁</a> }
             else { <p>目前沒有套件版本。設定來源與信任根後，可刷新清單。</p> }
             <EditForm Model="CacheInput" FormName="package-cache" method="post" OnSubmit="CacheAsync" class="package-form package-cache-form" hidden="@(!Eligible.Any())">
-                <label for="package-cache-id">預先快取版本到此節點</label>
+                <label for="package-cache-id">下載版本到中央平台</label>
                 <InputSelect id="package-cache-id" @bind-Value="CacheInput.Id"><option value="">請選擇版本</option>@foreach (var item in Eligible) { <option value="@item.Id">@item.Version · @item.RuntimeIdentifier</option> }</InputSelect>
-                <div><button type="submit">預先快取</button></div>
+                <div><button type="submit">下載版本</button></div>
             </EditForm>
         </section>
     }
@@ -91,12 +122,18 @@
     [SupplyParameterFromQuery(Name = "page")] private int? PageNumber { get; set; }
     [SupplyParameterFromQuery(Name = "trust")] private string? TrustResult { get; set; }
     [SupplyParameterFromQuery(Name = "remove")] private string? RemoveResult { get; set; }
+    [SupplyParameterFromQuery(Name = "releases")] private int? ReleasePageNumber { get; set; }
+    [SupplyParameterFromQuery(Name = "download")] private string? DownloadResult { get; set; }
     [SupplyParameterFromForm(FormName = "package-source")] private SourceForm SourceInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "package-refresh")] private EmptyForm RefreshInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "package-cache")] private CacheForm CacheInput { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "release-sync")] private EmptyForm ReleaseSyncInput { get; set; } = default!;
     private AgentPackageSourceView? source;
     private AgentPackageTrustView? trust;
     private AgentPackagePage? page;
+    private AgentReleasePage? releases;
+    private IReadOnlyList<AgentPackageView> releasePackages = [];
+    private bool releaseError;
     private bool loadError;
     private bool packageListError;
     private bool sourceEditOpen;
@@ -105,12 +142,13 @@
     private IEnumerable<AgentPackageView> Eligible => page?.Items.Where(item => item.Listed && !item.Revoked && item.VerifiedUntil > Clock.GetUtcNow()) ?? [];
     private string? TrustMessage => TrustResult switch { "saved" => "信任根已初始化。", "invalid" => "檔案或指紋無效，請確認兩者來自可信管道。", "exists" => "信任根已設定，請重新整理。", "error" => "無法確認初始化結果，請重新整理並檢查。", _ => null };
     private string? RemoveMessage => RemoveResult switch { "removed" => "已刪除下載的套件。", "in-use" => "此版本已指派或仍由設備使用，無法刪除。", "missing" => "找不到此版本。", "error" => "無法刪除套件，請稍後重試。", _ => null };
+    private string? DownloadMessage => DownloadResult switch { "saved" => "套件已驗證並下載。", "unavailable" => "套件或來源狀態已變更，請重新同步。", "error" => "無法下載或驗證套件，請稍後重試。", _ => null };
     private string Status(AgentPackageView item) => item.Revoked ? "已撤銷" : !item.Listed ? "已不在清單中" : item.VerifiedUntil <= Clock.GetUtcNow() ? "驗證已過期" : "已驗證";
 
     protected override async Task OnInitializedAsync()
     {
         var submittedSource = SourceInput is not null;
-        SourceInput ??= new(); RefreshInput ??= new(); CacheInput ??= new();
+        SourceInput ??= new(); RefreshInput ??= new(); CacheInput ??= new(); ReleaseSyncInput ??= new();
         try
         {
             source = await Sources.GetAsync(HttpContext.RequestAborted);
@@ -119,6 +157,34 @@
             if (!submittedSource && source is not null) { SourceInput.BaseUri = source.BaseUri; SourceInput.Version = source.Version; }
         }
         catch (Exception error) { Logger.LogWarning("Could not read Agent package management: {ErrorType}", error.GetType().Name); loadError = true; }
+        if (ReleasePageNumber is > 0)
+        {
+            await LoadReleasesAsync(ReleasePageNumber.Value);
+        }
+    }
+
+    private async Task SyncReleasesAsync(EditContext context)
+    {
+        if (!Actor(out var actor)) return;
+        if (source is not null && trust?.Initialized == true)
+        {
+            try { await Sources.RefreshAsync(Trust, actor, HttpContext.RequestAborted); await ReloadPackagesAsync(); }
+            catch (Exception error) when (error is not OperationCanceledException || !HttpContext.RequestAborted.IsCancellationRequested)
+            { Logger.LogWarning("Could not refresh package catalogue: {ErrorType}", error.GetType().Name); sourceMessage = "無法刷新已驗證套件清單，請檢查來源後重試。"; }
+        }
+        await LoadReleasesAsync(1);
+    }
+
+    private async Task LoadReleasesAsync(int number)
+    {
+        try
+        {
+            releases = await Releases.GetAsync(number, HttpContext.RequestAborted);
+            releasePackages = await Packages.GetVersionsAsync(releases.Items.Select(x => x.Version).ToArray(), HttpContext.RequestAborted);
+            releaseError = false;
+        }
+        catch (Exception error) when (error is not OperationCanceledException || !HttpContext.RequestAborted.IsCancellationRequested)
+        { Logger.LogWarning("Could not read GitHub Agent releases: {ErrorType}", error.GetType().Name); releaseError = true; }
     }
 
     private async Task SaveSourceAsync(EditContext context)
@@ -157,8 +223,8 @@
     private async Task CacheAsync(EditContext context)
     {
         if (CacheInput.Id is not { } id || id == Guid.Empty) { cacheMessage = "請選擇要快取的版本。"; return; }
-        try { cacheMessage = await Library.CacheAsync(id, HttpContext.RequestAborted) ? "套件已驗證並快取到此節點。" : "套件或來源狀態已變更，請刷新清單後再試。"; }
-        catch (Exception error) { Logger.LogWarning("Could not cache Agent package: {ErrorType}", error.GetType().Name); cacheMessage = "無法驗證或快取套件，請檢查來源、網路與磁碟空間。"; }
+        try { cacheMessage = await Library.CacheAsync(id, HttpContext.RequestAborted) ? "套件已驗證並下載到中央平台。" : "套件或來源狀態已變更，請刷新清單後再試。"; }
+        catch (Exception error) { Logger.LogWarning("Could not cache Agent package: {ErrorType}", error.GetType().Name); cacheMessage = "無法下載或驗證套件，請檢查來源、網路與磁碟空間。"; }
         await ReloadPackagesAsync();
     }
 

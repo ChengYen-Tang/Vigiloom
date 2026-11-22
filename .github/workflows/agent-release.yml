@@ -165,7 +165,9 @@ jobs:
             2) ;;
             *) echo 'Could not check the release tag.' >&2; exit "$tag_status" ;;
           esac
-          gh release create "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Agent $RELEASE_VERSION" --notes "Vigiloom Agent installation packages." \
+          release_flags=()
+          [[ "$RELEASE_VERSION" == *-* ]] && release_flags+=(--prerelease)
+          gh release create "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft "${release_flags[@]}" --title "Agent $RELEASE_VERSION" --notes "Vigiloom Agent installation packages." \
             "$INSTALLERS/vigiloom-agent-win-x64.zip" "$INSTALLERS/vigiloom-agent-win-x86.zip" "$INSTALLERS/vigiloom-agent-linux-x64.tar.gz"
       - name: Sign and atomically publish
         shell: bash
