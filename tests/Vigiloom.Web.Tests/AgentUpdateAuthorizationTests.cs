@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Hosting;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -27,7 +29,12 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
     [Timeout(120000, CooperativeCancellation = true)]
     public Task VerifierTracksRealAssignmentCancellationAndRevocation() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
-        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPackageLibraryTransport>();
+                services.AddSingleton<IPackageLibraryTransport, Vigiloom.Tests.Fixtures.AvailablePackageTransport>();
+            }));
         await PingTestSite.InitializeAsync(factory, token);
         var device = new Device("Agent test", "127.0.0.1", true, DateTimeOffset.UtcNow);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -46,20 +53,20 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         Assert.IsNotNull(agent.AgentId);
         var credential = $"vla_{agent.AgentId.Value:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
 
-        // The real TUF signature path is verified separately; this test isolates central authorization.
+        // This test isolates central authorization.
         var now = DateTimeOffset.UtcNow;
         using var archive = new MemoryStream();
         using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
         using (var writer = new StreamWriter(zip.CreateEntry("Vigiloom.Agent.exe").Open())) writer.Write("test version");
         var digest = Convert.ToHexStringLower(SHA256.HashData(archive.ToArray()));
         var json = $$"""{"schema":1,"version":"1.0.0","rid":"win-x64","size":{{archive.Length}},"sha256":"{{digest}}","minimumUpdaterVersion":"1.0.0","minimumAgentVersion":null,"maximumAgentVersion":null}""";
-        var verified = new VerifiedManifest(Encoding.UTF8.GetBytes(json), now.AddHours(1));
-        var manifest = PackageManifest.Parse(verified, now);
+        var verified = new VerifiedManifest(Encoding.UTF8.GetBytes(json));
+        var manifest = PackageManifest.Parse(verified);
         var packageId = Guid.CreateVersion7();
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             db.Packages.Add(new AgentPackage { Id = packageId, Version = manifest.Version, RuntimeIdentifier = manifest.RuntimeIdentifier,
-                Sha256 = manifest.Sha256, ManifestSha256 = manifest.ManifestSha256, Size = manifest.Size, Listed = true, VerifiedUntil = now.AddHours(1) });
+                Sha256 = manifest.Sha256, ManifestSha256 = manifest.ManifestSha256, Size = manifest.Size });
             await db.SaveChangesAsync(token);
         }
         Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agent.AgentId.Value, packageId, "", actor, token));
@@ -173,7 +180,7 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
             var runtime = new TestRuntime(Path.Combine(syncDirectory, "old"), () => Task.CompletedTask);
             var server = new Uri("https://localhost/");
             var processor = new UpdateRequestProcessor(central,
-                new CentralPackageAcquirer(server, Path.Combine(syncDirectory, "trust"), Path.Combine(syncDirectory, "cache"), 1024, TimeProvider.System),
+                new CentralPackageAcquirer(server, Path.Combine(syncDirectory, "cache"), TimeProvider.System),
                 new UpdateTransaction(http, journal, runtime, TimeProvider.System), journal, runtime, server, device.Id,
                 syncDirectory, "win-x64", "1.0.0", new UpdateResultDelivery(http, journal, TimeProvider.System));
             var synced = await processor.ProcessAsync(new UpdateHandoff { SyncOnly = true, UpdateId = Guid.Empty, Credential = credential }, token);
@@ -189,13 +196,6 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         var again = await http.GetFromJsonAsync<AgentVersionTarget>("/api/v1/agent/version-assignment", token);
         Assert.IsNotNull(again);
         var final = new AssignmentVerifier(http, new Uri("https://localhost/"), credential, again, manifest, TimeProvider.System);
-        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
-        {
-            var package = await db.Packages.SingleAsync(x => x.Id == packageId, token);
-            package.Revoked = true;
-            await db.SaveChangesAsync(token);
-        }
-        Assert.AreEqual(UpdateAuthorization.NoLongerAuthorized, await final.CheckAsync(again.UpdateId, token));
         await identity.RevokeAsync(agent.AgentId.Value, actor, token);
         Assert.AreEqual(UpdateAuthorization.Unavailable, await final.CheckAsync(again.UpdateId, token));
         Assert.AreEqual(CurrentAssignmentStatus.Unauthorized, (await central.GetAsync(new Uri("https://localhost/"), device.Id, handoff, token)).Status);

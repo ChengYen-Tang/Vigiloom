@@ -8,7 +8,6 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../Vigiloom.UpdateSecurity.Tests/TestRepository.cs" Link="Fixtures/TestRepository.cs" />
-    <None Include="../Vigiloom.UpdateSecurity.Tests/Fixtures/PythonTuf/*.json" Link="Fixtures/PythonTuf/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/manifest.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 
 namespace Vigiloom.UpdateSecurity;
 
-/// <summary>Streams an authenticated catalogue entry to a temporary file and verifies it before returning.</summary>
+/// <summary>Streams an assigned package to a temporary file and verifies its hash.</summary>
 public sealed class PackageArchiveDownloader
 {
     private readonly Uri packageBase;
@@ -30,23 +30,12 @@ public sealed class PackageArchiveDownloader
         }
     }
 
-    /// <remarks>The caller owns the returned temporary file, and must recheck expiry and revocation before use.</remarks>
-    public Task<string> DownloadAsync(PackageCatalogue catalogue, PackageEntry entry, string temporaryDirectory,
-        TimeProvider clock, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(catalogue);
-        ArgumentNullException.ThrowIfNull(entry);
-        if (entry.Revoked || !catalogue.Packages.Contains(entry))
-            throw new InvalidOperationException("The package is not authorized by the current catalogue.");
-        return DownloadCoreAsync(new(entry.Sha256, entry.Size, catalogue.Expires), temporaryDirectory, clock, cancellationToken);
-    }
-
     /// <remarks>The caller must separately check assignment, revocation and platform compatibility before use.</remarks>
     public Task<string> DownloadManifestAsync(PackageManifest manifest, string temporaryDirectory,
         TimeProvider clock, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return DownloadCoreAsync(new(manifest.Sha256, manifest.Size, manifest.Expires), temporaryDirectory, clock, cancellationToken);
+        return DownloadCoreAsync(new(manifest.Sha256, manifest.Size), temporaryDirectory, clock, cancellationToken);
     }
 
     private async Task<string> DownloadCoreAsync(ArchiveDescriptor archive, string temporaryDirectory, TimeProvider clock, CancellationToken cancellationToken)
@@ -72,7 +61,6 @@ public sealed class PackageArchiveDownloader
         TimeProvider clock, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(clock);
-        if (archive.Expires <= clock.GetUtcNow()) throw new InvalidOperationException("The package authorization has expired.");
         Directory.CreateDirectory(temporaryDirectory);
         var path = Path.Combine(temporaryDirectory, $"{Guid.CreateVersion7():N}.download");
         var created = false;
@@ -92,7 +80,7 @@ public sealed class PackageArchiveDownloader
             }
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength is { } length && length != archive.Size)
-                throw new InvalidDataException("Package length does not match signed metadata.");
+                throw new InvalidDataException("Package length does not match the manifest.");
             await using var input = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
             await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -114,7 +102,6 @@ public sealed class PackageArchiveDownloader
                 if (total != archive.Size || !CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), Convert.FromHexString(archive.Sha256)))
                     throw new InvalidDataException("Package failed signed length or hash verification.");
                 await output.FlushAsync(deadline.Token).ConfigureAwait(false);
-                if (archive.Expires <= clock.GetUtcNow()) throw new InvalidDataException("The signed package metadata expired during download.");
                 return path;
             }
             finally { ArrayPool<byte>.Shared.Return(buffer); }
@@ -134,5 +121,5 @@ public sealed class PackageArchiveDownloader
         }
     }
 
-    private readonly record struct ArchiveDescriptor(string Sha256, long Size, DateTimeOffset Expires);
+    private readonly record struct ArchiveDescriptor(string Sha256, long Size);
 }

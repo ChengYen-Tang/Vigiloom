@@ -34,9 +34,6 @@ jobs:
       - name: Test remaining solution
         shell: pwsh
         run: ./tools/ci/test-without-web.ps1
-      - name: Test Agent release publisher
-        shell: pwsh
-        run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
 
   windows:
     name: Windows build and test
@@ -79,10 +76,8 @@ jobs:
           dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/agent-update" -p:Version=1.1.0
           dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/updater" -p:Version=1.0.0
           dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime linux-x64 --self-contained true --output "$RUNNER_TEMP/updater-replacement" -p:Version=1.1.0
-          python -m venv "$RUNNER_TEMP/agent-python"
-          "$RUNNER_TEMP/agent-python/bin/python" -m pip install --require-hashes -r tools/agent-release/requirements.txt
-          "$RUNNER_TEMP/agent-python/bin/python" tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-initial" --updater-directory "$RUNNER_TEMP/updater" --output-directory "$RUNNER_TEMP/agent-initial-archive" --rid linux-x64 --version 1.0.0
-          "$RUNNER_TEMP/agent-python/bin/python" tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-update" --updater-directory "$RUNNER_TEMP/updater-replacement" --output-directory "$RUNNER_TEMP/agent-archive" --rid linux-x64 --version 1.1.0
+          python tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-initial" --updater-directory "$RUNNER_TEMP/updater" --output-directory "$RUNNER_TEMP/agent-initial-archive" --rid linux-x64
+          python tools/agent-release/package.py --publish-directory "$RUNNER_TEMP/agent-update" --updater-directory "$RUNNER_TEMP/updater-replacement" --output-directory "$RUNNER_TEMP/agent-archive" --rid linux-x64
           echo "VIGILOOM_SYSTEMD_INITIAL_AGENT=$RUNNER_TEMP/agent-initial" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_UPDATER=$RUNNER_TEMP/updater" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_REPLACEMENT_UPDATER=$RUNNER_TEMP/updater-replacement" >> "$GITHUB_ENV"
@@ -163,6 +158,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-test-setup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Build real Agent packages
         shell: pwsh
         run: |
@@ -174,9 +172,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Updater publish failed.' }
           dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime $env:VIGILOOM_WINDOWS_RID --self-contained true --output "$env:RUNNER_TEMP/updater-replacement" -p:Version=1.1.0
           if ($LASTEXITCODE -ne 0) { throw 'Replacement Updater publish failed.' }
-          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-initial" --updater-directory "$env:RUNNER_TEMP/updater" --output-directory "$env:RUNNER_TEMP/agent-initial-archive" --rid $env:VIGILOOM_WINDOWS_RID --version 1.0.0
+          python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-initial" --updater-directory "$env:RUNNER_TEMP/updater" --output-directory "$env:RUNNER_TEMP/agent-initial-archive" --rid $env:VIGILOOM_WINDOWS_RID
           if ($LASTEXITCODE -ne 0) { throw 'Initial Agent archive failed.' }
-          & $env:VIGILOOM_RELEASE_PYTHON tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-update" --updater-directory "$env:RUNNER_TEMP/updater-replacement" --output-directory "$env:RUNNER_TEMP/agent-archive" --rid $env:VIGILOOM_WINDOWS_RID --version 1.1.0
+          python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-update" --updater-directory "$env:RUNNER_TEMP/updater-replacement" --output-directory "$env:RUNNER_TEMP/agent-archive" --rid $env:VIGILOOM_WINDOWS_RID
           if ($LASTEXITCODE -ne 0) { throw 'Updated Agent archive failed.' }
           "VIGILOOM_WINDOWS_INITIAL_AGENT=$env:RUNNER_TEMP/agent-initial" >> $env:GITHUB_ENV
           "VIGILOOM_WINDOWS_UPDATER=$env:RUNNER_TEMP/updater" >> $env:GITHUB_ENV
@@ -255,21 +253,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Agent release test dependencies
-        shell: pwsh
-        run: |
-          $pythonRoot = Join-Path $env:RUNNER_TEMP 'vigiloom-agent-python'
-          python -m venv $pythonRoot
-          if ($LASTEXITCODE -ne 0) { throw 'Could not create Python test environment.' }
-          $python = if ($IsWindows) { Join-Path $pythonRoot 'Scripts/python.exe' } else { Join-Path $pythonRoot 'bin/python' }
-          & $python -m pip install --require-hashes -r tools/agent-release/requirements.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
-          "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
       - name: Test solution
         run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
-      - name: Test Agent release publisher
-        shell: pwsh
-        run: '& $env:VIGILOOM_RELEASE_PYTHON -m unittest discover -s tools/agent-release'
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |

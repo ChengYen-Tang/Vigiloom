@@ -71,6 +71,21 @@ public sealed class DeploymentLinkBrowserTests(TestContext context)
         var table = admin.GetByRole(AriaRole.Region, new() { Name = "部署關聯，可左右捲動" });
         await table.GetByText("Verified configuration", new() { Exact = true }).WaitForAsync();
         await admin.GetByText("左右滑動查看完整關聯資訊。", new() { Exact = true }).WaitForAsync();
+        try
+        {
+            await admin.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= innerWidth", null, new() { Timeout = 10000 });
+        }
+        catch (TimeoutException)
+        {
+            var overflow = await admin.EvaluateAsync<string>("""
+                () => JSON.stringify({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+                    elements: [...document.querySelectorAll('body *')].filter(e => {
+                        const r = e.getBoundingClientRect();
+                        return r.width > 0 && (r.right > innerWidth || r.left < 0) && !e.closest('.table-scroll');
+                    }).slice(0, 10).map(e => ({ tag: e.tagName, id: e.id, className: e.className, right: e.getBoundingClientRect().right })) })
+                """);
+            Assert.Fail($"Mobile page still overflows: {overflow}");
+        }
         Assert.IsTrue(await admin.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
         Assert.IsTrue(await table.EvaluateAsync<bool>("e => e.scrollWidth > e.clientWidth && getComputedStyle(e).overflowX === 'auto'"));
         if (Environment.GetEnvironmentVariable("VIGILOOM_DEPLOYMENT_UI_EVIDENCE_DIR") is { Length: > 0 } evidence)

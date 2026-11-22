@@ -12,32 +12,31 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
     public async Task Download_PublishesOnlyBytesMatchingSignedMetadata()
     {
         var content = "package content"u8.ToArray();
-        var catalogue = Catalogue(content);
+        var manifest = Manifest(content);
         var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
         try
         {
             using var client = new HttpClient(new Handler(content));
             var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), client);
-            var path = await downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken);
+            var path = await downloader.DownloadManifestAsync(manifest, directory, TimeProvider.System, context.CancellationToken);
             CollectionAssert.AreEqual(content, await File.ReadAllBytesAsync(path, context.CancellationToken));
         }
         finally { TestDirectories.Delete(directory); }
     }
 
     [TestMethod]
-    public async Task Download_DeletesTamperedPartialFileAndRejectsRevokedPackage()
+    public async Task Download_DeletesTamperedPartialFile()
     {
         var content = "package content"u8.ToArray();
-        var catalogue = Catalogue(content);
+        var manifest = Manifest(content);
         var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
         try
         {
             using var client = new HttpClient(new Handler("other content!!"u8.ToArray()));
             var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), client);
-            await Assert.ThrowsAsync<InvalidDataException>(() => downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken));
+            await Assert.ThrowsAsync<InvalidDataException>(() => downloader.DownloadManifestAsync(manifest, directory, TimeProvider.System, context.CancellationToken));
             Assert.IsEmpty(Directory.EnumerateFiles(directory));
-            var revoked = Catalogue(content, revoked: true);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => downloader.DownloadAsync(revoked, revoked.Packages[0], directory, TimeProvider.System, context.CancellationToken));
+
         }
         finally { TestDirectories.Delete(directory); }
     }
@@ -46,7 +45,7 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
     public async Task Download_RejectsUnknownLengthShortAndOversizedBodies()
     {
         var content = "package content"u8.ToArray();
-        var catalogue = Catalogue(content);
+        var manifest = Manifest(content);
         var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
         try
         {
@@ -54,7 +53,7 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
             {
                 using var client = new HttpClient(new UnknownLengthHandler(body));
                 var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), client);
-                await Assert.ThrowsAsync<InvalidDataException>(() => downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken));
+                await Assert.ThrowsAsync<InvalidDataException>(() => downloader.DownloadManifestAsync(manifest, directory, TimeProvider.System, context.CancellationToken));
                 Assert.IsEmpty(Directory.EnumerateFiles(directory));
             }
         }
@@ -65,14 +64,14 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
     public async Task Download_RetriesTransientServerFailure()
     {
         var content = "package content"u8.ToArray();
-        var catalogue = Catalogue(content);
+        var manifest = Manifest(content);
         var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
         try
         {
             var handler = new TransientHandler(content);
             using var client = new HttpClient(handler);
             var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), client);
-            var path = await downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken);
+            var path = await downloader.DownloadManifestAsync(manifest, directory, TimeProvider.System, context.CancellationToken);
             CollectionAssert.AreEqual(content, await File.ReadAllBytesAsync(path, context.CancellationToken));
             Assert.AreEqual(2, handler.Requests);
         }
@@ -83,26 +82,25 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
     public async Task Download_DoesNotRetryBeforeLongRetryAfter()
     {
         var content = "package content"u8.ToArray();
-        var catalogue = Catalogue(content);
+        var manifest = Manifest(content);
         var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
         try
         {
             var handler = new RateLimitHandler();
             using var client = new HttpClient(handler);
             var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), client);
-            var error = await Assert.ThrowsAsync<PackageSourceRetryException>(() => downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken));
+            var error = await Assert.ThrowsAsync<PackageSourceRetryException>(() => downloader.DownloadManifestAsync(manifest, directory, TimeProvider.System, context.CancellationToken));
             Assert.AreEqual(TimeSpan.FromMinutes(2), error.RetryAfter);
             Assert.AreEqual(1, handler.Requests);
         }
         finally { TestDirectories.Delete(directory); }
     }
 
-    private static PackageCatalogue Catalogue(byte[] content, bool revoked = false)
+    private static PackageManifest Manifest(byte[] content)
     {
         var hash = Convert.ToHexStringLower(SHA256.HashData(content));
-        var json = $$"""{"schema":1,"packages":[{"version":"1.2.3","rid":"win-x64","size":{{content.Length}},"sha256":"{{hash}}","manifestSha256":"0000000000000000000000000000000000000000000000000000000000000000","revoked":{{revoked.ToString().ToLowerInvariant()}}}]}""";
-        var now = DateTimeOffset.UtcNow;
-        return PackageCatalogue.Parse(new VerifiedCatalogue(Encoding.UTF8.GetBytes(json), now.AddHours(1)), now);
+        var json = $$"""{"schema":1,"version":"1.2.3","rid":"win-x64","size":{{content.Length}},"sha256":"{{hash}}"}""";
+        return PackageManifest.Parse(new VerifiedManifest(Encoding.UTF8.GetBytes(json)));
     }
 
     private sealed class Handler(byte[] data) : HttpMessageHandler

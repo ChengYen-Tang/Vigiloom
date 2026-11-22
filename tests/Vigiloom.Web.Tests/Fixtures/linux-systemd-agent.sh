@@ -76,9 +76,8 @@ done
 # Inputs arrive over the parent's private stdin and are never written to the log.
 read -r server
 read -r device
-read -r fingerprint
 read -r enrollment
-printf '%s\n' "$server" "$device" "$fingerprint" "$enrollment" | bash "$bundle/install.sh" >&2
+printf '%s\n' "$server" "$device" "$enrollment" | bash "$bundle/install.sh" >&2
 unset enrollment
 cleanup_allowed=0
 echo READY

@@ -1,59 +1,84 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
-using Vigiloom.UpdateSecurity;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-/// <summary>Downloads verified packages into the central cache without granting Agent download access.</summary>
-public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> contexts, AgentPackageSourceSettings settings,
-    UpdateTrustStore trust, IPackageLibraryTransport transport, TimeProvider clock)
+/// <summary>Downloads selected GitHub Agent releases to the central offline library.</summary>
+public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> contexts, GitHubAgentReleases github,
+    IPackageLibraryTransport transport)
 {
-    /// <summary>Returns false if the package or source is no longer eligible at any verification boundary.</summary>
-    public async Task<bool> CacheAsync(Guid packageId, CancellationToken cancellationToken)
+    public async Task<bool> CacheAsync(string version, string runtimeIdentifier, CancellationToken token)
     {
-        if (packageId == Guid.Empty) return false;
-        var source = await settings.ReadEffectiveAsync(cancellationToken);
-        if (source is null) return false;
-        var before = await ReadEligibleAsync(packageId, source.Version, cancellationToken);
-        if (before is null) return false;
+        var asset = await github.GetAssetAsync(version, runtimeIdentifier, token);
+        if (asset is null) return false;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var package = await db.Packages.SingleOrDefaultAsync(x => x.Version == version && x.RuntimeIdentifier == runtimeIdentifier, token);
+        // An existing assignment identifies a particular release by this record. Do not
+        // silently replace its content if an asset under the same GitHub tag changes.
+        if (package is not null && (package.Sha256 != asset.Sha256 || package.Size != asset.Size))
+            throw new InvalidOperationException("The release asset changed for an existing version. Publish a new version instead.");
+        var manifest = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            schema = 1, version, rid = runtimeIdentifier, size = asset.Size, sha256 = asset.Sha256
+        });
+        var manifestHash = Convert.ToHexStringLower(SHA256.HashData(manifest));
+        if (package is not null && package.ManifestSha256 != manifestHash)
+        {
+            // Keep the original manifest identity used by existing assignments.
+            var existingManifest = await transport.ReadManifestAsync(package.ManifestSha256, token);
+            if (existingManifest is not null)
+            {
+                manifest = existingManifest;
+                manifestHash = package.ManifestSha256;
+            }
+            else
+            {
+                if (await db.VersionAssignments.AnyAsync(x => x.PackageId == package.Id, token))
+                    throw new InvalidOperationException("The package manifest is missing. Clear its current assignments before downloading again.");
+                package.ManifestSha256 = manifestHash;
+            }
+        }
+        await transport.SaveAsync(version, asset, manifestHash, manifest, github, token);
 
-        VerifiedManifest verified;
-        await using (var lease = await trust.AcquireAsync(cancellationToken))
-            verified = await transport.ReadManifestAsync(source.BaseUri, source.Credential, lease, before.ManifestSha256, cancellationToken);
-        var manifest = PackageManifest.Parse(verified, clock.GetUtcNow());
-        if (!Matches(before, manifest) || await ReadEligibleAsync(packageId, source.Version, cancellationToken) is not { } current ||
-            !Matches(current, manifest)) return false;
-
-        await transport.CacheAsync(source.BaseUri, source.Credential, manifest, cancellationToken);
-        var after = await ReadEligibleAsync(packageId, source.Version, cancellationToken);
-        return after is not null && Matches(after, manifest) && manifest.Expires > clock.GetUtcNow();
+        if (package is null)
+        {
+            package = new AgentPackage { Id = Guid.CreateVersion7(), Version = version, RuntimeIdentifier = runtimeIdentifier,
+                Sha256 = asset.Sha256, ManifestSha256 = manifestHash, Size = asset.Size };
+            db.Packages.Add(package);
+        }
+        await db.SaveChangesAsync(token);
+        return true;
     }
 
-    private async Task<PackageSnapshot?> ReadEligibleAsync(Guid id, byte[] sourceVersion, CancellationToken token)
+    public async Task<PackageRemovalResult> RemoveAsync(Guid packageId, CancellationToken token)
     {
-        await using var context = await contexts.CreateDbContextAsync(token);
-        var now = clock.GetUtcNow();
-        var result = await (from package in context.Packages.AsNoTracking()
-            from source in context.PackageSources.AsNoTracking()
-            where package.Id == id && package.Listed && !package.Revoked && package.VerifiedUntil > now
-            select new { package.Version, package.RuntimeIdentifier, package.Size, package.Sha256, package.ManifestSha256, SourceVersion = source.Version })
-            .SingleOrDefaultAsync(token);
-        if (result is null || !sourceVersion.AsSpan().SequenceEqual(result.SourceVersion)) return null;
-        return new(result.Version, result.RuntimeIdentifier, result.Size, result.Sha256, result.ManifestSha256);
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var candidate = await db.Packages.AsNoTracking().Where(x => x.Id == packageId).Select(x => new { x.Sha256 }).SingleOrDefaultAsync(token);
+        if (candidate is null) return PackageRemovalResult.NotFound;
+        var related = await db.Packages.FromSqlInterpolated($"SELECT * FROM [agent].[Packages] WITH (UPDLOCK, HOLDLOCK) WHERE [Sha256] = {candidate.Sha256}").ToArrayAsync(token);
+        var selected = related.SingleOrDefault(x => x.Id == packageId);
+        if (selected is null) return PackageRemovalResult.NotFound;
+        if (await db.VersionAssignments.AnyAsync(x => x.PackageId == packageId, token) ||
+            await db.Agents.AnyAsync(x => x.RevokedAt == null && x.RuntimeVersion == selected.Version && x.RuntimeIdentifier == selected.RuntimeIdentifier, token))
+            return PackageRemovalResult.InUse;
+        await transport.RemoveCachedAsync(selected.Sha256, selected.ManifestSha256,
+            related.Where(x => x.Id != packageId).Select(x => x.ManifestSha256).ToArray(), token);
+        await transaction.CommitAsync(token);
+        return PackageRemovalResult.Removed;
     }
-
-    private static bool Matches(PackageSnapshot package, PackageManifest manifest) =>
-        package.Version == manifest.Version && package.RuntimeIdentifier == manifest.RuntimeIdentifier && package.Size == manifest.Size &&
-        package.Sha256 == manifest.Sha256 && package.ManifestSha256 == manifest.ManifestSha256;
-
-    private sealed record PackageSnapshot(string Version, string RuntimeIdentifier, long Size, string Sha256, string ManifestSha256);
 }
 
-/// <summary>Obtains publisher-authenticated manifests and stores their archives in a bounded node-local cache.</summary>
 public interface IPackageLibraryTransport
 {
-    Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken cancellationToken);
-    Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
-    /// <summary>Opens the verified cached archive; the caller owns the returned stream.</summary>
-    Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
+    bool IsCached(string archiveHash, string manifestHash);
+    Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] manifest, GitHubAgentReleases github, CancellationToken token);
+    Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token);
+    Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token);
+    Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token);
 }
+
+public enum PackageRemovalResult { Removed, InUse, NotFound }

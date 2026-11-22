@@ -18,7 +18,6 @@ if ($version.Major -eq 6) {
 $bundle = $PSScriptRoot
 $agentSource = Join-Path $bundle 'payload\agent'
 $updaterSource = Join-Path $bundle 'payload\updater'
-$rootSource = Join-Path $bundle 'payload\root.json'
 $programRoot = Join-Path $env:ProgramFiles 'VigiloomAgent'
 $stateRoot = Join-Path $env:ProgramData 'VigiloomAgent'
 $agentRoot = Join-Path $programRoot 'Agent\initial'
@@ -27,7 +26,7 @@ $agentState = Join-Path $stateRoot 'Agent'
 $updaterState = Join-Path $stateRoot 'Updater'
 $agentName = 'Vigiloom Agent'
 $updaterName = 'Vigiloom Updater'
-foreach ($file in @((Join-Path $agentSource 'Vigiloom.Agent.exe'), (Join-Path $updaterSource 'Vigiloom.Updater.exe'), $rootSource,
+foreach ($file in @((Join-Path $agentSource 'Vigiloom.Agent.exe'), (Join-Path $updaterSource 'Vigiloom.Updater.exe'),
     (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'service-operations.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1'))) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'The installer bundle is incomplete.' }
 }
@@ -58,10 +57,6 @@ $serverText = $server.AbsoluteUri.TrimEnd('/') + '/'
 $device = Read-Host 'Device ID'
 if ($device -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$') {
     throw 'Enter the device UUID shown in Vigiloom.'
-}
-$fingerprint = Read-Host 'Publisher root SHA-256 fingerprint'
-if ($fingerprint -notmatch '^[0-9a-fA-F]{64}$' -or (Get-FileHash -LiteralPath $rootSource -Algorithm SHA256).Hash -ne $fingerprint) {
-    throw 'The trusted publisher root fingerprint does not match.'
 }
 $secureEnrollment = Read-Host 'One-time Agent enrollment value' -AsSecureString
 $address = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureEnrollment)
@@ -139,12 +134,6 @@ try {
         "Vigiloom__Updater__Server=$serverText", "Vigiloom__Updater__DeviceId=$device",
         "Vigiloom__Updater__InstallationRoot=$(Join-Path $programRoot 'Agent')", "Vigiloom__Updater__StateDirectory=$updaterState",
         "Vigiloom__Updater__AgentSid=$($agentSid.Value)") | Out-Null
-    $previousState = $env:Vigiloom__Updater__StateDirectory
-    try {
-        $env:Vigiloom__Updater__StateDirectory = $updaterState
-        & (Join-Path $updaterRoot 'Vigiloom.Updater.exe') provision-trust $rootSource $fingerprint
-        if ($LASTEXITCODE -ne 0) { throw 'Could not provision the trusted publisher root.' }
-    } finally { $env:Vigiloom__Updater__StateDirectory = $previousState }
     Start-Service -Name $updaterName
     # Registration may succeed even if service startup reports an error; keep identity after this point.
     $activated = $true

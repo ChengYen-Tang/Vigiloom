@@ -46,6 +46,6 @@ for service in vigiloom-updater.service vigiloom-agent.service; do
 done
 rm -f -- "$agent" "$updater"
 systemctl daemon-reload
-printf '%s\n' 'Vigiloom services were removed. Agent identity, queued data, settings, trust and installed versions were retained.' \
+printf '%s\n' 'Vigiloom services were removed. Agent identity, queued data, settings and installed versions were retained.' \
     'Run sudo /opt/vigiloom/agent-tools/restore.sh to restore the same installation.' \
     'Removing local services does not revoke the Agent credential in the central platform.'

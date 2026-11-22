@@ -1,9 +1,11 @@
 namespace Vigiloom.Contracts.Agent;
 
-/// <summary>Authenticated Agent package metadata, including current catalogue availability.</summary>
-/// <remarks>Listed alone does not authorize download: revocation, expiry, platform and assignment must also be checked.</remarks>
+/// <summary>Agent package metadata stored by the central platform.</summary>
 public sealed record AgentPackageView(Guid Id, string Version, string RuntimeIdentifier, long Size,
-    string Sha256, bool Listed, bool Revoked, DateTimeOffset VerifiedUntil);
+    string Sha256)
+{
+    public bool Cached { get; init; }
+}
 
 /// <summary>One page of known Agent package metadata.</summary>
 public sealed record AgentPackagePage(IReadOnlyList<AgentPackageView> Items, int Page, bool HasMore);

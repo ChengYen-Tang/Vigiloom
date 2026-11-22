@@ -6,7 +6,6 @@ using System.Text.Json;
 using Vigiloom.Agent.Hosting;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.UpdateSecurity;
-using Vigiloom.UpdateSecurity.Tests;
 using Vigiloom.Updater.Core.Updates;
 
 namespace Vigiloom.Updater.Core.Tests;
@@ -32,19 +31,14 @@ public sealed class UpdatePipelineTests(TestContext context)
             var archiveHash = Convert.ToHexStringLower(SHA256.HashData(archive));
             var manifest = JsonSerializer.SerializeToUtf8Bytes(new
             {
-                schema = 1, version = "1.0.0", rid = "win-x64", size = archive.Length, sha256 = archiveHash,
-                minimumUpdaterVersion = "1.0.0", minimumAgentVersion = (string?)null, maximumAgentVersion = (string?)null
+                schema = 1, version = "1.0.0", rid = "win-x64", size = archive.Length, sha256 = archiveHash
             });
             var manifestHash = Convert.ToHexStringLower(SHA256.HashData(manifest));
-            using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            var repository = new TestRepository(key, catalogue: manifest, targetName: manifestHash + ".json");
-            var trust = Path.Combine(root, "trust");
-            await new LocalTrustStore(trust).ProvisionAsync(repository.Root(1, key), context.CancellationToken);
             var request = new UpdateHandoff { UpdateId = Guid.CreateVersion7(), Credential = $"vla_{Guid.CreateVersion7():D}.{new string('a', 43)}" };
             var device = Guid.CreateVersion7();
             var target = new AgentVersionTarget(request.UpdateId, Guid.CreateVersion7(), "1.0.0", "win-x64", manifestHash,
                 Convert.ToBase64String(new byte[8]));
-            var handler = new CentralHandler(repository, archive, request, device, target) { CorruptFirstDownload = true };
+            var handler = new CentralHandler(manifest, archive, request, device, target) { CorruptFirstDownload = true };
             using var http = new HttpClient(handler);
             var journal = new UpdateJournal(Path.Combine(root, "state"));
             var runtime = new TestRuntime(previous, token => handler.ProgressStarted.Task.WaitAsync(token));
@@ -52,7 +46,7 @@ public sealed class UpdatePipelineTests(TestContext context)
             var server = new Uri("https://example.test/");
             var delivery = new UpdateResultDelivery(http, journal, clock);
             var processor = new UpdateRequestProcessor(new CentralAssignmentClient(http, clock),
-                new CentralPackageAcquirer(server, trust, Path.Combine(root, "cache"), 1024 * 1024, clock, http),
+                new CentralPackageAcquirer(server, Path.Combine(root, "cache"), clock, http),
                 new UpdateTransaction(http, journal, runtime, clock), journal, runtime, server, device, root, "win-x64", "1.0.0",
                 delivery);
 
@@ -98,7 +92,7 @@ public sealed class UpdatePipelineTests(TestContext context)
         public Task<bool> WaitHealthyAsync(CancellationToken token) { Actions.Add("health"); return Task.FromResult(true); }
     }
 
-    private sealed class CentralHandler(TestRepository repository, byte[] archive, UpdateHandoff request, Guid device,
+    private sealed class CentralHandler(byte[] manifest, byte[] archive, UpdateHandoff request, Guid device,
         AgentVersionTarget target) : HttpMessageHandler
     {
         public int PackageRequests { get; private set; }
@@ -144,12 +138,9 @@ public sealed class UpdatePipelineTests(TestContext context)
                 if (CorruptFirstDownload && PackageRequests == 1) { packageBytes = (byte[])archive.Clone(); packageBytes[0] ^= 1; }
                 return new(HttpStatusCode.OK) { Content = new ByteArrayContent(packageBytes) };
             }
-            var name = Path.GetFileName(path);
-            byte[]? bytes;
-            if (path.Contains("/targets/", StringComparison.Ordinal)) bytes = await repository.FetchTargetAsync(name, token);
-            else if (name == "2.root.json") bytes = null;
-            else bytes = await repository.FetchMetadataAsync(Path.GetFileNameWithoutExtension(name), cancellationToken: token);
-            return bytes is null ? new(HttpStatusCode.NotFound) : new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+            return path.Contains("/targets/", StringComparison.Ordinal)
+                ? new(HttpStatusCode.OK) { Content = new ByteArrayContent(manifest) }
+                : new(HttpStatusCode.NotFound);
         }
     }
 }

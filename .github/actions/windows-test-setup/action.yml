@@ -1,5 +1,5 @@
 name: Set up Windows tests
-description: Restore, build, and prepare LocalDB and Agent release dependencies.
+description: Restore, build, and prepare LocalDB.
 runs:
   using: composite
   steps:
@@ -22,16 +22,3 @@ runs:
         }
         sqllocaldb start MSSQLLocalDB
         if ($LASTEXITCODE -ne 0) { throw 'Could not start the CI LocalDB instance.' }
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    - name: Install Agent release test dependencies
-      shell: pwsh
-      run: |
-        $pythonRoot = Join-Path $env:RUNNER_TEMP 'vigiloom-agent-python'
-        python -m venv $pythonRoot
-        if ($LASTEXITCODE -ne 0) { throw 'Could not create Python test environment.' }
-        $python = Join-Path $pythonRoot 'Scripts/python.exe'
-        & $python -m pip install --require-hashes -r tools/agent-release/requirements.txt
-        if ($LASTEXITCODE -ne 0) { throw 'Could not install release test dependencies.' }
-        "VIGILOOM_RELEASE_PYTHON=$python" >> $env:GITHUB_ENV
