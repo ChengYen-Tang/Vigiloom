@@ -305,6 +305,41 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual("0", updaterPid);
                 Assert.AreNotEqual(killedPid, updaterPid);
                 await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(interruptedDirectory)), token);
+
+                // The real service stays in health verification for at least ten seconds,
+                // giving us a durable phase to interrupt without adding hooks to the product.
+                var verifyingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                Assert.IsNotNull(verifyingId);
+                installed.TrackReplacement(verifyingId.Value);
+                killedPid = updaterPid;
+                UpdateState? verifying = null;
+                await WaitUntilAsync(async () =>
+                {
+                    verifying = await ReadUpdateStateAsync(windows, updaterState, token);
+                    return verifying is { Phase: UpdatePhase.Verifying } && verifying.Id == verifyingId;
+                }, token, TimeSpan.FromMinutes(7));
+                Assert.IsNotNull(verifying);
+                Assert.IsTrue(Directory.Exists(verifying.TargetDirectory));
+                Assert.AreNotEqual("0", killedPid);
+                if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
+                else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
+                if (windows)
+                {
+                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
+                    if (await ServicePidAsync(windows, agent: false, token) == "0")
+                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
+                }
+                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
+                await WaitUntilAsync(async () => (await ReadUpdateStateAsync(windows, updaterState, token)) is
+                    { Phase: UpdatePhase.Failed, Error: "Interrupted" } state && state.Id == verifyingId, token);
+                Assert.IsTrue(Directory.Exists(verifying.TargetDirectory));
+                Assert.AreEqual(Path.GetFullPath(verifying.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
+                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(verifying.TargetDirectory)), token);
+                updaterPid = await ServicePidAsync(windows, agent: false, token);
+                Assert.AreNotEqual("0", updaterPid);
+                Assert.AreNotEqual(killedPid, updaterPid);
+
                 var installedUpdater = Path.Combine(windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
                     : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
