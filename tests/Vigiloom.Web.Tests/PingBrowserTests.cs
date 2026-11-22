@@ -23,6 +23,39 @@ public sealed class PingBrowserTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public Task EventTimelineFiltersWorkOnDesktopAndMobile() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            factory.UseKestrel(0);
+            factory.StartServer();
+            await PingTestSite.InitializeAsync(factory, token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
+            using var playwright = await Playwright.CreateAsync();
+            await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+            await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1000 } });
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(url + "/events");
+            await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+            await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+            await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+            await page.GetByRole(AriaRole.Heading, new() { Name = "事件與證據" }).WaitForAsync();
+            Assert.IsTrue(await page.GetByText("這段時間沒有符合條件的事件。").IsVisibleAsync());
+            var evidence = Environment.GetEnvironmentVariable("VIGILOOM_UI_EVIDENCE_DIR");
+            if (evidence is not null) await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "events-desktop.png"), FullPage = true });
+            await page.SetViewportSizeAsync(390, 844);
+            Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= innerWidth"));
+            if (evidence is not null) await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "events-mobile.png"), FullPage = true });
+            await page.GetByLabel("開始日期（UTC）").FillAsync("2026-11-22");
+            await page.GetByLabel("結束日期（UTC）").FillAsync("2026-11-21");
+            await page.GetByRole(AriaRole.Button, new() { Name = "查詢" }).ClickAsync();
+            Assert.IsTrue(await page.GetByRole(AriaRole.Alert).Filter(new() { HasText = "開始日期不能晚於結束日期" }).IsVisibleAsync());
+        }, TestContext.CancellationToken);
+
+    [TestMethod]
     public Task SettingsAndLatestResultsWorkAtDesktopAndMobileWidths() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
