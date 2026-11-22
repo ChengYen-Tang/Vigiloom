@@ -157,6 +157,10 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
+                // Enrollment can finish after the settings worker enters its normal five-minute polling delay.
+                // Restarting the installed service starts the next synchronization without extending the test by minutes.
+                await SetServiceRunningAsync(windows, running: false, token);
+                await SetServiceRunningAsync(windows, running: true, token);
                 DateTimeOffset? appliedAt = null;
                 await WaitUntilAsync(async () =>
                 {
