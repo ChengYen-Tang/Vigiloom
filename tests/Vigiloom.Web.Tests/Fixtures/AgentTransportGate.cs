@@ -11,13 +11,13 @@ internal sealed class AgentTransportGate : IStartupFilter
 {
     private readonly TaskCompletionSource<byte[]> blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<byte[]> retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource settingsRejected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int settingsRejections;
     private volatile bool reject = true;
     private volatile bool rejectSettings;
 
     internal Task<byte[]> Blocked => blocked.Task;
     internal Task<byte[]> Retried => retried.Task;
-    internal Task SettingsRejected => settingsRejected.Task;
+    internal int SettingsRejections => Volatile.Read(ref settingsRejections);
     internal void Allow() => reject = false;
     internal void BlockSettings() => rejectSettings = true;
 
@@ -27,7 +27,7 @@ internal sealed class AgentTransportGate : IStartupFilter
         {
             if (rejectSettings && context.Request.Method == "GET" && context.Request.Path == "/api/v1/agent/settings")
             {
-                settingsRejected.TrySetResult();
+                Interlocked.Increment(ref settingsRejections);
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 return;
             }

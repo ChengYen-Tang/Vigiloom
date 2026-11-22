@@ -265,14 +265,31 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token, TimeSpan.FromMinutes(4));
                 var upgradedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
                 var reportAfterUpdate = DateTimeOffset.UtcNow;
-                await gate.SettingsRejected.WaitAsync(TimeSpan.FromMinutes(3), token);
-                await WaitUntilAsync(async () =>
+                var previousRejections = gate.SettingsRejections;
+                await WaitUntilAsync(() => Task.FromResult(gate.SettingsRejections > previousRejections), token, TimeSpan.FromMinutes(3));
+                string? lastObservation = null;
+                try
                 {
-                    await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.ConfigurationReportedAt > reportAfterUpdate &&
-                        x.AppliedConfigurationRevision == configured.Effective.Revision && x.ConfigurationAppliedAt == appliedAt &&
-                        x.ConfigurationFailure == AgentConfigurationFailure.Unavailable, token);
-                }, token);
+                    await WaitUntilAsync(async () =>
+                    {
+                        await using var db = await agents.CreateDbContextAsync(token);
+                        var row = await db.Agents.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
+                        {
+                            x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.ConfigurationReportedAt,
+                            x.AppliedConfigurationRevision, x.ConfigurationAppliedAt, x.ConfigurationFailure
+                        }).SingleOrDefaultAsync(token);
+                        if (row is null) { lastObservation = "Agent missing"; return false; }
+                        lastObservation = $"heartbeat={row.LastHeartbeatAt:O}; runtime={row.RuntimeVersion}; runtimeAt={row.RuntimeReportedAt:O}; " +
+                            $"configAt={row.ConfigurationReportedAt:O}; revisionMatches={row.AppliedConfigurationRevision == configured.Effective.Revision}; " +
+                            $"appliedAtMatches={row.ConfigurationAppliedAt == appliedAt}; failure={row.ConfigurationFailure}; rejections={gate.SettingsRejections}";
+                        return row.ConfigurationReportedAt > reportAfterUpdate && row.AppliedConfigurationRevision == configured.Effective.Revision &&
+                            row.ConfigurationAppliedAt == appliedAt && row.ConfigurationFailure == AgentConfigurationFailure.Unavailable;
+                    }, token);
+                }
+                catch (TimeoutException error)
+                {
+                    throw new TimeoutException("Agent configuration observation did not arrive: " + lastObservation, error);
+                }
                 Assert.AreEqual(upgradedUpdaterPid, await ServicePidAsync(windows, agent: false, token));
                 Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
