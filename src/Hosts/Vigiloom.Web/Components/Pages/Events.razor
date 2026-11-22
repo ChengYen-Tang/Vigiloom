@@ -38,7 +38,7 @@
                     <table><thead><tr><th>時間（UTC）</th><th>來源</th><th>事件</th><th>證據</th><th>相關對象</th></tr></thead><tbody>
                     @foreach (var item in result.Items)
                     {
-                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@Label(item.Source)</span></td><td>@item.Summary</td><td>@item.Evidence</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? "查看原始事件" : item.ResourceKind == "service" ? "查看服務" : "查看設備")</a></td></tr>
+                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@Label(item.Source)</span></td><td>@item.Summary</td><td>@item.Evidence</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? "查看原始事件" : item.Source == "yara" ? "查看掃描" : item.ResourceKind == "service" ? "查看服務" : "查看設備")</a>@if (item.RuleLink is { } ruleLink) { <span> · </span><a href="@ruleLink">查看規則依據</a> }</td></tr>
                     }
                     </tbody></table>
                 </div>

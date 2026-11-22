@@ -4,9 +4,12 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Contracts.Agent.Security
+@using Vigiloom.Contracts.Operations
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
+@using Vigiloom.Web.Events
 @inject YaraScans Scans
+@inject EventTimelineAudit Audit
 @inject DeviceManagement Devices
 @inject Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings Retention
 @inject NavigationManager Navigation
@@ -35,6 +38,7 @@
         </Authorized></AuthorizeView>
         <section class="device-panel">
             <h2>掃描紀錄</h2>
+            @if (ScanId is not null) { <a href="@($"/devices/{Id:D}/yara-scans")">查看最近的掃描</a> }
             <p>已完成的掃描依操作紀錄政策保存 @retentionDays 天；等待執行的工作會保留。</p>
             @if (jobs.Count == 0) { <p>尚無掃描紀錄。</p> }
             @foreach (var job in jobs)
@@ -66,6 +70,7 @@
 
 @code {
     [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "scan")] private Guid? ScanId { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "yara-scan-create")] private ScanForm Input { get; set; } = default!;
     private string? name, error;
@@ -80,7 +85,21 @@
         {
             var device = await Devices.GetAsync(Id, HttpContext.RequestAborted);
             name = device?.Name;
-            if (device is not null) { jobs = await Scans.ListAsync(Id, HttpContext.RequestAborted); retentionDays = (await Retention.GetAsync(HttpContext.RequestAborted)).Days; }
+            if (device is not null)
+            {
+                IReadOnlyList<YaraScanJob> loaded;
+                if (ScanId is { } scanId)
+                {
+                    var scan = await Scans.GetAsync(Id, scanId, HttpContext.RequestAborted);
+                    if (scan is null) { error = "找不到此掃描，資料可能已超過保存期限。"; return; }
+                    loaded = [scan];
+                }
+                else loaded = await Scans.ListAsync(Id, HttpContext.RequestAborted);
+                retentionDays = (await Retention.GetAsync(HttpContext.RequestAborted)).Days;
+                if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new InvalidOperationException("Missing actor.");
+                await Audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed(ScanId is null ? "yara-list" : "yara-scan", ScanId ?? Id, Id), HttpContext.RequestAborted);
+                jobs = loaded;
+            }
             else error = "找不到設備。";
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Unable to load YARA scans: {ErrorType}.", ex.GetType().Name); error = "無法讀取掃描紀錄。"; }
