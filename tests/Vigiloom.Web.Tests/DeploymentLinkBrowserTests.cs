@@ -75,7 +75,7 @@ public sealed class DeploymentLinkBrowserTests(TestContext context)
         {
             await admin.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= innerWidth", null, new() { Timeout = 10000 });
         }
-        catch (Microsoft.Playwright.TimeoutException)
+        catch (TimeoutException)
         {
             var overflow = await admin.EvaluateAsync<string>("""
                 () => JSON.stringify({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
