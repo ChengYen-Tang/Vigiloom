@@ -35,20 +35,17 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
             if (existing.Provenance is not null && existing.Provenance != provenance)
                 throw new InvalidOperationException("The update identifier belongs to a different target.");
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var retryable = existing.Phase == UpdatePhase.RolledBack && existing.RetryAllowed;
             if (!string.Equals(existing.PreviousDirectory, previousDirectory, comparison) ||
-                !retryable && !string.Equals(existing.TargetDirectory, targetDirectory, comparison))
+                !string.Equals(existing.TargetDirectory, targetDirectory, comparison))
                 throw new InvalidOperationException("The update identifier already belongs to a different version selection.");
-            if (!retryable) return existing;
+            return existing;
         }
         if (existing is not null && existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
             throw new InvalidOperationException("The previous update must be recovered first.");
         // A temporary inability to verify must not interrupt the running Agent or consume this update ID.
         await EnsureAuthorizedAsync(isCurrent, id, token);
         var now = clock.GetUtcNow();
-        var steps = existing?.Id == id && existing.RetryAllowed
-            ? existing.Steps.Append(new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())).ToArray()
-            : [new(UpdatePhase.Prepared, now, null, Guid.CreateVersion7())];
+        var steps = new[] { new UpdateStep(UpdatePhase.Prepared, now, null, Guid.CreateVersion7()) };
         var retained = existing?.Phase == UpdatePhase.Failed
             ? (existing.RetainedFailedDirectories ?? []).Append(existing.TargetDirectory).Distinct(
                 OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToArray()

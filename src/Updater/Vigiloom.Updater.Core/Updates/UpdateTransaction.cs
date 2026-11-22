@@ -38,8 +38,7 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
             {
                 if (!string.Equals(existing.PreviousDirectory, previousDirectory, comparison))
                     throw new InvalidOperationException("The update identifier already belongs to a different version selection.");
-                if (existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed ||
-                    existing.Phase == UpdatePhase.RolledBack && !existing.RetryAllowed) return existing;
+                if (existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed or UpdatePhase.RolledBack) return existing;
             }
             if (existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
                 throw new InvalidOperationException("The previous update must be recovered first.");

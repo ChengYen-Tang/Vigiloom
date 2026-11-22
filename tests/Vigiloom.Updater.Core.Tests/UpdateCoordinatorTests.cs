@@ -309,6 +309,28 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
+    public async Task LegacyRetryableRollbackDoesNotRestartSameAssignment()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var id = Guid.CreateVersion7();
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(new UpdateState(id, "old", "new", UpdatePhase.RolledBack, now,
+                [new(UpdatePhase.RolledBack, now, "Interrupted")], Error: "Interrupted", RetryAllowed: true), context.CancellationToken);
+            var runtime = new FakeRuntime();
+            var coordinator = new UpdateCoordinator(journal, runtime);
+            var same = await coordinator.ApplyAsync(id, "old", "new", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.RolledBack, same.Phase);
+            Assert.IsEmpty(runtime.Actions);
+            var replacement = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "replacement", Authorized, context.CancellationToken);
+            Assert.AreEqual(UpdatePhase.Succeeded, replacement.Phase);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
     public async Task StopTimeoutNeverSwitchesVersionOrRetriesOnRestart()
     {
         var directory = CreateDirectory();

@@ -23,8 +23,7 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
             return new(assignment.Status);
 
         var existing = await journal.ReadAsync(token);
-        if (existing?.Id == request.UpdateId && (existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed ||
-            existing.Phase == UpdatePhase.RolledBack && !existing.RetryAllowed))
+        if (existing?.Id == request.UpdateId && existing.Phase is UpdatePhase.Succeeded or UpdatePhase.RollbackFailed or UpdatePhase.Failed or UpdatePhase.RolledBack)
             return new(CurrentAssignmentStatus.Available, existing);
         if (existing is not null && existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
             throw new InvalidOperationException("The previous update must be recovered first.");

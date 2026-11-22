@@ -10,7 +10,7 @@ public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Er
 
 /// <summary>Local recovery information for the single update handled by an Updater service.</summary>
 public sealed record UpdateState(Guid Id, string PreviousDirectory, string TargetDirectory, UpdatePhase Phase,
-    DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, int RollbackAttempts = 0, string? Error = null, bool RetryAllowed = false,
+    DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, string? Error = null, bool RetryAllowed = false,
     UpdateProvenance? Provenance = null, IReadOnlyList<string>? RetainedFailedDirectories = null,
     string? PendingUpdaterDirectory = null, string? PreviousAgentVersion = null);
 
