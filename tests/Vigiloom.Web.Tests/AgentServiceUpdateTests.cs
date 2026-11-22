@@ -49,6 +49,8 @@ public sealed class AgentServiceUpdateTests(TestContext context)
 
         return SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
+            var initialVersion = Environment.GetEnvironmentVariable("VIGILOOM_ACCEPT_INITIAL") ?? "1.0.0";
+            var updatedVersion = Environment.GetEnvironmentVariable("VIGILOOM_ACCEPT_UPDATED") ?? "1.1.0";
             var workspace = Required("GITHUB_WORKSPACE");
             var prefix = windows ? "VIGILOOM_WINDOWS_" : "VIGILOOM_SYSTEMD_";
             var initial = Required(prefix + "INITIAL_AGENT");
@@ -64,11 +66,17 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             try
             {
                 using var packages = new SignedAgentPackages(await File.ReadAllBytesAsync(initialArchivePath, token),
-                    await File.ReadAllBytesAsync(archivePath, token), rid);
+                    await File.ReadAllBytesAsync(archivePath, token), rid, initialVersion, updatedVersion);
                 var output = Path.Combine(path, "output");
                 var bundle = Path.Combine(path, "bundle");
                 Directory.CreateDirectory(bundle);
-                if (windows)
+                var officialInstaller = Environment.GetEnvironmentVariable("VIGILOOM_ACCEPT_INSTALLER");
+                if (officialInstaller is not null)
+                {
+                    if (windows) ZipFile.ExtractToDirectory(officialInstaller, bundle);
+                    else await RunAsync("tar", token, "-xzf", officialInstaller, "-C", bundle);
+                }
+                else if (windows)
                 {
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial, "-UpdaterPublish", updater,
@@ -144,7 +152,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var issued = await identity.IssueAsync(device.Id, actor, token);
                 Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
                 var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
-                foreach (var version in new[] { "1.0.0", "1.1.0", "1.2.0" })
+                foreach (var version in new[] { initialVersion, updatedVersion, "1.2.0" })
                     Assert.IsTrue(await library.CacheAsync(version, rid, token));
 
                 var script = Path.Combine(workspace, windows ? "tests/Vigiloom.Web.Tests/Fixtures/windows-service-agent.ps1" : "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
@@ -191,10 +199,10 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var assignments = scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>();
                 await SetServiceRunningAsync(windows, running: false, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
-                var cancelled = await SetAssignmentAsync(agents, assignments, agentId, "1.0.0", actor, token);
+                var cancelled = await SetAssignmentAsync(agents, assignments, agentId, initialVersion, actor, token);
                 Assert.IsNotNull(cancelled);
                 Assert.IsNull(await SetAssignmentAsync(agents, assignments, agentId, null, actor, token));
-                var replaced = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                var replaced = await SetAssignmentAsync(agents, assignments, agentId, updatedVersion, actor, token);
                 Assert.IsNotNull(replaced);
                 var current = await SetAssignmentAsync(agents, assignments, agentId, "1.2.0", actor, token);
                 Assert.IsNotNull(current);
@@ -211,32 +219,33 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreEqual(UpdatePhase.Failed, failed.Phase);
                 Assert.IsTrue(Directory.Exists(failed.TargetDirectory));
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await AssignAndWaitAsync(agents, assignments, agentId, updatedVersion, AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(failed.TargetDirectory)), token);
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == updatedVersion, token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
                 await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await AssignAndWaitAsync(agents, assignments, agentId, initialVersion, AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == initialVersion, token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
                 await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
                     "An Agent rollback or downgrade must not replace the Updater.");
+                if (Environment.GetEnvironmentVariable("VIGILOOM_ACCEPT_RELEASE") == "1") return;
                 var installedUpdater = Path.Combine(windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
                     : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
                 var originalHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(updater, "Vigiloom.Updater.dll"), token));
                 var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
                 Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
-                var upgradeId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                var upgradeId = await SetAssignmentAsync(agents, assignments, agentId, updatedVersion, actor, token);
                 Assert.IsNotNull(upgradeId);
                 installed.TrackReplacement(upgradeId.Value);
                 await WaitForResultAsync(agents, agentId, upgradeId.Value, AgentUpdateResultKind.Succeeded, token, TimeSpan.FromMinutes(7));
@@ -354,7 +363,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.1.0", token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == updatedVersion, token);
                 }, token);
 
                 gate.Allow();
