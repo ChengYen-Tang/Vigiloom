@@ -23,6 +23,7 @@
             <section class="device-panel">
                 <h2>新增掃描</h2>
                 <p>Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。</p>
+                <p>YARA 引擎採用 <a href="https://github.com/VirusTotal/yara/blob/master/COPYING" target="_blank" rel="noopener noreferrer">BSD 3-Clause 授權</a>；手動輸入的規則有各自的授權，請管理員確認後使用。</p>
                 <EditForm Model="Input" FormName="yara-scan-create" method="post" OnSubmit="CreateAsync">
                     <label for="scan-file">主機上的檔案完整路徑</label><InputText id="scan-file" @bind-Value="Input.FilePath" maxlength="1024" />
                     <label for="scan-rules">YARA 規則</label><InputTextArea id="scan-rules" @bind-Value="Input.Rules" rows="8" maxlength="65536" />
