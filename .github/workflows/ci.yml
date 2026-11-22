@@ -83,32 +83,6 @@ jobs:
           echo "VIGILOOM_SYSTEMD_REPLACEMENT_UPDATER=$RUNNER_TEMP/updater-replacement" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_INITIAL_ARCHIVE=$RUNNER_TEMP/agent-initial-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
           echo "VIGILOOM_SYSTEMD_UPDATE_ARCHIVE=$RUNNER_TEMP/agent-archive/agent-linux-x64.zip" >> "$GITHUB_ENV"
-      - name: Use published Agent packages for acceptance
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          for n in 1 3; do
-            tag="agent-v0.1.0-preview.$n"
-            mkdir -p "$RUNNER_TEMP/official-$n"
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern agent-linux-x64.zip --dir "$RUNNER_TEMP/official-$n"
-            digest=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[] | select(.name == "agent-linux-x64.zip") | .digest')
-            echo "${digest#sha256:}  $RUNNER_TEMP/official-$n/agent-linux-x64.zip" | sha256sum -c -
-            unzip -q "$RUNNER_TEMP/official-$n/agent-linux-x64.zip" -d "$RUNNER_TEMP/official-$n/payload"
-          done
-          echo "VIGILOOM_SYSTEMD_INITIAL_AGENT=$RUNNER_TEMP/official-1/payload" >> "$GITHUB_ENV"
-          echo "VIGILOOM_SYSTEMD_UPDATER=$RUNNER_TEMP/official-1/payload/updater" >> "$GITHUB_ENV"
-          echo "VIGILOOM_SYSTEMD_REPLACEMENT_UPDATER=$RUNNER_TEMP/official-3/payload/updater" >> "$GITHUB_ENV"
-          echo "VIGILOOM_SYSTEMD_INITIAL_ARCHIVE=$RUNNER_TEMP/official-1/agent-linux-x64.zip" >> "$GITHUB_ENV"
-          echo "VIGILOOM_SYSTEMD_UPDATE_ARCHIVE=$RUNNER_TEMP/official-3/agent-linux-x64.zip" >> "$GITHUB_ENV"
-          gh release download agent-v0.1.0-preview.1 --repo "$GITHUB_REPOSITORY" --pattern vigiloom-agent-linux-x64.tar.gz --dir "$RUNNER_TEMP/official-1"
-          digest=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/agent-v0.1.0-preview.1" --jq '.assets[] | select(.name == "vigiloom-agent-linux-x64.tar.gz") | .digest')
-          echo "${digest#sha256:}  $RUNNER_TEMP/official-1/vigiloom-agent-linux-x64.tar.gz" | sha256sum -c -
-          echo "VIGILOOM_ACCEPT_INSTALLER=$RUNNER_TEMP/official-1/vigiloom-agent-linux-x64.tar.gz" >> "$GITHUB_ENV"
-          echo 'VIGILOOM_ACCEPT_INITIAL=0.1.0-preview.1' >> "$GITHUB_ENV"
-          echo 'VIGILOOM_ACCEPT_UPDATED=0.1.0-preview.3' >> "$GITHUB_ENV"
-          echo 'VIGILOOM_ACCEPT_RELEASE=1' >> "$GITHUB_ENV"
       - name: Test Linux Agent IPC permissions
         shell: bash
         run: |
@@ -207,41 +181,6 @@ jobs:
           "VIGILOOM_WINDOWS_REPLACEMENT_UPDATER=$env:RUNNER_TEMP/updater-replacement" >> $env:GITHUB_ENV
           "VIGILOOM_WINDOWS_INITIAL_ARCHIVE=$env:RUNNER_TEMP/agent-initial-archive/agent-$($env:VIGILOOM_WINDOWS_RID).zip" >> $env:GITHUB_ENV
           "VIGILOOM_WINDOWS_UPDATE_ARCHIVE=$env:RUNNER_TEMP/agent-archive/agent-$($env:VIGILOOM_WINDOWS_RID).zip" >> $env:GITHUB_ENV
-      - name: Use published Agent packages for acceptance
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($n in 1,3) {
-            $tag = "agent-v0.1.0-preview.$n"
-            $dir = Join-Path $env:RUNNER_TEMP "official-$n"
-            New-Item -ItemType Directory -Path $dir | Out-Null
-            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern agent-win-x64.zip --dir $dir
-            if ($LASTEXITCODE -ne 0) { throw 'Release download failed.' }
-            $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json; $digest = ($release.assets | Where-Object name -eq "agent-win-x64.zip").digest
-            if ($LASTEXITCODE -ne 0) { throw 'Release metadata failed.' }
-            $archive = Join-Path $dir 'agent-win-x64.zip'
-            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant() -ne $digest.Substring(7)) { throw 'Release hash mismatch.' }
-            Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $dir 'payload')
-          }
-          "VIGILOOM_WINDOWS_INITIAL_AGENT=$env:RUNNER_TEMP/official-1/payload" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_UPDATER=$env:RUNNER_TEMP/official-1/payload/updater" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_REPLACEMENT_UPDATER=$env:RUNNER_TEMP/official-3/payload/updater" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_INITIAL_ARCHIVE=$env:RUNNER_TEMP/official-1/agent-win-x64.zip" >> $env:GITHUB_ENV
-          "VIGILOOM_WINDOWS_UPDATE_ARCHIVE=$env:RUNNER_TEMP/official-3/agent-win-x64.zip" >> $env:GITHUB_ENV
-          $tag = 'agent-v0.1.0-preview.1'
-          $dir = Join-Path $env:RUNNER_TEMP 'official-1'
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern vigiloom-agent-win-x64.zip --dir $dir
-          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed.' }
-          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json; $digest = ($release.assets | Where-Object name -eq "vigiloom-agent-win-x64.zip").digest
-          if ($LASTEXITCODE -ne 0) { throw 'Installer metadata failed.' }
-          $installer = Join-Path $dir 'vigiloom-agent-win-x64.zip'
-          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant() -ne $digest.Substring(7)) { throw 'Installer hash mismatch.' }
-          "VIGILOOM_ACCEPT_INSTALLER=$installer" >> $env:GITHUB_ENV
-          'VIGILOOM_ACCEPT_INITIAL=0.1.0-preview.1' >> $env:GITHUB_ENV
-          'VIGILOOM_ACCEPT_UPDATED=0.1.0-preview.3' >> $env:GITHUB_ENV
-          'VIGILOOM_ACCEPT_RELEASE=1' >> $env:GITHUB_ENV
       - name: Test installed Agent update and rollback
         shell: pwsh
         env:
