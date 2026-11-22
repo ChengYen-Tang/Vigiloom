@@ -1,6 +1,6 @@
 # Agent transport: implementation notes
 
-REQ-19 is in progress. The queue, authenticated receipt endpoint and scheduled Agent sender exist; no production collector produces batches yet. This document does not claim the end-to-end transport is complete.
+The Agent's metrics, host logs, inventory, integrity, baseline and YARA collectors use the durable queue and authenticated receipt endpoint. Agent identity and transport remain independent of device Ping.
 
 ## Local durable queue
 
@@ -8,9 +8,9 @@ The queue stores the exact serialized batch bytes, its UUID v7 batch ID, first e
 
 The queue uses Microsoft.Data.Sqlite 10.0.14 and the bundled SQLite native library pinned to 3.53.3. SQLite's upstream WAL documentation records a concurrency corruption bug fixed in 3.51.3 and supported backports; the queue uses rollback journaling and synchronous FULL, not WAL. The database and its transient journal remain in the protected directory; SQLite connections are disposed after each operation and pooling is disabled so the lease is not released with a connection still open. Transactions atomically change a batch and the stored capacity counters. Unknown future database formats are rejected before modifying them.
 
-The initial capacity is 256 MiB of serialized payload and at most 100,000 queued batches. The count leaves headroom for 24 hours at one batch per second, but the byte limit or bursts may fill the queue sooner; it is not a guarantee of 24-hour storage. This is a **logical payload limit**, not a hard filesystem quota: SQLite pages, metadata and a rollback journal add disk use. Administrators can configure platform and device limits, which Agents synchronize independently; see [agent configuration](agent-configuration.md). A full queue rejects the new batch so the caller can apply backpressure; rejection is not yet a durable loss count and no policy for discarding or expiry is implemented in this slice. The host must expose available capacity, persist and report any actual loss, distinguish classes of data, and handle disk-full and filesystem errors without reporting success. Explicit retention/expiry behavior remains to be integrated.
+The initial capacity is 256 MiB of serialized payload and at most 100,000 queued batches. The count leaves headroom for 24 hours at one batch per second, but the byte limit or bursts may fill the queue sooner; it is not a guarantee of 24-hour storage. This is a **logical payload limit**, not a hard filesystem quota: SQLite pages, metadata and a rollback journal add disk use. Administrators can configure platform and device limits, which Agents synchronize independently; see [agent configuration](agent-configuration.md). A full queue retains already queued data and defers new batches; it does not selectively discard existing batches. The device page shows the reported queue state and confirmed metric loss, while incomplete or unavailable loss counts remain unknown. A full queue alone does not establish how much source data may later be lost.
 
-Queue format 2 atomically upgrades format 1 and adds persistent quarantine markers. Invalid local batches and batches rejected with permanent HTTP client errors remain in the database with their bytes and reason, still consume capacity, and are skipped when reading the next pending batch. Heartbeats report queue counts and an optional reason breakdown; batch-level inspection and recovery through the UI are not yet implemented. Older format-1 binaries reject the format-2 database: the future updater must check compatibility and must not start an incompatible downgrade. Quarantine is not deletion, expiry, or a durable loss counter.
+Queue format 2 atomically upgrades format 1 and adds persistent quarantine markers. Invalid local batches and batches rejected with permanent HTTP client errors remain in the database with their bytes and reason, still consume capacity, and are skipped when reading the next pending batch. Heartbeats report queue counts and an optional reason breakdown. An older Agent that only understands format 1 cannot read a format-2 queue; administrators choose whether to roll back and can intervene if the selected version cannot operate. Quarantine is not deletion, expiry, or a durable loss counter.
 
 ### Quarantine diagnostics (REQ-19)
 
@@ -18,7 +18,7 @@ Report an optional, bounded breakdown of retained quarantined batches by the exi
 
 During rolling upgrades, an older server that rejects the new optional field receives a bounded retry without that field, followed by the existing configuration fallback when needed. Central storage ties the summary to its own epoch and sequence; an older server can update the queue without clearing newer columns, so the summary is shown only while both markers still match the current queue report. Tests cover unknown values, missing reports, ordering and fallback; batch-level diagnosis and actual loss reporting remain incomplete.
 
-The Agent treats a batch endpoint HTTP 410 response as an expired-batch rejection and preserves the original bytes with an expiry quarantine reason instead of retrying indefinitely or acknowledging them. The receiver does not yet issue 410, so this client behavior alone does not implement or verify the 24-hour replay window.
+The Agent treats a batch endpoint HTTP 410 response as an expired-batch rejection and preserves the original bytes with an expiry quarantine reason instead of retrying indefinitely or acknowledging them. The receiver returns 410 for an uncommitted batch outside its accepted replay window; a matching retained receipt still confirms a previously committed retry.
 
 ## Queue status reports
 
