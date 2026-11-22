@@ -41,6 +41,7 @@ public partial class HostDetails
     private string? logCursor;
     private SigmaDetectionEventPage? detectionPage;
     private SigmaDetectionGapPage? detectionGaps;
+    private IocDetectionPage? iocDetections;
     private readonly Stack<string?> detectionCursors = new();
     private readonly Stack<string?> gapCursors = new();
     private string? detectionCursor, gapCursor;
@@ -90,8 +91,10 @@ public partial class HostDetails
                     token.ThrowIfCancellationRequested();
                     var firstGaps = await Monitoring.GetDetectionGapsAsync(DeviceId, from, until, null, token) ?? throw new InvalidOperationException("Device missing");
                     token.ThrowIfCancellationRequested();
+                    var firstIoc = await Monitoring.GetIocDetectionsAsync(DeviceId, from, until, 1, token) ?? throw new InvalidOperationException("Device missing");
+                    token.ThrowIfCancellationRequested();
                     detectionCursor = gapCursor = null; detectionCursors.Clear(); gapCursors.Clear();
-                    detectionPage = firstDetections; detectionGaps = firstGaps;
+                    detectionPage = firstDetections; detectionGaps = firstGaps; iocDetections = firstIoc;
                     break;
                 case "integrity":
                     baseline = null; baselineScopeId = baselineSnapshotId = null;
@@ -110,6 +113,11 @@ public partial class HostDetails
         { rangeHours = value; await ReloadAsync(); }
     }
     private Task NextDetectionsAsync() => detectionPage?.NextCursor is { } cursor ? NavigateDetectionsAsync(cursor, true) : Task.CompletedTask;
+    private Task NavigateIocAsync(int page) => RunAsync(async token =>
+    {
+        var result = await Monitoring.GetIocDetectionsAsync(DeviceId, from, until, page, token) ?? throw new InvalidOperationException("Device missing");
+        token.ThrowIfCancellationRequested(); iocDetections = result;
+    });
     private Task PreviousDetectionsAsync() => detectionCursors.TryPeek(out var cursor) ? NavigateDetectionsAsync(cursor, false) : Task.CompletedTask;
     private Task NavigateDetectionsAsync(string? cursor, bool forward) => RunAsync(async token =>
     {

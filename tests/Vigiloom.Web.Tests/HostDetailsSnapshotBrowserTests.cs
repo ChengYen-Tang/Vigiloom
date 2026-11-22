@@ -363,6 +363,7 @@ public sealed class HostDetailsSnapshotBrowserTests
 
     private sealed class SnapshotClient(bool statusMatrix = false) : IHostMonitoringClient
     {
+        public Task<IocDetectionPage?> GetIocDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, int page, CancellationToken token) => Task.FromResult<IocDetectionPage?>(new([], page, false));
         private readonly Guid snapshot = Guid.CreateVersion7();
         private readonly Guid partial = Guid.CreateVersion7();
         private readonly Guid agent = Guid.CreateVersion7();
