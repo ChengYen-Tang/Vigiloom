@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
@@ -14,7 +15,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Matches received host events against the selected IOC source.</summary>
 internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, TimeProvider clock,
-    ILogger<IocHostLogHandler> logger) : IOutboxHandler
+    ILogger<IocHostLogHandler> logger, INotificationWriter? notifications = null) : IOutboxHandler
 {
     public string MessageType => HostLogDispatch.IocMessageType;
 
@@ -57,9 +58,11 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
         if (active is null || active.RevisionId != revisionId || Convert.ToBase64String(active.Version) != selection.ActivationVersion)
             throw new InvalidOperationException("The active IOC source changed during evaluation.");
         var now = clock.GetUtcNow();
+        var notices = new List<NotificationRequest>();
         foreach (var log in events)
         {
             foreach (var match in matcher.Match(HostEventDecoder.Decode(log)).Distinct())
+            {
                 db.IocDetections.Add(new IocDetection
                 {
                     AgentId = dispatch.AgentId, DeviceId = dispatch.DeviceId, MessageId = log.MessageId,
@@ -67,8 +70,15 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
                     Field = match.Field, SourceLine = match.SourceLine, OccurredAt = log.OccurredAt,
                     ReceivedAt = log.ReceivedAt, EvaluatedAt = now
                 });
+                if (notifications is not null)
+                    notices.Add(new(Guid.CreateVersion7(), "ioc", log.OccurredAt ?? log.ReceivedAt, "IOC 比對線索",
+                        $"{match.Kind}：{match.Value}；欄位：{match.Field}；情報版本：{revisionId:D}；原始事件：{log.AgentId:D}/{log.MessageId:D}。此結果需要進一步調查。",
+                        ResourceId: dispatch.DeviceId, EvidenceOwnerId: log.AgentId, EvidenceId: log.MessageId));
+            }
         }
         await db.SaveChangesAsync(cancellationToken);
+        if (notifications is not null && notices.Count > 0)
+            foreach (var batch in notices.Chunk(200)) await notifications.WriteBatchAsync(batch, connection, transaction, cancellationToken);
 
         async Task<bool> IsEnabledAsync()
         {

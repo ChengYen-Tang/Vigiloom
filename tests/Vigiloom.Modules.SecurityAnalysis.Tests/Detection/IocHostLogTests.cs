@@ -2,8 +2,10 @@ using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Data.Common;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -40,7 +42,8 @@ public sealed class IocHostLogTests(TestContext context)
                 """;
             var log = new HostLogEntry(agent, id, Guid.CreateVersion7(), AgentLogSourceKind.WindowsEvent, "Sysmon", 1, now, now, xml, null, 3, null, null, null, null);
             var selection = new IocSourceSnapshot(IocSourceAvailability.Ready, source.Id, revision.Id, Convert.ToBase64String(activation.Version), revision.UpstreamVersion, "test", 1, 0);
-            var handler = new IocHostLogHandler(new Source(selection), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance);
+            var notices = new Notices();
+            var handler = new IocHostLogHandler(new Source(selection), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance, notices);
             var dispatch = new HostLogDispatch(agent, device, 0, [id]);
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
@@ -58,6 +61,10 @@ public sealed class IocHostLogTests(TestContext context)
             Assert.AreEqual(revision.Id, match.RevisionId);
             Assert.AreEqual("192.0.2.1", match.Value);
             Assert.AreEqual("DestinationIp", match.Field);
+            var notice = Assert.ContainsSingle(notices.Items);
+            Assert.AreEqual("ioc", notice.Source);
+            Assert.AreEqual(id, notice.EvidenceId);
+            Assert.AreEqual(device, notice.ResourceId);
             var savedSource = await verify.IntelligenceSources.SingleAsync(token);
             savedSource.IocDetectionEnabled = false;
             await verify.SaveChangesAsync(token);
@@ -79,5 +86,14 @@ public sealed class IocHostLogTests(TestContext context)
         public Task<IocSourceFile> ReadFileAsync(IocSourceSnapshot snapshot, string path, CancellationToken cancellationToken) =>
             Task.FromResult(new IocSourceFile(IocSourceAvailability.Ready, path, null, null, null, null, null,
                 path.Contains("c2", StringComparison.Ordinal) ? "192.0.2.1"u8.ToArray() : []));
+    }
+
+    private sealed class Notices : INotificationWriter
+    {
+        public List<NotificationRequest> Items { get; } = [];
+        public Task WriteAsync(NotificationRequest request, DbConnection connection, DbTransaction transaction, CancellationToken token)
+        { Items.Add(request); return Task.CompletedTask; }
+        public Task WriteBatchAsync(IReadOnlyList<NotificationRequest> requests, DbConnection connection, DbTransaction transaction, CancellationToken token)
+        { Items.AddRange(requests); return Task.CompletedTask; }
     }
 }
