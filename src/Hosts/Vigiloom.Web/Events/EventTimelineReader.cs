@@ -47,7 +47,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                 {
                     var entry = new EventTimelineEntry("host-log", x.ReceivedAt, x.DeviceId, "device",
                         x.GapReason is null ? $"主機日誌：{x.SourceName}" : $"主機日誌採集缺口：{x.SourceName}",
-                        $"解析版本 {x.ParserVersion}；{x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}");
+                        $"解析版本 {x.ParserVersion}；{x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}/host-logs/{x.AgentId:D}/{x.MessageId:D}");
                     entries.Add(entry);
                     hostLogRows.Add(entry, x.RowId);
                 }
@@ -124,7 +124,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     select new { result.DeviceId, result.AgentId, result.MessageId, result.ReceivedAt, result.Result, rule.Path, rule.RevisionId }).Take(limit).ToArrayAsync(token);
                 entries.AddRange(rows.Select(x => new EventTimelineEntry("sigma", x.ReceivedAt, x.DeviceId, "device",
                     x.Result == 1 ? $"行為規則命中：{x.Path}" : $"行為規則未評估：{x.Path}",
-                    $"版本 {x.RevisionId:D}；事件 {x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}")));
+                    $"版本 {x.RevisionId:D}；事件 {x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}/host-logs/{x.AgentId:D}/{x.MessageId:D}")));
             }
             if (Include("vulnerability"))
             {
