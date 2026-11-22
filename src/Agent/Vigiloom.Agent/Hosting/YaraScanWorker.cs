@@ -36,7 +36,7 @@ internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntim
                         if (!await queue.ContainsForOwnerAsync(job.Id, owner, stoppingToken) && IsCurrent(directory, server) &&
                             await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken) == owner)
                         {
-                            var result = await ScanAsync(directory, job, owner, stoppingToken);
+                            var result = await ScanWithCancellationAsync(vault, uri, directory, job, owner, stoppingToken);
                             if (result is not null)
                             {
                                 var now = clock.GetUtcNow();
@@ -68,6 +68,38 @@ internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntim
     private bool IsCurrent(string directory, string server) =>
         string.Equals(directory, configuration["Vigiloom:Agent:StateDirectory"], StringComparison.Ordinal) &&
         string.Equals(server, configuration["Vigiloom:Agent:Server"], StringComparison.Ordinal);
+
+    private async Task<YaraScanReport?> ScanWithCancellationAsync(IdentityVault vault, Uri server, string directory,
+        YaraScanJob job, AgentSettingsOwner owner, CancellationToken stoppingToken)
+    {
+        using var scanStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        using var pollingStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var monitor = MonitorCancellationAsync();
+        try { return await ScanAsync(directory, job, owner, scanStop.Token); }
+        catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested && scanStop.IsCancellationRequested) { return null; }
+        finally
+        {
+            await pollingStop.CancelAsync();
+            try { await monitor; } catch (OperationCanceledException) when (pollingStop.IsCancellationRequested) { }
+        }
+
+        async Task MonitorCancellationAsync()
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), clock, pollingStop.Token);
+                try
+                {
+                    var next = await client.NextAsync(vault, server, pollingStop.Token);
+                    if (next?.Id != job.Id) { await scanStop.CancelAsync(); return; }
+                }
+                catch (Exception ex) when (ex is HttpRequestException or IOException or System.Text.Json.JsonException)
+                { logger.LogWarning("Could not check YARA cancellation: {ErrorType}.", ex.GetType().Name); }
+                catch (OperationCanceledException) when (!pollingStop.IsCancellationRequested)
+                { logger.LogWarning("Checking YARA cancellation timed out."); }
+            }
+        }
+    }
 
     private async Task<YaraScanReport?> ScanAsync(string directory, YaraScanJob job, AgentSettingsOwner owner, CancellationToken token)
     {

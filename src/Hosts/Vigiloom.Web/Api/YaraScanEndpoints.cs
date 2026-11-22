@@ -28,6 +28,14 @@ internal static class YaraScanEndpoints
         }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
             .Produces<YaraScanJob>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
 
+        app.MapPost("/api/v1/devices/{deviceId:guid}/yara-scans/{scanId:guid}/cancel", async (Guid deviceId, Guid scanId,
+            YaraScans scans, HttpContext context, CancellationToken token) =>
+        {
+            try { return await ApiMutation.ExecuteAsync(context, async _ => await scans.CancelAsync(deviceId, scanId, token) ? Results.NoContent() : Results.NotFound(), allowApiCredential: false); }
+            catch (ArgumentException) { return Results.BadRequest(); }
+        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
+
         app.MapGet("/api/v1/agent/yara-scans/next", async (YaraScans scans, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";

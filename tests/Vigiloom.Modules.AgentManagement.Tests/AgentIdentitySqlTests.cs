@@ -70,6 +70,13 @@ public sealed class AgentIdentitySqlTests
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(batch), token));
         Assert.IsNull((await scans.NextAsync(credential, token)).Job);
         Assert.AreEqual(YaraScanOutcome.Completed, (await scans.ListAsync(device.Id, token)).Single().Result?.Outcome);
+        var cancelled = await scans.CreateAsync(device.Id, new("/tmp/second", "rule sample { condition: true }", 1024, 10), actor, token);
+        Assert.IsNotNull(cancelled);
+        Assert.IsTrue(await scans.CancelAsync(device.Id, cancelled.Id, token));
+        Assert.IsNull((await scans.NextAsync(credential, token)).Job);
+        var lateBatch = batch with { BatchId = cancelled.Id };
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(lateBatch), token));
+        Assert.AreEqual(YaraScanOutcome.Cancelled, (await scans.ListAsync(device.Id, token)).Single(x => x.Id == cancelled.Id).Result?.Outcome);
     });
 
     [TestMethod]
