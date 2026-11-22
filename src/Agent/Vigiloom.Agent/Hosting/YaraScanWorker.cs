@@ -144,7 +144,7 @@ internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntim
                 YaraScanStatus.Completed => YaraScanOutcome.Completed, YaraScanStatus.FileTooLarge => YaraScanOutcome.FileTooLarge,
                 YaraScanStatus.TimedOut => YaraScanOutcome.TimedOut, YaraScanStatus.Unavailable => YaraScanOutcome.Unavailable,
                 _ => YaraScanOutcome.Failed
-            }, result.Output, result.Error, result.OutputTruncated, clock.GetUtcNow());
+            }, result.Output, result.Error, result.OutputTruncated, clock.GetUtcNow(), result.EngineVersion);
         }
         finally { if (File.Exists(rules)) File.Delete(rules); }
     }

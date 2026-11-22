@@ -209,6 +209,7 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             {
                 scan.Outcome = (int)yara.Result.Outcome;
                 scan.Output = yara.Result.Output; scan.Error = yara.Result.Error;
+                scan.EngineVersion = yara.Result.EngineVersion;
                 scan.OutputTruncated = yara.Result.OutputTruncated; scan.CompletedAt = yara.Result.CompletedAt;
             }
         }

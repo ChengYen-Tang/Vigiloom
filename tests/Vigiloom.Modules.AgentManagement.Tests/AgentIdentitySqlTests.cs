@@ -63,13 +63,14 @@ public sealed class AgentIdentitySqlTests
         Assert.IsTrue(next.Authenticated);
         Assert.AreEqual(created.Id, next.Job?.Id);
         Assert.IsFalse((await scans.NextAsync("invalid", token)).Authenticated);
-        var report = new YaraScanReport(YaraScanOutcome.Completed, "sample", "", false, clock.Now);
+        var report = new YaraScanReport(YaraScanOutcome.Completed, "sample", "", false, clock.Now, "4.6.0");
         var batch = new YaraResultBatch(YaraResultBatchCodec.SchemaVersion, created.Id, clock.Now, report);
         var receiver = new AgentBatchReceiver(agents, identity, clock);
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(batch), token));
         Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(batch), token));
         Assert.IsNull((await scans.NextAsync(credential, token)).Job);
         Assert.AreEqual(YaraScanOutcome.Completed, (await scans.ListAsync(device.Id, token)).Single().Result?.Outcome);
+        Assert.AreEqual("4.6.0", (await scans.ListAsync(device.Id, token)).Single().Result?.EngineVersion);
         var cancelled = await scans.CreateAsync(device.Id, new("/tmp/second", "rule sample { condition: true }", 1024, 10), actor, token);
         Assert.IsNotNull(cancelled);
         Assert.IsTrue(await scans.CancelAsync(device.Id, cancelled.Id, token));

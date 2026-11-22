@@ -16,6 +16,7 @@ public sealed class YaraScan
     public int? Outcome { get; set; }
     public string? Output { get; set; }
     public string? Error { get; set; }
+    public string? EngineVersion { get; set; }
     public bool? OutputTruncated { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
 }

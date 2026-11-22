@@ -65,5 +65,5 @@ public sealed class YaraScans(IDbContextFactory<AgentManagementDbContext> contex
 
     private static YaraScanJob View(YaraScan scan) => new(scan.Id, scan.AgentId, scan.DeviceId, scan.RequestedBy,
         new(scan.FilePath, scan.Rules, scan.MaximumBytes, scan.TimeoutSeconds), scan.RequestedAt,
-        scan.Outcome is { } result ? new((YaraScanOutcome)result, scan.Output ?? "", scan.Error ?? "", scan.OutputTruncated ?? false, scan.CompletedAt!.Value) : null);
+        scan.Outcome is { } result ? new((YaraScanOutcome)result, scan.Output ?? "", scan.Error ?? "", scan.OutputTruncated ?? false, scan.CompletedAt!.Value, scan.EngineVersion) : null);
 }

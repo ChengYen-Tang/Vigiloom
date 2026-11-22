@@ -6,7 +6,7 @@ namespace Vigiloom.Agent.Core.Security;
 public enum YaraScanStatus { Completed, FileTooLarge, TimedOut, Unavailable, Failed }
 
 public sealed record YaraScanResult(YaraScanStatus Status, string Output, string Error, bool OutputTruncated,
-    TimeSpan? CpuTime = null, long InputBytes = 0, bool Started = false);
+    TimeSpan? CpuTime = null, long InputBytes = 0, bool Started = false, string? EngineVersion = null);
 
 /// <summary>Runs the installed YARA engine on one explicitly selected file.</summary>
 public static class YaraScanner
@@ -30,6 +30,7 @@ public static class YaraScanner
             if (!target.Exists) return new(YaraScanStatus.Unavailable, "", "File not found.", false);
             var fileBytes = target.Length;
             if (fileBytes > maximumBytes) return new(YaraScanStatus.FileTooLarge, "", "", false);
+            var engineVersion = await ReadVersionAsync(executable, cancellationToken);
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             start.ArgumentList.Add("--no-follow-symlinks");
             // The Agent owns the deadline; leave the engine a little longer so its own timeout
@@ -49,17 +50,45 @@ public static class YaraScanner
                 if (!process.HasExited) process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
                 cancellationToken.ThrowIfCancellationRequested();
-                return new(YaraScanStatus.TimedOut, "", "", false, CpuTime(process), fileBytes, true);
+                return new(YaraScanStatus.TimedOut, "", "", false, CpuTime(process), fileBytes, true, engineVersion);
             }
             var stdout = await output;
             var stderr = await error;
             return new(process.ExitCode == 0 ? YaraScanStatus.Completed : YaraScanStatus.Failed,
-                stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, CpuTime(process), fileBytes, true);
+                stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, CpuTime(process), fileBytes, true, engineVersion);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             return new(YaraScanStatus.Unavailable, "", exception.Message, false);
         }
+    }
+
+    private static async Task<string?> ReadVersionAsync(string executable, CancellationToken token)
+    {
+        try
+        {
+            var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            start.ArgumentList.Add("--version");
+            using var process = Process.Start(start);
+            if (process is null) return null;
+            var output = ReadAsync(process.StandardOutput);
+            var error = ReadAsync(process.StandardError);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(2));
+            try { await process.WaitForExitAsync(deadline.Token); }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                token.ThrowIfCancellationRequested();
+                return null;
+            }
+            var stdout = await output;
+            await error;
+            var value = stdout.Text.Trim();
+            return process.ExitCode == 0 && !stdout.Truncated && value.Length is > 0 and <= 64 && !value.Any(char.IsControl) ? value : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception) { return null; }
     }
 
     private static TimeSpan? CpuTime(Process process)

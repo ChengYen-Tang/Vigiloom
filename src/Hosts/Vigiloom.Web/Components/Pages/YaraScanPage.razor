@@ -42,6 +42,7 @@
                     @if (job.Result is { } result)
                     {
                         <p>結果：@Outcome(result.Outcome) · @result.CompletedAt.ToString("u")</p>
+                        <p>YARA 引擎版本：@(result.EngineVersion ?? "未知")</p>
                         @if (!string.IsNullOrWhiteSpace(result.Output)) { <pre>@result.Output</pre> }
                         @if (!string.IsNullOrWhiteSpace(result.Error)) { <p>@result.Error</p> }
                         @if (result.OutputTruncated) { <p>輸出過長，僅顯示部分內容。</p> }
@@ -55,7 +56,7 @@
                             </EditForm>
                         </Authorized></AuthorizeView>
                     }
-                    <details><summary>查看規則</summary><pre>@job.Request.Rules</pre></details>
+                    <details><summary>查看規則</summary><p>來源：管理員手動輸入 · SHA-256：@RulesHash(job.Request.Rules)</p><pre>@job.Request.Rules</pre></details>
                 </article>
             }
         </section>
@@ -115,6 +116,8 @@
         YaraScanOutcome.Completed => "已完成", YaraScanOutcome.FileTooLarge => "檔案超過大小上限", YaraScanOutcome.TimedOut => "已逾時",
         YaraScanOutcome.Unavailable => "無法使用", YaraScanOutcome.Cancelled => "已取消（Agent 連線後停止）", _ => "掃描失敗"
     };
+
+    private static string RulesHash(string rules) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rules)));
 
     private sealed class ScanForm
     {

@@ -45,6 +45,7 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
         yara.Property(x => x.Rules).HasMaxLength(65536).IsRequired();
         yara.Property(x => x.Output).HasMaxLength(65536);
         yara.Property(x => x.Error).HasMaxLength(65536);
+        yara.Property(x => x.EngineVersion).HasMaxLength(64);
         yara.HasIndex(x => new { x.AgentId, x.CompletedAt, x.RequestedAt });
         yara.HasIndex(x => new { x.DeviceId, x.RequestedAt, x.RowId });
         yara.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);

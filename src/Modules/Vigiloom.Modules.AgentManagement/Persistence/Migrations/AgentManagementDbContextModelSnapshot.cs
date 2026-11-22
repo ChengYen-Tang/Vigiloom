@@ -1712,6 +1712,10 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("EngineVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Error")
                         .HasMaxLength(65536)
                         .HasColumnType("nvarchar(max)");
