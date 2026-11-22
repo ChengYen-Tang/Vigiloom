@@ -1,6 +1,9 @@
+using System.Security.Claims;
 using Vigiloom.Contracts.Agent.Security;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Events;
 
 namespace Vigiloom.Web.Api;
 
@@ -8,10 +11,16 @@ internal static class YaraScanEndpoints
 {
     public static void MapYaraScanEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/devices/{deviceId:guid}/yara-scans", async (Guid deviceId, YaraScans scans, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/yara-scans", async (Guid deviceId, YaraScans scans, EventTimelineAudit audit, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
-            try { return Results.Ok(await scans.ListAsync(deviceId, token)); }
+            if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) return Results.Forbid();
+            try
+            {
+                var jobs = await scans.ListAsync(deviceId, token);
+                await audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed("yara-list", deviceId, deviceId), token);
+                return Results.Ok(jobs);
+            }
             catch (ArgumentException) { return Results.BadRequest(); }
         }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<IReadOnlyList<YaraScanJob>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
