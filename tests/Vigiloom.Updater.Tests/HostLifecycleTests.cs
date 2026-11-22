@@ -28,8 +28,13 @@ public sealed class HostLifecycleTests(TestContext testContext)
     }
 
     [TestMethod]
+    [DataRow(UpdatePhase.Prepared)]
+    [DataRow(UpdatePhase.Stopping)]
+    [DataRow(UpdatePhase.Switching)]
+    [DataRow(UpdatePhase.Starting)]
+    [DataRow(UpdatePhase.Verifying)]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task HostPreservesPreparedUpdateOnStartupWithoutContactingServer()
+    public async Task HostPreservesInterruptedUpdateOnStartupWithoutContactingServer(UpdatePhase phase)
     {
         var root = Path.Combine(testContext.TestRunDirectory!, $"recovery-{Guid.NewGuid():N}");
         var stateDirectory = Path.Combine(root, "state");
@@ -41,7 +46,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             var prepared = Path.Combine(root, "staging", Guid.CreateVersion7().ToString("N"));
             Directory.CreateDirectory(prepared);
             await journal.WriteAsync(new UpdateState(Guid.CreateVersion7(), Path.Combine(root, "old"), prepared,
-                UpdatePhase.Prepared, now, [new(UpdatePhase.Prepared, now, null)]), testContext.CancellationToken);
+                phase, now, [new(phase, now, null)]), testContext.CancellationToken);
             var builder = UpdaterHost.CreateBuilder([]);
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
