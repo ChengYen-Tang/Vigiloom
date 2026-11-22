@@ -38,3 +38,7 @@ engine was also exercised separately, including timeout; these checks do not est
 deployment or all platform combinations. A separate Linux Agent worker check
 used a simulated central cancellation response and confirmed that the running
 YARA process stopped and no scan result was queued.
+
+A Windows x64 integration check created a scan centrally, ran the actual Agent
+against the YARA 4.6.0 CLI, and confirmed the matching result and engine version
+arrived in SQL Server through the durable queue over validated TLS.
