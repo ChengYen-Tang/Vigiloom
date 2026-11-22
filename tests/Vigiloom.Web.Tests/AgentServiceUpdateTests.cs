@@ -160,13 +160,34 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var installationRoot = windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Agent")
                     : "/opt/vigiloom/agent";
+                var updaterState = windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Updater")
+                    : "/var/lib/vigiloom/updater";
                 var abandonedPreparation = Path.Combine(installationRoot, "staging", Guid.CreateVersion7().ToString("N"));
+                var abandonedCache = Path.Combine(updaterState, "cache");
+                var partialDownload = Path.Combine(abandonedCache, "interrupted.download");
+                var retainedPackage = Path.Combine(abandonedCache, "retained-test.pkg");
                 if (windows) Directory.CreateDirectory(abandonedPreparation);
                 else await RunAsync("sudo", token, "-n", "mkdir", "-p", abandonedPreparation);
+                if (windows)
+                {
+                    Directory.CreateDirectory(abandonedCache);
+                    await File.WriteAllTextAsync(partialDownload, "partial", token);
+                    await File.WriteAllTextAsync(retainedPackage, "retained", token);
+                }
+                else await RunAsync("sudo", token, "-n", "sh", "-c", "mkdir -p \"$1\"; printf partial > \"$2\"; printf retained > \"$3\"",
+                    "sh", abandonedCache, partialDownload, retainedPackage);
                 Assert.IsTrue(Directory.Exists(abandonedPreparation));
                 if (windows) await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Restart-Service -Name 'Vigiloom Updater'");
                 else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
                 await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(abandonedPreparation)), token);
+                await WaitUntilAsync(async () => !await HasPartialDownloadAsync(windows, abandonedCache, token, requireData: false), token);
+                if (windows)
+                {
+                    Assert.AreEqual("retained", await File.ReadAllTextAsync(retainedPackage, token));
+                    File.Delete(retainedPackage);
+                }
+                else await RunAsync("sudo", token, "-n", "sh", "-c", "printf retained | cmp -s \"$1\" - && rm -- \"$1\"", "sh", retainedPackage);
                 var logPath = windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Agent", "cursor-test.log")
                     : "/var/lib/vigiloom/agent/cursor-test.log";
@@ -213,9 +234,6 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual(replaced, current);
                 await SetServiceRunningAsync(windows, running: true, token);
                 await WaitForResultAsync(agents, agentId, current.Value, AgentUpdateResultKind.Failed, token, TimeSpan.FromMinutes(7));
-                var updaterState = windows
-                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Updater")
-                    : "/var/lib/vigiloom/updater";
                 var failed = windows
                     ? await new UpdateJournal(updaterState).ReadAsync(token)
                     : System.Text.Json.JsonSerializer.Deserialize<UpdateState>(await RunAsync("sudo", token, "-n", "python3", "-c",
