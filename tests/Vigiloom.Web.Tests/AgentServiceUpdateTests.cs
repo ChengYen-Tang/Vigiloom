@@ -272,6 +272,31 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreEqual(agentPidBeforeRepair, await ServicePidAsync(windows, agent: true, token));
                 CollectionAssert.AreEqual(replacementHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
 
+                if (windows)
+                {
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(bundle, "remove.ps1"));
+                    await WaitUntilAsync(async () => await RunAsync("powershell.exe", token, "-NoProfile", "-Command",
+                        "@(Get-Service -Name 'Vigiloom Agent','Vigiloom Updater' -ErrorAction SilentlyContinue).Count") == "0", token);
+                }
+                else
+                {
+                    await RunAsync("sudo", token, "-n", "bash", Path.Combine(bundle, "remove.sh"));
+                    Assert.IsFalse(File.Exists("/etc/systemd/system/vigiloom-agent.service"));
+                    Assert.IsFalse(File.Exists("/etc/systemd/system/vigiloom-updater.service"));
+                }
+                var removedAt = DateTimeOffset.UtcNow;
+                if (windows)
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(bundle, "restore.ps1"));
+                else
+                    await RunAsync("sudo", token, "-n", "bash", Path.Combine(bundle, "restore.sh"));
+                Assert.AreNotEqual("0", await ServicePidAsync(windows, agent: true, token));
+                Assert.AreNotEqual("0", await ServicePidAsync(windows, agent: false, token));
+                await WaitUntilAsync(async () =>
+                {
+                    await using var db = await agents.CreateDbContextAsync(token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.0.0", token);
+                }, token);
+
                 gate.Allow();
                 var replay = await gate.Retried.WaitAsync(TimeSpan.FromMinutes(3), token);
                 CollectionAssert.AreEqual(blocked, replay);

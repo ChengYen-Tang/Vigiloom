@@ -18,7 +18,7 @@ paths=(/opt/vigiloom/agent /opt/vigiloom/updater /opt/vigiloom/updater.previous
     /opt/vigiloom/updater.next /opt/vigiloom/agent-tools /var/lib/vigiloom/agent
     /var/lib/vigiloom/updater /etc/vigiloom/agent.env /etc/vigiloom/updater.env
     /etc/systemd/system/vigiloom-agent.service /etc/systemd/system/vigiloom-updater.service
-    /etc/systemd/system/vigiloom-agent.service.d /etc/systemd/system/vigiloom-updater.service.d
+    /etc/systemd/system/vigiloom-agent.service.d /etc/systemd/system/vigiloom-updater.service.d /etc/vigiloom/service-backup
     /etc/vigiloom-systemd-test-ca.pem)
 for path in "${paths[@]}"; do [[ ! -e $path && ! -L $path ]] || exit 1; done
 ! getent passwd vigiloom-agent >/dev/null && ! getent group vigiloom-agent >/dev/null || exit 1
@@ -55,7 +55,7 @@ cleanup() {
         /etc/vigiloom/agent.env /etc/vigiloom/updater.env /etc/vigiloom-systemd-test-ca.pem
     rm -rf -- /etc/systemd/system/vigiloom-agent.service.d /etc/systemd/system/vigiloom-updater.service.d \
         /opt/vigiloom/agent /opt/vigiloom/updater /opt/vigiloom/updater.previous /opt/vigiloom/updater.next \
-        /opt/vigiloom/agent-tools /var/lib/vigiloom/agent /var/lib/vigiloom/updater
+        /opt/vigiloom/agent-tools /var/lib/vigiloom/agent /var/lib/vigiloom/updater /etc/vigiloom/service-backup
     systemctl daemon-reload >/dev/null 2>&1 || true
     userdel vigiloom-agent >/dev/null 2>&1 || true
     exit "$status"
