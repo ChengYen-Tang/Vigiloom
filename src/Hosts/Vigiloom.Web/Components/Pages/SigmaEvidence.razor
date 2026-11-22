@@ -3,11 +3,15 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using System.Text
 @using System.Text.Json
+@using System.Security.Claims
 @using Microsoft.EntityFrameworkCore
 @using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Contracts.Operations
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
 @using Vigiloom.Modules.SecurityAnalysis.Persistence
+@using Vigiloom.Web.Events
 @inject IDbContextFactory<SecurityAnalysisDbContext> Security
+@inject EventTimelineAudit Audit
 @inject ILogger<SigmaEvidence> Logger
 
 <PageTitle>行為規則證據 - Vigiloom</PageTitle>
@@ -73,6 +77,8 @@
                             baseRule = Encoding.UTF8.GetString(source.Content);
                     }
                 }
+                if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new InvalidOperationException("Missing actor.");
+                await Audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed("sigma-rule", TestId), HttpContext.RequestAborted);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
