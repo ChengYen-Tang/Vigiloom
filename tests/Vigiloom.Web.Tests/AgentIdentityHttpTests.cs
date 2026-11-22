@@ -608,6 +608,8 @@ public sealed class AgentIdentityHttpTests
                 var shared = new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogContext { ServiceId = service.Id, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
                 var log = new OpenTelemetry.Proto.Logs.V1.LogRecord { Body = new OpenTelemetry.Proto.Common.V1.AnyValue { StringValue = "unique service event" } };
                 serviceDb.LogRecords.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogRecord { ServiceId = service.Id, Context = shared, OccurredAt = now, ReceivedAt = now, RecordPayload = Google.Protobuf.MessageExtensions.ToByteArray(log) });
+                var traceContext = new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext { ServiceId = service.Id, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                serviceDb.TraceSpans.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [] });
                 await serviceDb.SaveChangesAsync(token);
             }
             var eventUrl = $"/api/v1/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
@@ -619,6 +621,7 @@ public sealed class AgentIdentityHttpTests
             Assert.IsNotNull(timeline);
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "host-log" && x.ResourceId == device.Id));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-log" && x.Summary.Contains("unique service event", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-trace" && x.Evidence.Contains("0202020202020202", StringComparison.Ordinal)));
             using var filteredResponse = await reader.GetAsync(eventUrl + $"&groupId={Guid.CreateVersion7():D}&source=host-log", token);
             Assert.AreEqual(HttpStatusCode.OK, filteredResponse.StatusCode);
             var filtered = await filteredResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);

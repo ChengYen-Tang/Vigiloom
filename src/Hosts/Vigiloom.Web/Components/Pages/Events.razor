@@ -57,7 +57,7 @@
     [SupplyParameterFromQuery(Name = "group")] public string? Group { get; set; }
     [SupplyParameterFromQuery(Name = "source")] public string? Source { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public int? Page { get; set; }
-    private static readonly KeyValuePair<string, string>[] Sources = [new("host-log", "主機日誌"), new("service-log", "應用程式日誌"), new("service-health", "服務健康"), new("inventory", "資產盤點"), new("integrity", "完整性"), new("sigma", "行為規則"), new("vulnerability", "漏洞評估"), new("baseline", "安全基準"), new("ioc", "IOC 比對"), new("yara", "YARA 掃描")];
+    private static readonly KeyValuePair<string, string>[] Sources = [new("host-log", "主機日誌"), new("service-log", "應用程式日誌"), new("service-trace", "應用程式追蹤"), new("service-health", "服務健康"), new("inventory", "資產盤點"), new("integrity", "完整性"), new("sigma", "行為規則"), new("vulnerability", "漏洞評估"), new("baseline", "安全基準"), new("ioc", "IOC 比對"), new("yara", "YARA 掃描")];
     private (Guid Id, string Name)[] groups = [];
     private EventTimelinePage? result;
     private string? error, fromText, toText;
