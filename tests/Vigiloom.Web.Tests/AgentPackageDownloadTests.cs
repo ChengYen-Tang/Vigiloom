@@ -103,6 +103,11 @@ public sealed class AgentPackageDownloadTests(TestContext context)
         public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken token) =>
             Task.FromResult(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
         public Task CacheAsync(Uri origin, string? credential, PackageManifest package, CancellationToken token) => Task.CompletedTask;
+        public Task SaveManifestAsync(VerifiedManifest value, string hash, CancellationToken token) => Task.CompletedTask;
+        public Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken token) =>
+            Task.FromResult<VerifiedManifest?>(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
+        public async Task<Stream?> OpenCachedAsync(PackageManifest package, CancellationToken token) =>
+            await OpenAsync(new Uri("https://localhost/"), null, package, token);
         public async Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest package, CancellationToken token)
         {
             LastStream = new MemoryStream(archive, writable: false);

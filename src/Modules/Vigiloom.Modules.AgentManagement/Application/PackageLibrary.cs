@@ -26,7 +26,9 @@ public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> c
 
         await transport.CacheAsync(source.BaseUri, source.Credential, manifest, cancellationToken);
         var after = await ReadEligibleAsync(packageId, source.Version, cancellationToken);
-        return after is not null && Matches(after, manifest) && manifest.Expires > clock.GetUtcNow();
+        if (after is null || !Matches(after, manifest) || manifest.Expires <= clock.GetUtcNow()) return false;
+        await transport.SaveManifestAsync(verified, manifest.ManifestSha256, cancellationToken);
+        return true;
     }
 
     private async Task<PackageSnapshot?> ReadEligibleAsync(Guid id, byte[] sourceVersion, CancellationToken token)
@@ -54,6 +56,9 @@ public interface IPackageLibraryTransport
 {
     Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken cancellationToken);
     Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
+    Task SaveManifestAsync(VerifiedManifest manifest, string hash, CancellationToken cancellationToken);
+    Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken cancellationToken);
+    Task<Stream?> OpenCachedAsync(PackageManifest manifest, CancellationToken cancellationToken);
     /// <summary>Opens the verified cached archive; the caller owns the returned stream.</summary>
     Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
 }

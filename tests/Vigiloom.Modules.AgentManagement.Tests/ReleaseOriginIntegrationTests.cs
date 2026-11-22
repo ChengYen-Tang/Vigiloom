@@ -143,6 +143,17 @@ public sealed class ReleaseOriginIntegrationTests(TestContext context)
                     (await File.ReadAllTextAsync(Path.Combine(temporary, "store", "current"), token)).Trim(), "targets", manifestHash + ".json"), token);
                 Assert.AreEqual(manifestHash, Convert.ToHexStringLower(SHA256.HashData(manifest)));
                 Assert.IsFalse(origin.HasExited, "The origin stopped unexpectedly.");
+                await proxy.StopAsync(token);
+                await using var lease = await trust.AcquireAsync(token);
+                var offlineManifest = await transport.ReadCachedManifestAsync(lease, manifestHash, token);
+                Assert.IsNotNull(offlineManifest);
+                CollectionAssert.AreEqual(manifest, offlineManifest.Content.ToArray());
+                var offlinePackage = PackageManifest.Parse(offlineManifest, DateTimeOffset.UtcNow);
+                await using var offlineArchive = await transport.OpenCachedAsync(offlinePackage, token);
+                Assert.IsNotNull(offlineArchive);
+                using var copy = new MemoryStream();
+                await offlineArchive.CopyToAsync(copy, token);
+                CollectionAssert.AreEqual(cached, copy.ToArray());
             }
             catch (Exception error) { failure = error; throw; }
             finally
