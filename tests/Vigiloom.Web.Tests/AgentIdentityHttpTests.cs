@@ -636,6 +636,14 @@ public sealed class AgentIdentityHttpTests
             Assert.DoesNotContain($"yara-scan-cancel-{scan.Id:D}", await readerPage.Content.ReadAsStringAsync(token));
             using var admin = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(admin, "admin", token);
+            using (var forbiddenScript = await reader.GetAsync("/settings/agent-tools/grant-sysmon-read", token))
+                Assert.AreNotEqual(HttpStatusCode.OK, forbiddenScript.StatusCode);
+            using (var script = await admin.GetAsync("/settings/agent-tools/grant-sysmon-read", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, script.StatusCode);
+                Assert.IsTrue(script.Headers.CacheControl?.NoStore);
+                Assert.Contains("Microsoft-Windows-Sysmon/Operational", await script.Content.ReadAsStringAsync(token));
+            }
             using var adminPage = await admin.GetAsync(scanPage, token);
             var document = await new HtmlParser().ParseDocumentAsync(await adminPage.Content.ReadAsStringAsync(token), token);
             var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == $"yara-scan-cancel-{scan.Id:D}");

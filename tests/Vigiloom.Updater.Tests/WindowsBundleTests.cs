@@ -79,6 +79,7 @@ public sealed class WindowsBundleTests(TestContext context)
                 Assert.IsNotNull(archive.GetEntry("remove.ps1"));
                 Assert.IsNotNull(archive.GetEntry("restore.ps1"));
                 Assert.IsNotNull(archive.GetEntry("repair-updater.ps1"));
+                Assert.IsNotNull(archive.GetEntry("grant-sysmon-read.ps1"));
             }
 
             await WriteExecutableAsync(Path.Combine(updater, "Vigiloom.Updater.exe"), 0x014c, context.CancellationToken);
