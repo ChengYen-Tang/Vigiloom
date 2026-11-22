@@ -54,9 +54,13 @@ UNIT
     systemctl daemon-reload
     systemctl start vigiloom-updater.service
     old_pid=$(systemctl show -p MainPID --value vigiloom-updater.service)
-    cp -- "$workspace/src/Updater/Vigiloom.Updater/Maintenance/replace-linux.sh" "$state/replace.sh"
-    systemd-run --unit="vigiloom-req20-test-$operation" --collect --property=Type=exec /bin/bash \
-        "$state/replace.sh" "$agent" "$source" "$state" "$operation"
+    if [[ -n ${VIGILOOM_TEST_REPLACEMENT_LAUNCHER:-} ]]; then
+        "$VIGILOOM_TEST_REPLACEMENT_LAUNCHER" "$agent" "$source" "$state" "$operation"
+    else
+        cp -- "$workspace/src/Updater/Vigiloom.Updater/Maintenance/replace-linux.sh" "$state/replace.sh"
+        systemd-run --unit="vigiloom-req20-test-$operation" --collect --property=Type=exec /bin/bash \
+            "$state/replace.sh" "$agent" "$source" "$state" "$operation"
+    fi
     for _ in {1..60}; do
         status=$(cat "$state/updater-replacement.status" 2>/dev/null || true)
         [[ $status == "$operation succeeded" || $status == "$operation failed "* ]] && break
@@ -76,5 +80,5 @@ UNIT
     echo "Updater replacement $mode verified."
 }
 
-run_case success "$(cat /proc/sys/kernel/random/uuid)"
-run_case failure "$(cat /proc/sys/kernel/random/uuid)"
+run_case success 0199123456787abc8def123456789abc
+run_case failure 0199123456787abc8def123456789abd
