@@ -47,7 +47,13 @@ public sealed class AgentPackageUiTests(TestContext context)
         using var response = await client.GetAsync("/settings/agent-packages?releases=1", token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var html = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
-        Assert.IsNotNull(html.QuerySelector($"form[action^='/settings/agent-packages/{id:D}/download']"));
+        var form = html.QuerySelector($"form[action^='/settings/agent-packages/{id:D}/download']");
+        Assert.IsNotNull(form);
+        var anti = form.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+        using var download = await client.PostAsync(form.GetAttribute("action"),
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = anti }), token);
+        Assert.AreEqual(HttpStatusCode.Redirect, download.StatusCode);
+        Assert.AreEqual("/settings/agent-packages?releases=1&download=unavailable", download.Headers.Location?.OriginalString);
         Assert.Contains("win-x64", html.Body!.TextContent);
         Assert.Contains("Preview", html.Body.TextContent);
     }, context.CancellationToken);
