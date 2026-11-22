@@ -19,3 +19,17 @@ integrated or tested it. Rules with unresolved terms are not silently published.
 The existing Agent reads Windows event channels and Linux journal or text logs;
 the optional sensor still requires explicit enablement and an actual integration
 test. No sensor installation or host isolation is automatic.
+
+In a Windows Sandbox test, Sysmon installed its service and driver, produced a
+process-creation event, and was removed with its own uninstall command. The
+Vigiloom event decoder successfully read the event's ID, image and hash fields.
+The installed Sysmon service rejected a normal `Stop-Service` request; use the
+vendor's supported controls rather than assuming the service can be stopped this
+way. This test does not by itself establish that the Agent service account can
+read the channel or that events reach the central platform.
+
+On Fedora 42 x64 under WSL, the Vigiloom scanner was exercised with the installed
+YARA engine: a match, a non-match, the file size check and cancellation of a
+running scan passed. The test package was removed afterward. The Windows x64
+engine was also exercised separately; these checks do not establish full Agent
+deployment or all platform combinations.
