@@ -60,7 +60,7 @@ finally {
         try {
             $events = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = @('Vigiloom.Agent', 'Vigiloom.Updater'); StartTime = $startedAt } -ErrorAction SilentlyContinue | Select-Object -First 100
             foreach ($event in $events) {
-                if ($event.Message -match '(?m)^\s*((?:Agent installation enrollment (?:completed\.|is pending: [A-Za-z]+\.)|Agent update handoff (?:status|unavailable): [A-Za-z]+\.|Updater (?:request result: [A-Za-z]+, [A-Za-z]*\.|request failed: [A-Za-z]+\.|recovery state: [A-Za-z]+\.)))\s*$') {
+                if ($event.Message -match '(?m)^\s*((?:Agent installation enrollment (?:completed\.|is pending: [A-Za-z]+\.)|Agent update handoff (?:status|unavailable): [A-Za-z]+\.|Agent (?:log collection|log settings synchronization|metric settings synchronization|configuration synchronization) failed: [A-Za-z]+\.|Agent (?:saved settings could not be loaded|configuration synchronizer unavailable|heartbeat unavailable): [A-Za-z]+\.|Agent log source [0-9a-fA-F-]+: [A-Za-z]+\.|Updater (?:request result: [A-Za-z]+, [A-Za-z]*\.|request failed: [A-Za-z]+\.|recovery state: [A-Za-z]+\.)))\s*$') {
                     [Console]::Error.WriteLine("WINDOWS_TEST $($Matches[1])")
                 }
             }
