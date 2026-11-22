@@ -157,6 +157,16 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
+                var installationRoot = windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Agent")
+                    : "/opt/vigiloom/agent";
+                var abandonedPreparation = Path.Combine(installationRoot, "staging", Guid.CreateVersion7().ToString("N"));
+                if (windows) Directory.CreateDirectory(abandonedPreparation);
+                else await RunAsync("sudo", token, "-n", "mkdir", "-p", abandonedPreparation);
+                Assert.IsTrue(Directory.Exists(abandonedPreparation));
+                if (windows) await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Restart-Service -Name 'Vigiloom Updater'");
+                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
+                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(abandonedPreparation)), token);
                 var logPath = windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Agent", "cursor-test.log")
                     : "/var/lib/vigiloom/agent/cursor-test.log";
