@@ -9,6 +9,43 @@ public sealed class WindowsBundleTests(TestContext context)
 {
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
+    [DataRow("6.1.7601", 3, false)]
+    [DataRow("6.2.9200", 1, false)]
+    [DataRow("6.2.9200", 3, true)]
+    [DataRow("6.3.9600", 3, true)]
+    [DataRow("10.0.10240", 1, false)]
+    [DataRow("10.0.14392", 1, false)]
+    [DataRow("10.0.14393", 1, true)]
+    [DataRow("10.0.20348", 3, true)]
+    [Timeout(30000, CooperativeCancellation = true)]
+    public async Task WindowsVersionCheck_EnforcesRuntimeBaseline(string version, int productType, bool expected)
+    {
+        var start = new ProcessStartInfo("powershell.exe") { RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Environment["PSModulePath"] = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "Modules");
+        start.Environment["VIGILOOM_PLATFORM_SCRIPT"] = Path.Combine(AppContext.BaseDirectory, "Fixtures", "WindowsPackage", "platform.ps1");
+        start.Environment["VIGILOOM_TEST_VERSION"] = version;
+        start.Environment["VIGILOOM_TEST_PRODUCT_TYPE"] = productType.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command",
+            ". $env:VIGILOOM_PLATFORM_SCRIPT; Test-AgentWindowsVersion ([version]$env:VIGILOOM_TEST_VERSION) ([int]$env:VIGILOOM_TEST_PRODUCT_TYPE)" })
+            start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start PowerShell.");
+        var output = process.StandardOutput.ReadToEndAsync(context.CancellationToken);
+        var error = process.StandardError.ReadToEndAsync(context.CancellationToken);
+        try { await process.WaitForExitAsync(context.CancellationToken); }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+        }
+        Assert.AreEqual(0, process.ExitCode, await error);
+        Assert.AreEqual(expected.ToString(), (await output).Trim());
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     [Timeout(60000, CooperativeCancellation = true)]
     public async Task Bundle_UsesExecutableArchitectureAndRejectsMixedPackages()
     {
