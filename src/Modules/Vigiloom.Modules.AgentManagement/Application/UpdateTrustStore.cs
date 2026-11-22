@@ -201,7 +201,6 @@ public sealed class UpdateTrustStore(IDbContextFactory<AgentManagementDbContext>
                 UPDATE [agent].[UpdateTrustStates] SET [Snapshot] = {encoded}, [Digest] = {nextDigest}
                 WHERE [Id] = {id} AND [Digest] = {digest};
                 IF @@ROWCOUNT <> 1 THROW 51000, 'Update trust state changed or is missing.', 1;
-                UPDATE [agent].[Packages] SET [Listed] = 0 WHERE [Listed] = 1;
                 """);
             if (role == "root")
             {
