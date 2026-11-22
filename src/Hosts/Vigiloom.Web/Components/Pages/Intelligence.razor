@@ -24,7 +24,7 @@
         <ul>
             <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
             <li>行為規則：保存 Sigma 原始規則；支援的規則可在<a href="/settings/sigma">行為規則</a>試跑及啟用。</li>
-            <li>IOC／YARA：保存來源檔案與 IOC 分類；比對、執行及發布尚未啟用。</li>
+            <li>IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。</li>
             <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。</li>
         </ul>
         <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
@@ -82,6 +82,11 @@
                         <EditForm Model="PolicyInput" FormName="intelligence-policy" method="post" OnValidSubmit="SavePolicyAsync" OnInvalidSubmit="InvalidPolicy" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                             <input type="hidden" name="PolicyInput.SourceId" value="@PolicyInput.SourceId" /><InputHidden @bind-Value="PolicyInput.Version" />
                             <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "啟用此檢查" : "啟用自動更新")</label>
+                            @if (selected.Key == "signature-base")
+                            {
+                                <label><InputCheckbox @bind-Value="PolicyInput.IocDetectionEnabled" /> 比對主機事件中的 IOC</label>
+                                <small>命中僅供調查，不會自動隔離主機。</small>
+                            }
                             <div hidden="@selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal)">
                             <label for="interval">更新間隔（秒）</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>例如：3,600 秒是 1 小時。</small>
                             <label for="stale">資料過期期限（秒）</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>例如：86,400 秒是 1 天。</small>

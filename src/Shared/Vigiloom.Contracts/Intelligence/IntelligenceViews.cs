@@ -4,7 +4,8 @@ namespace Vigiloom.Contracts.Intelligence;
 public sealed record IntelligenceSourceView(Guid Id, string Key, bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,
     int MaximumBytes, int MaximumRecords, string Version, DateTimeOffset? LastCheckedAt, DateTimeOffset? LastSuccessfulCheckAt,
     string? LastError, bool IsStale, Guid? ActiveRevisionId, string ActivationVersion, bool HasCredential,
-    IntelligenceSourceDescription? Description, bool ActiveUnavailable = false, bool ActiveVersionOutdated = false);
+    IntelligenceSourceDescription? Description, bool ActiveUnavailable = false, bool ActiveVersionOutdated = false,
+    bool IocDetectionEnabled = false);
 
 /// <summary>Verified source identity and scope; a missing description means the source is unrecognized.</summary>
 public sealed record IntelligenceSourceDescription(string Name, string Category, string SourceUrl, string Coverage, string LicenseEvidence, string PlatformCoverage);
@@ -57,7 +58,7 @@ public sealed record IntelligenceActivationRequest(Guid RevisionId, Guid? Expect
 
 /// <summary>Administrator-controlled source policy and optimistic concurrency version.</summary>
 public sealed record IntelligencePolicyUpdate(bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds,
-    int MaximumBytes, int MaximumRecords, string Version);
+    int MaximumBytes, int MaximumRecords, string Version, bool? IocDetectionEnabled = null);
 
 public static class IntelligencePolicyLimits
 {

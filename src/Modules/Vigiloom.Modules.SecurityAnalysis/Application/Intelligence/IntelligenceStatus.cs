@@ -116,7 +116,8 @@ public sealed class IntelligenceStatus(IDbContextFactory<SecurityAnalysisDbConte
             row.ActiveVersion is null ? "" : Convert.ToBase64String(row.ActiveVersion), row.Source.ProtectedCredential is not null,
             Describe(row.Source.Key) is { } description && localNames.TryGetValue(row.Source.Id, out var localName) ? description with { Name = localName } : Describe(row.Source.Key),
             row.ActiveUnavailable || unavailableBaselines.Contains(row.Source.Id) || row.Source.Key == "github-reviewed" && advisoryUnavailable || row.Source.Key == SigmaRefresh.SourceKey && sigmaUnavailable || row.Source.Key == "signature-base" && iocUnavailable || row.Source.Key == DebianRevisionStage.SourceKey && debianUnavailable || row.Source.Key == UbuntuRevisionStage.SourceKey && ubuntuUnavailable || row.Source.Key == MsrcSnapshotStage.SourceKey && msrcUnavailable || row.Source.Key == EpssSnapshotStage.SourceKey && epssUnavailable,
-            row.Source.Key is UbuntuRevisionStage.SourceKey or DebianRevisionStage.SourceKey && row.ActiveId != null && row.Source.LastObservedRevisionId != row.ActiveId)).ToArray();
+            row.Source.Key is UbuntuRevisionStage.SourceKey or DebianRevisionStage.SourceKey && row.ActiveId != null && row.Source.LastObservedRevisionId != row.ActiveId,
+            row.Source.IocDetectionEnabled)).ToArray();
         return new(items, page, rows.Length > PageSize && page < 1000);
     }
 

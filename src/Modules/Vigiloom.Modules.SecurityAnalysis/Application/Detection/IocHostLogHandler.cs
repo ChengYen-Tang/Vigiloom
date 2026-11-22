@@ -1,0 +1,69 @@
+using System.Text.Json;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
+
+namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+
+/// <summary>Matches received host events against the selected IOC source.</summary>
+internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, TimeProvider clock,
+    ILogger<IocHostLogHandler> logger) : IOutboxHandler
+{
+    public string MessageType => HostLogDispatch.IocMessageType;
+
+    public async Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        var dispatch = JsonSerializer.Deserialize<HostLogDispatch>(message.Payload);
+        if (dispatch is null || dispatch.AgentId.Version != 7 || dispatch.DeviceId.Version != 7 ||
+            dispatch.MessageIds is not { Count: > 0 and <= AgentLogBatchCodec.MaximumItems } ||
+            dispatch.MessageIds.Any(x => x.Version != 7)) throw new InvalidDataException("Invalid host log dispatch.");
+
+        var selection = await source.GetActiveAsync(cancellationToken);
+        if (selection.Availability != IocSourceAvailability.Ready || selection.SourceId is not { } sourceId ||
+            selection.RevisionId is not { } revisionId || selection.ActivationVersion is null)
+        {
+            logger.LogWarning("IOC source is unavailable: {Status}.", selection.Availability);
+            return;
+        }
+        var hashes = await source.ReadFileAsync(selection, IocSourceEligibility.HashPath, cancellationToken);
+        var addresses = await source.ReadFileAsync(selection, IocSourceEligibility.C2Path, cancellationToken);
+        if (hashes.Availability != IocSourceAvailability.Ready || addresses.Availability != IocSourceAvailability.Ready ||
+            hashes.Content is null || addresses.Content is null)
+        {
+            logger.LogWarning("IOC source changed or became unavailable while reading its files.");
+            return;
+        }
+        var events = await logs.ReadAsync(dispatch.AgentId, dispatch.MessageIds, cancellationToken);
+        var matcher = new IocMatcher(hashes.Content, addresses.Content);
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
+            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                .MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        await db.Database.UseTransactionAsync(transaction, cancellationToken);
+        var current = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
+            .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+        var active = await db.IntelligenceActivations.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId, cancellationToken);
+        if (current is null || !current.Enabled || !current.IocDetectionEnabled || active is null || active.RevisionId != revisionId ||
+            Convert.ToBase64String(active.Version) != selection.ActivationVersion) return;
+        var now = clock.GetUtcNow();
+        foreach (var log in events)
+        {
+            foreach (var match in matcher.Match(HostEventDecoder.Decode(log)).Distinct())
+                db.IocDetections.Add(new IocDetection
+                {
+                    AgentId = dispatch.AgentId, DeviceId = dispatch.DeviceId, MessageId = log.MessageId,
+                    SourceId = sourceId, RevisionId = revisionId, Kind = match.Kind, Value = match.Value,
+                    Field = match.Field, SourceLine = match.SourceLine, OccurredAt = log.OccurredAt,
+                    ReceivedAt = log.ReceivedAt, EvaluatedAt = now
+                });
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+}
