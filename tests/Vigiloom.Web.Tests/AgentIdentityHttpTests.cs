@@ -594,7 +594,7 @@ public sealed class AgentIdentityHttpTests
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(reader, "reader", token);
             using var response = await reader.GetAsync(historyUrl, token);
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(token));
             Assert.IsTrue(response.Headers.CacheControl?.NoStore);
             var history = await response.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
             Assert.IsNotNull(history); Assert.HasCount(1, history.Items);
@@ -708,6 +708,8 @@ public sealed class AgentIdentityHttpTests
                 apiClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{apiId:D}.{WebEncoders.Base64UrlEncode(secret)}");
                 using var apiEvents = await apiClient.GetAsync(eventUrl, token);
                 Assert.AreEqual(HttpStatusCode.OK, apiEvents.StatusCode);
+                using var apiScans = await apiClient.GetAsync($"/api/v1/devices/{device.Id:D}/yara-scans", token);
+                Assert.AreEqual(HttpStatusCode.OK, apiScans.StatusCode);
             }
             using (var export = await reader.GetAsync(eventUrl.Replace("/api/v1/events?", "/api/v1/events/export?", StringComparison.Ordinal), token))
             {
@@ -745,8 +747,10 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsTrue(audits.Items.Any(x => x.EventTimeline is { Exported: false }));
                 Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventTimeline is { Exported: false }));
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log" } e && e.EvidenceId == item.MessageId && e.DeviceId == device.Id));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log-list" } e && e.DeviceId == device.Id));
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "sigma-rule" } e && e.EvidenceId == sigmaTestId));
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "yara-scan" } e && e.EvidenceId == oldScanId));
+                Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventEvidence is { Kind: "yara-list" } e && e.DeviceId == device.Id));
                 var auditJson = System.Text.Json.JsonSerializer.Serialize(audits);
                 Assert.DoesNotContain("ignored-user", auditJson);
                 Assert.DoesNotContain("test-condition", auditJson);

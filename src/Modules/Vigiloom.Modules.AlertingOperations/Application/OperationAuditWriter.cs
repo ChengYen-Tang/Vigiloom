@@ -80,6 +80,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     internal static bool IsValid(EventEvidenceAccessed access) => access.EvidenceId.Version == 7 && (access.Kind switch
     {
         "host-log" => access.DeviceId is { Version: 7 } && access.AgentId is { Version: 7 },
+        "host-log-list" => access.DeviceId == access.EvidenceId && access.AgentId is null,
         "sigma-rule" => access.DeviceId is null && access.AgentId is null,
         "yara-scan" => access.DeviceId is { Version: 7 } && access.AgentId is null,
         "yara-list" => access.DeviceId == access.EvidenceId && access.AgentId is null,
