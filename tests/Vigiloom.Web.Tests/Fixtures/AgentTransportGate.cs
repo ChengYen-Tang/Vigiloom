@@ -11,6 +11,9 @@ internal sealed class AgentTransportGate : IStartupFilter
 {
     private readonly TaskCompletionSource<byte[]> blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<byte[]> retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource assignmentPaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource assignmentReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private volatile Func<CancellationToken, Task<bool>>? pauseAssignment;
     private int settingsRejections;
     private volatile bool reject = true;
     private volatile bool rejectSettings;
@@ -18,13 +21,23 @@ internal sealed class AgentTransportGate : IStartupFilter
     internal Task<byte[]> Blocked => blocked.Task;
     internal Task<byte[]> Retried => retried.Task;
     internal int SettingsRejections => Volatile.Read(ref settingsRejections);
+    internal Task AssignmentPaused => assignmentPaused.Task;
     internal void Allow() => reject = false;
     internal void BlockSettings() => rejectSettings = true;
+    internal void PauseAssignmentWhen(Func<CancellationToken, Task<bool>> condition) => pauseAssignment = condition;
+    internal void ReleaseAssignment() { pauseAssignment = null; assignmentReleased.TrySetResult(); }
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, following) =>
         {
+            if (pauseAssignment is { } condition && context.Request.Method == "GET" &&
+                context.Request.Path == "/api/v1/agent/version-assignment" && await condition(context.RequestAborted))
+            {
+                assignmentPaused.TrySetResult();
+                try { await assignmentReleased.Task.WaitAsync(context.RequestAborted); }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { return; }
+            }
             if (rejectSettings && context.Request.Method == "GET" && context.Request.Path == "/api/v1/agent/settings")
             {
                 Interlocked.Increment(ref settingsRejections);
