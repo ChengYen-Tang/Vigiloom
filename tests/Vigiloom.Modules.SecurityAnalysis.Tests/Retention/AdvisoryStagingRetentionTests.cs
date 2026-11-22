@@ -38,11 +38,19 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
             await db.SaveChangesAsync(token);
             db.AdvisoryRevisionEntries.Add(new AdvisoryRevisionEntry { RevisionId = revision.Id, EntryRowId = referencedEntry.RowId, AdvisoryId = referencedEntry.AdvisoryId });
             await db.SaveChangesAsync(token);
+            var agentId = Guid.CreateVersion7(); var deviceId = Guid.CreateVersion7(); var old = now.AddDays(-40); var recent = now.AddDays(-5);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.InventoryChanges (AgentId, DeviceId, Source, Generation, ObservedAt, RecordedAt, Kind, [Key], AfterJson) VALUES ({agentId}, {deviceId}, {1}, {1}, {old}, {old}, {1}, {"old"}, {"{}"}), ({agentId}, {deviceId}, {1}, {1}, {recent}, {recent}, {1}, {"recent"}, {"{}"})", token);
+            db.IntegrityChanges.AddRange(
+                new Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord { AgentId = agentId, DeviceId = deviceId, ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = old, RecordedAt = old, Kind = 1, Key = "old", AfterJson = "{}" },
+                new Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord { AgentId = agentId, DeviceId = deviceId, ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = recent, RecordedAt = recent, Kind = 1, Key = "recent", AfterJson = "{}" });
+            await db.SaveChangesAsync(token);
 
             await using var transaction = await db.Database.BeginTransactionAsync(token);
             var retention = new SecurityAuditRetention();
             var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction(); var cutoff = now.AddDays(-30);
-            Assert.AreEqual(2L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(4L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(0L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
@@ -53,5 +61,7 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
             Assert.IsTrue(await db.AdvisoryImportEntries.AsNoTracking().AnyAsync(x => x.RowId == referencedEntry.RowId, token));
             Assert.IsTrue(await db.IntelligenceRevisions.AsNoTracking().AnyAsync(x => x.Id == revision.Id, token));
             Assert.AreEqual(3, await db.AdvisoryImports.AsNoTracking().CountAsync(token));
+            Assert.AreEqual("recent", (await db.InventoryChanges.AsNoTracking().SingleAsync(token)).Key);
+            Assert.AreEqual("recent", (await db.IntegrityChanges.AsNoTracking().SingleAsync(token)).Key);
         }, context.CancellationToken);
 }

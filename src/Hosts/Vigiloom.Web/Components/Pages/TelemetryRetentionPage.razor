@@ -11,7 +11,7 @@
 <main class="device-page device-form-page">
     <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定服務健康、指標、Logs 與 Traces 的保存期限；Logs 期限也適用於主機日誌。</p></div></header>
     <section class="device-panel">
-        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。安全偵測所需的主機日誌可能延長保留。</p>
+        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。Logs 期限也適用於 IOC 與 Sigma 偵測紀錄；安全偵測所需的主機日誌與 Sigma 紀錄可能延長保留。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
         else if (snapshot is not null)
         {
