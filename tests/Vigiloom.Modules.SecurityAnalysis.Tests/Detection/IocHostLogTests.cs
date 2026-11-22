@@ -58,6 +58,13 @@ public sealed class IocHostLogTests(TestContext context)
             Assert.AreEqual(revision.Id, match.RevisionId);
             Assert.AreEqual("192.0.2.1", match.Value);
             Assert.AreEqual("DestinationIp", match.Field);
+            var savedSource = await verify.IntelligenceSources.SingleAsync(token);
+            savedSource.IocDetectionEnabled = false;
+            await verify.SaveChangesAsync(token);
+            await using var disabledTransaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+            var disabled = new IocHostLogHandler(new Source(selection with { Availability = IocSourceAvailability.Stale }), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance);
+            await disabled.HandleAsync(new(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, JsonSerializer.Serialize(dispatch)), connection, disabledTransaction, token);
+            await disabledTransaction.CommitAsync(token);
         }, context.CancellationToken);
 
     private sealed class Logs(HostLogEntry log) : IHostLogReader
