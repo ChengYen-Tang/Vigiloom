@@ -16,6 +16,7 @@ using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -67,6 +68,8 @@ public sealed class AgentProcessReplayTests(TestContext context)
             await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var security = factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>();
             await using (var db = await security.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var logAdmission = factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
+            await using (var db = await logAdmission.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var device = new Device("replay test", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             await using var scope = factory.Services.CreateAsyncScope();
@@ -129,7 +132,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 // Run a real metric collector and interrupt its process. The
                 // next writer must report uncertain completeness over the
                 // authenticated HTTPS heartbeat, without inventing a loss count.
-                await RunAgentAsync("unavailable", "Agent metric queue: Queued", server, stateRoot, caPath, token);
+                await RunAgentAsync("unavailable", "Agent metric queue: Queued", server, stateRoot, caPath, token, waitForLedger: true);
                 var ledgerPath = Path.Combine(stateRoot, "metric-loss.db");
                 Assert.IsTrue(File.Exists(ledgerPath));
                 Guid originalLedger;
@@ -201,7 +204,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
             }
         }, context.CancellationToken);
 
-    private static async Task RunAgentAsync(string mode, string signal, Uri server, string stateRoot, string caPath, CancellationToken token, bool replayOnly = false)
+    private static async Task RunAgentAsync(string mode, string signal, Uri server, string stateRoot, string caPath, CancellationToken token, bool replayOnly = false, bool waitForLedger = false)
     {
         var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         start.ArgumentList.Add(typeof(AgentHarness::AgentHostHarnessMarker).Assembly.Location);
@@ -225,6 +228,27 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 line = await process.StandardOutput.ReadLineAsync(deadline.Token);
                 if (line is null) Assert.Fail($"Test Agent exited before {signal}: {await errors.WaitAsync(TimeSpan.FromSeconds(10), deadline.Token)}");
             } while (!line.Contains(signal, StringComparison.Ordinal));
+            if (waitForLedger)
+            {
+                var ledgerPath = Path.Combine(stateRoot, "metric-loss.db");
+                while (true)
+                {
+                    if (process.HasExited) Assert.Fail("Test Agent exited before the metric loss ledger was ready.");
+                    if (File.Exists(ledgerPath))
+                    {
+                        try
+                        {
+                            using var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = ledgerPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+                            await db.OpenAsync(deadline.Token);
+                            using var query = db.CreateCommand();
+                            query.CommandText = "SELECT writer FROM loss_state WHERE singleton = 1";
+                            if (await query.ExecuteScalarAsync(deadline.Token) is string) break;
+                        }
+                        catch (SqliteException) { /* The ledger is still being initialized. */ }
+                    }
+                    await Task.Delay(100, deadline.Token);
+                }
+            }
         }
         catch (Exception error) { primaryFailure = error; throw; }
         finally
