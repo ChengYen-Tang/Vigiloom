@@ -150,6 +150,12 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await trust.ProvisionAsync(packages.Root, token);
                 var origin = new Uri("https://publisher.test/");
                 await trust.RefreshCatalogueAsync(new TrustedCatalogueReader(origin, origin, packages.Repository), TimeProvider.System, Convert.FromBase64String(source.Version), cancellationToken: token);
+                var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    var packageIds = await db.Packages.Select(x => x.Id).ToArrayAsync(token);
+                    foreach (var packageId in packageIds) Assert.IsTrue(await library.CacheAsync(packageId, token));
+                }
 
                 var script = Path.Combine(workspace, windows ? "tests/Vigiloom.Web.Tests/Fixtures/windows-service-agent.ps1" : "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
                 await using var installed = windows

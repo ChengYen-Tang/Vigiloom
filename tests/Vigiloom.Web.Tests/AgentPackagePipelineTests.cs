@@ -43,7 +43,8 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             var digest = Convert.ToHexStringLower(SHA256.HashData(manifest));
             var catalog = Encoding.UTF8.GetBytes($$"""{"schema":1,"packages":[{"version":"1.0.0","rid":"win-x64","size":{{archive.Length}},"sha256":"{{hash}}","manifestSha256":"{{digest}}","revoked":false}]}""");
             var repository = new TestRepository(signer, catalogue: catalog, additionalTargets: new Dictionary<string, byte[]> { [digest + ".json"] = manifest });
-            using var publisher = new HttpClient(new PublisherHandler(repository, hash, archive));
+            var handler = new PublisherHandler(repository, hash, archive);
+            using var publisher = new HttpClient(handler);
             var transport = new PackageLibraryTransport(Path.Combine(path, "server-cache"), 1024, TimeProvider.System, publisher);
             using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
                 builder.ConfigureServices(services => { services.RemoveAll<IPackageLibraryTransport>(); services.AddSingleton<IPackageLibraryTransport>(transport); }));
@@ -68,6 +69,8 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             await trust.RefreshCatalogueAsync(new TrustedCatalogueReader(origin, origin, repository), TimeProvider.System, Convert.FromBase64String(source.Version), cancellationToken: token);
             Guid packageId;
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) packageId = (await db.Packages.SingleAsync(token)).Id;
+            Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<PackageLibrary>().CacheAsync(packageId, token));
+            handler.Offline = true;
             Assert.AreEqual(VersionAssignmentResult.Saved, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, packageId, "", actor, token));
             var localTrust = Path.Combine(path, "updater-trust");
             await new LocalTrustStore(localTrust).ProvisionAsync(root, token);
@@ -103,8 +106,10 @@ public sealed class AgentPackagePipelineTests(TestContext context)
 
     private sealed class PublisherHandler(TestRepository repository, string archiveHash, byte[] archive) : HttpMessageHandler
     {
+        public bool Offline { get; set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (Offline) throw new HttpRequestException("Publisher is offline.");
             var parts = request.RequestUri!.AbsolutePath.Trim('/').Split('/');
             byte[]? bytes = null;
             if (parts is ["packages", var hash] && hash == archiveHash) bytes = archive;

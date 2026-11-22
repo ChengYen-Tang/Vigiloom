@@ -24,7 +24,8 @@ public sealed class AgentPackageAccess(AgentVersionAssignments assignments, Agen
         if (target is null) return null;
         var verified = await VerifyAsync(target, token);
         if (verified is null || !string.Equals(name, verified.Package.Sha256, StringComparison.Ordinal)) return null;
-        var stream = await transport.OpenAsync(verified.Source.BaseUri, verified.Source.Credential, verified.Package, token);
+        var stream = await transport.OpenCachedAsync(verified.Package, token);
+        if (stream is null) return null;
         try
         {
             if (await IsCurrentAsync(credential, target, token) && await SourceMatchesAsync(verified.Source, token)) return stream;
@@ -38,9 +39,10 @@ public sealed class AgentPackageAccess(AgentVersionAssignments assignments, Agen
     {
         var source = await sources.ReadEffectiveAsync(token);
         if (source is null) return null;
-        VerifiedManifest manifest;
+        VerifiedManifest? manifest;
         await using (var lease = await trust.AcquireAsync(token))
-            manifest = await transport.ReadManifestAsync(source.BaseUri, source.Credential, lease, target.ManifestSha256, token);
+            manifest = await transport.ReadCachedManifestAsync(lease, target.ManifestSha256, token);
+        if (manifest is null) return null;
         var package = PackageManifest.Parse(manifest, clock.GetUtcNow());
         if (package.ManifestSha256 != target.ManifestSha256 || package.Version != target.PackageVersion ||
             package.RuntimeIdentifier != target.RuntimeIdentifier || !await SourceMatchesAsync(source, token)) return null;

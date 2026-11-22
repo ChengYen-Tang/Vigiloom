@@ -322,6 +322,10 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
             Cached++;
             if (DuringCache is not null) await DuringCache(cancellationToken);
         }
+        public Task SaveManifestAsync(VerifiedManifest value, string hash, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken cancellationToken) =>
+            Task.FromResult<VerifiedManifest?>(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
+        public Task<Stream?> OpenCachedAsync(PackageManifest package, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest package, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }

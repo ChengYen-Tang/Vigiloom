@@ -34,6 +34,44 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
         await using var stream = await OpenAsync(origin, credential, manifest, cancellationToken);
     }
 
+    public async Task SaveManifestAsync(VerifiedManifest manifest, string hash, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(cacheDirectory);
+        var path = ManifestPath(hash);
+        var temporary = path + "." + Guid.CreateVersion7().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(temporary, manifest.Content.ToArray(), cancellationToken);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    public async Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken cancellationToken)
+    {
+        byte[] content;
+        try { content = await File.ReadAllBytesAsync(ManifestPath(hash), cancellationToken); }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        if (content.Length is 0 or > 1048576) throw new InvalidDataException("Invalid cached manifest size.");
+        var origin = new Uri("https://localhost/");
+        var repository = new CachedManifestRepository(lease, hash, content);
+        return await new TrustedManifestReader(origin, origin, repository).ReadAsync(lease, hash, cancellationToken);
+    }
+
+    public Task<Stream?> OpenCachedAsync(PackageManifest manifest, CancellationToken cancellationToken)
+    {
+        var downloader = new PackageArchiveDownloader(new Uri("https://localhost/"));
+        return new LocalPackageCache(cacheDirectory, maximumBytes, downloader, clock).OpenCachedManifestAsync(manifest, cancellationToken);
+    }
+
+    private string ManifestPath(string hash)
+    {
+        if (hash is not { Length: 64 } || hash.Any(c => c is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+            throw new ArgumentException("A lowercase SHA-256 manifest identifier is required.", nameof(hash));
+        return Path.Combine(cacheDirectory, hash + ".manifest.json");
+    }
+
     public Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken)
     {
         var packages = new Uri(origin, "packages/");

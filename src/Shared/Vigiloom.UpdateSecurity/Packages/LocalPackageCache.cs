@@ -28,6 +28,24 @@ public sealed class LocalPackageCache(string directory, long maximumBytes, Packa
             token => downloader.DownloadManifestAsync(manifest, directory, clock, token), cancellationToken);
     }
 
+    /// <summary>Opens an already cached archive without contacting the package source.</summary>
+    public async Task<Stream?> OpenCachedManifestAsync(PackageManifest manifest, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        var entry = new CacheEntry(manifest.Sha256, manifest.Size, manifest.Expires);
+        EnsureUnexpired(entry);
+        var path = Path.Combine(directory, entry.Sha256 + ".pkg");
+        try
+        {
+            var stream = await TryOpenVerifiedAsync(path, entry, cancellationToken);
+            if (stream is null) return null;
+            try { EnsureUnexpired(entry); return stream; }
+            catch { await stream.DisposeAsync(); throw; }
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+    }
+
     /// <summary>Removes downloads left by a terminated process without touching cached packages.</summary>
     public static async Task CleanupInterruptedDownloadsAsync(string directory, CancellationToken cancellationToken = default)
     {
