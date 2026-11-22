@@ -33,6 +33,12 @@ the x64 result by the owner's decision; it is not a native x86 run. Optional
 sensor-specific validation and restrictions are described in
 [security-sensors.md](security-sensors.md).
 
+The Fedora 42 WSL environment used for the separate Linux journal and YARA
+checks currently reports x86-64, WSL kernel `6.18.33.2`, glibc `2.41`,
+systemd `257.3` and ICU `76.1`. Those checks do not replace the Ubuntu
+installed-service integration above or establish support for every Fedora
+kernel or distribution configuration.
+
 ## Collector capability observations
 
 Collector modules report their own capability independently of host Ping, Agent connectivity and other collectors. REQ-19 owns transmission and reception, and each collector owns its signal, prerequisites, measurement time and required validation. This section defines semantics for those implementations; it does not add an unused wire DTO or claim a receiver exists. Protocol fields and compatible evolution must follow the versioned first-party batch contract in `api-and-ingestion-contract.md`.
