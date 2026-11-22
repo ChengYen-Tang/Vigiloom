@@ -48,7 +48,7 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
         var temporary = path + "." + Guid.CreateVersion7().ToString("N") + ".tmp";
         try
         {
-            await File.WriteAllBytesAsync(temporary, verified.Content.ToArray(), cancellationToken);
+            await File.WriteAllBytesAsync(temporary, verified.Content, cancellationToken);
             File.Move(temporary, path, overwrite: true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
