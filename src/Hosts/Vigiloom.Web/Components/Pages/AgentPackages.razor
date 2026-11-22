@@ -82,7 +82,7 @@
                             var matched = releasePackages.Where(x => x.Version == release.Version).ToArray();
                             <tr @key="release.Version"><td>@release.Version</td><td>@(release.Preview ? "Preview" : "正式版")</td><td>
                                 @if (matched.Length == 0) { <span>尚無已驗證套件，請先設定或刷新套件來源。</span> }
-                                else { @foreach (var package in matched) { <div>@package.RuntimeIdentifier · @(package.Cached ? "已下載" : Status(package))
+                                else { @foreach (var package in matched) { <div>@package.RuntimeIdentifier · @(package.Cached ? $"已下載 · {Status(package)}" : Status(package))
                                     @if (!package.Cached && package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow())
                                     { <form method="post" action="@($"/settings/agent-packages/{package.Id:D}/download?page={releases.Page}")" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='下載中…'"><AntiforgeryToken /><button type="submit" aria-label="@($"下載 {release.Version} {package.RuntimeIdentifier}")">下載</button></form> }
                                 </div> } }
