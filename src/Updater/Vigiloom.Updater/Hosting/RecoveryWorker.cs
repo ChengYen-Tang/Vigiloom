@@ -94,8 +94,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                 }
                 await using var listener = CreateListener(options!, StageCredentialAsync);
                 var processor = new UpdateRequestProcessor(central,
-                    new CentralPackageAcquirer(options!.Server, options.TrustDirectory, options.CacheDirectory,
-                        4L * 1024 * 1024 * 1024, clock),
+                    new CentralPackageAcquirer(options!.Server, options.CacheDirectory, clock),
                     new UpdateTransaction(http, journal, runtime, clock), journal, runtime, options.Server,
                     options.DeviceId, root!, options.RuntimeIdentifier, options.UpdaterVersion,
                     delivery, credentialStore.WriteAsync);
@@ -308,15 +307,14 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
             OperatingSystem.IsWindows() ? RuntimeInformation.ProcessArchitecture switch
             { Architecture.X64 => "win-x64", Architecture.X86 => "win-x86", _ => null } : null;
         var version = typeof(UpdaterHost).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0];
-        var trust = Path.Combine(stateDirectory, "trust");
-        if (rid is null || string.IsNullOrWhiteSpace(version) || !File.Exists(Path.Combine(trust, "trust.sqlite"))) return false;
+        if (rid is null || string.IsNullOrWhiteSpace(version)) return false;
         var socketDirectory = configuration["Vigiloom:Updater:IpcDirectory"];
         var agentSid = configuration["Vigiloom:Updater:AgentSid"];
         if (OperatingSystem.IsLinux() && (!IsAbsoluteDirectory(socketDirectory) ||
             !uint.TryParse(configuration["Vigiloom:Updater:AgentUid"], out _) ||
             !uint.TryParse(configuration["Vigiloom:Updater:AgentGroupId"], out _))) return false;
         if (OperatingSystem.IsWindows() && string.IsNullOrWhiteSpace(agentSid)) return false;
-        settings = new(server, deviceId, rid, version, trust, Path.Combine(stateDirectory, "cache"), socketDirectory, agentSid,
+        settings = new(server, deviceId, rid, version, Path.Combine(stateDirectory, "cache"), socketDirectory, agentSid,
             configuration["Vigiloom:Updater:AgentUid"], configuration["Vigiloom:Updater:AgentGroupId"]);
         return true;
     }
@@ -334,5 +332,5 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private sealed record Settings(Uri Server, Guid DeviceId, string RuntimeIdentifier, string UpdaterVersion,
-        string TrustDirectory, string CacheDirectory, string? SocketDirectory, string? AgentSid, string? AgentUid, string? AgentGroupId);
+        string CacheDirectory, string? SocketDirectory, string? AgentSid, string? AgentUid, string? AgentGroupId);
 }

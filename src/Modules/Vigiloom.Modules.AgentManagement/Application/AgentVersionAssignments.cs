@@ -20,10 +20,9 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var agent = await identity.AuthenticateForWriteAsync(db, credential, token);
         if (agent is null) return new(false, null);
-        var now = clock.GetUtcNow();
         var row = await (from assignment in db.VersionAssignments.AsNoTracking()
             join package in db.Packages.FromSqlRaw("SELECT * FROM [agent].[Packages] WITH (HOLDLOCK)").AsNoTracking() on assignment.PackageId equals package.Id
-            where assignment.AgentId == agent.Id && assignment.UpdateId != null && package.Listed && !package.Revoked && package.VerifiedUntil > now
+            where assignment.AgentId == agent.Id && assignment.UpdateId != null
             select new { assignment.UpdateId, assignment.PackageId, PackageVersion = package.Version, package.RuntimeIdentifier, package.Sha256, package.ManifestSha256, Revision = assignment.Version })
             .SingleOrDefaultAsync(token);
         var target = row is null || !packages.IsCached(row.Sha256, row.ManifestSha256) ? null : new AgentVersionTarget(row.UpdateId!.Value, row.PackageId!.Value,
@@ -53,7 +52,7 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
             select new { assignment.AgentId, assignment.PackageId, PackageVersion = package == null ? null : package.Version,
                 RuntimeIdentifier = package == null ? null : package.RuntimeIdentifier, Sha256 = package == null ? null : package.Sha256,
                 ManifestSha256 = package == null ? null : package.ManifestSha256, assignment.AssignedAt, assignment.Version,
-                Available = package != null && package.Listed && !package.Revoked && package.VerifiedUntil > clock.GetUtcNow() }).SingleOrDefaultAsync(token);
+                Available = package != null }).SingleOrDefaultAsync(token);
         if (row is null) return new(agentId, null, null, null, default, "", false, agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt, latest);
         return new(row.AgentId, row.PackageId, row.PackageVersion, row.RuntimeIdentifier, row.AssignedAt,
             Convert.ToBase64String(row.Version), row.Available && row.Sha256 is not null && row.ManifestSha256 is not null &&
@@ -83,7 +82,7 @@ public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbC
         {
             var package = await db.Packages.FromSqlInterpolated($"SELECT * FROM [agent].[Packages] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {selected}")
                 .SingleOrDefaultAsync(token);
-            if (package is null || !package.Listed || package.Revoked || package.VerifiedUntil <= clock.GetUtcNow() ||
+            if (package is null ||
                 !packages.IsCached(package.Sha256, package.ManifestSha256)) return VersionAssignmentResult.Conflict;
             if (current is null) db.VersionAssignments.Add(current = new AgentVersionAssignment { AgentId = agentId });
             current.PackageId = selected;

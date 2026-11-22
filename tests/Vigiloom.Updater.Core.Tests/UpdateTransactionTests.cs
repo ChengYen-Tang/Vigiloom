@@ -355,8 +355,8 @@ public sealed class UpdateTransactionTests(TestContext context)
     {
         var hash = Convert.ToHexStringLower(SHA256.HashData(archive.ToArray()));
         var json = $$"""{"schema":1,"version":"1.0.0","rid":"win-x64","size":{{archive.Length}},"sha256":"{{hash}}","minimumUpdaterVersion":"1.0.0","minimumAgentVersion":null,"maximumAgentVersion":null}""";
-        var verified = new VerifiedManifest(Encoding.UTF8.GetBytes(json), DateTimeOffset.UtcNow.AddMinutes(5));
-        var parsed = PackageManifest.Parse(verified, DateTimeOffset.UtcNow);
+        var verified = new VerifiedManifest(Encoding.UTF8.GetBytes(json));
+        var parsed = PackageManifest.Parse(verified);
         return (verified, new AgentVersionTarget(Guid.CreateVersion7(), Guid.CreateVersion7(), parsed.Version, parsed.RuntimeIdentifier,
             parsed.ManifestSha256, Convert.ToBase64String(new byte[8])));
     }

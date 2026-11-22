@@ -1,6 +1,4 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using Tuf;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
 
@@ -10,21 +8,27 @@ internal static class AgentPackageUiEndpoints
 {
     public static void MapAgentPackageUiEndpoints(this WebApplication app)
     {
-        app.MapPost("/settings/agent-packages/{id:guid}/download", async (Guid id, HttpContext context, PackageLibrary library,
-            ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
-        {
-            try
+        app.MapPost("/settings/agent-packages/download", async ([FromForm] string version, [FromForm] string runtimeIdentifier,
+            HttpContext context, PackageLibrary library, ILogger<PackageLibrary> logger, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async _ =>
             {
-                var page = int.TryParse(context.Request.Query["page"], out var number) && number > 0 ? number : 1;
-                var cached = await library.CacheAsync(id, token);
-                return Results.Redirect($"/settings/agent-packages?releases={page}&download={(cached ? "saved" : "unavailable")}");
-            }
-            catch (Exception error) when (error is IOException or HttpRequestException or TufException or InvalidOperationException)
-            {
-                logger.LogWarning("Could not download Agent package: {ErrorType}", error.GetType().Name);
-                return Results.Redirect("/settings/agent-packages?releases=1&download=error");
-            }
-        }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+                try
+                {
+                    var cached = await library.CacheAsync(version, runtimeIdentifier, token);
+                    return Results.Redirect($"/settings/agent-packages?releases=1&download={(cached ? "saved" : "unavailable")}");
+                }
+                catch (InvalidOperationException error)
+                {
+                    logger.LogWarning(error, "Agent package conflicts with an existing version or assignment.");
+                    return Results.Redirect("/settings/agent-packages?releases=1&download=conflict");
+                }
+                catch (Exception error) when (error is IOException or HttpRequestException)
+                {
+                    logger.LogWarning(error, "Could not download Agent package.");
+                    return Results.Redirect("/settings/agent-packages?releases=1&download=error");
+                }
+            }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+
         app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, PackageLibrary library,
             ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
         {
@@ -44,28 +48,5 @@ internal static class AgentPackageUiEndpoints
                 return Results.Redirect("/settings/agent-packages?remove=error");
             }
         }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        app.MapPost("/settings/agent-packages/trust", async ([FromForm] IFormFile root, [FromForm] string sha256,
-            HttpContext context, UpdateTrustStore trust, ILogger<UpdateTrustStore> logger, CancellationToken token) =>
-        {
-            if (!Guid.TryParse(context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty)
-                return Results.Forbid();
-            if (root.Length is <= 0 or > 1048576) return Results.Redirect("/settings/agent-packages?trust=invalid");
-            try
-            {
-                await using var stream = new MemoryStream((int)root.Length);
-                await root.CopyToAsync(stream, token);
-                await trust.ProvisionForAdministratorAsync(stream.ToArray(), sha256.Trim().ToLowerInvariant(), actor, token);
-                return Results.Redirect("/settings/agent-packages?trust=saved");
-            }
-            catch (InvalidOperationException) { return Results.Redirect("/settings/agent-packages?trust=exists"); }
-            catch (Exception error) when (error is ArgumentException or InvalidDataException or TufException or System.Text.Json.JsonException)
-            { return Results.Redirect("/settings/agent-packages?trust=invalid"); }
-            catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                logger.LogWarning("Could not initialize package trust: {ErrorType}", error.GetType().Name);
-                return Results.Redirect("/settings/agent-packages?trust=error");
-            }
-        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
-          .WithMetadata(new RequestSizeLimitAttribute(1200000));
     }
 }

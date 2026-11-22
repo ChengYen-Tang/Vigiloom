@@ -9,7 +9,4 @@ public sealed class AgentPackage
     public required string Sha256 { get; set; }
     public required string ManifestSha256 { get; set; }
     public long Size { get; set; }
-    public bool Revoked { get; set; }
-    public bool Listed { get; set; }
-    public DateTimeOffset VerifiedUntil { get; set; }
 }

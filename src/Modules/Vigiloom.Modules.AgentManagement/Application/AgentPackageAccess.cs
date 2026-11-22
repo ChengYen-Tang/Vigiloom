@@ -5,17 +5,16 @@ using Vigiloom.UpdateSecurity;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-/// <summary>Serves publisher data only for the authenticated Agent's current assignment.</summary>
-public sealed class AgentPackageAccess(AgentVersionAssignments assignments, AgentPackageSourceSettings sources,
-    UpdateTrustStore trust, IPackageLibraryTransport transport, IDbContextFactory<AgentManagementDbContext> contexts, TimeProvider clock)
+/// <summary>Serves only the package currently assigned to an authenticated Agent.</summary>
+public sealed class AgentPackageAccess(AgentVersionAssignments assignments, IPackageLibraryTransport transport,
+    IDbContextFactory<AgentManagementDbContext> contexts)
 {
     public async Task<byte[]?> ReadManifestAsync(string? credential, string name, CancellationToken token)
     {
         var target = (await assignments.GetForAgentAsync(credential, token)).Target;
-        if (target is null || !IsManifestName(name, target.ManifestSha256)) return null;
+        if (target is null || name != target.ManifestSha256 + ".json") return null;
         var verified = await VerifyAsync(target, token);
-        if (verified is null || !await IsCurrentAsync(credential, target, token)) return null;
-        return verified.Manifest.Content.ToArray();
+        return verified is not null && await IsCurrentAsync(credential, target, token) ? verified.Value.Content : null;
     }
 
     public async Task<Stream?> OpenArchiveAsync(string? credential, string name, CancellationToken token)
@@ -23,49 +22,29 @@ public sealed class AgentPackageAccess(AgentVersionAssignments assignments, Agen
         var target = (await assignments.GetForAgentAsync(credential, token)).Target;
         if (target is null) return null;
         var verified = await VerifyAsync(target, token);
-        if (verified is null || !string.Equals(name, verified.Package.Sha256, StringComparison.Ordinal)) return null;
-        var stream = await transport.OpenCachedAsync(verified.Package, token);
+        if (verified is null || name != verified.Value.Package.Sha256) return null;
+        var stream = await transport.OpenCachedAsync(verified.Value.Package.Sha256, verified.Value.Package.Size, token);
         if (stream is null) return null;
-        try
-        {
-            if (await IsCurrentAsync(credential, target, token) && await SourceMatchesAsync(verified.Source, token)) return stream;
-        }
+        try { if (await IsCurrentAsync(credential, target, token)) return stream; }
         catch { await stream.DisposeAsync(); throw; }
         await stream.DisposeAsync();
         return null;
     }
 
-    private async Task<Verified?> VerifyAsync(AgentVersionTarget target, CancellationToken token)
+    private async Task<(byte[] Content, PackageManifest Package)?> VerifyAsync(AgentVersionTarget target, CancellationToken token)
     {
-        var source = await sources.ReadEffectiveAsync(token);
-        if (source is null) return null;
-        VerifiedManifest? manifest;
-        await using (var lease = await trust.AcquireAsync(token))
-            manifest = await transport.ReadCachedManifestAsync(lease, target.ManifestSha256, token);
-        if (manifest is null) return null;
-        var package = PackageManifest.Parse(manifest, clock.GetUtcNow());
+        var content = await transport.ReadManifestAsync(target.ManifestSha256, token);
+        if (content is null) return null;
+        var package = PackageManifest.Parse(new VerifiedManifest(content));
         if (package.ManifestSha256 != target.ManifestSha256 || package.Version != target.PackageVersion ||
-            package.RuntimeIdentifier != target.RuntimeIdentifier || !await SourceMatchesAsync(source, token)) return null;
+            package.RuntimeIdentifier != target.RuntimeIdentifier) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        var now = clock.GetUtcNow();
-        var matches = await db.Packages.AsNoTracking().AnyAsync(x => x.Id == target.PackageId && x.Listed && !x.Revoked &&
-            x.VerifiedUntil > now && x.Version == package.Version && x.RuntimeIdentifier == package.RuntimeIdentifier &&
+        var matches = await db.Packages.AsNoTracking().AnyAsync(x => x.Id == target.PackageId &&
+            x.Version == package.Version && x.RuntimeIdentifier == package.RuntimeIdentifier &&
             x.ManifestSha256 == package.ManifestSha256 && x.Sha256 == package.Sha256 && x.Size == package.Size, token);
-        return matches ? new(manifest, package, source) : null;
+        return matches ? (content, package) : null;
     }
 
     private async Task<bool> IsCurrentAsync(string? credential, AgentVersionTarget expected, CancellationToken token) =>
         (await assignments.GetForAgentAsync(credential, token)).Target == expected;
-
-    private async Task<bool> SourceMatchesAsync(AgentPackageSourceSettings.EffectiveSource expected, CancellationToken token)
-    {
-        var current = await sources.ReadEffectiveAsync(token);
-        return current is not null && current.Version.AsSpan().SequenceEqual(expected.Version);
-    }
-
-    private static bool IsManifestName(string name, string hash) =>
-        string.Equals(name, hash + ".json", StringComparison.Ordinal) ||
-        string.Equals(name, hash + "." + hash + ".json", StringComparison.Ordinal);
-
-    private sealed record Verified(VerifiedManifest Manifest, PackageManifest Package, AgentPackageSourceSettings.EffectiveSource Source);
 }

@@ -104,9 +104,6 @@ public static class WorkerHost
         builder.Services.AddScoped<HostMetricRetentionCleanup>();
         builder.Services.AddScoped<HostMetricRetentionJob>();
         builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
-        builder.Services.AddScoped<UpdateTrustStore>();
-        builder.Services.AddScoped<AgentPackageSourceSettings>();
-        builder.Services.AddScoped<AgentPackageRefreshJob>();
         builder.Services.AddScoped<AgentInboxRetentionJob>();
         builder.Services.AddScoped<InventoryExpiry>();
         builder.Services.AddScoped<IntelligenceRefresh>();

@@ -3,13 +3,11 @@ import argparse
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-import publisher
 
 
-def package(publish_directory: Path, output_directory: Path, rid: str, version: str,
+def package(publish_directory: Path, output_directory: Path, rid: str,
             updater_directory: Path | None = None) -> Path:
-    publisher.normalized_version(version)
-    if rid not in publisher.RIDS:
+    if rid not in ("win-x64", "win-x86", "linux-x64"):
         raise ValueError("Unsupported Agent runtime identifier.")
     source = publish_directory.resolve(strict=True)
     output = output_directory.resolve()
@@ -56,10 +54,9 @@ def main() -> None:
     parser.add_argument("--publish-directory", type=Path, required=True)
     parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--rid", required=True)
-    parser.add_argument("--version", required=True)
     parser.add_argument("--updater-directory", type=Path)
     args = parser.parse_args()
-    print(package(args.publish_directory, args.output_directory, args.rid, args.version, args.updater_directory))
+    print(package(args.publish_directory, args.output_directory, args.rid, args.updater_directory))
 
 
 if __name__ == "__main__":

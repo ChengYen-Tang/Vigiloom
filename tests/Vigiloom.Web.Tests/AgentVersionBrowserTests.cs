@@ -55,7 +55,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
-                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = DateTimeOffset.UtcNow.AddDays(1) });
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64) });
             await db.SaveChangesAsync(token);
         }
         var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');

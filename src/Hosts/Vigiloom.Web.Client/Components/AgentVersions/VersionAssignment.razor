@@ -5,7 +5,6 @@
 @implements IAsyncDisposable
 @inject IAgentVersionClient Client
 @inject IHostMonitoringClient Monitoring
-@inject TimeProvider Clock
 @inject ILogger<VersionAssignment> Logger
 
 <div class="version-assignment" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
@@ -43,17 +42,17 @@
                     <p>選擇與設備作業系統及架構相符的套件。</p>
                     <p class="version-note">如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。</p>
                     <fieldset disabled="@(saving || paging || !RendererInfo.IsInteractive)">
-                        <legend>選擇受信任的套件</legend>
+                        <legend>選擇已下載的套件</legend>
                         <p class="version-scroll-hint">左右滑動查看套件資訊</p>
                         <div class="version-table-wrap"><table><thead><tr><th>選擇</th><th>版本</th><th>平台</th><th>狀態</th></tr></thead><tbody>
                             @foreach (var package in packages.Items)
                             {
                                 <tr @key="package.Id"><td><input type="radio" name="agent-version-package" value="@package.Id" checked="@(selected == package.Id.ToString())" @onchange="() => selected = package.Id.ToString()" disabled="@(!Available(package))" aria-label="@($"{package.Version} {package.RuntimeIdentifier}")" /></td>
-                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(!package.Cached ? "未下載" : package.VerifiedUntil <= Clock.GetUtcNow() ? "驗證已過期" : Available(package) ? "可指派" : "不可用")</td></tr>
+                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(!package.Cached ? "未下載" : "可指派")</td></tr>
                             }
                         </tbody></table></div>
                     </fieldset>
-                    @if (packages.Items.Count == 0) { <p>目前沒有套件，請先至套件管理設定來源並更新清單。</p> }
+                    @if (packages.Items.Count == 0) { <p>目前沒有套件，請先至套件管理下載版本。</p> }
                     @if (packages.Page > 1 || packages.HasMore) { <div class="version-pagination">
                         <button type="button" @onclick="PreviousAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || packages.Page <= 1)">上一頁</button>
                         <span>第 @packages.Page 頁</span>
@@ -112,7 +111,7 @@
         AgentUpdateFailure.Other => "更新或回復發生錯誤",
         _ => "未知"
     };
-    private bool Available(AgentPackageView package) => package.Cached && package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow();
+    private bool Available(AgentPackageView package) => package.Cached;
 
     protected override Task OnParametersSetAsync() => ReloadAsync();
 

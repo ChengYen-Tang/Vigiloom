@@ -13,22 +13,22 @@ internal sealed class ServiceAgentProcess(Process process, Task<string> errors) 
         replacement = updateId;
     }
     internal static Task<ServiceAgentProcess> InstallLinuxAsync(string script, string bundle, string certificate,
-        Uri server, Guid deviceId, string fingerprint, string enrollment, CancellationToken token)
+        Uri server, Guid deviceId, string enrollment, CancellationToken token)
     {
         var start = StartInfo("sudo");
         foreach (var argument in new[] { "-n", "--preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT", "bash", script, bundle, certificate })
             start.ArgumentList.Add(argument);
-        return InstallAsync(start, server, deviceId, fingerprint, enrollment, token);
+        return InstallAsync(start, server, deviceId, enrollment, token);
     }
 
     internal static Task<ServiceAgentProcess> InstallWindowsAsync(string script, string bundle, string certificate,
-        Uri server, Guid deviceId, string fingerprint, string enrollment, CancellationToken token)
+        Uri server, Guid deviceId, string enrollment, CancellationToken token)
     {
         var start = StartInfo("powershell.exe");
         WindowsPowerShell.Configure(start);
         foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, bundle, certificate })
             start.ArgumentList.Add(argument);
-        return InstallAsync(start, server, deviceId, fingerprint, enrollment, token);
+        return InstallAsync(start, server, deviceId, enrollment, token);
     }
 
     private static ProcessStartInfo StartInfo(string executable) => new(executable)
@@ -40,7 +40,7 @@ internal sealed class ServiceAgentProcess(Process process, Task<string> errors) 
         };
 
     private static async Task<ServiceAgentProcess> InstallAsync(ProcessStartInfo start, Uri server, Guid deviceId,
-        string fingerprint, string enrollment, CancellationToken token)
+        string enrollment, CancellationToken token)
     {
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the isolated Agent installer.");
         var errors = process.StandardError.ReadToEndAsync();
@@ -48,7 +48,7 @@ internal sealed class ServiceAgentProcess(Process process, Task<string> errors) 
         try
         {
             // Enrollment data goes through stdin, never the process command line or test output.
-            foreach (var line in new[] { server.ToString(), deviceId.ToString("D"), fingerprint, enrollment })
+            foreach (var line in new[] { server.ToString(), deviceId.ToString("D"), enrollment })
                 await process.StandardInput.WriteLineAsync(line.AsMemory(), token);
             await process.StandardInput.FlushAsync(token);
             if (await process.StandardOutput.ReadLineAsync(token) != "READY")
