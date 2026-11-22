@@ -26,7 +26,7 @@ The aggregate endpoint requires one device, one of its Agent identities, and an 
 
 ## Windows CPU
 
-`windows.pdh.processor-information` reports processor-group and logical-processor instances as `group,index`; these are logical CPUs, not physical cores. It uses language-neutral PDH counter paths and requires two observations. An invalid, missing or stale counter produces no value. Changes in active processor counts reset the query and require warmup again. One query is owned by one collector and is closed when that collector is disposed. This has been tested on the current Windows host; other CPU topologies, processor-group configurations and x86 execution need separate validation.
+`windows.pdh.processor-information` reports processor-group and logical-processor instances as `group,index`; these are logical CPUs, not physical cores. It uses language-neutral PDH counter paths and requires two observations. An invalid, missing or stale counter produces no value. Changes in active processor counts reset the query and require warmup again. One query is owned by one collector and is closed when that collector is disposed. This has been tested on the current Windows host; other CPU topologies and processor-group configurations are not established by that check. Windows x86 acceptance follows the corresponding x64 result under the owner's policy; it is not a separate native test.
 
 ## Linux block I/O
 
