@@ -23,14 +23,16 @@ public static class YaraScanner
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            var target = new FileInfo(file);
+            var targetPath = Path.GetFullPath(file);
+            var rulePath = Path.GetFullPath(rules);
+            var target = new FileInfo(targetPath);
             if (!target.Exists) return new(YaraScanStatus.Unavailable, "", "File not found.", false);
             if (target.Length > maximumBytes) return new(YaraScanStatus.FileTooLarge, "", "", false);
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             start.ArgumentList.Add("--no-follow-symlinks");
             start.ArgumentList.Add("--timeout=" + Math.Ceiling(timeout.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
-            start.ArgumentList.Add(rules);
-            start.ArgumentList.Add(file);
+            start.ArgumentList.Add(rulePath);
+            start.ArgumentList.Add(targetPath);
             using var process = Process.Start(start);
             if (process is null) return new(YaraScanStatus.Unavailable, "", "YARA could not start.", false);
             var output = ReadAsync(process.StandardOutput);
