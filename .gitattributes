@@ -11,4 +11,5 @@
 *.md text eol=lf
 packaging/agent/linux/*.service text eol=lf
 packaging/agent/linux/*.sh text eol=lf
+tests/Vigiloom.Updater.Tests/linux-repair-integration.sh text eol=lf
 tests/Vigiloom.Modules.SecurityAnalysis.Tests/Intelligence/Fixtures/SignatureBase/* -text

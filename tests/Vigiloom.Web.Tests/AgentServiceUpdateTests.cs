@@ -261,6 +261,16 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
                 Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
                 CollectionAssert.AreEqual(originalHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
+                // Repair must work even when the installed Updater executable itself is missing.
+                if (windows)
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-Command",
+                        "$ErrorActionPreference='Stop'; Stop-Service -Name 'Vigiloom Updater'; " +
+                        "Remove-Item -LiteralPath (Join-Path $env:ProgramFiles 'VigiloomAgent\\Updater\\Vigiloom.Updater.exe')");
+                else
+                {
+                    await RunAsync("sudo", token, "-n", "systemctl", "stop", "vigiloom-updater.service");
+                    await RunAsync("sudo", token, "-n", "rm", "--", "/opt/vigiloom/updater/Vigiloom.Updater");
+                }
                 if (windows)
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(replacementBundle, "repair-updater.ps1"));

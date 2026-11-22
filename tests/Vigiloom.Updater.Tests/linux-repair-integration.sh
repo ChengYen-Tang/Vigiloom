@@ -11,7 +11,18 @@ for p in /opt/vigiloom/agent /opt/vigiloom/updater /opt/vigiloom/updater.previou
 tmp=$(mktemp -d /run/vigiloom-repair.XXXXXXXX)
 cleanup() {
     rc=$?; trap - EXIT
-    systemctl disable --now vigiloom-agent.service vigiloom-updater.service >/dev/null 2>&1 || true
+    # Never remove files while either test service may still be using them.
+    if ! systemctl stop vigiloom-updater.service vigiloom-agent.service >/dev/null 2>&1; then
+        echo 'Could not stop the test services; retaining their files for inspection.' >&2
+        exit 1
+    fi
+    for unit in vigiloom-agent.service vigiloom-updater.service; do
+        if systemctl is-active --quiet "$unit" || [[ $(systemctl show --property MainPID --value "$unit") != 0 ]]; then
+            echo "Test service $unit is still running; retaining its files for inspection." >&2
+            exit 1
+        fi
+    done
+    systemctl disable vigiloom-agent.service vigiloom-updater.service >/dev/null 2>&1 || true
     rm -f /etc/systemd/system/vigiloom-agent.service /etc/systemd/system/vigiloom-updater.service /etc/vigiloom/agent.env /etc/vigiloom/updater.env
     systemctl daemon-reload >/dev/null 2>&1 || true
     rm -rf -- /opt/vigiloom/agent /opt/vigiloom/updater /opt/vigiloom/updater.previous /opt/vigiloom/updater.next /opt/vigiloom/agent-tools /var/lib/vigiloom/agent /var/lib/vigiloom/updater "$tmp"
@@ -29,11 +40,14 @@ for i in {1..30}; do [[ -f /var/lib/vigiloom/agent/identity.dat ]] && break; sle
 identity=$(sha256sum /var/lib/vigiloom/agent/identity.dat)
 trust=$(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite)
 echo next >"$tmp/bundle/payload/updater/repair-test-marker"
+systemctl stop vigiloom-updater.service
+rm -- /opt/vigiloom/updater/Vigiloom.Updater
+mv -- /opt/vigiloom/updater /opt/vigiloom/updater.previous
 bash "$tmp/bundle/repair-updater.sh"
 [[ -f /opt/vigiloom/updater/repair-test-marker && ! -e /opt/vigiloom/updater.previous ]]
 systemctl is-active --quiet vigiloom-updater.service
 [[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" && $(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite) == "$trust" ]]
-echo 'PASS: replacement preserved identity and trust.'
+echo 'PASS: interrupted repair of a missing Updater preserved identity and trust.'
 mv "$tmp/bundle/payload/updater/Vigiloom.Updater" "$tmp/bundle/payload/updater/Vigiloom.Updater.real"
 cat >"$tmp/bundle/payload/updater/Vigiloom.Updater" <<'SCRIPT'
 #!/usr/bin/env bash
