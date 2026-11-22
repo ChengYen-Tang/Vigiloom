@@ -620,6 +620,7 @@ public sealed class AgentIdentityHttpTests
                 serviceDb.TraceSpans.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [] });
                 await serviceDb.SaveChangesAsync(token);
             }
+            var sigmaTestId = Guid.CreateVersion7();
             await using (var securityDb = await security.CreateDbContextAsync(token))
             {
                 var source = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource { Key = "event-test" };
@@ -628,6 +629,13 @@ public sealed class AgentIdentityHttpTests
                 var evaluation = new Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityEvaluation { RunId = Guid.CreateVersion7(), FindingId = finding.Id, SourceId = source.Id, RevisionId = revision.Id, AgentId = Guid.CreateVersion7(), HostSnapshotId = Guid.CreateVersion7(), PackageSnapshotId = Guid.CreateVersion7(), EvaluatedAt = now, MatcherVersion = "1", SourcePackage = "test", SourceVersion = "1", BinaryVersion = "1", Ecosystem = "Ubuntu:24.04:LTS", Architecture = "amd64" };
                 securityDb.IntelligenceSources.Add(source); securityDb.IntelligenceRevisions.Add(revision);
                 securityDb.VulnerabilityFindings.Add(finding); securityDb.VulnerabilityEvaluations.Add(evaluation);
+                var ruleContent = System.Text.Encoding.UTF8.GetBytes("detection: test-condition");
+                var digest = SHA256.HashData(ruleContent);
+                var baseContent = System.Text.Encoding.UTF8.GetBytes("selection: base-condition");
+                var baseDigest = SHA256.HashData(baseContent);
+                securityDb.SigmaRules.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule { RevisionId = revision.Id, Path = "rules/test.yml", Title = "test", Digest = digest, Content = ruleContent });
+                securityDb.SigmaRules.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule { RevisionId = revision.Id, Path = "rules/base.yml", Title = "base", Digest = baseDigest, Content = baseContent });
+                securityDb.SigmaRuleTests.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest { Id = sigmaTestId, SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml", Digest = Convert.ToHexStringLower(digest), ActivationVersion = "1", MatcherVersion = "1", SamplesJson = $$"""{"BasePath":"rules/base.yml","BaseSha256":"{{Convert.ToHexStringLower(baseDigest)}}","Exceptions":[{"Field":"User","Value":"ignored-user"}]}""", Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = now });
                 await securityDb.SaveChangesAsync(token);
             }
             var eventUrl = $"/api/v1/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
@@ -642,6 +650,14 @@ public sealed class AgentIdentityHttpTests
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-log" && x.Summary.Contains("unique service event", StringComparison.Ordinal)));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-trace" && x.Evidence.Contains("0202020202020202", StringComparison.Ordinal)));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "vulnerability" && x.Link == $"/devices/{device.Id:D}?tab=vulnerabilities&search=CVE-2025-1234"));
+            using (var ruleEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, ruleEvidence.StatusCode);
+                var text = await ruleEvidence.Content.ReadAsStringAsync(token);
+                Assert.Contains("test-condition", text);
+                Assert.Contains("base-condition", text);
+                Assert.Contains("ignored-user", text);
+            }
             Guid apiId;
             using (var apiClient = PingTestSite.Client(factory))
             {

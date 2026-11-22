@@ -52,6 +52,7 @@
                             <td>@if (ResourceLink(entry) is { } link) { <a href="@link">@(entry.Source == "service-health" ? "查看服務" : "查看設備")</a> } else { <span>—</span> }
                                 @if (entry.Source is "sigma" or "ioc" && entry.ResourceId is { } device && entry.EvidenceOwnerId is { } agent && entry.EvidenceId is { } message)
                                 { <a href="@($"/devices/{device:D}/host-logs/{agent:D}/{message:D}")">查看原始事件</a> }
+                                @if (entry.Source == "sigma" && entry.RuleTestId is { } test) { <a href="@($"/events/rules/{test:D}")">查看規則依據</a> }
                             </td>
                         </tr>
                     }
