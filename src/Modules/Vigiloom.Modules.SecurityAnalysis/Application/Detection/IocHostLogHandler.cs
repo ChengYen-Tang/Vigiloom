@@ -26,19 +26,22 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
             dispatch.MessageIds.Any(x => x.Version != 7)) throw new InvalidDataException("Invalid host log dispatch.");
 
         var selection = await source.GetActiveAsync(cancellationToken);
+        if (selection.Availability == IocSourceAvailability.Disabled) return;
         if (selection.Availability != IocSourceAvailability.Ready || selection.SourceId is not { } sourceId ||
             selection.RevisionId is not { } revisionId || selection.ActivationVersion is null)
         {
+            if (!await IsEnabledAsync()) return;
             logger.LogWarning("IOC source is unavailable: {Status}.", selection.Availability);
-            return;
+            throw new InvalidOperationException("The active IOC source is unavailable.");
         }
         var hashes = await source.ReadFileAsync(selection, IocSourceEligibility.HashPath, cancellationToken);
         var addresses = await source.ReadFileAsync(selection, IocSourceEligibility.C2Path, cancellationToken);
         if (hashes.Availability != IocSourceAvailability.Ready || addresses.Availability != IocSourceAvailability.Ready ||
             hashes.Content is null || addresses.Content is null)
         {
+            if (!await IsEnabledAsync()) return;
             logger.LogWarning("IOC source changed or became unavailable while reading its files.");
-            return;
+            throw new InvalidOperationException("The IOC source changed or became unavailable.");
         }
         var events = await logs.ReadAsync(dispatch.AgentId, dispatch.MessageIds, cancellationToken);
         var matcher = new IocMatcher(hashes.Content, addresses.Content);
@@ -50,8 +53,9 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
         var current = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
             .AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         var active = await db.IntelligenceActivations.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId, cancellationToken);
-        if (current is null || !current.Enabled || !current.IocDetectionEnabled || active is null || active.RevisionId != revisionId ||
-            Convert.ToBase64String(active.Version) != selection.ActivationVersion) return;
+        if (current is null || !current.Enabled || !current.IocDetectionEnabled) return;
+        if (active is null || active.RevisionId != revisionId || Convert.ToBase64String(active.Version) != selection.ActivationVersion)
+            throw new InvalidOperationException("The active IOC source changed during evaluation.");
         var now = clock.GetUtcNow();
         foreach (var log in events)
         {
@@ -65,5 +69,13 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
                 });
         }
         await db.SaveChangesAsync(cancellationToken);
+
+        async Task<bool> IsEnabledAsync()
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "SELECT TOP (1) 1 FROM [security].[IntelligenceSources] WHERE [Key] = 'signature-base' AND [Enabled] = 1 AND [IocDetectionEnabled] = 1";
+            return await command.ExecuteScalarAsync(cancellationToken) is not null;
+        }
     }
 }
