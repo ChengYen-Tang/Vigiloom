@@ -26,6 +26,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
 
         var (kind, details) = audit.Details switch
         {
+            EventTimelineAccessed access when IsValid(access) => (AuditKinds.EventTimelineAccessedV1, JsonSerializer.Serialize(access)),
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
             AuditRetentionChanged change when IsValid(change) => (AuditKinds.AuditRetentionChangedV1, JsonSerializer.Serialize(change)),
@@ -74,6 +75,10 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         Add(command, "@details", DbType.String, details, 2048);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    internal static bool IsValid(EventTimelineAccessed access) => access.From.Offset == TimeSpan.Zero && access.Until.Offset == TimeSpan.Zero &&
+        access.Until > access.From && access.Until - access.From <= TimeSpan.FromDays(31) && access.GroupId is null or { Version: 7 } &&
+        (access.Source is null || access.Source.Length <= 32) && access.Page is >= 1 and <= 20 && access.ItemCount is >= 0 and <= 50;
 
     internal static bool IsValid(BaselineExceptionRecorded change) => change.SourceId.Version == 7 && change.RevisionId.Version == 7 &&
         change.CheckId is { Length: > 0 and <= 128 } && change.CheckId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') &&
