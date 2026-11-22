@@ -211,7 +211,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 gate.BlockSettings();
                 var logMonitoring = scope.ServiceProvider.GetRequiredService<HostLogMonitoring>();
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -251,7 +251,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
                 var successfulUpdate = await ReadUpdateStateAsync(windows, updaterState, token);
                 Assert.IsNotNull(successfulUpdate);
                 Assert.AreEqual(UpdatePhase.Succeeded, successfulUpdate.Phase);
@@ -281,7 +281,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
                     "An Agent rollback or downgrade must not replace the Updater.");
                 // Pause the post-stop authorization check so the real Updater can be interrupted
@@ -583,10 +583,11 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     }
 
     private static async Task WaitForLogEndAsync(HostLogMonitoring monitoring, IDbContextFactory<AgentManagementDbContext> agents,
-        Guid agentId, Guid deviceId, AgentLogSourceSetting source,
+        Guid agentId, Guid deviceId, AgentLogSourceSetting source, AgentTransportGate gate,
         DateTimeOffset after, CancellationToken token)
     {
         string observation = "no report";
+        var before = gate.HeartbeatCounts;
         try
         {
             await WaitUntilAsync(async () =>
@@ -606,10 +607,13 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.QueueReportEpoch, x.QueueReportSequence,
                 x.LogStatusReportEpoch, x.LogStatusReportSequence, x.LogStatusReportedAt
             }).SingleOrDefaultAsync(token);
+            var counts = gate.HeartbeatCounts;
             throw new TimeoutException($"Agent log source did not reach end: {observation}; heartbeat={row?.LastHeartbeatAt:O}; " +
                 $"runtime={row?.RuntimeVersion}; runtimeAt={row?.RuntimeReportedAt:O}; " +
                 $"epochsMatch={row?.QueueReportEpoch == row?.LogStatusReportEpoch}; " +
-                $"sequencesMatch={row?.QueueReportSequence == row?.LogStatusReportSequence}; logReportedAt={row?.LogStatusReportedAt:O}", error);
+                $"sequencesMatch={row?.QueueReportSequence == row?.LogStatusReportSequence}; logReportedAt={row?.LogStatusReportedAt:O}; " +
+                $"heartbeatsWithLog={counts.WithLog - before.WithLog}; heartbeatsWithoutLog={counts.WithoutLog - before.WithoutLog}; " +
+                $"rejectedWithLog={counts.Rejected - before.Rejected}; heartbeatsUnknown={counts.Unknown - before.Unknown}", error);
         }
     }
 
