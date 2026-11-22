@@ -11,7 +11,7 @@ internal sealed class SignedAgentPackages : IDisposable
     private readonly Dictionary<string, byte[]> archives = [];
     private readonly string rid;
 
-    internal SignedAgentPackages(byte[] initialArchive, byte[] agentArchive, string runtimeIdentifier, string initialVersion = "1.0.0", string updatedVersion = "1.1.0")
+    internal SignedAgentPackages(byte[] initialArchive, byte[] agentArchive, string runtimeIdentifier)
     {
         rid = runtimeIdentifier;
         using var failure = new MemoryStream();
@@ -30,8 +30,8 @@ internal sealed class SignedAgentPackages : IDisposable
                 input.CopyTo(output);
             }
         }
-        archives.Add(initialVersion, initialArchive);
-        archives.Add(updatedVersion, agentArchive);
+        archives.Add("1.0.0", initialArchive);
+        archives.Add("1.1.0", agentArchive);
         archives.Add("1.2.0", failure.ToArray());
     }
 
