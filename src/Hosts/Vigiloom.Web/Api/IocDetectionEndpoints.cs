@@ -1,5 +1,6 @@
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 namespace Vigiloom.Web.Api;
 
@@ -8,13 +9,13 @@ internal static class IocDetectionEndpoints
     public static void MapIocDetectionEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{deviceId:guid}/ioc-detections", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, int? page, IocDetectionHistory history, HttpContext context, CancellationToken token) =>
+            DateTimeOffset until, int? page, IocDetectionHistory history, TelemetryRetentionSettings retention, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
             {
                 var result = await history.GetAsync(deviceId, from, until, page ?? 1, token);
-                return result is null ? Results.NotFound() : Results.Ok(result);
+                return result is null ? Results.NotFound() : Results.Ok(result with { RetentionDays = (await retention.GetAsync(token)).LogDays });
             }
             catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid detection query."); }
         }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
