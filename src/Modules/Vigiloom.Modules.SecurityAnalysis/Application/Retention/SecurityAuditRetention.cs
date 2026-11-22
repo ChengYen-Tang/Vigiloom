@@ -2,6 +2,8 @@ using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Retention;
@@ -16,6 +18,8 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             await AuditRetentionQueries.CountAsync(db.IntegrityScopeAudits, cutoff, token) +
             await db.InventoryChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await db.IntegrityChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
+            await OldEvaluations(db, cutoff).LongCountAsync(token) +
+            await OldBaselineObservations(db, cutoff).LongCountAsync(token) +
             await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
             await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
@@ -39,6 +43,16 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         }
         if (removed < batchSize)
         {
+            var rows = OldEvaluations(db, cutoff).OrderBy(x => x.EvaluatedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await OldEvaluations(db, cutoff).Where(x => rows.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
+        if (removed < batchSize)
+        {
+            var rows = OldBaselineObservations(db, cutoff).OrderBy(x => x.ReceivedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await OldBaselineObservations(db, cutoff).Where(x => rows.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
+        if (removed < batchSize)
+        {
             // The source lock is shared with import and abandonment, so references cannot change mid-batch.
             await db.IntelligenceSources.FromSqlRaw("SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Key] = 'github-reviewed'")
                 .AsNoTracking().SingleOrDefaultAsync(token);
@@ -54,6 +68,16 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         }
         return removed;
     }
+
+    private static IQueryable<VulnerabilityEvaluation> OldEvaluations(SecurityAnalysisDbContext db, DateTimeOffset cutoff) =>
+        db.VulnerabilityEvaluations.Where(x => x.EvaluatedAt < cutoff && !db.VulnerabilityFindings.Any(f => f.Id == x.FindingId && f.LastRunId == x.RunId));
+
+    private static IQueryable<BaselineObservation> OldBaselineObservations(SecurityAnalysisDbContext db, DateTimeOffset cutoff) =>
+        db.BaselineObservations.Where(x => x.ReceivedAt < cutoff && db.BaselineObservations.Any(newer =>
+            newer.DeviceId == x.DeviceId && newer.AgentId == x.AgentId && newer.DeviceGeneration == x.DeviceGeneration &&
+            newer.SourceId == x.SourceId && newer.CheckId == x.CheckId && newer.RevisionId == x.RevisionId &&
+            EF.Functions.Collate(newer.ActivationVersion, "Latin1_General_100_BIN2") == EF.Functions.Collate(x.ActivationVersion, "Latin1_General_100_BIN2") && (newer.ObservedAt > x.ObservedAt ||
+                (newer.ObservedAt == x.ObservedAt && newer.RowId > x.RowId))));
 
     private static async Task<SecurityAnalysisDbContext> OpenAsync(DbConnection connection, DbTransaction transaction, CancellationToken token)
     {
