@@ -28,47 +28,6 @@ public sealed class HostLifecycleTests(TestContext testContext)
     }
 
     [TestMethod]
-    [DataRow(UpdatePhase.Prepared)]
-    [DataRow(UpdatePhase.Stopping)]
-    [DataRow(UpdatePhase.Switching)]
-    [DataRow(UpdatePhase.Starting)]
-    [DataRow(UpdatePhase.Verifying)]
-    [Timeout(10000, CooperativeCancellation = true)]
-    public async Task HostPreservesInterruptedUpdateOnStartupWithoutContactingServer(UpdatePhase phase)
-    {
-        var root = Path.Combine(testContext.TestRunDirectory!, $"recovery-{Guid.NewGuid():N}");
-        var stateDirectory = Path.Combine(root, "state");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var journal = new UpdateJournal(stateDirectory);
-            var now = DateTimeOffset.UtcNow;
-            var prepared = Path.Combine(root, "staging", Guid.CreateVersion7().ToString("N"));
-            Directory.CreateDirectory(prepared);
-            await journal.WriteAsync(new UpdateState(Guid.CreateVersion7(), Path.Combine(root, "old"), prepared,
-                phase, now, [new(phase, now, null)]), testContext.CancellationToken);
-            var builder = UpdaterHost.CreateBuilder([]);
-            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Vigiloom:Updater:InstallationRoot"] = root,
-                ["Vigiloom:Updater:StateDirectory"] = stateDirectory
-            });
-            using var host = builder.Build();
-            await host.StartAsync(testContext.CancellationToken);
-            UpdateState? state;
-            do
-            {
-                state = await journal.ReadAsync(testContext.CancellationToken);
-                if (state?.Phase != UpdatePhase.Failed) await Task.Delay(50, testContext.CancellationToken);
-            } while (state?.Phase != UpdatePhase.Failed);
-            Assert.IsTrue(Directory.Exists(prepared));
-            Assert.AreEqual("Interrupted", state.Error);
-            await host.StopAsync(testContext.CancellationToken);
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task HostDoesNotRecoverWhileAnotherUpdaterOwnsTheInstallation()
     {

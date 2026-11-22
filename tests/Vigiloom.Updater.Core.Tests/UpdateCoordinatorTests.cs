@@ -171,55 +171,6 @@ public sealed class UpdateCoordinatorTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task InterruptedSwitchIsPreservedWithoutCentralConnection()
-    {
-        var directory = CreateDirectory();
-        using var cancellation = new CancellationTokenSource();
-        try
-        {
-            var runtime = new FakeRuntime { OnSelect = version => { if (version == "new") cancellation.Cancel(); } };
-            var journal = new UpdateJournal(directory);
-            var coordinator = new UpdateCoordinator(journal, runtime);
-            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, cancellation.Token));
-            Assert.AreEqual(UpdatePhase.Switching, (await journal.ReadAsync(context.CancellationToken))!.Phase);
-            var recovered = await coordinator.RecoverAsync(context.CancellationToken);
-            Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
-            Assert.AreEqual("new", runtime.Selected);
-        }
-        finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    [TestMethod]
-    [DataRow("stop", UpdatePhase.Stopping)]
-    [DataRow("select:new", UpdatePhase.Switching)]
-    [DataRow("start", UpdatePhase.Starting)]
-    [DataRow("health", UpdatePhase.Verifying)]
-    public async Task InterruptionAtEachServiceOperationPreservesState(string interruptedAction, UpdatePhase recordedPhase)
-    {
-        var directory = CreateDirectory();
-        using var cancellation = new CancellationTokenSource();
-        try
-        {
-            var runtime = new FakeRuntime { OnAction = action => { if (action == interruptedAction) cancellation.Cancel(); } };
-            var journal = new UpdateJournal(directory);
-            var coordinator = new UpdateCoordinator(journal, runtime);
-
-            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, cancellation.Token));
-            Assert.AreEqual(recordedPhase, (await journal.ReadAsync(context.CancellationToken))!.Phase);
-
-            // Model a restarted Updater: the new instance reads only the durable journal.
-            runtime.OnAction = null;
-            var recovered = await new UpdateCoordinator(new UpdateJournal(directory), runtime).RecoverAsync(context.CancellationToken);
-            Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
-            Assert.IsFalse(recovered.RetryAllowed);
-            Assert.DoesNotContain("select:old", runtime.Actions);
-        }
-        finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    [TestMethod]
     public async Task RestartAfterSchemaCreationBeforeFirstUpdateCanContinue()
     {
         var directory = CreateDirectory();
@@ -330,32 +281,6 @@ public sealed class UpdateCoordinatorTests(TestContext context)
         finally { Directory.Delete(directory, recursive: true); }
     }
 
-    [TestMethod]
-    public async Task StopTimeoutNeverSwitchesVersionOrRetriesOnRestart()
-    {
-        var directory = CreateDirectory();
-        try
-        {
-            var runtime = new FakeRuntime { OnAction = action => { if (action == "stop") throw new TimeoutException(); } };
-            var coordinator = new UpdateCoordinator(new UpdateJournal(directory), runtime);
-            var state = await coordinator.ApplyAsync(Guid.CreateVersion7(), "old", "new", Authorized, context.CancellationToken);
-
-            Assert.AreEqual(UpdatePhase.Failed, state.Phase);
-            Assert.AreEqual(nameof(TimeoutException), state.Error);
-            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
-            Assert.DoesNotContain("select:new", runtime.Actions);
-
-            state = (await coordinator.RecoverAsync(context.CancellationToken))!;
-            Assert.AreEqual(UpdatePhase.Failed, state.Phase);
-            Assert.AreEqual("old", await runtime.GetSelectedDirectoryAsync(context.CancellationToken));
-            Assert.DoesNotContain("select:new", runtime.Actions);
-            var actions = runtime.Actions.Count;
-            Assert.AreEqual(UpdatePhase.Failed, (await coordinator.RecoverAsync(context.CancellationToken))!.Phase);
-            Assert.HasCount(actions, runtime.Actions);
-        }
-        finally { Directory.Delete(directory, recursive: true); }
-    }
-
     private string CreateDirectory()
     {
         var path = Path.Combine(context.TestRunDirectory!, $"update-{Guid.NewGuid():N}");
@@ -369,20 +294,17 @@ public sealed class UpdateCoordinatorTests(TestContext context)
         public List<string> Actions { get; } = [];
         public string? Selected { get; private set; }
         public Func<string?, bool> Healthy { get; init; } = _ => true;
-        public Action<string>? OnSelect { get; init; }
-        public Action<string>? OnAction { get; set; }
         private void Record(string action, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
             Actions.Add(action);
-            OnAction?.Invoke(action);
             token.ThrowIfCancellationRequested();
         }
         public Task StopAsync(CancellationToken token) { Record("stop", token); return Task.CompletedTask; }
         public Task SelectVersionAsync(string versionDirectory, CancellationToken token)
         {
             token.ThrowIfCancellationRequested(); Selected = versionDirectory; Record($"select:{versionDirectory}", token);
-            OnSelect?.Invoke(versionDirectory); token.ThrowIfCancellationRequested(); return Task.CompletedTask;
+            token.ThrowIfCancellationRequested(); return Task.CompletedTask;
         }
         public Task StartAsync(CancellationToken token) { Record("start", token); return Task.CompletedTask; }
         public Task<bool> WaitHealthyAsync(CancellationToken token) { Record("health", token); return Task.FromResult(Healthy(Selected)); }

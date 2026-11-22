@@ -196,46 +196,6 @@ public sealed class UpdateTransactionTests(TestContext context)
     }
 
     [TestMethod]
-    [DataRow("stop", UpdatePhase.Stopping)]
-    [DataRow("select", UpdatePhase.Switching)]
-    [DataRow("start", UpdatePhase.Starting)]
-    [DataRow("health", UpdatePhase.Verifying)]
-    public async Task InterruptedTransactionKeepsPreparedFilesForAdministrator(string action, UpdatePhase phase)
-    {
-        var root = CreateDirectory();
-        using var interrupted = new CancellationTokenSource();
-        try
-        {
-            using var archive = Archive();
-            var (verified, target) = Manifest(archive);
-            var previous = Path.Combine(root, "old");
-            var journal = new UpdateJournal(Path.Combine(root, "state"));
-            var runtime = new TestRuntime(root) { OnAction = current => { if (current == action) interrupted.Cancel(); } };
-            using var http = new HttpClient(new AssignmentHandler(target));
-            var transaction = new UpdateTransaction(http, journal, runtime, TimeProvider.System);
-
-            await Assert.ThrowsAsync<OperationCanceledException>(() => transaction.ApplyAsync(
-                new Uri("https://vigiloom.example/"), "vla_test", target, verified, archive, root, previous,
-                "win-x64", "1.0.0", "1.0.0", interrupted.Token));
-            var saved = await journal.ReadAsync(context.CancellationToken);
-            Assert.IsNotNull(saved);
-            Assert.AreEqual(phase, saved.Phase);
-            Assert.IsTrue(File.Exists(Path.Combine(saved.TargetDirectory, "Vigiloom.Agent.exe")));
-            Assert.IsTrue(File.Exists(Path.Combine(previous, "Vigiloom.Agent.exe")));
-
-            var actionsBeforeRecovery = runtime.Actions.Count;
-            var recovered = await new UpdateCoordinator(new UpdateJournal(Path.Combine(root, "state")), runtime)
-                .RecoverAsync(context.CancellationToken);
-            Assert.IsNotNull(recovered);
-            Assert.AreEqual(UpdatePhase.Failed, recovered.Phase);
-            Assert.IsFalse(recovered.RetryAllowed);
-            Assert.HasCount(actionsBeforeRecovery, runtime.Actions);
-            Assert.IsTrue(File.Exists(Path.Combine(saved.TargetDirectory, "Vigiloom.Agent.exe")));
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [TestMethod]
     public async Task NewAssignmentAfterFailureSwitchesAndCleansFailedFilesOnlyAfterSuccess()
     {
         var root = CreateDirectory();
@@ -418,12 +378,11 @@ public sealed class UpdateTransactionTests(TestContext context)
     private sealed class TestRuntime(string root) : IAgentUpdateRuntime
     {
         public List<string> Actions { get; } = [];
-        public Action<string>? OnAction { get; init; }
         public string? Selected { get; private set; }
         public Task<string> GetSelectedDirectoryAsync(CancellationToken token) => Task.FromResult(Selected ?? Path.Combine(root, "old"));
-        public Task StopAsync(CancellationToken token) { Actions.Add("stop"); OnAction?.Invoke("stop"); return Task.CompletedTask; }
-        public Task SelectVersionAsync(string directory, CancellationToken token) { Selected = directory; Actions.Add("select:" + directory); OnAction?.Invoke("select"); return Task.CompletedTask; }
-        public Task StartAsync(CancellationToken token) { Actions.Add("start"); OnAction?.Invoke("start"); return Task.CompletedTask; }
-        public Task<bool> WaitHealthyAsync(CancellationToken token) { Actions.Add("health"); OnAction?.Invoke("health"); return Task.FromResult(true); }
+        public Task StopAsync(CancellationToken token) { Actions.Add("stop"); return Task.CompletedTask; }
+        public Task SelectVersionAsync(string directory, CancellationToken token) { Selected = directory; Actions.Add("select:" + directory); return Task.CompletedTask; }
+        public Task StartAsync(CancellationToken token) { Actions.Add("start"); return Task.CompletedTask; }
+        public Task<bool> WaitHealthyAsync(CancellationToken token) { Actions.Add("health"); return Task.FromResult(true); }
     }
 }

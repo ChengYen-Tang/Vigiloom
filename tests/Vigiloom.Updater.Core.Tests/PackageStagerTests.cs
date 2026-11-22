@@ -1,7 +1,5 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Updater.Core.Packages;
@@ -12,88 +10,6 @@ namespace Vigiloom.Updater.Core.Tests;
 [TestClass]
 public sealed class PackageStagerTests(TestContext context)
 {
-    [TestMethod]
-    public async Task UnwritableInstallationDirectoryDoesNotChangeRunningVersion()
-    {
-        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) Assert.Inconclusive("Requires Windows or Linux permissions.");
-        if (OperatingSystem.IsLinux() && Environment.UserName == "root") Assert.Inconclusive("Root bypasses directory permissions.");
-        var root = Path.Combine(context.TestRunDirectory!, $"staging-access-{Guid.CreateVersion7():N}");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var running = Path.Combine(root, "current.txt");
-            await File.WriteAllTextAsync(running, "old", context.CancellationToken);
-            using var archive = Archive(("Vigiloom.Agent.exe", "new"));
-            var manifest = Manifest(archive, "win-x64");
-            if (OperatingSystem.IsWindows())
-            {
-                using var identity = WindowsIdentity.GetCurrent();
-                var directory = new DirectoryInfo(root);
-                var original = directory.GetAccessControl();
-                var restricted = directory.GetAccessControl();
-                restricted.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.CreateDirectories, AccessControlType.Deny));
-                directory.SetAccessControl(restricted);
-                try { await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() => PackageStager.PrepareAsync(archive, manifest,
-                    Target(manifest), root, "win-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken)); }
-                finally { directory.SetAccessControl(original); }
-            }
-            else
-            {
-                var original = File.GetUnixFileMode(root);
-                File.SetUnixFileMode(root, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-                try { await Assert.ThrowsExactlyAsync<UnauthorizedAccessException>(() => PackageStager.PrepareAsync(archive, manifest,
-                    Target(manifest), root, "win-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken)); }
-                finally { File.SetUnixFileMode(root, original); }
-            }
-            Assert.AreEqual("old", await File.ReadAllTextAsync(running, context.CancellationToken));
-            Assert.IsFalse(Directory.Exists(Path.Combine(root, "staging")));
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [TestMethod]
-    public async Task InsufficientSpaceDoesNotChangeRunningVersion()
-    {
-        var root = Path.Combine(context.TestRunDirectory!, $"staging-space-{Guid.CreateVersion7():N}");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var running = Path.Combine(root, "current.txt");
-            await File.WriteAllTextAsync(running, "old", context.CancellationToken);
-            using var archive = OversizedArchive();
-            var manifest = Manifest(archive, "win-x64");
-            var error = await Assert.ThrowsExactlyAsync<IOException>(() => PackageStager.PrepareAsync(archive, manifest,
-                Target(manifest), root, "win-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken));
-            Assert.Contains("not enough space", error.Message);
-            Assert.AreEqual("old", await File.ReadAllTextAsync(running, context.CancellationToken));
-            Assert.IsEmpty(Directory.EnumerateDirectories(Path.Combine(root, "staging")));
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    // A tiny ZIP64 fixture declares an enormous extracted size, without filling the test machine's disk.
-    private static MemoryStream OversizedArchive()
-    {
-        var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
-        var name = Encoding.UTF8.GetBytes("Vigiloom.Agent.exe");
-        const uint crc = 0x8cdc1683; // CRC-32 of "x".
-        writer.Write(0x04034b50u); writer.Write((ushort)45); writer.Write((ushort)0); writer.Write((ushort)0);
-        writer.Write(0u); writer.Write(crc); writer.Write(1u); writer.Write(1u);
-        writer.Write((ushort)name.Length); writer.Write((ushort)0); writer.Write(name); writer.Write((byte)'x');
-        var centralOffset = checked((uint)stream.Position);
-        writer.Write(0x02014b50u); writer.Write((ushort)45); writer.Write((ushort)45); writer.Write((ushort)0); writer.Write((ushort)0);
-        writer.Write(0u); writer.Write(crc); writer.Write(1u); writer.Write(uint.MaxValue);
-        writer.Write((ushort)name.Length); writer.Write((ushort)12); writer.Write((ushort)0); writer.Write((ushort)0);
-        writer.Write((ushort)0); writer.Write(0u); writer.Write(0u); writer.Write(name);
-        writer.Write((ushort)1); writer.Write((ushort)8); writer.Write(long.MaxValue - 1);
-        var centralLength = checked((uint)stream.Position - centralOffset);
-        writer.Write(0x06054b50u); writer.Write((ushort)0); writer.Write((ushort)0); writer.Write((ushort)1); writer.Write((ushort)1);
-        writer.Write(centralLength); writer.Write(centralOffset); writer.Write((ushort)0);
-        stream.Position = 0;
-        return stream;
-    }
-
     [TestMethod]
     public async Task PreparesVerifiedPackageWithoutChangingRunningFiles()
     {

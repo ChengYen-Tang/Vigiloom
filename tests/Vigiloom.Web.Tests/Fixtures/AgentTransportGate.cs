@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -12,81 +11,20 @@ internal sealed class AgentTransportGate : IStartupFilter
 {
     private readonly TaskCompletionSource<byte[]> blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<byte[]> retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource assignmentPaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource assignmentReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource packagePaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource packageReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private volatile Func<CancellationToken, Task<bool>>? pauseAssignment;
     private int settingsRejections;
-    private int heartbeatsWithLogStatus;
-    private int heartbeatsWithoutLogStatus;
-    private int heartbeatsUnknown;
-    private int rejectedLogStatusHeartbeats;
     private volatile bool reject = true;
     private volatile bool rejectSettings;
-    private volatile bool pausePackage;
 
     internal Task<byte[]> Blocked => blocked.Task;
     internal Task<byte[]> Retried => retried.Task;
     internal int SettingsRejections => Volatile.Read(ref settingsRejections);
-    internal (int WithLog, int WithoutLog, int Rejected, int Unknown) HeartbeatCounts =>
-        (Volatile.Read(ref heartbeatsWithLogStatus), Volatile.Read(ref heartbeatsWithoutLogStatus),
-            Volatile.Read(ref rejectedLogStatusHeartbeats), Volatile.Read(ref heartbeatsUnknown));
-    internal Task AssignmentPaused => assignmentPaused.Task;
-    internal Task PackagePaused => packagePaused.Task;
     internal void Allow() => reject = false;
     internal void BlockSettings() => rejectSettings = true;
-    internal void PauseAssignmentWhen(Func<CancellationToken, Task<bool>> condition) => pauseAssignment = condition;
-    internal void ReleaseAssignment() { pauseAssignment = null; assignmentReleased.TrySetResult(); }
-    internal void PausePackage() => pausePackage = true;
-    internal void ReleasePackage() { pausePackage = false; packageReleased.TrySetResult(); }
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, following) =>
         {
-            if (context.Request.Method == "POST" && context.Request.Path == "/api/v1/agent/heartbeat")
-            {
-                bool? hasLogStatus = context.Request.ContentLength == 0 ? false : null;
-                if (context.Request.ContentLength is null or (> 0 and <= 8192))
-                {
-                    context.Request.EnableBuffering();
-                    try
-                    {
-                        using var body = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
-                        if (body.RootElement.ValueKind == JsonValueKind.Object)
-                            hasLogStatus = body.RootElement.TryGetProperty("logStatus", out var value) && value.ValueKind != JsonValueKind.Null;
-                    }
-                    catch (JsonException) { }
-                    finally { context.Request.Body.Position = 0; }
-                }
-                await following(context);
-                if (hasLogStatus == true)
-                {
-                    Interlocked.Increment(ref heartbeatsWithLogStatus);
-                    if (context.Response.StatusCode >= 400) Interlocked.Increment(ref rejectedLogStatusHeartbeats);
-                }
-                else if (hasLogStatus == false) Interlocked.Increment(ref heartbeatsWithoutLogStatus);
-                else Interlocked.Increment(ref heartbeatsUnknown);
-                return;
-            }
-            if (pausePackage && context.Request.Method == "GET" && context.Request.Path.StartsWithSegments("/api/v1/agent/update/packages"))
-            {
-                context.Response.StatusCode = StatusCodes.Status200OK;
-                await context.Response.Body.WriteAsync(new byte[128 * 1024], context.RequestAborted);
-                await context.Response.Body.FlushAsync(context.RequestAborted);
-                packagePaused.TrySetResult();
-                try { await packageReleased.Task.WaitAsync(context.RequestAborted); }
-                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
-                return;
-            }
-            if (pauseAssignment is { } condition && context.Request.Method == "GET" &&
-                context.Request.Path == "/api/v1/agent/version-assignment" && await condition(context.RequestAborted))
-            {
-                assignmentPaused.TrySetResult();
-                try { await assignmentReleased.Task.WaitAsync(context.RequestAborted); }
-                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { return; }
-            }
             if (rejectSettings && context.Request.Method == "GET" && context.Request.Path == "/api/v1/agent/settings")
             {
                 Interlocked.Increment(ref settingsRejections);

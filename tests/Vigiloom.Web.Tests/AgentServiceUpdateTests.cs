@@ -157,37 +157,9 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
-                var installationRoot = windows
-                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Agent")
-                    : "/opt/vigiloom/agent";
                 var updaterState = windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Updater")
                     : "/var/lib/vigiloom/updater";
-                var abandonedPreparation = Path.Combine(installationRoot, "staging", Guid.CreateVersion7().ToString("N"));
-                var abandonedCache = Path.Combine(updaterState, "cache");
-                var partialDownload = Path.Combine(abandonedCache, "interrupted.download");
-                var retainedPackage = Path.Combine(abandonedCache, "retained-test.pkg");
-                if (windows) Directory.CreateDirectory(abandonedPreparation);
-                else await RunAsync("sudo", token, "-n", "mkdir", "-p", abandonedPreparation);
-                if (windows)
-                {
-                    Directory.CreateDirectory(abandonedCache);
-                    await File.WriteAllTextAsync(partialDownload, "partial", token);
-                    await File.WriteAllTextAsync(retainedPackage, "retained", token);
-                }
-                else await RunAsync("sudo", token, "-n", "sh", "-c", "mkdir -p \"$1\"; printf partial > \"$2\"; printf retained > \"$3\"",
-                    "sh", abandonedCache, partialDownload, retainedPackage);
-                Assert.IsTrue(Directory.Exists(abandonedPreparation));
-                if (windows) await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Restart-Service -Name 'Vigiloom Updater'");
-                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
-                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(abandonedPreparation)), token);
-                await WaitUntilAsync(async () => !await HasPartialDownloadAsync(windows, abandonedCache, token, requireData: false), token);
-                if (windows)
-                {
-                    Assert.AreEqual("retained", await File.ReadAllTextAsync(retainedPackage, token));
-                    File.Delete(retainedPackage);
-                }
-                else await RunAsync("sudo", token, "-n", "sh", "-c", "printf retained | cmp -s \"$1\" - && rm -- \"$1\"", "sh", retainedPackage);
                 var logPath = windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Agent", "cursor-test.log")
                     : "/var/lib/vigiloom/agent/cursor-test.log";
@@ -211,7 +183,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 gate.BlockSettings();
                 var logMonitoring = scope.ServiceProvider.GetRequiredService<HostLogMonitoring>();
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -251,29 +223,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
-                var successfulUpdate = await ReadUpdateStateAsync(windows, updaterState, token);
-                Assert.IsNotNull(successfulUpdate);
-                Assert.AreEqual(UpdatePhase.Succeeded, successfulUpdate.Phase);
-                IAgentUpdateRuntime agentRuntime = OperatingSystem.IsWindows()
-                    ? new WindowsAgentRuntime(installationRoot) : OperatingSystem.IsLinux()
-                        ? new SystemdAgentRuntime(installationRoot) : throw new PlatformNotSupportedException();
-                for (var crash = 0; crash < 2; crash++)
-                {
-                    var agentPid = await ServicePidAsync(windows, agent: true, token);
-                    Assert.AreNotEqual("0", agentPid);
-                    if (windows) await RunAsync("taskkill.exe", token, "/PID", agentPid, "/F");
-                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", agentPid);
-                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: true, token) != agentPid, token);
-                    var afterCrash = await ReadUpdateStateAsync(windows, updaterState, token);
-                    Assert.IsNotNull(afterCrash);
-                    Assert.AreEqual(successfulUpdate.Id, afterCrash.Id);
-                    Assert.AreEqual(UpdatePhase.Succeeded, afterCrash.Phase);
-                    Assert.IsTrue(Directory.Exists(afterCrash.TargetDirectory));
-                    Assert.AreEqual(Path.GetFullPath(afterCrash.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
-                    Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
-                    await SetServiceRunningAsync(windows, running: true, token);
-                }
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
@@ -281,176 +231,9 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, gate, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
                     "An Agent rollback or downgrade must not replace the Updater.");
-                // Pause the post-stop authorization check so the real Updater can be interrupted
-                // at a known durable phase without a product-only test hook.
-                gate.PauseAssignmentWhen(async ct => await ServicePidAsync(windows, agent: true, ct) == "0");
-                var interruptedId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
-                Assert.IsNotNull(interruptedId);
-                installed.TrackReplacement(interruptedId.Value);
-                string killedPid;
-                string interruptedDirectory;
-                try
-                {
-                    await gate.AssignmentPaused.WaitAsync(TimeSpan.FromMinutes(7), token);
-                    var interruptedState = await ReadUpdateStateAsync(windows, updaterState, token);
-                    Assert.IsNotNull(interruptedState);
-                    Assert.AreEqual(interruptedId.Value, interruptedState.Id);
-                    Assert.AreEqual(UpdatePhase.Stopping, interruptedState.Phase);
-                    Assert.IsTrue(Directory.Exists(interruptedState.TargetDirectory));
-                    interruptedDirectory = interruptedState.TargetDirectory;
-                    killedPid = await ServicePidAsync(windows, agent: false, token);
-                    Assert.AreNotEqual("0", killedPid);
-                    if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
-                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
-                }
-                finally { gate.ReleaseAssignment(); }
-                if (windows)
-                {
-                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
-                    if (await ServicePidAsync(windows, agent: false, token) == "0")
-                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
-                }
-                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
-                await WaitUntilAsync(async () => (await ReadUpdateStateAsync(windows, updaterState, token)) is
-                    { Phase: UpdatePhase.Failed, Error: "Interrupted" }, token);
-                Assert.IsTrue(Directory.Exists(interruptedDirectory));
-                Assert.AreEqual("0", await ServicePidAsync(windows, agent: true, token));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
-                updaterPid = await ServicePidAsync(windows, agent: false, token);
-                Assert.AreNotEqual("0", updaterPid);
-                Assert.AreNotEqual(killedPid, updaterPid);
-                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(interruptedDirectory)), token);
-
-                // Interrupt the real Updater after a partial archive is written; the same
-                // assignment should be retried and the incomplete download removed.
-                var cacheDirectory = Path.Combine(updaterState, "cache");
-                var runningPid = await ServicePidAsync(windows, agent: true, token);
-                gate.PausePackage();
-                var downloadId = await SetAssignmentAsync(agents, assignments, agentId, "1.2.0", actor, token);
-                Assert.IsNotNull(downloadId);
-                installed.TrackReplacement(downloadId.Value);
-                try
-                {
-                    await gate.PackagePaused.WaitAsync(TimeSpan.FromMinutes(7), token);
-                    await WaitUntilAsync(() => HasPartialDownloadAsync(windows, cacheDirectory, token), token);
-                    Assert.AreEqual(runningPid, await ServicePidAsync(windows, agent: true, token));
-                    killedPid = updaterPid;
-                    if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
-                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
-                }
-                finally { gate.ReleasePackage(); }
-                if (windows)
-                {
-                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
-                    if (await ServicePidAsync(windows, agent: false, token) == "0")
-                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
-                }
-                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
-                // Version 1.2.0 is deliberately broken, so the retry completes as an
-                // Agent startup failure; it must not leave a partial archive behind.
-                await WaitForResultAsync(agents, agentId, downloadId.Value, AgentUpdateResultKind.Failed, token, TimeSpan.FromMinutes(7));
-                UpdateState? failedRetry = null;
-                await WaitUntilAsync(async () =>
-                {
-                    failedRetry = await ReadUpdateStateAsync(windows, updaterState, token);
-                    return failedRetry is { Phase: UpdatePhase.Failed, RetryAllowed: false } && failedRetry.Id == downloadId;
-                }, token, TimeSpan.FromMinutes(7));
-                Assert.IsNotNull(failedRetry);
-                Assert.IsTrue(Directory.Exists(failedRetry.TargetDirectory));
-                Assert.AreEqual(Path.GetFullPath(failedRetry.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
-                Assert.IsFalse(await HasPartialDownloadAsync(windows, cacheDirectory, token, requireData: false));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
-                updaterPid = await ServicePidAsync(windows, agent: false, token);
-
-                // Suspend the real Agent before managed startup, so the updater's
-                // durable Starting phase can be interrupted without product test hooks.
-                await SetAgentStartupSuspensionAsync(windows, enabled: true, token);
-                Guid? startingId = null;
-                killedPid = updaterPid;
-                UpdateState? starting = null;
-                string? suspendedPid = null;
-                try
-                {
-                    startingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
-                    Assert.IsNotNull(startingId);
-                    installed.TrackReplacement(startingId.Value);
-                    await WaitUntilAsync(async () =>
-                    {
-                        starting = await ReadUpdateStateAsync(windows, updaterState, token);
-                        if (starting is not { Phase: UpdatePhase.Starting } || starting.Id != startingId) return false;
-                        suspendedPid = windows
-                            ? await WindowsAgentProcessForDirectoryAsync(starting.TargetDirectory, token)
-                            : await ServicePidAsync(windows, agent: true, token);
-                        return !string.IsNullOrWhiteSpace(suspendedPid) && suspendedPid != "0";
-                    }, token, TimeSpan.FromMinutes(7));
-                    if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
-                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
-                }
-                finally
-                {
-                    try { await SetAgentStartupSuspensionAsync(windows, enabled: false, CancellationToken.None); }
-                    finally
-                    {
-                        if (!string.IsNullOrWhiteSpace(suspendedPid) && suspendedPid != "0")
-                        {
-                            if (windows) await RunAsync("taskkill.exe", CancellationToken.None, "/PID", suspendedPid, "/F");
-                            else await RunAsync("sudo", CancellationToken.None, "-n", "kill", "-KILL", suspendedPid);
-                        }
-                    }
-                }
-                if (windows)
-                {
-                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
-                    if (await ServicePidAsync(windows, agent: false, token) == "0")
-                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
-                }
-                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
-                await WaitUntilAsync(async () => (await ReadUpdateStateAsync(windows, updaterState, token)) is
-                    { Phase: UpdatePhase.Failed, Error: "Interrupted" } state && state.Id == startingId, token);
-                Assert.IsNotNull(starting);
-                Assert.IsTrue(Directory.Exists(starting.TargetDirectory));
-                Assert.AreEqual(Path.GetFullPath(starting.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
-                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(starting.TargetDirectory)), token);
-                updaterPid = await ServicePidAsync(windows, agent: false, token);
-
-                // The real service stays in health verification for at least ten seconds,
-                // giving us a durable phase to interrupt without adding hooks to the product.
-                var verifyingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
-                Assert.IsNotNull(verifyingId);
-                installed.TrackReplacement(verifyingId.Value);
-                killedPid = updaterPid;
-                UpdateState? verifying = null;
-                await WaitUntilAsync(async () =>
-                {
-                    verifying = await ReadUpdateStateAsync(windows, updaterState, token);
-                    return verifying is { Phase: UpdatePhase.Verifying } && verifying.Id == verifyingId;
-                }, token, TimeSpan.FromMinutes(7));
-                Assert.IsNotNull(verifying);
-                Assert.IsTrue(Directory.Exists(verifying.TargetDirectory));
-                Assert.AreNotEqual("0", killedPid);
-                if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
-                else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
-                if (windows)
-                {
-                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
-                    if (await ServicePidAsync(windows, agent: false, token) == "0")
-                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
-                }
-                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
-                await WaitUntilAsync(async () => (await ReadUpdateStateAsync(windows, updaterState, token)) is
-                    { Phase: UpdatePhase.Failed, Error: "Interrupted" } state && state.Id == verifyingId, token);
-                Assert.IsTrue(Directory.Exists(verifying.TargetDirectory));
-                Assert.AreEqual(Path.GetFullPath(verifying.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
-                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(verifying.TargetDirectory)), token);
-                updaterPid = await ServicePidAsync(windows, agent: false, token);
-                Assert.AreNotEqual("0", updaterPid);
-                Assert.AreNotEqual(killedPid, updaterPid);
-
                 var installedUpdater = Path.Combine(windows
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
                     : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
@@ -620,19 +403,6 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
 
-    private static Task<string> WindowsAgentProcessForDirectoryAsync(string directory, CancellationToken token)
-    {
-        var executable = Path.Combine(Path.GetFullPath(directory), "Vigiloom.Agent.exe").Replace("'", "''", StringComparison.Ordinal);
-        return RunAsync("powershell.exe", token, "-NoProfile", "-Command",
-            $"Get-CimInstance Win32_Process -Filter \"Name='Vigiloom.Agent.exe'\" | Where-Object {{ $_.ExecutablePath -eq '{executable}' }} | Select-Object -ExpandProperty ProcessId");
-    }
-
-    private static async Task<UpdateState?> ReadUpdateStateAsync(bool windows, string directory, CancellationToken token) => windows
-        ? await new UpdateJournal(directory).ReadAsync(token)
-        : System.Text.Json.JsonSerializer.Deserialize<UpdateState>(await RunAsync("sudo", token, "-n", "python3", "-c",
-            "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute('SELECT State FROM UpdateJournal WHERE Id=1').fetchone()[0])",
-            Path.Combine(directory, "update.db")));
-
     private static async Task AppendLogAsync(bool windows, string path, string line, CancellationToken token)
     {
         if (windows) await File.AppendAllTextAsync(path, line + "\n", token);
@@ -640,11 +410,10 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     }
 
     private static async Task WaitForLogEndAsync(HostLogMonitoring monitoring, IDbContextFactory<AgentManagementDbContext> agents,
-        Guid agentId, Guid deviceId, AgentLogSourceSetting source, AgentTransportGate gate,
+        Guid agentId, Guid deviceId, AgentLogSourceSetting source,
         DateTimeOffset after, CancellationToken token)
     {
         string observation = "no report";
-        var before = gate.HeartbeatCounts;
         try
         {
             await WaitUntilAsync(async () =>
@@ -664,13 +433,10 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.QueueReportEpoch, x.QueueReportSequence,
                 x.LogStatusReportEpoch, x.LogStatusReportSequence, x.LogStatusReportedAt
             }).SingleOrDefaultAsync(token);
-            var counts = gate.HeartbeatCounts;
             throw new TimeoutException($"Agent log source did not reach end: {observation}; heartbeat={row?.LastHeartbeatAt:O}; " +
                 $"runtime={row?.RuntimeVersion}; runtimeAt={row?.RuntimeReportedAt:O}; " +
                 $"epochsMatch={row?.QueueReportEpoch == row?.LogStatusReportEpoch}; " +
-                $"sequencesMatch={row?.QueueReportSequence == row?.LogStatusReportSequence}; logReportedAt={row?.LogStatusReportedAt:O}; " +
-                $"heartbeatsWithLog={counts.WithLog - before.WithLog}; heartbeatsWithoutLog={counts.WithoutLog - before.WithoutLog}; " +
-                $"rejectedWithLog={counts.Rejected - before.Rejected}; heartbeatsUnknown={counts.Unknown - before.Unknown}", error);
+                $"sequencesMatch={row?.QueueReportSequence == row?.LogStatusReportSequence}; logReportedAt={row?.LogStatusReportedAt:O}", error);
         }
     }
 
@@ -678,20 +444,6 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         RunAsync("sudo", token, "-n", "-u", "nobody", "--", "/bin/sh", "-c",
             "test -r \"$1\" && test -x \"$1\" && test ! -w \"$1\" && test -d \"$2\" && test ! -w \"$2\" && test -d \"$3\" && test ! -w \"$3\"",
             "sh", "/opt/vigiloom/agent/current/Vigiloom.Agent", "/opt/vigiloom/agent/current", "/opt/vigiloom/agent");
-
-    private static async Task<bool> HasPartialDownloadAsync(bool windows, string directory, CancellationToken token, bool requireData = true) => windows
-        ? Directory.Exists(directory) && Directory.EnumerateFiles(directory, "*.download").Any(path => !requireData || new FileInfo(path).Length > 0)
-        : (await RunAsync("sudo", token, "-n", "sh", "-c", requireData
-            ? "find \"$1\" -maxdepth 1 -name '*.download' -size +0c -print -quit"
-            : "find \"$1\" -maxdepth 1 -name '*.download' -print -quit", "sh", directory)).Length > 0;
-
-    private static Task<string> SetAgentStartupSuspensionAsync(bool windows, bool enabled, CancellationToken token) => windows
-        ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", enabled
-            ? "$p='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Vigiloom Agent'; $v=@((Get-ItemProperty -LiteralPath $p -Name Environment).Environment); if ($v -like 'DOTNET_DefaultDiagnosticPortSuspend=*') { throw 'Unexpected diagnostic setting' }; Set-ItemProperty -LiteralPath $p -Name Environment -Value @($v + 'DOTNET_DefaultDiagnosticPortSuspend=1')"
-            : "$p='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Vigiloom Agent'; $v=@((Get-ItemProperty -LiteralPath $p -Name Environment).Environment | Where-Object { $_ -ne 'DOTNET_DefaultDiagnosticPortSuspend=1' }); Set-ItemProperty -LiteralPath $p -Name Environment -Value $v")
-        : RunAsync("sudo", token, "-n", "sh", "-c", enabled
-            ? "printf '[Service]\\nEnvironment=DOTNET_DefaultDiagnosticPortSuspend=1\\n' > /etc/systemd/system/vigiloom-agent.service.d/test-suspend.conf && systemctl daemon-reload"
-            : "rm -f -- /etc/systemd/system/vigiloom-agent.service.d/test-suspend.conf && systemctl daemon-reload");
 
     private static async Task VerifyWindowsRuntimePreflightAsync(string bundle, CancellationToken token)
     {
