@@ -9,6 +9,24 @@ namespace Vigiloom.UpdateSecurity.Tests;
 public sealed class LocalPackageCacheTests(TestContext context)
 {
     [TestMethod]
+    public async Task Cleanup_RemovesInterruptedDownloadsWithoutDiscardingPackages()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"vigiloom-cache-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var partial = Path.Combine(directory, "interrupted.download");
+            var cached = Path.Combine(directory, "verified.pkg");
+            await File.WriteAllTextAsync(partial, "partial", context.CancellationToken);
+            await File.WriteAllTextAsync(cached, "package", context.CancellationToken);
+            await LocalPackageCache.CleanupInterruptedDownloadsAsync(directory, context.CancellationToken);
+            Assert.IsFalse(File.Exists(partial));
+            Assert.AreEqual("package", await File.ReadAllTextAsync(cached, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [TestMethod]
     public async Task Open_ReusesVerifiedFileAndEnforcesQuota()
     {
         var content = "package"u8.ToArray();

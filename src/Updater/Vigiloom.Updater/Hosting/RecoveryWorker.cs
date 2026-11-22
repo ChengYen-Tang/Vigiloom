@@ -59,6 +59,9 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
 
             try
             {
+                try { await LocalPackageCache.CleanupInterruptedDownloadsAsync(options!.CacheDirectory, stoppingToken); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                { logger.LogWarning("Updater could not clean interrupted downloads: {ErrorType}.", error.GetType().Name); }
                 using var http = new HttpClient(new SocketsHttpHandler
                 {
                     AllowAutoRedirect = false, UseCookies = false,
