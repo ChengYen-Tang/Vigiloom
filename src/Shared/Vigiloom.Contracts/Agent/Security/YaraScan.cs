@@ -11,7 +11,8 @@ public sealed record YaraScanJob(Guid Id, Guid AgentId, Guid DeviceId, Guid Requ
 
 public enum YaraScanOutcome { Completed = 1, FileTooLarge = 2, TimedOut = 3, Unavailable = 4, Failed = 5, Cancelled = 6 }
 
-public sealed record YaraScanReport(YaraScanOutcome Outcome, string Output, string Error, bool OutputTruncated, DateTimeOffset CompletedAt);
+public sealed record YaraScanReport(YaraScanOutcome Outcome, string Output, string Error, bool OutputTruncated, DateTimeOffset CompletedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EngineVersion = null);
 
 public sealed record YaraResultBatch(int SchemaVersion, Guid BatchId, DateTimeOffset EnqueuedAt,
     [property: JsonRequired] YaraScanReport Result);
@@ -45,5 +46,5 @@ public static class YaraResultBatchCodec
     private static bool Valid(YaraResultBatch? batch) => batch is { SchemaVersion: SchemaVersion, Result: not null } &&
         batch.BatchId.Version == 7 && batch.EnqueuedAt != default && batch.EnqueuedAt.Offset == TimeSpan.Zero &&
         Enum.IsDefined(batch.Result.Outcome) && batch.Result.Output is { Length: <= 65536 } && batch.Result.Error is { Length: <= 65536 } &&
-        batch.Result.CompletedAt != default && batch.Result.CompletedAt.Offset == TimeSpan.Zero;
+        batch.Result.CompletedAt != default && batch.Result.CompletedAt.Offset == TimeSpan.Zero && batch.Result.EngineVersion is null or { Length: <= 64 };
 }
