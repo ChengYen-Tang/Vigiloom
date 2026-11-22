@@ -46,6 +46,9 @@
             <details>
                 <summary>接入 Windows Sysmon 事件</summary>
                 <p>Sysmon 是另外安裝的 Windows 服務與驅動程式，會使用主機資源及日誌空間。請先由管理員在主機安裝並設定 Sysmon，並確認 Agent 帳號有讀取事件記錄的權限。</p>
+                <p>安裝 Sysmon 後，在受監控主機以系統管理員開啟 PowerShell，執行下列指令；它只授予 Agent 讀取 Sysmon 事件通道的權限。</p>
+                <pre>powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\VigiloomAgent\Tools\grant-sysmon-read.ps1"</pre>
+                <p>如果目前安裝的 Agent 沒有這個檔案，可<a href="/settings/agent-tools/grant-sysmon-read">下載權限設定腳本</a>，複製到受監控主機後執行。</p>
                 <p><a href="https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon" target="_blank" rel="noopener noreferrer">查看 Sysmon 安裝與授權資訊</a></p>
                 <EditForm Model="Input" FormName="sysmon-source-create" method="post" OnSubmit="CreateSysmonAsync">
                     <button type="submit" disabled="@(items.Any(x => x.Settings.Kind == AgentLogSourceKind.WindowsEvent && string.Equals(x.Settings.Target, "Microsoft-Windows-Sysmon/Operational", StringComparison.OrdinalIgnoreCase)))">加入 Sysmon 事件來源</button>

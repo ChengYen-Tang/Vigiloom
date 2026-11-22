@@ -8,6 +8,13 @@ internal static class AgentPackageUiEndpoints
 {
     public static void MapAgentPackageUiEndpoints(this WebApplication app)
     {
+        app.MapGet("/settings/agent-tools/grant-sysmon-read", (HttpContext context) =>
+        {
+            context.Response.Headers.CacheControl = "private, no-store";
+            var script = typeof(AgentPackageUiEndpoints).Assembly.GetManifestResourceStream("Vigiloom.Agent.GrantSysmonRead.ps1")
+                ?? throw new InvalidOperationException("Sysmon permission script is missing.");
+            return Results.File(script, "application/octet-stream", "grant-sysmon-read.ps1");
+        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         app.MapPost("/settings/agent-packages/download", async ([FromForm] string version, [FromForm] string runtimeIdentifier,
             HttpContext context, PackageLibrary library, ILogger<PackageLibrary> logger, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ =>

@@ -1,4 +1,5 @@
 .host-log-table-wrap { overflow-x: auto; }
+.host-log-page pre { overflow-x: auto; }
 .host-log-table { border-collapse: collapse; width: 100%; min-width: 42rem; text-align: left; }
 .host-log-table th { background: #eff5fc; color: #526783; }
 .host-log-table th, .host-log-table td { border-bottom: 1px solid #e2eaf2; padding: .75rem; vertical-align: top; }

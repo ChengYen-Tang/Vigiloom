@@ -25,8 +25,11 @@ process-creation event, and was removed with its own uninstall command. The
 Vigiloom event decoder successfully read the event's ID, image and hash fields.
 The installed Sysmon service rejected a normal `Stop-Service` request; use the
 vendor's supported controls rather than assuming the service can be stopped this
-way. This test does not by itself establish that the Agent service account can
-read the channel or that events reach the central platform.
+way. The Agent's virtual service account could not read the channel by default.
+After an Administrator ran the bundled `grant-sysmon-read.ps1`, the actual Agent
+event reader running as that account read a process event; running the script a
+second time also succeeded. This test does not by itself establish end-to-end
+delivery to the central platform.
 
 On Fedora 42 x64 under WSL, the Vigiloom scanner was exercised with the installed
 YARA engine: a match, a non-match, the file size check and cancellation of a

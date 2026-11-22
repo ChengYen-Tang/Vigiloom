@@ -8,6 +8,7 @@
     <InternalsVisibleTo Include="Vigiloom.Web.Tests" />
     <EmbeddedResource Include="../../../deploy/collector/isolated-sources.example.yaml" LogicalName="Vigiloom.Collector.IsolatedSources.yaml" />
     <EmbeddedResource Include="../../../deploy/collector/application.env.example" LogicalName="Vigiloom.Collector.Application.env" />
+    <EmbeddedResource Include="../../../packaging/agent/windows/grant-sysmon-read.ps1" LogicalName="Vigiloom.Agent.GrantSysmonRead.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />

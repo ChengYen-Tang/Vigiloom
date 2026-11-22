@@ -120,6 +120,7 @@ try {
     $toolsRoot = Join-Path $programRoot 'Tools'
     [void](New-Item -ItemType Directory -Path $agentRoot, $updaterRoot, $toolsRoot -Force)
     Copy-Item -LiteralPath (Join-Path $bundle 'native.ps1'), (Join-Path $bundle 'service-operations.ps1'), (Join-Path $bundle 'remove.ps1'), (Join-Path $bundle 'restore.ps1') -Destination $toolsRoot
+    if (Test-Path -LiteralPath (Join-Path $bundle 'grant-sysmon-read.ps1')) { Copy-Item -LiteralPath (Join-Path $bundle 'grant-sysmon-read.ps1') -Destination $toolsRoot }
     Copy-Item -Path (Join-Path $agentSource '*') -Destination $agentRoot -Recurse -Force
     Copy-Item -Path (Join-Path $updaterSource '*') -Destination $updaterRoot -Recurse -Force
     $bytes = [Text.Encoding]::ASCII.GetBytes($enrollment)
