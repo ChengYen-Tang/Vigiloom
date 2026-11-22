@@ -76,7 +76,7 @@ The worker also observes process I/O around sampling cycles and delays later col
 
 The sender uses the configured batch interval, bounded payload size, retry backoff and server Retry-After. It imposes no network upload quota or bandwidth cap.
 
-When a sampling source is unavailable or incomplete, the cycle emits a `CollectionUnavailable` point with the source name as its dimension and value `1`. This point follows the same bounded queue and delivery rules as other points; it becomes durable only after its batch is queued. An absent marker alone does not establish that a source was sampled or healthy. Markers do not count samples lost before durable enqueue or establish why a source was unavailable.
+When a sampling source is unavailable or incomplete, the cycle emits a `CollectionUnavailable` point with the source name as its dimension and value `1`. Its source is `agent.collector.permission-denied`, `agent.collector.unsupported` or `agent.collector.error` when the exception establishes that reason; the original `agent.collector` source means the reason is unknown. These source strings use the existing metric schema and are accepted by older receivers. The device page shows recent markers as historical observations, not current status. A point becomes durable only after its batch is queued; absence of a marker does not establish that a source was sampled or healthy, and markers do not count samples lost before durable enqueue.
 
 ## Illustrative capacity measurement
 
