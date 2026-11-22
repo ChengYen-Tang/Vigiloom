@@ -365,6 +365,58 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 updaterPid = await ServicePidAsync(windows, agent: false, token);
 
+                // Suspend the real Agent before managed startup, so the updater's
+                // durable Starting phase can be interrupted without product test hooks.
+                await SetAgentStartupSuspensionAsync(windows, enabled: true, token);
+                Guid? startingId = null;
+                killedPid = updaterPid;
+                UpdateState? starting = null;
+                string? suspendedPid = null;
+                try
+                {
+                    startingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                    Assert.IsNotNull(startingId);
+                    installed.TrackReplacement(startingId.Value);
+                    await WaitUntilAsync(async () =>
+                    {
+                        starting = await ReadUpdateStateAsync(windows, updaterState, token);
+                        if (starting is not { Phase: UpdatePhase.Starting } || starting.Id != startingId) return false;
+                        suspendedPid = windows
+                            ? await WindowsAgentProcessForDirectoryAsync(starting.TargetDirectory, token)
+                            : await ServicePidAsync(windows, agent: true, token);
+                        return !string.IsNullOrWhiteSpace(suspendedPid) && suspendedPid != "0";
+                    }, token, TimeSpan.FromMinutes(7));
+                    if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
+                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
+                }
+                finally
+                {
+                    try { await SetAgentStartupSuspensionAsync(windows, enabled: false, CancellationToken.None); }
+                    finally
+                    {
+                        if (!string.IsNullOrWhiteSpace(suspendedPid) && suspendedPid != "0")
+                        {
+                            if (windows) await RunAsync("taskkill.exe", CancellationToken.None, "/PID", suspendedPid, "/F");
+                            else await RunAsync("sudo", CancellationToken.None, "-n", "kill", "-KILL", suspendedPid);
+                        }
+                    }
+                }
+                if (windows)
+                {
+                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
+                    if (await ServicePidAsync(windows, agent: false, token) == "0")
+                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
+                }
+                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
+                await WaitUntilAsync(async () => (await ReadUpdateStateAsync(windows, updaterState, token)) is
+                    { Phase: UpdatePhase.Failed, Error: "Interrupted" } state && state.Id == startingId, token);
+                Assert.IsNotNull(starting);
+                Assert.IsTrue(Directory.Exists(starting.TargetDirectory));
+                Assert.AreEqual(Path.GetFullPath(starting.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
+                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(starting.TargetDirectory)), token);
+                updaterPid = await ServicePidAsync(windows, agent: false, token);
+
                 // The real service stays in health verification for at least ten seconds,
                 // giving us a durable phase to interrupt without adding hooks to the product.
                 var verifyingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
@@ -570,6 +622,13 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
 
+    private static Task<string> WindowsAgentProcessForDirectoryAsync(string directory, CancellationToken token)
+    {
+        var executable = Path.Combine(Path.GetFullPath(directory), "Vigiloom.Agent.exe").Replace("'", "''", StringComparison.Ordinal);
+        return RunAsync("powershell.exe", token, "-NoProfile", "-Command",
+            $"Get-CimInstance Win32_Process -Filter \"Name='Vigiloom.Agent.exe'\" | Where-Object {{ $_.ExecutablePath -eq '{executable}' }} | Select-Object -ExpandProperty ProcessId");
+    }
+
     private static async Task<UpdateState?> ReadUpdateStateAsync(bool windows, string directory, CancellationToken token) => windows
         ? await new UpdateJournal(directory).ReadAsync(token)
         : System.Text.Json.JsonSerializer.Deserialize<UpdateState>(await RunAsync("sudo", token, "-n", "python3", "-c",
@@ -627,6 +686,14 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         : (await RunAsync("sudo", token, "-n", "sh", "-c", requireData
             ? "find \"$1\" -maxdepth 1 -name '*.download' -size +0c -print -quit"
             : "find \"$1\" -maxdepth 1 -name '*.download' -print -quit", "sh", directory)).Length > 0;
+
+    private static Task<string> SetAgentStartupSuspensionAsync(bool windows, bool enabled, CancellationToken token) => windows
+        ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", enabled
+            ? "$p='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Vigiloom Agent'; $v=@((Get-ItemProperty -LiteralPath $p -Name Environment).Environment); if ($v -like 'DOTNET_DefaultDiagnosticPortSuspend=*') { throw 'Unexpected diagnostic setting' }; Set-ItemProperty -LiteralPath $p -Name Environment -Value @($v + 'DOTNET_DefaultDiagnosticPortSuspend=1')"
+            : "$p='HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Vigiloom Agent'; $v=@((Get-ItemProperty -LiteralPath $p -Name Environment).Environment | Where-Object { $_ -ne 'DOTNET_DefaultDiagnosticPortSuspend=1' }); Set-ItemProperty -LiteralPath $p -Name Environment -Value $v")
+        : RunAsync("sudo", token, "-n", "sh", "-c", enabled
+            ? "printf '[Service]\\nEnvironment=DOTNET_DefaultDiagnosticPortSuspend=1\\n' > /etc/systemd/system/vigiloom-agent.service.d/test-suspend.conf && systemctl daemon-reload"
+            : "rm -f -- /etc/systemd/system/vigiloom-agent.service.d/test-suspend.conf && systemctl daemon-reload");
 
     private static async Task VerifyWindowsRuntimePreflightAsync(string bundle, CancellationToken token)
     {
