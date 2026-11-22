@@ -32,6 +32,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
         bool Include(string source) => string.IsNullOrEmpty(query.Source) || query.Source == source;
         var entries = new List<EventTimelineEntry>();
         var serviceLogRows = new Dictionary<EventTimelineEntry, long>(ReferenceEqualityComparer.Instance);
+        var hostLogRows = new Dictionary<EventTimelineEntry, long>(ReferenceEqualityComparer.Instance);
         if (Include("host-log") || Include("yara"))
         {
             await using var db = await agents.CreateDbContextAsync(token);
@@ -41,10 +42,15 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     join agent in db.Agents.AsNoTracking() on log.AgentId equals agent.Id
                     where log.ReceivedAt >= start && log.ReceivedAt < end && (deviceIds == null || deviceIds.Contains(agent.DeviceId))
                     orderby log.ReceivedAt descending, log.RowId descending
-                    select new { agent.DeviceId, log.AgentId, log.MessageId, log.SourceName, log.ReceivedAt, log.GapReason }).Take(limit).ToArrayAsync(token);
-                entries.AddRange(rows.Select(x => new EventTimelineEntry("host-log", x.ReceivedAt, x.DeviceId, "device",
-                    x.GapReason is null ? $"主機日誌：{x.SourceName}" : $"主機日誌採集缺口：{x.SourceName}",
-                    $"{x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}")));
+                    select new { log.RowId, agent.DeviceId, log.AgentId, log.MessageId, log.SourceName, log.ParserVersion, log.ReceivedAt, log.GapReason }).Take(limit).ToArrayAsync(token);
+                foreach (var x in rows)
+                {
+                    var entry = new EventTimelineEntry("host-log", x.ReceivedAt, x.DeviceId, "device",
+                        x.GapReason is null ? $"主機日誌：{x.SourceName}" : $"主機日誌採集缺口：{x.SourceName}",
+                        $"解析版本 {x.ParserVersion}；{x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}");
+                    entries.Add(entry);
+                    hostLogRows.Add(entry, x.RowId);
+                }
             }
             if (Include("yara"))
             {
@@ -150,6 +156,17 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
         // LINQ's stable ordering preserves each source's database RowId tie-breaker.
         var ordered = entries.OrderByDescending(x => x.Time).ThenBy(x => x.Source, StringComparer.Ordinal).ToArray();
         var items = ordered.Skip((query.Page - 1) * 50).Take(50).ToArray();
+        var selectedHostIds = items.Where(hostLogRows.ContainsKey).Select(x => hostLogRows[x]).ToArray();
+        if (selectedHostIds.Length > 0)
+        {
+            await using var db = await agents.CreateDbContextAsync(token);
+            var contents = await db.HostLogs.AsNoTracking().Where(x => selectedHostIds.Contains(x.RowId))
+                .Select(x => new { x.RowId, Content = x.Content.Substring(0, 513) })
+                .ToDictionaryAsync(x => x.RowId, x => x.Content, token);
+            for (var i = 0; i < items.Length; i++)
+                if (hostLogRows.TryGetValue(items[i], out var id) && contents.TryGetValue(id, out var content))
+                    items[i] = items[i] with { Evidence = $"{items[i].Evidence}；原文：{(content.Length > 512 ? content[..512] + "…" : content)}" };
+        }
         var selectedLogIds = items.Where(serviceLogRows.ContainsKey).Select(x => serviceLogRows[x]).ToArray();
         if (selectedLogIds.Length > 0)
         {
