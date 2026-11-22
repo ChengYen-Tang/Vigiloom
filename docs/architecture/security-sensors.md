@@ -32,7 +32,9 @@ second time also succeeded. This test does not by itself establish end-to-end
 delivery to the central platform.
 
 On Fedora 42 x64 under WSL, the Vigiloom scanner was exercised with the installed
-YARA engine: a match, a non-match, the file size check and cancellation of a
-running scan passed. The test package was removed afterward. The Windows x64
-engine was also exercised separately; these checks do not establish full Agent
-deployment or all platform combinations.
+YARA engine: a match, a non-match, the file size check, timeout and cancellation
+of a running scan passed. The test package was removed afterward. The Windows x64
+engine was also exercised separately, including timeout; these checks do not establish full Agent
+deployment or all platform combinations. A separate Linux Agent worker check
+used a simulated central cancellation response and confirmed that the running
+YARA process stopped and no scan result was queued.
