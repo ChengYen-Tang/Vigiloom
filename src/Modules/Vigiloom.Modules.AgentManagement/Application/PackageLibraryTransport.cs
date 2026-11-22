@@ -1,45 +1,94 @@
+using System.Security.Cryptography;
 using Vigiloom.UpdateSecurity;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-public sealed class PackageLibraryTransport : IPackageLibraryTransport
+/// <summary>Stores GitHub packages and manifests for offline Agent updates.</summary>
+public sealed class PackageLibraryTransport(string cacheDirectory) : IPackageLibraryTransport
 {
-    private readonly string cacheDirectory;
-    private readonly long maximumBytes;
-    private readonly TimeProvider clock;
-    private readonly HttpClient? client;
+    private readonly string cacheDirectory = Path.GetFullPath(cacheDirectory);
 
-    public PackageLibraryTransport(string cacheDirectory, long maximumBytes, TimeProvider clock)
+    public bool IsCached(string archiveHash, string manifestHash) =>
+        PackageRules.IsHash(archiveHash) && PackageRules.IsHash(manifestHash) &&
+        File.Exists(ArchivePath(archiveHash)) && File.Exists(ManifestPath(manifestHash));
+
+    public async Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] manifest,
+        GitHubAgentReleases github, CancellationToken token)
     {
-        this.cacheDirectory = Path.GetFullPath(cacheDirectory);
-        this.maximumBytes = maximumBytes > 0 ? maximumBytes : throw new ArgumentOutOfRangeException(nameof(maximumBytes));
-        this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        Directory.CreateDirectory(cacheDirectory);
+        await using var guard = await ExclusiveLocalLock.AcquireAsync(Path.Combine(cacheDirectory, ".cache.lock"), token);
+        foreach (var partial in Directory.EnumerateFiles(cacheDirectory, "*.download")) File.Delete(partial);
+        foreach (var partial in Directory.EnumerateFiles(cacheDirectory, "*.manifest.json.tmp")) File.Delete(partial);
+        var archive = ArchivePath(asset.Sha256);
+        var valid = await OpenVerifiedAsync(archive, asset.Sha256, asset.Size, token);
+        if (valid is not null) await valid.DisposeAsync();
+        else
+        {
+            if (File.Exists(archive)) File.Delete(archive);
+            var temporary = Path.Combine(cacheDirectory, $"{Guid.CreateVersion7():N}.download");
+            try
+            {
+                await github.DownloadAsync(version, asset, temporary, token);
+                File.Move(temporary, archive);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        var path = ManifestPath(manifestHash);
+        var staged = path + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(staged, manifest, token);
+            File.Move(staged, path, overwrite: true);
+        }
+        finally { if (File.Exists(staged)) File.Delete(staged); }
     }
 
-    internal PackageLibraryTransport(string cacheDirectory, long maximumBytes, TimeProvider clock, HttpClient client)
-        : this(cacheDirectory, maximumBytes, clock) => this.client = client ?? throw new ArgumentNullException(nameof(client));
-
-    public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease,
-        string manifestSha256, CancellationToken cancellationToken)
+    public async Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token)
     {
-        var metadata = new Uri(origin, "metadata/");
-        var targets = new Uri(origin, "targets/");
-        var reader = client is not null ? new TrustedManifestReader(metadata, targets, new BoundedTufRepository(metadata, targets, client, agentCredential: credential)) :
-            credential is null ? new TrustedManifestReader(metadata, targets) : new TrustedManifestReader(metadata, targets, credential);
-        return reader.ReadAsync(lease, manifestSha256, cancellationToken);
+        if (!PackageRules.IsHash(hash)) return null;
+        try
+        {
+            var content = await File.ReadAllBytesAsync(ManifestPath(hash), token);
+            return CryptographicOperations.FixedTimeEquals(SHA256.HashData(content), Convert.FromHexString(hash)) ? content : null;
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
     }
 
-    public async Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken)
+    public Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token) =>
+        PackageRules.IsHash(hash) ? OpenVerifiedAsync(ArchivePath(hash), hash, size, token) : Task.FromResult<Stream?>(null);
+
+    public async Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token)
     {
-        await using var stream = await OpenAsync(origin, credential, manifest, cancellationToken);
+        if (!PackageRules.IsHash(archiveHash) || !PackageRules.IsHash(manifestHash)) throw new ArgumentException("Invalid package hash.");
+        if (!Directory.Exists(cacheDirectory)) return;
+        await using var guard = await ExclusiveLocalLock.AcquireAsync(Path.Combine(cacheDirectory, ".cache.lock"), token);
+        if (!otherManifests.Contains(manifestHash, StringComparer.Ordinal)) File.Delete(ManifestPath(manifestHash));
+        if (!otherManifests.Any(hash => File.Exists(ManifestPath(hash)))) File.Delete(ArchivePath(archiveHash));
     }
 
-    public Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken)
+    private async Task<Stream?> OpenVerifiedAsync(string path, string hash, long size, CancellationToken token)
     {
-        var packages = new Uri(origin, "packages/");
-        var downloader = client is not null ? new PackageArchiveDownloader(packages, client, credential) :
-            credential is null ? new PackageArchiveDownloader(packages) : new PackageArchiveDownloader(packages, credential);
-        var cache = new LocalPackageCache(cacheDirectory, maximumBytes, downloader, clock);
-        return cache.OpenManifestAsync(manifest, cancellationToken);
+        try
+        {
+            var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            try
+            {
+                if (stream.Length == size && CryptographicOperations.FixedTimeEquals(await SHA256.HashDataAsync(stream, token), Convert.FromHexString(hash)))
+                {
+                    stream.Position = 0;
+                    return stream;
+                }
+                await stream.DisposeAsync();
+                return null;
+            }
+            catch { await stream.DisposeAsync(); throw; }
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
     }
+
+    private string ArchivePath(string hash) => Path.Combine(cacheDirectory, hash + ".pkg");
+    private string ManifestPath(string hash) => Path.Combine(cacheDirectory, hash + ".manifest.json");
 }

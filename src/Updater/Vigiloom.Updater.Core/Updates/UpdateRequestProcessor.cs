@@ -38,7 +38,7 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
             var previous = await runtime.GetSelectedDirectoryAsync(token);
             var currentVersion = ReadCurrentVersion(previous, existing);
             await using var package = await packages.AcquireAsync(target.ManifestSha256, target.PackageVersion, runtimeIdentifier,
-                updaterVersion, currentVersion, request.Credential, token);
+                request.Credential, token);
             using var stopProgress = CancellationTokenSource.CreateLinkedTokenSource(token);
             var progress = delivery is null ? Task.CompletedTask : ReportProgressAsync(request.Credential, stopProgress.Token);
             UpdateState result;

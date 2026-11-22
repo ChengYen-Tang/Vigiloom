@@ -38,8 +38,8 @@ public sealed class ReusablePackageDatabaseTests(TestContext context)
                 Assert.AreEqual(64, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
                 var agentOptions = new DbContextOptionsBuilder<AgentManagementDbContext>().UseSqlServer(database.ConnectionString).Options;
                 await using var agents = new AgentManagementDbContext(agentOptions);
-                Assert.AreEqual(0, await agents.PackageSources.CountAsync(token));
-                agents.PackageSources.Add(new AgentPackageSource { Id = Guid.CreateVersion7(), BaseUri = "https://example.test/" });
+                Assert.AreEqual(0, await agents.Packages.CountAsync(token));
+                agents.Packages.Add(new AgentPackage { Id = Guid.CreateVersion7(), Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = 1, Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64) });
                 await agents.SaveChangesAsync(token);
                 var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(database.ConnectionString).Options;
                 await using var resources = new ResourcesDbContext(options);

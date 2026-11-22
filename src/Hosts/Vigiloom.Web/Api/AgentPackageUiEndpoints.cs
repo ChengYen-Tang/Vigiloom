@@ -1,6 +1,4 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
-using Tuf;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
 
@@ -10,28 +8,45 @@ internal static class AgentPackageUiEndpoints
 {
     public static void MapAgentPackageUiEndpoints(this WebApplication app)
     {
-        app.MapPost("/settings/agent-packages/trust", async ([FromForm] IFormFile root, [FromForm] string sha256,
-            HttpContext context, UpdateTrustStore trust, ILogger<UpdateTrustStore> logger, CancellationToken token) =>
+        app.MapPost("/settings/agent-packages/download", async ([FromForm] string version, [FromForm] string runtimeIdentifier,
+            HttpContext context, PackageLibrary library, ILogger<PackageLibrary> logger, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async _ =>
+            {
+                try
+                {
+                    var cached = await library.CacheAsync(version, runtimeIdentifier, token);
+                    return Results.Redirect($"/settings/agent-packages?releases=1&download={(cached ? "saved" : "unavailable")}");
+                }
+                catch (InvalidOperationException error)
+                {
+                    logger.LogWarning(error, "Agent package conflicts with an existing version or assignment.");
+                    return Results.Redirect("/settings/agent-packages?releases=1&download=conflict");
+                }
+                catch (Exception error) when (error is IOException or HttpRequestException)
+                {
+                    logger.LogWarning(error, "Could not download Agent package.");
+                    return Results.Redirect("/settings/agent-packages?releases=1&download=error");
+                }
+            }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
+
+        app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, PackageLibrary library,
+            ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
         {
-            if (!Guid.TryParse(context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty)
-                return Results.Forbid();
-            if (root.Length is <= 0 or > 1048576) return Results.Redirect("/settings/agent-packages?trust=invalid");
             try
             {
-                await using var stream = new MemoryStream((int)root.Length);
-                await root.CopyToAsync(stream, token);
-                await trust.ProvisionForAdministratorAsync(stream.ToArray(), sha256.Trim().ToLowerInvariant(), actor, token);
-                return Results.Redirect("/settings/agent-packages?trust=saved");
+                var result = await library.RemoveAsync(id, token);
+                return Results.Redirect(result switch
+                {
+                    PackageRemovalResult.Removed => "/settings/agent-packages?remove=removed",
+                    PackageRemovalResult.InUse => "/settings/agent-packages?remove=in-use",
+                    _ => "/settings/agent-packages?remove=missing"
+                });
             }
-            catch (InvalidOperationException) { return Results.Redirect("/settings/agent-packages?trust=exists"); }
-            catch (Exception error) when (error is ArgumentException or InvalidDataException or TufException or System.Text.Json.JsonException)
-            { return Results.Redirect("/settings/agent-packages?trust=invalid"); }
-            catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+            catch (IOException error)
             {
-                logger.LogWarning("Could not initialize package trust: {ErrorType}", error.GetType().Name);
-                return Results.Redirect("/settings/agent-packages?trust=error");
+                logger.LogWarning(error, "Could not remove cached Agent package.");
+                return Results.Redirect("/settings/agent-packages?remove=error");
             }
-        }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
-          .WithMetadata(new RequestSizeLimitAttribute(1200000));
+        }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
     }
 }

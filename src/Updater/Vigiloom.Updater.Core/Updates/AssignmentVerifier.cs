@@ -43,7 +43,6 @@ public sealed class AssignmentVerifier
     public async Task<UpdateAuthorization> CheckAsync(Guid updateId, CancellationToken token)
     {
         if (updateId != expected.UpdateId) return UpdateAuthorization.NoLongerAuthorized;
-        if (manifest.Expires <= clock.GetUtcNow()) return UpdateAuthorization.Unavailable;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15), clock);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
         try
@@ -56,7 +55,6 @@ public sealed class AssignmentVerifier
             await response.Content.LoadIntoBufferAsync(4096, timeout.Token);
             var current = await response.Content.ReadFromJsonAsync<AgentVersionTarget>(cancellationToken: timeout.Token);
             if (current?.IsValid() != true) return UpdateAuthorization.Unavailable;
-            if (manifest.Expires <= clock.GetUtcNow()) return UpdateAuthorization.Unavailable;
             return current == expected ? UpdateAuthorization.Authorized : UpdateAuthorization.NoLongerAuthorized;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return UpdateAuthorization.Unavailable; }

@@ -26,7 +26,7 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
               (string.Equals(Path.GetFullPath(existing.TargetDirectory), previous, comparison) ||
                string.Equals(Path.GetFullPath(existing.PreviousDirectory), previous, comparison))))
             throw new InvalidOperationException("The previous Agent version is not available for recovery.");
-        var manifest = PackageManifest.Parse(verified, clock.GetUtcNow());
+        var manifest = PackageManifest.Parse(verified);
         var verifier = new AssignmentVerifier(http, server, credential, target, manifest, clock);
         var authorization = await verifier.CheckAsync(target.UpdateId, token);
         if (authorization == UpdateAuthorization.Unavailable) throw new UpdateAuthorizationUnavailableException();
@@ -51,7 +51,7 @@ public sealed class UpdateTransaction(HttpClient http, IUpdateJournal journal, I
             PreparedPackageCleanup.RemoveRolledBack(existing, root);
 
         var prepared = await PackageStager.PrepareAsync(archive, manifest, target, installationRoot, runtimeIdentifier,
-            updaterVersion, currentAgentVersion, clock, token);
+            token);
         var coordinator = new UpdateCoordinator(journal, runtime, clock);
         // The coordinator records this directory before stopping the Agent. If the process is interrupted,
         // keep it for recovery; the installed version must never be deleted while it may be running.

@@ -65,9 +65,6 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             {
                 using var packages = new SignedAgentPackages(await File.ReadAllBytesAsync(initialArchivePath, token),
                     await File.ReadAllBytesAsync(archivePath, token), rid);
-                var rootPath = Path.Combine(path, "publisher-root.json");
-                await File.WriteAllBytesAsync(rootPath, packages.Root, token);
-                var fingerprint = Convert.ToHexStringLower(SHA256.HashData(packages.Root));
                 var output = Path.Combine(path, "output");
                 var bundle = Path.Combine(path, "bundle");
                 Directory.CreateDirectory(bundle);
@@ -75,13 +72,13 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 {
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial, "-UpdaterPublish", updater,
-                        "-TrustedRoot", rootPath, "-RootSha256", fingerprint, "-OutputDirectory", output);
+                        "-OutputDirectory", output);
                     ZipFile.ExtractToDirectory(Path.Combine(output, $"vigiloom-agent-{rid}.zip"), bundle);
                     await VerifyWindowsRuntimePreflightAsync(bundle, token);
                 }
                 else
                 {
-                    await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial, updater, rootPath, fingerprint, output);
+                    await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial, updater, output);
                     await RunAsync("tar", token, "-xzf", Path.Combine(output, "vigiloom-agent-linux-x64.tar.gz"), "-C", bundle);
                 }
 
@@ -108,7 +105,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 CryptographicOperations.ZeroMemory(pfx);
                 var gate = new AgentTransportGate();
                 using var publisher = packages.CreateClient();
-                var transport = new PackageLibraryTransport(Path.Combine(path, "cache"), 2L * 1024 * 1024 * 1024, TimeProvider.System, publisher);
+                var transport = new PackageLibraryTransport(Path.Combine(path, "cache"));
                 using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
@@ -123,6 +120,8 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                         services.AddSingleton<IStartupFilter>(gate);
                         services.RemoveAll<IPackageLibraryTransport>();
                         services.AddSingleton<IPackageLibraryTransport>(transport);
+                        services.RemoveAll<GitHubAgentReleases>();
+                        services.AddSingleton(new GitHubAgentReleases(publisher));
                     });
                 });
                 factory.UseKestrel(0); factory.StartServer();
@@ -144,17 +143,14 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
                 var issued = await identity.IssueAsync(device.Id, actor, token);
                 Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
-                var source = await scope.ServiceProvider.GetRequiredService<AgentPackageSourceSettings>().UpdateAsync(new("https://publisher.test/", PackageCredentialAction.Clear, null, ""), actor, token);
-                Assert.IsNotNull(source);
-                var trust = scope.ServiceProvider.GetRequiredService<UpdateTrustStore>();
-                await trust.ProvisionAsync(packages.Root, token);
-                var origin = new Uri("https://publisher.test/");
-                await trust.RefreshCatalogueAsync(new TrustedCatalogueReader(origin, origin, packages.Repository), TimeProvider.System, Convert.FromBase64String(source.Version), cancellationToken: token);
+                var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
+                foreach (var version in new[] { "1.0.0", "1.1.0", "1.2.0" })
+                    Assert.IsTrue(await library.CacheAsync(version, rid, token));
 
                 var script = Path.Combine(workspace, windows ? "tests/Vigiloom.Web.Tests/Fixtures/windows-service-agent.ps1" : "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
                 await using var installed = windows
-                    ? await ServiceAgentProcess.InstallWindowsAsync(script, bundle, caDerPath, server, device.Id, fingerprint, issued.Secret!, token)
-                    : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
+                    ? await ServiceAgentProcess.InstallWindowsAsync(script, bundle, caDerPath, server, device.Id, issued.Secret!, token)
+                    : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
                 var updaterState = windows
@@ -304,14 +300,14 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 {
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                         Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial,
-                        "-UpdaterPublish", replacementUpdater, "-TrustedRoot", rootPath, "-RootSha256", fingerprint,
+                        "-UpdaterPublish", replacementUpdater,
                         "-OutputDirectory", replacementOutput);
                     ZipFile.ExtractToDirectory(Path.Combine(replacementOutput, $"vigiloom-agent-{rid}.zip"), replacementBundle);
                 }
                 else
                 {
                     await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial,
-                        replacementUpdater, rootPath, fingerprint, replacementOutput);
+                        replacementUpdater, replacementOutput);
                     await RunAsync("tar", token, "-xzf", Path.Combine(replacementOutput, "vigiloom-agent-linux-x64.tar.gz"), "-C", replacementBundle);
                 }
                 CollectionAssert.AreEqual(replacementHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));

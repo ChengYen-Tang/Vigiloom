@@ -94,5 +94,5 @@ try {
     }
     Remove-Item -LiteralPath (Join-Path $current '.vigiloom-updater-stage') -Force
     Remove-Item -LiteralPath $previous -Recurse -Force
-    Write-Host 'The Updater was replaced. Agent identity, queued data, trust, settings and recovery journal were retained.'
+    Write-Host 'The Updater was replaced. Agent identity, queued data, settings and recovery journal were retained.'
 } finally { $maintenance.Dispose() }
