@@ -78,6 +78,21 @@ public sealed class AgentIdentitySqlTests
         var lateBatch = batch with { BatchId = cancelled.Id };
         Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(lateBatch), token));
         Assert.AreEqual(YaraScanOutcome.Cancelled, (await scans.ListAsync(device.Id, token)).Single(x => x.Id == cancelled.Id).Result?.Outcome);
+        var pending = await scans.CreateAsync(device.Id, new("/tmp/pending", "rule sample { condition: true }", 1024, 10), actor, token);
+        Assert.IsNotNull(pending);
+        await using (var db = agents.CreateDbContext())
+        {
+            await db.Database.OpenConnectionAsync(token);
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            var retention = new Vigiloom.Modules.AgentManagement.Application.Retention.AgentAuditRetention();
+            var cutoff = clock.Now.AddMinutes(1);
+            Assert.IsGreaterThanOrEqualTo(2L, await retention.CountAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), cutoff, token));
+            await retention.DeleteBatchAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), cutoff, 100, token);
+            await transaction.CommitAsync(token);
+        }
+        var remaining = await scans.ListAsync(device.Id, token);
+        Assert.HasCount(1, remaining);
+        Assert.AreEqual(pending.Id, remaining[0].Id);
     });
 
     [TestMethod]
