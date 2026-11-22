@@ -20,6 +20,7 @@ public static class YaraScanner
         ArgumentException.ThrowIfNullOrWhiteSpace(file);
         if (maximumBytes <= 0 || timeout < TimeSpan.FromSeconds(1) || timeout > TimeSpan.FromHours(1))
             throw new ArgumentOutOfRangeException(nameof(timeout));
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             var target = new FileInfo(file);
