@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Tests.Fixtures;
 
@@ -44,11 +46,21 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
                 new Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord { AgentId = agentId, DeviceId = deviceId, ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = old, RecordedAt = old, Kind = 1, Key = "old", AfterJson = "{}" },
                 new Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord { AgentId = agentId, DeviceId = deviceId, ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = recent, RecordedAt = recent, Kind = 1, Key = "recent", AfterJson = "{}" });
             await db.SaveChangesAsync(token);
+            var currentRun = Guid.CreateVersion7();
+            var finding = new VulnerabilityFinding { DeviceId = deviceId, SourceId = source.Id, IdentityHash = new byte[32], PackageKey = "package", AdvisoryId = "advisory", FirstEvaluatedAt = old, LastEvaluatedAt = old, LastRevisionId = revision.Id, LastRunId = currentRun };
+            db.VulnerabilityFindings.Add(finding);
+            VulnerabilityEvaluation Evaluation(Guid run, DateTimeOffset time) => new() { RunId = run, FindingId = finding.Id, SourceId = source.Id, RevisionId = revision.Id, AgentId = agentId, HostSnapshotId = Guid.CreateVersion7(), EvaluatedAt = time, MatcherVersion = "windows-test", Ecosystem = "Windows", Architecture = "x64" };
+            db.VulnerabilityEvaluations.AddRange(Evaluation(Guid.CreateVersion7(), old), Evaluation(currentRun, old), Evaluation(Guid.CreateVersion7(), recent));
+            BaselineObservation Observation(DateTimeOffset time, string activation) => new() { AgentId = agentId, DeviceId = deviceId, BatchId = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id, ActivationVersion = activation, CheckId = "check", ObservedAt = time, ReceivedAt = time, OperatingSystem = "Windows" };
+            db.BaselineObservations.AddRange(Observation(old.AddDays(-1), "one"), Observation(old, "one"), Observation(old, "ONE"), Observation(old, "two"), Observation(recent, "three"));
+            await db.SaveChangesAsync(token);
 
             await using var transaction = await db.Database.BeginTransactionAsync(token);
             var retention = new SecurityAuditRetention();
             var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction(); var cutoff = now.AddDays(-30);
-            Assert.AreEqual(4L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(6L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
@@ -63,5 +75,8 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
             Assert.AreEqual(3, await db.AdvisoryImports.AsNoTracking().CountAsync(token));
             Assert.AreEqual("recent", (await db.InventoryChanges.AsNoTracking().SingleAsync(token)).Key);
             Assert.AreEqual("recent", (await db.IntegrityChanges.AsNoTracking().SingleAsync(token)).Key);
+            Assert.AreEqual(2, await db.VulnerabilityEvaluations.AsNoTracking().CountAsync(token));
+            Assert.IsTrue(await db.VulnerabilityEvaluations.AsNoTracking().AnyAsync(x => x.RunId == currentRun, token));
+            Assert.AreEqual(4, await db.BaselineObservations.AsNoTracking().CountAsync(token));
         }, context.CancellationToken);
 }
