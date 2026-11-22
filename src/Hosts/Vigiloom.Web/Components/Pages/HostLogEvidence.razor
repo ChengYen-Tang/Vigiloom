@@ -7,16 +7,17 @@
 @inject ILogger<HostLogEvidence> Logger
 
 <PageTitle>主機日誌證據 - Vigiloom</PageTitle>
-<main>
+<main class="evidence-page">
     <a href="@($"/devices/{DeviceId:D}?tab=logs")">← 返回設備日誌</a>
     <h1>主機日誌證據</h1>
     @if (error is not null) { <p role="alert">@error</p> }
     else if (entry is null) { <p>找不到此事件；資料可能已超過保存期限。</p> }
     else
-    {
+    { <section class="evidence-panel">
         <p>來源：@entry.SourceName · 解析版本：@entry.ParserVersion · 平台接收：@entry.ReceivedAt.ToUniversalTime().ToString("u")</p>
         <p>Agent：@AgentId · 事件：@MessageId</p>
         <pre class="evidence-content">@entry.Content</pre>
+      </section>
     }
 </main>
 

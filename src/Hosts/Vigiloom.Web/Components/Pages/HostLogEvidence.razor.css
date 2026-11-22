@@ -1,4 +1,21 @@
+.evidence-page {
+    max-width: 1200px;
+    margin: 36px auto;
+    padding: 0 24px 48px;
+    color: #142344;
+}
+.evidence-page a { color: #075ff0; }
+.evidence-panel {
+    background: white;
+    border: 1px solid #e3eaf3;
+    border-radius: 8px;
+    padding: 20px;
+    overflow-wrap: anywhere;
+}
 .evidence-content {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+    .evidence-page { margin-top: 24px; padding: 0 16px 36px; }
 }
