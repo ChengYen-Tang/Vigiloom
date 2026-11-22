@@ -86,6 +86,73 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                     b.ToTable("BaselineObservations", "security");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.IocDetection", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EvaluatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SourceLine")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(253)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("SourceId", "RevisionId");
+
+                    b.HasIndex("DeviceId", "ReceivedAt", "RowId");
+
+                    b.HasIndex("AgentId", "MessageId", "RevisionId", "Kind", "SourceLine", "Field")
+                        .IsUnique();
+
+                    b.ToTable("IocDetections", "security");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationCoverage", b =>
                 {
                     b.Property<long>("RowId")
@@ -2798,6 +2865,16 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_VulnerabilityUnknownPackages_Reason", "[Reason] IN (1, 2)");
                         });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.IocDetection", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId", "RevisionId")
+                        .HasPrincipalKey("SourceId", "Id")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaCorrelationCoverage", b =>
