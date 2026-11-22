@@ -23,7 +23,7 @@
                 <div><dt>最近回報的更新階段</dt><dd>@ResultText(current?.LatestResult)</dd>
                     @if (current?.LatestResult is { } result)
                     {
-                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed) { <dd>原因：@FailureText(result.Failure)</dd> }
+                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed or AgentUpdateResultKind.Failed) { <dd>原因：@FailureText(result.Failure)</dd> }
                         <dd class="version-time">發生時間（UTC）：@result.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
                     }
                     <dd class="version-time">接收時間（UTC）：@(current?.LatestResult?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd>
@@ -94,6 +94,7 @@
         AgentUpdateResultKind.RolledBack when result.RetryAllowed => "已回復，可重試",
         AgentUpdateResultKind.RolledBack => "已回復",
         AgentUpdateResultKind.RollbackFailed => "回復失敗",
+        AgentUpdateResultKind.Failed => "更新失敗，等待管理員處理",
         AgentUpdateResultKind.Prepared => "套件已準備",
         AgentUpdateResultKind.Stopping => "停止 Agent",
         AgentUpdateResultKind.Switching => "切換版本",
