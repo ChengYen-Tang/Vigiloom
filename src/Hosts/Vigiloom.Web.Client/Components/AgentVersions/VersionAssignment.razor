@@ -95,6 +95,7 @@
         AgentUpdateResultKind.RolledBack when result.RetryAllowed => "已回復，可重試",
         AgentUpdateResultKind.RolledBack => "已回復",
         AgentUpdateResultKind.RollbackFailed => "回復失敗",
+        AgentUpdateResultKind.Failed when result.RetryAllowed => "準備曾失敗，將自動重試；本次未停止 Agent",
         AgentUpdateResultKind.Failed => "更新失敗，等待管理員處理",
         AgentUpdateResultKind.Prepared => "套件已準備",
         AgentUpdateResultKind.Stopping => "停止 Agent",
