@@ -20,6 +20,17 @@ The installer writes the one-time enrollment value to `enrollment.pending` in th
 
 The Windows bundle determines x86 or x64 from the Agent and Updater executables and rejects mixed architectures. Windows Server 2012 and 2012 R2 require Extended Security Updates under the .NET 10 support policy. On 2026-11-17, a self-contained x86 test bundle was installed on Windows 11 Enterprise x64 build 26100 in Windows Sandbox: both services started under their intended accounts, Agent stop/start left the Updater running, and both services restarted after a guest reboot with pending enrollment unchanged. Networking was disabled and the enrollment was synthetic; this does not validate real registration, update, removal, or a 32-bit operating system.
 
-Windows setup registers the Agent and Updater Application event sources while elevated, so the low-privilege Agent can write diagnostics. A separate offline Windows Sandbox test confirmed an encrypted pending identity could be read after recreating the Agent service under the same virtual account, and that a failed installation removed event sources it had just created. This does not establish preservation of an already registered identity or queued batches through uninstall and reinstall.
+Windows setup registers the Agent and Updater Application event sources while elevated, so the low-privilege Agent can write diagnostics. A separate offline Windows Sandbox test confirmed an encrypted pending identity could be read after recreating the Agent service under the same virtual account, and that a failed installation removed event sources it had just created.
+
+On 2026-11-23, a Windows Sandbox x64 check used the actual identity vault,
+settings store and durable queue under the same local SYSTEM identity before
+and after an operating-system reboot. The Agent identity, settings, batch ID,
+message ID and exact serialized payload survived. This isolated reboot check
+did not run a central server. Separately, the [Windows and Linux service
+integration run](https://github.com/ChengYen-Tang/Vigiloom/actions/runs/45066403827)
+verified registered identity and queued data across update, administrator
+rollback, downgrade and remove/restore, including delivery and central
+deduplication. The Linux run restarted the service and process; it did not
+reboot the Linux operating system.
 
 See Microsoft's [named pipe security](https://learn.microsoft.com/windows/win32/ipc/named-pipe-security-and-access-rights), [pipe server process identification](https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-getnamedpipeserverprocessid), and the Linux [Unix-domain socket](https://man7.org/linux/man-pages/man7/unix.7.html) documentation. The need to separate package acquisition, authenticated content and the updater lifecycle is also reflected in the open-source [Wazuh agent upgrade design](https://github.com/wazuh/wazuh/blob/main/docs/ref/modules/agent_upgrade/README.md).
