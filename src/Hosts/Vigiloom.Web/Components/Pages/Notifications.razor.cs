@@ -23,7 +23,7 @@ public partial class Notifications
         result = null;
         episodes = null;
         error = null;
-        if (!string.IsNullOrEmpty(Source) && Source is not ("ping" or "service-health" or "sigma" or "vulnerability"))
+        if (!string.IsNullOrEmpty(Source) && Source is not ("ping" or "service-health" or "sigma" or "ioc" or "vulnerability"))
         { error = "請選擇有效的通知來源。"; return; }
         if (!TryDate(From, out var from) || !TryDate(To, out var to))
         { error = "請選擇有效的日期。"; return; }
@@ -57,7 +57,7 @@ public partial class Notifications
 
     private static string SourceLabel(string source) => source switch
     {
-        "ping" => "Ping", "service-health" => "服務健康", "sigma" => "行為規則", "vulnerability" => "漏洞評估", _ => source
+        "ping" => "Ping", "service-health" => "服務健康", "sigma" => "行為規則", "ioc" => "IOC 比對", "vulnerability" => "漏洞評估", _ => source
     };
 
     private static string EpisodeState(AlertEpisode episode) => episode.RecoveredAt is not null ? "已恢復" : episode.Source switch
@@ -71,7 +71,7 @@ public partial class Notifications
     private static string? ResourceLink(NotificationView entry) => entry.ResourceId is not { } id ? null : entry.Source switch
     {
         "service-health" => $"/services/{id:D}",
-        "ping" or "sigma" or "vulnerability" => $"/devices/{id:D}",
+        "ping" or "sigma" or "ioc" or "vulnerability" => $"/devices/{id:D}",
         _ => null
     };
 

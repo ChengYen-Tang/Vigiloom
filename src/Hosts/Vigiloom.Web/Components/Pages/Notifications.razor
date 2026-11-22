@@ -23,6 +23,7 @@
                 <option value="ping" selected="@(Source == "ping")">Ping</option>
                 <option value="service-health" selected="@(Source == "service-health")">服務健康</option>
                 <option value="sigma" selected="@(Source == "sigma")">行為規則</option>
+                <option value="ioc" selected="@(Source == "ioc")">IOC 比對</option>
                 <option value="vulnerability" selected="@(Source == "vulnerability")">漏洞評估</option>
             </select></div>
             <div class="filter-field"><label for="notification-from">開始日期（UTC）</label><input id="notification-from" type="date" name="from" value="@From" /></div>
