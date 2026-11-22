@@ -180,7 +180,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 gate.BlockSettings();
                 var logMonitoring = scope.ServiceProvider.GetRequiredService<HostLogMonitoring>();
-                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -223,7 +223,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
-                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
@@ -231,7 +231,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
-                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
                     "An Agent rollback or downgrade must not replace the Updater.");
                 var installedUpdater = Path.Combine(windows
@@ -411,13 +411,36 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         else await RunAsync("sudo", token, "-n", "sh", "-c", "printf '%s\\n' \"$2\" >> \"$1\" && chmod 0644 \"$1\"", "sh", path, line);
     }
 
-    private static Task WaitForLogEndAsync(HostLogMonitoring monitoring, Guid deviceId, AgentLogSourceSetting source,
-        DateTimeOffset after, CancellationToken token) => WaitUntilAsync(async () =>
+    private static async Task WaitForLogEndAsync(HostLogMonitoring monitoring, IDbContextFactory<AgentManagementDbContext> agents,
+        Guid agentId, Guid deviceId, AgentLogSourceSetting source,
+        DateTimeOffset after, CancellationToken token)
     {
-        var status = await monitoring.GetAsync(deviceId, token);
-        return status?.Report.Throttled == false && status.Report.Sources.Any(x => x.SourceId == source.SourceId &&
-            x.Generation == source.Generation && x.State == AgentLogSourceState.End && x.ObservedAt >= after);
-    }, token);
+        string observation = "no report";
+        try
+        {
+            await WaitUntilAsync(async () =>
+            {
+                var status = await monitoring.GetAsync(deviceId, token);
+                var match = status?.Report.Sources.FirstOrDefault(x => x.SourceId == source.SourceId);
+                observation = $"throttled={status?.Report.Throttled}; state={match?.State}; generationMatches={match?.Generation == source.Generation}; observedAt={match?.ObservedAt:O}; ageSeconds={match?.AgeSeconds}; requiredAfter={after:O}";
+                return status?.Report.Throttled == false && match is not null && match.Generation == source.Generation &&
+                    match.State == AgentLogSourceState.End && match.ObservedAt >= after;
+            }, token);
+        }
+        catch (TimeoutException error)
+        {
+            await using var db = await agents.CreateDbContextAsync(token);
+            var row = await db.Agents.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
+            {
+                x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.QueueReportEpoch, x.QueueReportSequence,
+                x.LogStatusReportEpoch, x.LogStatusReportSequence, x.LogStatusReportedAt
+            }).SingleOrDefaultAsync(token);
+            throw new TimeoutException($"Agent log source did not reach end: {observation}; heartbeat={row?.LastHeartbeatAt:O}; " +
+                $"runtime={row?.RuntimeVersion}; runtimeAt={row?.RuntimeReportedAt:O}; " +
+                $"epochsMatch={row?.QueueReportEpoch == row?.LogStatusReportEpoch}; " +
+                $"sequencesMatch={row?.QueueReportSequence == row?.LogStatusReportSequence}; logReportedAt={row?.LogStatusReportedAt:O}", error);
+        }
+    }
 
     private static Task<string> VerifyLinuxInstallationPermissionsAsync(CancellationToken token) =>
         RunAsync("sudo", token, "-n", "-u", "nobody", "--", "/bin/sh", "-c",

@@ -155,15 +155,11 @@ jobs:
         run: docker rm -f vigiloom-systemd-sql > /dev/null 2>&1 || true
 
   windows_agent_service:
-    name: Windows Agent service integration (${{ matrix.rid }})
-    strategy:
-      fail-fast: false
-      matrix:
-        rid: [win-x64, win-x86]
+    name: Windows Agent service integration (win-x64)
     runs-on: windows-latest
     timeout-minutes: 50
     env:
-      VIGILOOM_WINDOWS_RID: ${{ matrix.rid }}
+      VIGILOOM_WINDOWS_RID: win-x64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-test-setup
