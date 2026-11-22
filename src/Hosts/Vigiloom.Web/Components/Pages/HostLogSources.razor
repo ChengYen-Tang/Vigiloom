@@ -152,6 +152,7 @@
             AgentLogSourceState.Collected => "最近已加入 Agent 佇列",
             AgentLogSourceState.Full => "佇列已滿，等待空間",
             AgentLogSourceState.Unsupported => "此系統不支援來源",
+            AgentLogSourceState.Unavailable when observation.PermissionDenied => "讀取權限不足，請確認來源權限",
             AgentLogSourceState.Unavailable => "無法讀取來源",
             AgentLogSourceState.Conflict => "採集狀態衝突，等待重試",
             _ => "狀態未知"

@@ -97,11 +97,11 @@ internal sealed class LogWorker(AgentLogSettingsRuntime settings, AgentMetricSet
                                     foreach (var removed in last.Keys.Where(id => !activeIds.Contains(id)).ToArray()) last.Remove(removed);
                                     foreach (var result in results)
                                     {
-                                        if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.Conflict)
+                                        if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.PermissionDenied or LogSourceCycleStatus.Conflict)
                                             failures?.Record(owner, AgentModule.Logs);
                                         if (last.TryGetValue(result.SourceId, out var prior) && prior == result.Status) continue;
                                         last[result.SourceId] = result.Status;
-                                        if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.Full or LogSourceCycleStatus.Conflict)
+                                        if (result.Status is LogSourceCycleStatus.Unsupported or LogSourceCycleStatus.Unavailable or LogSourceCycleStatus.PermissionDenied or LogSourceCycleStatus.Full or LogSourceCycleStatus.Conflict)
                                             logger.LogWarning("Agent log source {SourceId}: {Status}.", result.SourceId, result.Status);
                                     }
                                 }

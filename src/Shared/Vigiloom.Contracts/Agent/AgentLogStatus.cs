@@ -7,7 +7,8 @@ public enum AgentLogSourceState { End = 1, Collected = 2, Full = 3, Unsupported 
 
 public sealed record AgentLogSourceObservation([property: JsonRequired] Guid SourceId,
     [property: JsonRequired] Guid Generation, [property: JsonRequired] AgentLogSourceState State,
-    [property: JsonRequired] DateTimeOffset ObservedAt, [property: JsonRequired] int AgeSeconds)
+    [property: JsonRequired] DateTimeOffset ObservedAt, [property: JsonRequired] int AgeSeconds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PermissionDenied = false)
 {
     public bool IsValid() => SourceId.Version == 7 && Generation.Version == 7 && Enum.IsDefined(State) &&
         ObservedAt != default && ObservedAt.Offset == TimeSpan.Zero && AgeSeconds is >= 0 and <= 2_592_000;

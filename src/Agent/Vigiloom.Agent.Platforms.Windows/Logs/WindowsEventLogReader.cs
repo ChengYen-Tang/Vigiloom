@@ -12,6 +12,7 @@ public sealed class WindowsEventLogReader(string channel) : ILogSourceReader
     {
         EventLogReadResult result;
         try { result = EventLogSource.ReadNext(channel, NativeLogCursor.Decode(cursor), token); }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 5) { throw new UnauthorizedAccessException("Windows event source access was denied.", exception); }
         catch (Win32Exception exception) { throw new IOException("Windows event source is unavailable.", exception); }
         return ValueTask.FromResult(result.Status switch
         {
