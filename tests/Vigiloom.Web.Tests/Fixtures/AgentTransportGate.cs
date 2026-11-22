@@ -6,21 +6,31 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Web.Tests.Fixtures;
 
-/// <summary>Temporarily rejects real Agent batches so the test can observe a durable retry.</summary>
-internal sealed class AgentBatchGate : IStartupFilter
+/// <summary>Controls temporary transport failures during a real Agent update test.</summary>
+internal sealed class AgentTransportGate : IStartupFilter
 {
     private readonly TaskCompletionSource<byte[]> blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<byte[]> retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource settingsRejected = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private volatile bool reject = true;
+    private volatile bool rejectSettings;
 
     internal Task<byte[]> Blocked => blocked.Task;
     internal Task<byte[]> Retried => retried.Task;
+    internal Task SettingsRejected => settingsRejected.Task;
     internal void Allow() => reject = false;
+    internal void BlockSettings() => rejectSettings = true;
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, following) =>
         {
+            if (rejectSettings && context.Request.Method == "GET" && context.Request.Path == "/api/v1/agent/settings")
+            {
+                settingsRejected.TrySetResult();
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                return;
+            }
             if (context.Request.Method != "POST" || context.Request.Path != "/api/v1/agent/batches")
             {
                 await following(context);

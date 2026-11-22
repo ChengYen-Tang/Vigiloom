@@ -106,7 +106,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var pfx = generatedCertificate.Export(X509ContentType.Pfx);
                 using var certificate = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
                 CryptographicOperations.ZeroMemory(pfx);
-                var gate = new AgentBatchGate();
+                var gate = new AgentTransportGate();
                 using var publisher = packages.CreateClient();
                 var transport = new PackageLibraryTransport(Path.Combine(path, "cache"), 2L * 1024 * 1024 * 1024, TimeProvider.System, publisher);
                 using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -139,7 +139,8 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await using var scope = factory.Services.CreateAsyncScope();
                 var actor = Guid.CreateVersion7();
                 var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
-                Assert.IsNotNull(await configuration.UpdateAsync(null, new(new(10, 60, 1), ""), actor, token));
+                var configured = await configuration.UpdateAsync(null, new(new(10, 60, 1), ""), actor, token);
+                Assert.IsNotNull(configured);
                 var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
                 var issued = await identity.IssueAsync(device.Id, actor, token);
                 Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
@@ -156,6 +157,16 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
+                DateTimeOffset? appliedAt = null;
+                await WaitUntilAsync(async () =>
+                {
+                    await using var db = await agents.CreateDbContextAsync(token);
+                    var report = await db.Agents.AsNoTracking().SingleAsync(x => x.Id == agentId, token);
+                    if (report.AppliedConfigurationRevision != configured.Effective.Revision || report.ConfigurationAppliedAt is null) return false;
+                    appliedAt = report.ConfigurationAppliedAt;
+                    return true;
+                }, token);
+                gate.BlockSettings();
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -189,6 +200,15 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
+                }, token);
+                var reportAfterUpdate = DateTimeOffset.UtcNow;
+                await gate.SettingsRejected.WaitAsync(TimeSpan.FromMinutes(3), token);
+                await WaitUntilAsync(async () =>
+                {
+                    await using var db = await agents.CreateDbContextAsync(token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.ConfigurationReportedAt > reportAfterUpdate &&
+                        x.AppliedConfigurationRevision == configured.Effective.Revision && x.ConfigurationAppliedAt == appliedAt &&
+                        x.ConfigurationFailure == AgentConfigurationFailure.Unavailable, token);
                 }, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
                 Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
