@@ -711,6 +711,11 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsTrue(audits.Items.Any(x => x.EventTimeline is { Exported: true }));
                 Assert.IsTrue(audits.Items.Any(x => x.EventTimeline is { Exported: false }));
                 Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventTimeline is { Exported: false }));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log" } e && e.EvidenceId == item.MessageId && e.DeviceId == device.Id));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "sigma-rule" } e && e.EvidenceId == sigmaTestId));
+                var auditJson = System.Text.Json.JsonSerializer.Serialize(audits);
+                Assert.DoesNotContain("ignored-user", auditJson);
+                Assert.DoesNotContain("test-condition", auditJson);
             }
             using (var auditPage = await admin.GetAsync($"/settings/audit?source=events&from={now:yyyy-MM-dd}&to={now:yyyy-MM-dd}", token))
             {
@@ -718,6 +723,7 @@ public sealed class AgentIdentityHttpTests
                 var auditDocument = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("查詢事件", auditDocument.Body!.TextContent);
                 Assert.Contains("匯出事件", auditDocument.Body.TextContent);
+                Assert.Contains("查看事件證據", auditDocument.Body.TextContent);
             }
             using (var forbiddenScript = await reader.GetAsync("/settings/agent-tools/grant-sysmon-read", token))
                 Assert.AreNotEqual(HttpStatusCode.OK, forbiddenScript.StatusCode);

@@ -27,6 +27,7 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         var (kind, details) = audit.Details switch
         {
             EventTimelineAccessed access when IsValid(access) => (AuditKinds.EventTimelineAccessedV1, JsonSerializer.Serialize(access)),
+            EventEvidenceAccessed access when IsValid(access) => (AuditKinds.EventEvidenceAccessedV1, JsonSerializer.Serialize(access)),
             SpeedSettingsChanged change when IsValid(change) => (AuditKinds.SpeedSettingsChangedV1, JsonSerializer.Serialize(change)),
             SpeedRetentionChanged change when IsValid(change) => (AuditKinds.SpeedRetentionChangedV1, JsonSerializer.Serialize(change)),
             AuditRetentionChanged change when IsValid(change) => (AuditKinds.AuditRetentionChangedV1, JsonSerializer.Serialize(change)),
@@ -75,6 +76,13 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
         Add(command, "@details", DbType.String, details, 2048);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    internal static bool IsValid(EventEvidenceAccessed access) => access.EvidenceId.Version == 7 && (access.Kind switch
+    {
+        "host-log" => access.DeviceId is { Version: 7 } && access.AgentId is { Version: 7 },
+        "sigma-rule" => access.DeviceId is null && access.AgentId is null,
+        _ => false
+    });
 
     internal static bool IsValid(EventTimelineAccessed access) => access.From.Offset == TimeSpan.Zero && access.Until.Offset == TimeSpan.Zero &&
         access.Until > access.From && access.Until - access.From <= TimeSpan.FromDays(31) && access.GroupId is null or { Version: 7 } &&

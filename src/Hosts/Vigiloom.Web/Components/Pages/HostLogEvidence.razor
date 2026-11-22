@@ -2,8 +2,12 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
 @attribute [ExcludeFromInteractiveRouting]
 @using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@using Vigiloom.Contracts.Operations
 @using Vigiloom.Modules.AgentManagement.Persistence
+@using Vigiloom.Web.Events
 @inject IDbContextFactory<AgentManagementDbContext> Agents
+@inject EventTimelineAudit Audit
 @inject ILogger<HostLogEvidence> Logger
 
 <PageTitle>主機日誌證據 - Vigiloom</PageTitle>
@@ -39,6 +43,11 @@
                 join agent in db.Agents.AsNoTracking() on log.AgentId equals agent.Id
                 where agent.DeviceId == DeviceId && log.AgentId == AgentId && log.MessageId == MessageId
                 select new Evidence(log.SourceName, log.ParserVersion, log.ReceivedAt, log.Content)).FirstOrDefaultAsync(HttpContext.RequestAborted);
+            if (entry is not null)
+            {
+                if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new InvalidOperationException("Missing actor.");
+                await Audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed("host-log", MessageId, DeviceId, AgentId), HttpContext.RequestAborted);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
