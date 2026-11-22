@@ -92,7 +92,8 @@ internal sealed class MetricSamplingCycle(AgentSettingsOwner owner, DurableBatch
         // healthy reading. Keep the source marker in the same transport path.
         var observedAt = clock.GetUtcNow();
         foreach (var source in collection.UnavailableSources.Distinct(StringComparer.Ordinal))
-            points.Add(new(Guid.CreateVersion7(), observedAt, AgentMetricKind.CollectionUnavailable, "agent.collector", source, 1));
+            points.Add(new(Guid.CreateVersion7(), observedAt, AgentMetricKind.CollectionUnavailable,
+                collection.FailureSources?.GetValueOrDefault(source) ?? AgentMetricUnavailableSource.Unknown, source, 1));
         if (points.Count == 0) return null;
         publisher.Prepare(points, clock.GetUtcNow());
         return await publisher.FlushAsync(token);

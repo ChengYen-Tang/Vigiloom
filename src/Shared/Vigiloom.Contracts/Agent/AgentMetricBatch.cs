@@ -24,6 +24,15 @@ public enum AgentMetricKind
     CollectionUnavailable = 50
 }
 
+/// <summary>Sources for unavailable markers; unknown failures retain the original value for older Agents.</summary>
+public static class AgentMetricUnavailableSource
+{
+    public const string Unknown = "agent.collector";
+    public const string PermissionDenied = "agent.collector.permission-denied";
+    public const string Unsupported = "agent.collector.unsupported";
+    public const string Error = "agent.collector.error";
+}
+
 /// <summary>Validates immutable, bounded metric batches before they enter the durable queue or database.</summary>
 public static class AgentMetricBatchCodec
 {

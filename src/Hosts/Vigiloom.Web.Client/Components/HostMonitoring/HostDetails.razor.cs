@@ -38,6 +38,7 @@ public partial class HostDetails
     private int seriesIndex;
     private IReadOnlyList<TimeSeriesPoint> points = [];
     private bool metricIncomplete;
+    private IReadOnlyList<HostMetricValue> metricIssues = [];
     private HostLogPage? logs;
     private readonly Stack<string?> logCursors = new();
     private string? logCursor;
@@ -170,7 +171,23 @@ public partial class HostDetails
     {
         if (int.TryParse(args.Value?.ToString(), out var value)) { metricKind = (AgentMetricKind)value; await RunAsync(LoadMetricsAsync); }
     }
-    private Task LoadMetricsAsync(CancellationToken token) => LoadMetricPageAsync(0, token);
+    private async Task LoadMetricsAsync(CancellationToken token)
+    {
+        var issueFrom = from > until.AddDays(-30) ? from : until.AddDays(-30);
+        var issuePage = await Monitoring.GetMetricsAsync(DeviceId, issueFrom, until, null, AgentMetricKind.CollectionUnavailable, token);
+        token.ThrowIfCancellationRequested();
+        metricIssues = (issuePage ?? throw new InvalidOperationException("Device missing")).Items
+            .DistinctBy(x => (x.AgentId, x.Dimension)).Take(10).ToArray();
+        await LoadMetricPageAsync(0, token);
+    }
+
+    private static string MetricIssueName(string source) => source switch
+    {
+        AgentMetricUnavailableSource.PermissionDenied => "權限不足",
+        AgentMetricUnavailableSource.Unsupported => "平台不支援",
+        AgentMetricUnavailableSource.Error => "採集錯誤",
+        _ => "資料未能取得，原因未知"
+    };
     private async Task LoadMetricPageAsync(int pageNumber, CancellationToken token)
     {
         var page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token);

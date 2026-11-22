@@ -83,6 +83,8 @@ public sealed class HostDetailsBrowserTests
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "test.cpu", null, 42), now));
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CollectionUnavailable, AgentMetricUnavailableSource.PermissionDenied, "memory", 1), now));
+            db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddMinutes(-20), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 20), now));
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddDays(-2), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 67), now));
@@ -96,7 +98,7 @@ public sealed class HostDetailsBrowserTests
             await db.SaveChangesAsync(token);
         }
         var agentContexts = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-        Assert.AreEqual(5, await new HostMetricRollupBackfill(agentContexts).RunBatchAsync(token));
+        Assert.AreEqual(6, await new HostMetricRollupBackfill(agentContexts).RunBatchAsync(token));
         await using (var db = await agentContexts.CreateDbContextAsync(token))
             await db.HostMetrics.Where(x => x.AgentId == agent.Id && x.OccurredAt < now.AddDays(-100)).ExecuteDeleteAsync(token);
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -142,6 +144,7 @@ public sealed class HostDetailsBrowserTests
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "device-details.png") });
         }
         await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
+        await page.GetByText("memory：權限不足", new() { Exact = false }).WaitForAsync();
         await page.GetByText("已達閾值", new() { Exact = true }).WaitForAsync();
         await using (var scope = factory.Services.CreateAsyncScope())
         {
