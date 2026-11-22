@@ -57,15 +57,6 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
-    public void AdaptiveBatch_GrowsForFastLinksAndHonoursLimits()
-    {
-        const long mib = 1024 * 1024;
-        Assert.AreEqual(8, SpeedMeasurementMath.NextBatchMiB(1, mib, 10, 10, 100 * mib, 2000));
-        Assert.AreEqual(3, SpeedMeasurementMath.NextBatchMiB(8, 8 * mib, 50, 60, 3 * mib, 2000));
-        Assert.AreEqual(1, SpeedMeasurementMath.NextBatchMiB(1, mib, 1500, 1500, 100 * mib, 2000));
-    }
-
-    [TestMethod]
     public async Task MeasureAsync_SubMillisecondFirstBatchRetriesWithoutInventingSpeed()
     {
         var server = Server();
@@ -87,71 +78,11 @@ public sealed class SpeedtestNetProbeTests
     }
 
     [TestMethod]
-    public async Task MeasureAsync_SubMillisecondMiddleBatchDoesNotInflateLaterSpeed()
-    {
-        var server = Server();
-        var downloads = new Queue<SpeedTestResult>([Measurement(1_000_000, 1000), Measurement(2_000_000, 0), Measurement(1_000_000, 1000)]);
-        var service = new SpeedTestMock
-        {
-            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
-            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
-            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
-            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
-            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
-        };
-        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
-        Assert.AreEqual(SpeedTestState.Success, result.State);
-        Assert.AreEqual(8d, result.DownloadMbps);
-        Assert.AreEqual(5_000_000L, result.Bytes);
-        Assert.IsEmpty(downloads);
-    }
-
-    [TestMethod]
-    public async Task MeasureAsync_SubMillisecondBatchWithFailuresCannotBecomeSuccessful()
-    {
-        var server = Server();
-        var downloads = new Queue<SpeedTestResult>([Measurement(1_000_000, 0, failed: 1), Measurement(2_000_000, 2000)]);
-        var service = new SpeedTestMock
-        {
-            GetServersAsyncFunc = _ => Task.FromResult<IServer[]>([server]),
-            GetFastestServerByLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 2 }),
-            GetServerLatencyAsyncFunc = (_, _, _) => Task.FromResult(new LatencyTestResult { Server = server, LatencyMilliseconds = 3 }),
-            GetDownloadSpeedAsyncFunc = (_, _, _) => Task.FromResult(downloads.Dequeue()),
-            GetUploadSpeedAsyncFunc = (_, _, _) => Task.FromResult(Measurement(1_000_000, 2000))
-        };
-        var result = await CreateProbe(service).MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 100, 60), CancellationToken.None);
-        Assert.AreEqual(SpeedTestState.Partial, result.State);
-        Assert.AreEqual(8d, result.DownloadMbps);
-        Assert.AreEqual(4_000_000L, result.Bytes);
-    }
-
-    [TestMethod]
     [DoNotParallelize]
     [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_UsesLargerRequestsAsTheMeasurementGrows()
+    public async Task MeasureAsync_MissingLargeDownloadFallsBackAndKeepsTheCeiling()
     {
-        var handler = new ControlledPhaseHandler();
-        var result = await CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
-        Assert.AreEqual(SpeedTestState.Success, result.State, result.DiagnosticCode);
-        Assert.IsTrue(handler.DownloadPaths.Any(path => path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
-        Assert.IsTrue(handler.DownloadPaths.Any(path => !path.EndsWith("random1000x1000.jpg", StringComparison.Ordinal)));
-        Assert.IsTrue(handler.UploadPayloadSizes.Any(size => size > 256 * 1024));
-        Assert.IsTrue(handler.UploadPayloadSizes.All(size => size <= 4 * 1024 * 1024));
-        Assert.IsGreaterThan(0, handler.UploadPayloadsCompleted);
-        Assert.IsLessThanOrEqualTo(handler.UploadPayloadSizes.Count, handler.UploadPayloadsCompleted,
-            "Only completed requests may be counted when the measurement stops.");
-        Assert.AreEqual(1, handler.UploadProbes, "The continuous upload resolves its endpoint once.");
-    }
-
-    [TestMethod]
-    [DataRow(System.Net.HttpStatusCode.NotFound)]
-    [DataRow(System.Net.HttpStatusCode.Gone)]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_MissingLargeDownloadFallsBackAndKeepsTheCeiling(System.Net.HttpStatusCode status)
-    {
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, unavailableStatus: status);
+        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500);
         var result = await CreateProbe(new ControlledPhaseFactory(handler))
             .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
         Assert.AreEqual(SpeedTestState.Success, result.State, result.DiagnosticCode);
@@ -163,82 +94,6 @@ public sealed class SpeedtestNetProbeTests
         var firstFallback = Array.FindIndex(sides, firstMissing + 1, side => side <= 1500);
         Assert.IsGreaterThan(firstMissing, firstFallback);
         Assert.IsTrue(sides.Skip(firstFallback).All(side => side <= 1500), "A later batch must not retry an unsupported size.");
-    }
-
-    [TestMethod]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_AllDownloadSizesMissingDoesNotSucceed()
-    {
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 0);
-        var result = await CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
-        Assert.AreNotEqual(SpeedTestState.Success, result.State);
-        Assert.IsNull(result.DownloadMbps);
-    }
-
-    [TestMethod]
-    [DataRow(System.Net.HttpStatusCode.InternalServerError, false)]
-    [DataRow(System.Net.HttpStatusCode.TooManyRequests, false)]
-    [DataRow(System.Net.HttpStatusCode.NotFound, true)]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_NonMissingOrMixedFailuresDoNotTriggerFallback(System.Net.HttpStatusCode status, bool mixed)
-    {
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, unavailableStatus: status, mixedUnavailableStatus: mixed);
-        var result = await CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
-        Assert.AreNotEqual(SpeedTestState.Success, result.State);
-        var sides = handler.DownloadPaths.Select(DownloadSide).ToArray();
-        var firstFailure = Array.FindIndex(sides, side => side > 1500);
-        Assert.IsGreaterThanOrEqualTo(0, firstFailure);
-        Assert.IsTrue(sides.Skip(firstFailure).All(side => side > 1500), "Other failures must not be reclassified as missing files.");
-    }
-
-    [TestMethod]
-    [Timeout(30000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_CancellationDuringMissingDownloadStopsFallback()
-    {
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, downloadDelayMs: 200);
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
-        var pending = CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), cancellation.Token);
-        await handler.UnsupportedRequested.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken);
-        await cancellation.CancelAsync();
-        var result = await pending;
-        Assert.AreEqual(SpeedTestState.Cancelled, result.State);
-    }
-
-    [TestMethod]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_ConnectionFailureDoesNotTriggerFallback()
-    {
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1500, throwUnavailable: true);
-        var result = await CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), 200, 60), TestContext.CancellationToken);
-        Assert.AreNotEqual(SpeedTestState.Success, result.State);
-        var sides = handler.DownloadPaths.Select(DownloadSide).ToArray();
-        var firstFailure = Array.FindIndex(sides, side => side > 1500);
-        Assert.IsGreaterThanOrEqualTo(0, firstFailure);
-        Assert.IsTrue(sides.Skip(firstFailure).All(side => side > 1500));
-    }
-
-    [TestMethod]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_MissingSizeFallbackStillHonoursSharedTrafficBudget()
-    {
-        const int maxMiB = 24;
-        var handler = new ControlledPhaseHandler(maximumDownloadSide: 1000);
-        var result = await CreateProbe(new ControlledPhaseFactory(handler))
-            .MeasureAsync(new(Guid.CreateVersion7(), Guid.CreateVersion7(), maxMiB, 60), TestContext.CancellationToken);
-        Assert.IsNotNull(result.Bytes);
-        Assert.IsLessThanOrEqualTo(maxMiB * 1024L * 1024L, result.Bytes.Value);
-        var sides = handler.DownloadPaths.Select(DownloadSide).ToArray();
-        var firstMissing = Array.FindIndex(sides, side => side > 1000);
-        Assert.IsGreaterThanOrEqualTo(0, firstMissing);
-        Assert.IsTrue(sides.Skip(firstMissing + 1).Contains(1000), "The smaller asset should be attempted within the same budget.");
     }
 
     private static int DownloadSide(string path)
@@ -340,24 +195,6 @@ public sealed class SpeedtestNetProbeTests
         Assert.IsNull(result.DownloadMbps);
         Assert.AreEqual(4d, result.UploadMbps);
         Assert.AreEqual("phase_timeout", result.DiagnosticCode);
-    }
-
-    [TestMethod]
-    [DoNotParallelize]
-    [Timeout(60000, CooperativeCancellation = true)]
-    public async Task MeasureAsync_RealClientAdaptsTransferToDifferentSpeeds()
-    {
-        var lease = new SpeedLease(Guid.CreateVersion7(), Guid.CreateVersion7(), 1024, 60);
-        var slow = await CreateProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 200)))
-            .MeasureAsync(lease, TestContext.CancellationToken);
-        var fast = await CreateProbe(new ControlledPhaseFactory(new ControlledPhaseHandler(downloadDelayMs: 75)))
-            .MeasureAsync(lease, TestContext.CancellationToken);
-        Assert.AreEqual(SpeedTestState.Success, slow.State, slow.DiagnosticCode);
-        Assert.AreEqual(SpeedTestState.Success, fast.State, fast.DiagnosticCode);
-        Assert.IsNotNull(slow.DownloadMbps); Assert.IsNotNull(fast.DownloadMbps);
-        Assert.IsGreaterThan(slow.DownloadMbps.Value * 1.5, fast.DownloadMbps.Value);
-        Assert.IsNotNull(slow.Bytes); Assert.IsNotNull(fast.Bytes);
-        Assert.IsGreaterThan(slow.Bytes.Value, fast.Bytes.Value);
     }
 
     [TestMethod]

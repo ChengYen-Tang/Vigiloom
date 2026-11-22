@@ -214,9 +214,10 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
                 ["Vigiloom:Agent:Server"] = owner.Server
             }).Build();
             var logger = new CapturingLogger();
-            using var worker = new MetricWorker(runtime, config, TimeProvider.System, logger);
-            var pressure = new byte[128 * 1024 * 1024];
-            for (var i = 0; i < pressure.Length; i += 4096) pressure[i] = 1;
+            var monitor = new ControlledMonitor(cpu: false, workingSetBytes: 128L * 1024 * 1024);
+            var collector = new ControlledCollector(TimeProvider.System);
+            using var worker = new MetricWorker(runtime, config, TimeProvider.System, logger, monitor,
+                collectorFactory: _ => collector);
             Exception? workerFailure = null;
             try
             {
@@ -229,7 +230,6 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
                 Publish(4096);
                 await WaitForAsync(() => logger.Contains("resumed after the memory budget delay"), token);
                 await WaitForAsync(() => logger.Contains("Agent metric queue: Queued"), token);
-                GC.KeepAlive(pressure);
             }
             catch (Exception error) { workerFailure = error; throw; }
             finally
@@ -294,7 +294,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
         public void Dispose() => Disposed = true;
     }
 
-    private sealed class ControlledMonitor(bool cpu) : IMetricResourceMonitor
+    private sealed class ControlledMonitor(bool cpu, long workingSetBytes = 1024) : IMetricResourceMonitor
     {
         private int cpuReads;
         private int ioReads;
@@ -302,7 +302,7 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
         public int IoReads => Volatile.Read(ref ioReads);
         public int MemoryReads => Volatile.Read(ref memoryReads);
         public bool Disposed { get; private set; }
-        public long ReadWorkingSetBytes() { Interlocked.Increment(ref memoryReads); return 1024; }
+        public long ReadWorkingSetBytes() { Interlocked.Increment(ref memoryReads); return workingSetBytes; }
         public TimeSpan ReadCpuTime() => TimeSpan.FromMilliseconds(Interlocked.Increment(ref cpuReads) * (cpu ? 200 : 0));
         public ValueTask<ProcessIoSnapshot> ReadIoAsync(CancellationToken token) =>
             ValueTask.FromResult(new ProcessIoSnapshot((ulong)Interlocked.Increment(ref ioReads) * (cpu ? 0UL : 2UL * 1024 * 1024), 0));
