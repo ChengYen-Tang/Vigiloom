@@ -11,6 +11,49 @@ namespace Vigiloom.Updater.Core.Tests;
 public sealed class PackageStagerTests(TestContext context)
 {
     [TestMethod]
+    public async Task InsufficientSpaceDoesNotChangeRunningVersion()
+    {
+        var root = Path.Combine(context.TestRunDirectory!, $"staging-space-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var running = Path.Combine(root, "current.txt");
+            await File.WriteAllTextAsync(running, "old", context.CancellationToken);
+            using var archive = OversizedArchive();
+            var manifest = Manifest(archive, "win-x64");
+            var error = await Assert.ThrowsExactlyAsync<IOException>(() => PackageStager.PrepareAsync(archive, manifest,
+                Target(manifest), root, "win-x64", "1.0.0", "1.0.0", TimeProvider.System, context.CancellationToken));
+            Assert.Contains("not enough space", error.Message);
+            Assert.AreEqual("old", await File.ReadAllTextAsync(running, context.CancellationToken));
+            Assert.IsEmpty(Directory.EnumerateDirectories(Path.Combine(root, "staging")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    // A tiny ZIP64 fixture declares an enormous extracted size, without filling the test machine's disk.
+    private static MemoryStream OversizedArchive()
+    {
+        var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        var name = Encoding.UTF8.GetBytes("Vigiloom.Agent.exe");
+        const uint crc = 0x8cdc1683; // CRC-32 of "x".
+        writer.Write(0x04034b50u); writer.Write((ushort)45); writer.Write((ushort)0); writer.Write((ushort)0);
+        writer.Write(0u); writer.Write(crc); writer.Write(1u); writer.Write(1u);
+        writer.Write((ushort)name.Length); writer.Write((ushort)0); writer.Write(name); writer.Write((byte)'x');
+        var centralOffset = checked((uint)stream.Position);
+        writer.Write(0x02014b50u); writer.Write((ushort)45); writer.Write((ushort)45); writer.Write((ushort)0); writer.Write((ushort)0);
+        writer.Write(0u); writer.Write(crc); writer.Write(1u); writer.Write(uint.MaxValue);
+        writer.Write((ushort)name.Length); writer.Write((ushort)12); writer.Write((ushort)0); writer.Write((ushort)0);
+        writer.Write((ushort)0); writer.Write(0u); writer.Write(0u); writer.Write(name);
+        writer.Write((ushort)1); writer.Write((ushort)8); writer.Write(long.MaxValue - 1);
+        var centralLength = checked((uint)stream.Position - centralOffset);
+        writer.Write(0x06054b50u); writer.Write((ushort)0); writer.Write((ushort)0); writer.Write((ushort)1); writer.Write((ushort)1);
+        writer.Write(centralLength); writer.Write(centralOffset); writer.Write((ushort)0);
+        stream.Position = 0;
+        return stream;
+    }
+
+    [TestMethod]
     public async Task PreparesVerifiedPackageWithoutChangingRunningFiles()
     {
         var root = Path.Combine(context.TestRunDirectory!, $"staging-{Guid.NewGuid():N}");
