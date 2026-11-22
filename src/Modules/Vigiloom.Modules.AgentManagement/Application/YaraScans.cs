@@ -35,6 +35,14 @@ public sealed class YaraScans(IDbContextFactory<AgentManagementDbContext> contex
         return rows.Select(View).ToArray();
     }
 
+    public async Task<YaraScanJob?> GetAsync(Guid deviceId, Guid scanId, CancellationToken token)
+    {
+        if (deviceId.Version != 7 || scanId.Version != 7) throw new ArgumentException("Invalid scan.");
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var row = await db.YaraScans.AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.Id == scanId, token);
+        return row is null ? null : View(row);
+    }
+
     public async Task<bool> CancelAsync(Guid deviceId, Guid scanId, CancellationToken token)
     {
         if (deviceId.Version != 7 || scanId.Version != 7) throw new ArgumentException("Invalid scan.");

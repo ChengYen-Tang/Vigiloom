@@ -81,6 +81,8 @@ public sealed class OperationAuditWriter : IOperationAuditWriter<OperationAudit>
     {
         "host-log" => access.DeviceId is { Version: 7 } && access.AgentId is { Version: 7 },
         "sigma-rule" => access.DeviceId is null && access.AgentId is null,
+        "yara-scan" => access.DeviceId is { Version: 7 } && access.AgentId is null,
+        "yara-list" => access.DeviceId == access.EvidenceId && access.AgentId is null,
         _ => false
     });
 

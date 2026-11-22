@@ -58,7 +58,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     (deviceIds == null || deviceIds.Contains(x.DeviceId))).OrderByDescending(x => x.CompletedAt).ThenByDescending(x => x.RowId)
                     .Select(x => new { x.DeviceId, x.Id, x.CompletedAt, x.FilePath, x.Outcome }).Take(limit).ToArrayAsync(token);
                 entries.AddRange(rows.Select(x => new EventTimelineEntry("yara", x.CompletedAt!.Value, x.DeviceId, "device",
-                    $"YARA 掃描：{x.FilePath}", $"掃描 {x.Id:D}；結果 {x.Outcome}", $"/devices/{x.DeviceId:D}/yara-scans")));
+                    $"YARA 掃描：{x.FilePath}", $"掃描 {x.Id:D}；結果 {x.Outcome}", $"/devices/{x.DeviceId:D}/yara-scans?scan={x.Id:D}")));
             }
         }
         if (Include("service-health") || Include("service-log") || Include("service-trace"))
@@ -121,10 +121,10 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     join rule in db.SigmaRuleTests.AsNoTracking() on result.TestId equals rule.Id
                     where result.ReceivedAt >= start && result.ReceivedAt < end && (deviceIds == null || deviceIds.Contains(result.DeviceId))
                     orderby result.ReceivedAt descending, result.RowId descending
-                    select new { result.DeviceId, result.AgentId, result.MessageId, result.ReceivedAt, result.Result, rule.Path, rule.RevisionId }).Take(limit).ToArrayAsync(token);
+                    select new { result.DeviceId, result.AgentId, result.MessageId, result.ReceivedAt, result.Result, rule.Path, rule.RevisionId, result.TestId }).Take(limit).ToArrayAsync(token);
                 entries.AddRange(rows.Select(x => new EventTimelineEntry("sigma", x.ReceivedAt, x.DeviceId, "device",
                     x.Result == 1 ? $"行為規則命中：{x.Path}" : $"行為規則未評估：{x.Path}",
-                    $"版本 {x.RevisionId:D}；事件 {x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}/host-logs/{x.AgentId:D}/{x.MessageId:D}")));
+                    $"版本 {x.RevisionId:D}；事件 {x.AgentId:D}/{x.MessageId:D}", $"/devices/{x.DeviceId:D}/host-logs/{x.AgentId:D}/{x.MessageId:D}", $"/events/rules/{x.TestId:D}")));
             }
             if (Include("vulnerability"))
             {

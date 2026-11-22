@@ -71,8 +71,8 @@
                             <td>
                                 @if (entry.EventEvidence is { } evidenceAccess)
                                 {
-                                    <div>證據類型：@(evidenceAccess.Kind == "host-log" ? "主機日誌" : "行為規則")；識別碼：@evidenceAccess.EvidenceId</div>
-                                    @if (evidenceAccess.DeviceId is { } deviceId) { <div>設備：@deviceId；Agent：@evidenceAccess.AgentId</div> }
+                                    <div>證據類型：@(evidenceAccess.Kind switch { "host-log" => "主機日誌", "sigma-rule" => "行為規則", "yara-scan" => "YARA 掃描", _ => "YARA 掃描清單" })；識別碼：@evidenceAccess.EvidenceId</div>
+                                    @if (evidenceAccess.DeviceId is { } deviceId) { <div>設備：@deviceId @if (evidenceAccess.AgentId is { } agentId) { <span>；Agent：@agentId</span> }</div> }
                                 }
                                 else if (entry.EventTimeline is { } eventAccess)
                                 {
