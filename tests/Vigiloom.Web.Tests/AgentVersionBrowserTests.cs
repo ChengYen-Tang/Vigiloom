@@ -107,7 +107,18 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         {
             var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
             db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
-                MessageId = Guid.CreateVersion7(), Sequence = 2, Result = AgentUpdateResultKind.RolledBack,
+                MessageId = Guid.CreateVersion7(), Sequence = 2, Result = AgentUpdateResultKind.Failed,
+                OccurredAt = observed.AddSeconds(30), ReceivedAt = observed.AddSeconds(40), Failure = AgentUpdateFailure.Interrupted });
+            await db.SaveChangesAsync(token);
+        }
+        await page.ReloadAsync();
+        await page.GetByText("1.2.3：更新失敗，等待管理員處理", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("原因：更新流程中斷", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
+            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
+                MessageId = Guid.CreateVersion7(), Sequence = 3, Result = AgentUpdateResultKind.RolledBack,
                 OccurredAt = observed.AddMinutes(1), ReceivedAt = observed.AddMinutes(2), Failure = AgentUpdateFailure.Interrupted });
             await db.SaveChangesAsync(token);
         }
