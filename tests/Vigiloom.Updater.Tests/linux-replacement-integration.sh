@@ -11,15 +11,36 @@ unit=/etc/systemd/system/vigiloom-updater.service
 for path in "$agent" "$updater" /opt/vigiloom/updater.next /opt/vigiloom/updater.previous "$state" "$unit"; do
     [[ ! -e $path && ! -L $path ]] || { echo "Existing installation path: $path" >&2; exit 1; }
 done
-systemctl is-active --quiet vigiloom-updater.service && { echo 'Updater service is active.' >&2; exit 1; }
+for path in /etc/systemd/system/vigiloom-updater.service.d /run/systemd/system/vigiloom-updater.service.d /usr/lib/systemd/system/vigiloom-updater.service.d; do
+    [[ ! -e $path && ! -L $path ]] || { echo "Existing service configuration: $path" >&2; exit 1; }
+done
+[[ $(systemctl show vigiloom-updater.service --property=LoadState --value) == not-found ]] || {
+    echo 'A Vigiloom Updater service already exists.' >&2; exit 1;
+}
 created_opt=0; created_state=0
+current_helper=''
 [[ -d /opt/vigiloom ]] || { mkdir -p /opt/vigiloom; created_opt=1; }
 [[ -d /var/lib/vigiloom ]] || { mkdir -p /var/lib/vigiloom; created_state=1; }
+stop_unit() {
+    local name=$1 state
+    state=$(systemctl show "$name" --property=LoadState --value) || return 1
+    if [[ $state == loaded ]]; then
+        systemctl stop "$name" || return 1
+        ! systemctl is-active --quiet "$name" || return 1
+    elif [[ $state != not-found ]]; then
+        return 1
+    fi
+}
 cleanup_case() {
-    systemctl stop vigiloom-updater.service 2>/dev/null || true
+    stop_unit vigiloom-updater.service || { echo 'Updater is still running; test installation retained.' >&2; return 1; }
+    if [[ -n $current_helper ]]; then
+        stop_unit "$current_helper" || { echo 'Replacement helper is still running; test installation retained.' >&2; return 1; }
+    fi
+    stop_unit vigiloom-updater.service || { echo 'Updater restarted during cleanup; test installation retained.' >&2; return 1; }
     rm -f -- "$unit"
     systemctl daemon-reload
     rm -rf -- "$agent" "$updater" /opt/vigiloom/updater.next /opt/vigiloom/updater.previous "$state"
+    current_helper=''
 }
 cleanup() {
     cleanup_case
@@ -55,8 +76,10 @@ UNIT
     systemctl start vigiloom-updater.service
     old_pid=$(systemctl show -p MainPID --value vigiloom-updater.service)
     if [[ -n ${VIGILOOM_TEST_REPLACEMENT_LAUNCHER:-} ]]; then
+        current_helper="vigiloom-updater-replace-$operation.service"
         "$VIGILOOM_TEST_REPLACEMENT_LAUNCHER" "$agent" "$source" "$state" "$operation"
     else
+        current_helper="vigiloom-req20-test-$operation.service"
         cp -- "$workspace/src/Updater/Vigiloom.Updater/Maintenance/replace-linux.sh" "$state/replace.sh"
         systemd-run --unit="vigiloom-req20-test-$operation" --collect --property=Type=exec /bin/bash \
             "$state/replace.sh" "$agent" "$source" "$state" "$operation"
