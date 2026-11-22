@@ -39,6 +39,21 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
                 command.CommandText = statement;
                 command.ExecuteNonQuery();
             }
+            async Task UpdateLedgerWithLeaseAsync(string statement)
+            {
+                for (var attempt = 0; ; attempt++)
+                {
+                    IdentityVault.Session lease;
+                    try { lease = vault.Acquire(); }
+                    catch (IOException) when (attempt < 20)
+                    {
+                        await Task.Delay(50, token);
+                        continue;
+                    }
+                    await using (lease) UpdateLedger(statement);
+                    return;
+                }
+            }
             UpdateLedger("UPDATE loss_state SET unknown = 0.5");
             var runtime = new AgentMetricSettingsRuntime();
             runtime.Bind(owner);
@@ -61,14 +76,14 @@ public sealed class MetricWorkerPolicyTests(TestContext context)
                 IAsyncDisposable? contender = null;
                 try { Assert.Throws<IOException>(() => contender = new IdentityVault(root).AcquireMetricOwnership()); }
                 finally { if (contender is not null) await contender.DisposeAsync(); }
-                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 1");
+                await UpdateLedgerWithLeaseAsync("UPDATE loss_state SET unknown = 1");
                 await WaitForAsync(() => runtime.LossWriterFor(owner) is not null, token);
                 var firstWriter = runtime.LossWriterFor(owner);
                 var queue = new DurableBatchQueue(vault, owner.AgentId);
                 var beforeFailure = (await queue.GetStatusAsync(token)).TotalBatches;
-                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 0.5");
+                await UpdateLedgerWithLeaseAsync("UPDATE loss_state SET unknown = 0.5");
                 await WaitForAsync(() => runtime.LossWriterFor(owner) is null, token);
-                await using (vault.Acquire()) UpdateLedger("UPDATE loss_state SET unknown = 1");
+                await UpdateLedgerWithLeaseAsync("UPDATE loss_state SET unknown = 1");
                 await WaitForAsync(() => runtime.LossWriterFor(owner) is { } current && current != firstWriter, token);
                 Assert.IsGreaterThanOrEqualTo(beforeFailure, (await queue.GetStatusAsync(token)).TotalBatches);
             }
