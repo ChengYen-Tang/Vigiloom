@@ -146,6 +146,7 @@
         else { <p>這段時間沒有偵測紀錄。</p> }
         @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
         <h3>IOC 比對線索</h3>
+        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">查看 YARA 掃描</a></p>
         <p>僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。@if (iocDetections is not null) { <text>線索依 Log 政策保存 @iocDetections.RetentionDays 天。</text> }</p>
         @if (iocDetections?.Items.Count > 0)
         {

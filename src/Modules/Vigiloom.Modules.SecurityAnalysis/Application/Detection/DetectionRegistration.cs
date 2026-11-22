@@ -1,7 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Contracts.Intelligence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
@@ -10,6 +13,7 @@ public static class DetectionRegistration
 {
     public static IServiceCollection AddHostDetection(this IServiceCollection services)
     {
+        services.TryAddScoped<IIocSource, IocSource>();
         services.AddScoped<SigmaCatalog>();
         services.AddScoped<SigmaRuleSetLoader>();
         services.AddScoped<SigmaEnabledRules>();

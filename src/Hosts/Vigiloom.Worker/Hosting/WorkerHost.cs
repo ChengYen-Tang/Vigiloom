@@ -138,7 +138,6 @@ public static class WorkerHost
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, AdvisoryCatalog>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
         builder.Services.AddHostDetection();
-        builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IIocSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase.IocSource>();
         builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IBaselineSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.BaselineSource>();
         builder.Services.AddScoped<IntelligenceRefreshJob>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityExpiry>();

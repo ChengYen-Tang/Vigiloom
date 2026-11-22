@@ -1,0 +1,107 @@
+@page "/devices/{Id:guid}/yara-scans"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Vigiloom.Contracts.Agent.Security
+@using Vigiloom.Modules.AgentManagement.Application
+@using Vigiloom.Modules.Resources.Application
+@inject YaraScans Scans
+@inject DeviceManagement Devices
+@inject Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings Retention
+@inject NavigationManager Navigation
+@inject ILogger<YaraScanPage> Logger
+
+<PageTitle>YARA 掃描 - Vigiloom</PageTitle>
+<main class="device-page">
+    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
+    <header class="device-heading"><div><h1>YARA 掃描</h1><p>@name · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。</p></div></header>
+    @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
+    @if (name is not null)
+    {
+        <AuthorizeView Roles="Administrator" Context="authorization"><Authorized>
+            <section class="device-panel">
+                <h2>新增掃描</h2>
+                <p>Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。</p>
+                <EditForm Model="Input" FormName="yara-scan-create" method="post" OnSubmit="CreateAsync">
+                    <label for="scan-file">主機上的檔案完整路徑</label><InputText id="scan-file" @bind-Value="Input.FilePath" maxlength="1024" />
+                    <label for="scan-rules">YARA 規則</label><InputTextArea id="scan-rules" @bind-Value="Input.Rules" rows="8" maxlength="65536" />
+                    <label for="scan-size">檔案大小上限（MiB）</label><InputNumber id="scan-size" @bind-Value="Input.MaximumMiB" />
+                    <label for="scan-time">逾時（秒）</label><InputNumber id="scan-time" @bind-Value="Input.TimeoutSeconds" />
+                    <button type="submit">建立掃描</button>
+                </EditForm>
+            </section>
+        </Authorized></AuthorizeView>
+        <section class="device-panel">
+            <h2>掃描紀錄</h2>
+            <p>已完成的掃描依操作紀錄政策保存 @retentionDays 天；等待執行的工作會保留。</p>
+            @if (jobs.Count == 0) { <p>尚無掃描紀錄。</p> }
+            @foreach (var job in jobs)
+            {
+                <article><h3>@job.Request.FilePath</h3><p>建立時間（UTC）：@job.RequestedAt.ToString("u") · 申請者：@job.RequestedBy</p>
+                    @if (job.Result is { } result)
+                    {
+                        <p>結果：@Outcome(result.Outcome) · @result.CompletedAt.ToString("u")</p>
+                        @if (!string.IsNullOrWhiteSpace(result.Output)) { <pre>@result.Output</pre> }
+                        @if (!string.IsNullOrWhiteSpace(result.Error)) { <p>@result.Error</p> }
+                        @if (result.OutputTruncated) { <p>輸出過長，僅顯示部分內容。</p> }
+                    }
+                    else { <p>等待 Agent 執行。</p> }
+                    <details><summary>查看規則</summary><pre>@job.Request.Rules</pre></details>
+                </article>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromForm(FormName = "yara-scan-create")] private ScanForm Input { get; set; } = default!;
+    private string? name, error;
+    private int retentionDays;
+    private IReadOnlyList<YaraScanJob> jobs = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        HttpContext.Response.Headers.CacheControl = "private, no-store";
+        try
+        {
+            var device = await Devices.GetAsync(Id, HttpContext.RequestAborted);
+            name = device?.Name;
+            if (device is not null) { jobs = await Scans.ListAsync(Id, HttpContext.RequestAborted); retentionDays = (await Retention.GetAsync(HttpContext.RequestAborted)).Days; }
+            else error = "找不到設備。";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Unable to load YARA scans: {ErrorType}.", ex.GetType().Name); error = "無法讀取掃描紀錄。"; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!HttpContext.User.IsInRole("Administrator") || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "無法確認管理員身分。"; return; }
+        if (Input.MaximumMiB is < 1 or > 1024 || Input.TimeoutSeconds is < 1 or > 3600 || string.IsNullOrWhiteSpace(Input.FilePath) || string.IsNullOrWhiteSpace(Input.Rules))
+        { error = "請填寫檔案路徑與規則，大小須介於 1 至 1024 MiB，逾時須介於 1 至 3600 秒。"; return; }
+        try
+        {
+            var request = new YaraScanRequest(Input.FilePath.Trim(), Input.Rules, (long)Input.MaximumMiB * 1024 * 1024, Input.TimeoutSeconds);
+            if (await Scans.CreateAsync(Id, request, actor, HttpContext.RequestAborted) is null) { error = "此設備沒有可用的 Agent。"; return; }
+            Navigation.NavigateTo($"/devices/{Id:D}/yara-scans", forceLoad: true);
+        }
+        catch (ArgumentException) { error = "掃描設定無效，請確認輸入。"; }
+        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to create YARA scan: {ErrorType}.", ex.GetType().Name); error = "無法建立掃描，請稍後重試。"; }
+    }
+
+    private static string Outcome(YaraScanOutcome value) => value switch
+    {
+        YaraScanOutcome.Completed => "已完成", YaraScanOutcome.FileTooLarge => "檔案超過大小上限", YaraScanOutcome.TimedOut => "已逾時",
+        YaraScanOutcome.Unavailable => "無法使用", _ => "掃描失敗"
+    };
+
+    private sealed class ScanForm
+    {
+        public string? FilePath { get; set; }
+        public string? Rules { get; set; }
+        public int MaximumMiB { get; set; } = 64;
+        public int TimeoutSeconds { get; set; } = 30;
+    }
+}
