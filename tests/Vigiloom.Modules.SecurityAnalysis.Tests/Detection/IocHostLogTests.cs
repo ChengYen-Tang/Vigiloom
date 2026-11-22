@@ -46,7 +46,10 @@ public sealed class IocHostLogTests(TestContext context)
             await connection.OpenAsync(token);
             await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
             {
-                await handler.HandleAsync(new(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, JsonSerializer.Serialize(dispatch)), connection, transaction, token);
+                var message = new OutboxMessage(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, JsonSerializer.Serialize(dispatch));
+                var unavailable = new IocHostLogHandler(new Source(selection with { Availability = IocSourceAvailability.Stale }), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => unavailable.HandleAsync(message, connection, transaction, token));
+                await handler.HandleAsync(message, connection, transaction, token);
                 await transaction.CommitAsync(token);
             }
             await using var verify = new SecurityAnalysisDbContext(options);
