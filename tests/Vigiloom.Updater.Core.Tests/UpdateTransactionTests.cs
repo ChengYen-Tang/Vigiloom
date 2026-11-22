@@ -267,6 +267,37 @@ public sealed class UpdateTransactionTests(TestContext context)
     }
 
     [TestMethod]
+    public void CleanupRemovesAbandonedPreparationButKeepsSelectedAndFailedVersions()
+    {
+        var root = CreateDirectory();
+        try
+        {
+            var staging = Path.Combine(root, "staging");
+            var orphan = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var selected = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var previous = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var failed = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var retained = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            var unowned = Path.Combine(staging, "unowned");
+            foreach (var path in new[] { orphan, selected, previous, failed, retained, unowned }) Directory.CreateDirectory(path);
+            var state = new UpdateState(Guid.CreateVersion7(), previous, failed, UpdatePhase.Failed,
+                DateTimeOffset.UtcNow, [], RetainedFailedDirectories: [retained]);
+
+            PreparedPackageCleanup.RemoveUnreferenced(state, root, selected);
+
+            Assert.IsFalse(Directory.Exists(orphan));
+            foreach (var path in new[] { selected, previous, failed, retained, unowned }) Assert.IsTrue(Directory.Exists(path));
+            var secondOrphan = Path.Combine(staging, Guid.CreateVersion7().ToString("N"));
+            Directory.CreateDirectory(secondOrphan);
+            PreparedPackageCleanup.RemoveUnreferenced(null, root, selected);
+            Assert.IsFalse(Directory.Exists(secondOrphan));
+            Assert.IsTrue(Directory.Exists(selected));
+            Assert.IsTrue(Directory.Exists(unowned));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
     public void CleanupDoesNotDeletePreviousOrUnownedDirectories()
     {
         var root = CreateDirectory();
@@ -330,6 +361,7 @@ public sealed class UpdateTransactionTests(TestContext context)
             Directory.CreateSymbolicLink(link, outside);
             var now = DateTimeOffset.UtcNow;
             var state = new UpdateState(Guid.CreateVersion7(), previous, current, UpdatePhase.Succeeded, now, []);
+            PreparedPackageCleanup.RemoveUnreferenced(state, root, current);
             PreparedPackageCleanup.RemoveSuperseded(state, root, current);
             Assert.IsTrue(File.Exists(Path.Combine(outside, "keep")));
             Assert.IsTrue(Directory.Exists(link));

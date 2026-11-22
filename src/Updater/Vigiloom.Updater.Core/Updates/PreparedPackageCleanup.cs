@@ -3,6 +3,29 @@ namespace Vigiloom.Updater.Core.Updates;
 /// <summary>Removes only a completed rollback's updater-created staging directory.</summary>
 public static class PreparedPackageCleanup
 {
+    /// <summary>Remove abandoned preparation directories not referenced by the service or durable update state.</summary>
+    public static void RemoveUnreferenced(UpdateState? state, string installationRoot, string selectedDirectory)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var keep = new HashSet<string>(comparison) { Path.TrimEndingDirectorySeparator(Path.GetFullPath(selectedDirectory)) };
+        if (state is not null)
+        {
+            keep.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.PreviousDirectory)));
+            keep.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(state.TargetDirectory)));
+            foreach (var retained in state.RetainedFailedDirectories ?? [])
+                keep.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(retained)));
+        }
+        var staging = new DirectoryInfo(Path.Combine(Path.GetFullPath(installationRoot), "staging"));
+        if (!staging.Exists || (staging.Attributes & FileAttributes.ReparsePoint) != 0) return;
+        foreach (var directory in staging.EnumerateDirectories())
+        {
+            if (!Guid.TryParseExact(directory.Name, "N", out var id) || id.Version != 7 ||
+                (directory.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                keep.Contains(Path.TrimEndingDirectorySeparator(directory.FullName))) continue;
+            directory.Delete(recursive: true);
+        }
+    }
+
     /// <summary>After a successful administrator-directed replacement, remove failed staging directories.</summary>
     public static void RemoveRetainedFailures(UpdateState state, string installationRoot)
     {

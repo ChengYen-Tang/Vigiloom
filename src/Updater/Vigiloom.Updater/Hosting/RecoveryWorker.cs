@@ -220,9 +220,11 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
             try
             {
                 var state = await coordinator.RecoverAsync(token);
-                if (state is null) return true;
                 try
                 {
+                    if (state?.Phase != UpdatePhase.Succeeded)
+                        PreparedPackageCleanup.RemoveUnreferenced(state, root, await runtime.GetSelectedDirectoryAsync(token));
+                    if (state is null) return true;
                     PreparedPackageCleanup.RemoveRolledBack(state, root);
                     PreparedPackageCleanup.RemoveRetainedFailures(state, root);
                     if (state.Phase == UpdatePhase.Succeeded && state.RetainedFailedDirectories is { Count: > 0 })
@@ -239,6 +241,7 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                     // Disk cleanup is not required to keep the current Agent running.
                     logger.LogWarning("Updater could not remove old package files: {ErrorType}.", error.GetType().Name);
                 }
+                if (state is null) return true;
                 logger.LogInformation("Updater recovery state: {Phase}.", state.Phase);
                 return true;
             }
