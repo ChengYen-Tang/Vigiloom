@@ -17,8 +17,14 @@ internal sealed class HostLogDispatchWriter(OutboxWriter outbox) : IHostLogDispa
         await using var command = sql.CreateCommand();
         command.Transaction = sqlTransaction;
         command.CommandText = "SELECT TOP (1) 1 FROM [security].[SigmaRuleActivations] WITH (HOLDLOCK) WHERE [Enabled] = 1";
-        if (await command.ExecuteScalarAsync(token) is null) return;
-        await outbox.WriteAsync(new(Guid.CreateVersion7(), HostLogDispatch.MessageType, JsonSerializer.Serialize(dispatch)),
-            sql, sqlTransaction, token);
+        var sigmaEnabled = await command.ExecuteScalarAsync(token) is not null;
+        command.CommandText = "SELECT TOP (1) 1 FROM [security].[IntelligenceSources] WITH (HOLDLOCK) WHERE [Key] = 'signature-base' AND [Enabled] = 1 AND [IocDetectionEnabled] = 1";
+        var iocEnabled = await command.ExecuteScalarAsync(token) is not null;
+        if (!sigmaEnabled && !iocEnabled) return;
+        var payload = JsonSerializer.Serialize(dispatch);
+        if (sigmaEnabled)
+            await outbox.WriteAsync(new(Guid.CreateVersion7(), HostLogDispatch.MessageType, payload), sql, sqlTransaction, token);
+        if (iocEnabled)
+            await outbox.WriteAsync(new(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, payload), sql, sqlTransaction, token);
     }
 }

@@ -63,7 +63,7 @@ public sealed record SigmaRuleStateChanged(Guid TestId, bool Enabled) : Operatio
 /// <summary>Records a manually supplied source snapshot without asserting its upstream authenticity.</summary>
 public sealed record IntelligenceOfflineImported(Guid RevisionId) : OperationAuditDetails;
 
-public sealed record IntelligencePolicyValues(bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds, int MaximumBytes, int MaximumRecords);
+public sealed record IntelligencePolicyValues(bool Enabled, int UpdateIntervalSeconds, int StaleAfterSeconds, int MaximumBytes, int MaximumRecords, bool? IocDetectionEnabled = null);
 public sealed record IntelligencePolicyChanged(IntelligencePolicyValues Previous, IntelligencePolicyValues Current, string PreviousVersion, string CurrentVersion) : OperationAuditDetails;
 
 /// <summary>Records only the failed import identity; source data and credentials are excluded.</summary>

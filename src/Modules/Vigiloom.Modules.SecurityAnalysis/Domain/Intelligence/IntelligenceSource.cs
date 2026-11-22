@@ -9,6 +9,7 @@ public sealed class IntelligenceSource
     public long RowId { get; private set; }
     public required string Key { get; set; }
     public bool Enabled { get; set; }
+    public bool IocDetectionEnabled { get; set; }
     public int UpdateIntervalSeconds { get; set; } = 86_400;
     public int StaleAfterSeconds { get; set; } = 259_200;
     public int MaximumBytes { get; set; } = 16 * 1024 * 1024;
