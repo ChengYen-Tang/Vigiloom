@@ -13,7 +13,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
     IDbContextFactory<ServiceObservabilityDbContext> services, IDbContextFactory<SecurityAnalysisDbContext> security,
     IDbContextFactory<ResourcesDbContext> resources)
 {
-    private static readonly string[] Sources = ["host-log", "service-log", "service-health", "inventory", "integrity", "sigma", "vulnerability", "baseline", "ioc", "yara"];
+    private static readonly string[] Sources = ["host-log", "service-log", "service-trace", "service-health", "inventory", "integrity", "sigma", "vulnerability", "baseline", "ioc", "yara"];
 
     public async Task<EventTimelinePage> GetAsync(EventTimelineQuery query, CancellationToken token)
     {
@@ -55,7 +55,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     $"YARA 掃描：{x.FilePath}", $"掃描 {x.Id:D}；結果 {x.Outcome}", $"/devices/{x.DeviceId:D}/yara-scans")));
             }
         }
-        if (Include("service-health") || Include("service-log"))
+        if (Include("service-health") || Include("service-log") || Include("service-trace"))
         {
             await using var db = await services.CreateDbContextAsync(token);
             if (Include("service-log"))
@@ -70,6 +70,14 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     entries.Add(entry);
                     serviceLogRows.Add(entry, log.RowId);
                 }
+            }
+            if (Include("service-trace"))
+            {
+                var spans = await db.TraceSpans.AsNoTracking().Where(x => x.StartedAt >= start && x.StartedAt < end &&
+                    (serviceIds == null || serviceIds.Contains(x.ServiceId))).OrderByDescending(x => x.StartedAt).ThenByDescending(x => x.RowId)
+                    .Select(x => new { x.ServiceId, x.StartedAt, x.TraceId, x.SpanId }).Take(limit).ToArrayAsync(token);
+                entries.AddRange(spans.Select(x => new EventTimelineEntry("service-trace", x.StartedAt, x.ServiceId, "service",
+                    "應用程式追蹤", $"Trace {Convert.ToHexStringLower(x.TraceId)}；Span {Convert.ToHexStringLower(x.SpanId)}", $"/services/{x.ServiceId:D}")));
             }
             if (Include("service-health"))
             {
