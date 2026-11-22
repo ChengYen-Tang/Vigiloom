@@ -15,13 +15,15 @@ Record the tested OS edition, version and updates; OS and process architecture; 
 ### Representative service integration results
 
 The [service integration run](https://github.com/ChengYen-Tang/Vigiloom/actions/runs/45066403827)
-passed on Windows Server 2025 x64 (hosted image `windows-2025-vs2026`,
-`20261116.315.1`) and Ubuntu 24.04 x64 (hosted image `20261116.376`). It used
+passed on Windows Server 2025 x64 (build `10.0.26100`, hosted image `windows-2025-vs2026`,
+`20261116.315.1`) and Ubuntu 24.04 x64 (hosted image `20261116.376.1`). It used
 test-generated self-contained .NET 10 Agent and Updater packages, exercised the
 installed services and authenticated TLS transport, disconnected and resumed
 delivery, and checked update, administrator-selected rollback and removal.
 Windows runs the Agent as `NT SERVICE\Vigiloom Agent`; Linux uses the
-`vigiloom-agent` systemd account. Installation and the Updater need elevated
+`vigiloom-agent` systemd account. The runners used .NET SDK `10.0.403`;
+the test scenarios used package versions `1.0.0`, `1.1.0` and `1.2.0`.
+Installation and the Updater need elevated
 permissions. Linux requires systemd and the distribution's ICU package;
 journal collection additionally uses `libsystemd.so.0` and access to the
 configured journal. Windows event channels may require separate read access.
@@ -32,6 +34,13 @@ an independently tested compatibility range. Windows x86 acceptance follows
 the x64 result by the owner's decision; it is not a native x86 run. Optional
 sensor-specific validation and restrictions are described in
 [security-sensors.md](security-sensors.md).
+
+Capability details are reported by their owning collectors: inventory and
+integrity include outcomes and observation times; host-log sources report
+their configuration and last observation; baseline checks include their
+outcomes and times; metrics expose sample times and recent unavailable-source
+reasons. A missing or stale observation remains unknown. A collector without a
+global disable switch is not reported as disabled merely because it has no data.
 
 The Fedora 42 WSL environment used for the separate Linux journal and YARA
 checks currently reports x86-64, WSL kernel `6.18.33.2`, glibc `2.41`,
