@@ -5,7 +5,8 @@ namespace Vigiloom.Agent.Core.Security;
 
 public enum YaraScanStatus { Completed, FileTooLarge, TimedOut, Unavailable, Failed }
 
-public sealed record YaraScanResult(YaraScanStatus Status, string Output, string Error, bool OutputTruncated);
+public sealed record YaraScanResult(YaraScanStatus Status, string Output, string Error, bool OutputTruncated,
+    TimeSpan? CpuTime = null, long InputBytes = 0, bool Started = false);
 
 /// <summary>Runs the installed YARA engine on one explicitly selected file.</summary>
 public static class YaraScanner
@@ -27,7 +28,8 @@ public static class YaraScanner
             var rulePath = Path.GetFullPath(rules);
             var target = new FileInfo(targetPath);
             if (!target.Exists) return new(YaraScanStatus.Unavailable, "", "File not found.", false);
-            if (target.Length > maximumBytes) return new(YaraScanStatus.FileTooLarge, "", "", false);
+            var fileBytes = target.Length;
+            if (fileBytes > maximumBytes) return new(YaraScanStatus.FileTooLarge, "", "", false);
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             start.ArgumentList.Add("--no-follow-symlinks");
             start.ArgumentList.Add("--timeout=" + Math.Ceiling(timeout.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -45,17 +47,23 @@ public static class YaraScanner
                 if (!process.HasExited) process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
                 cancellationToken.ThrowIfCancellationRequested();
-                return new(YaraScanStatus.TimedOut, "", "", false);
+                return new(YaraScanStatus.TimedOut, "", "", false, CpuTime(process), fileBytes, true);
             }
             var stdout = await output;
             var stderr = await error;
             return new(process.ExitCode == 0 ? YaraScanStatus.Completed : YaraScanStatus.Failed,
-                stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated);
+                stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, CpuTime(process), fileBytes, true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             return new(YaraScanStatus.Unavailable, "", exception.Message, false);
         }
+    }
+
+    private static TimeSpan? CpuTime(Process process)
+    {
+        try { return process.TotalProcessorTime; }
+        catch (InvalidOperationException) { return null; }
     }
 
     private static async Task<(string Text, bool Truncated)> ReadAsync(StreamReader reader)

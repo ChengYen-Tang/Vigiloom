@@ -11,6 +11,7 @@ using System.Data.Common;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Operations;
@@ -42,6 +43,35 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class AgentIdentitySqlTests
 {
+    [TestMethod]
+    public Task YaraScan_IsAssignedToRegisteredAgentAndAcknowledged() => WithDatabase(async (resources, agents, token) =>
+    {
+        var clock = new TestClock();
+        var device = new Device("scan target", "127.0.0.1", true, clock.Now);
+        await using (var db = resources.CreateDbContext()) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+        var devices = new DeviceAgentSource(resources);
+        var identity = new AgentIdentity(agents, devices, clock);
+        var actor = Guid.CreateVersion7();
+        var issued = await identity.IssueAsync(device.Id, actor, token);
+        var secret = RandomNumberGenerator.GetBytes(32);
+        var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+        var credential = Credential(registered.AgentId!.Value, secret);
+        var scans = new YaraScans(agents, identity, devices, clock);
+        var created = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule sample { condition: true }", 1024, 10), actor, token);
+        Assert.IsNotNull(created);
+        var next = await scans.NextAsync(credential, token);
+        Assert.IsTrue(next.Authenticated);
+        Assert.AreEqual(created.Id, next.Job?.Id);
+        Assert.IsFalse((await scans.NextAsync("invalid", token)).Authenticated);
+        var report = new YaraScanReport(YaraScanOutcome.Completed, "sample", "", false, clock.Now);
+        var batch = new YaraResultBatch(YaraResultBatchCodec.SchemaVersion, created.Id, clock.Now, report);
+        var receiver = new AgentBatchReceiver(agents, identity, clock);
+        Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(batch), token));
+        Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(credential, YaraResultBatchCodec.Serialize(batch), token));
+        Assert.IsNull((await scans.NextAsync(credential, token)).Job);
+        Assert.AreEqual(YaraScanOutcome.Completed, (await scans.ListAsync(device.Id, token)).Single().Result?.Outcome);
+    });
+
     [TestMethod]
     public void VersionAssignment_RequiresExplicitPackageField()
     {
@@ -741,6 +771,7 @@ public sealed class AgentIdentitySqlTests
         await using (var security = new SecurityAnalysisDbContext(securityOptions)) await security.Database.MigrateAsync(token);
 
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<IDbContextFactory<SecurityAnalysisDbContext>>(new Factory<SecurityAnalysisDbContext>(() => new(securityOptions)));
         services.AddSingleton<IDbContextFactory<AgentManagementDbContext>>(agents);
         services.AddSingleton<TimeProvider>(clock);

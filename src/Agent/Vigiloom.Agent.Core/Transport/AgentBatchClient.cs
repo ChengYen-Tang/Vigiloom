@@ -16,6 +16,8 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
     private readonly object gate = new();
     private AgentSettingsOwner? deferredOwner;
     private long? deferredSince;
+    private AgentSettingsOwner? deferredYaraOwner;
+    private long? deferredYaraSince;
     private AgentSettingsOwner? restoredOwner;
 
     public async Task<BatchSendOutcome> SendNextAsync(IdentityVault vault, Uri server, CancellationToken token)
@@ -32,8 +34,10 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             restoredOwner = owner;
         }
         var skipBaseline = ShouldDeferBaseline(owner);
-        var pending = await queue.PeekAsync(token, skipBaseline ? BaselineBatchCodec.SchemaVersion : null);
-        if (pending is null) return new(skipBaseline ? BatchSendResult.Deferred : BatchSendResult.NoPendingBatch);
+        var skipYara = ShouldDeferYara(owner);
+        var pending = await queue.PeekAsync(token, skipBaseline ? BaselineBatchCodec.SchemaVersion : null,
+            skipYara ? Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion : null);
+        if (pending is null) return new(skipBaseline || skipYara ? BatchSendResult.Deferred : BatchSendResult.NoPendingBatch);
         if (!MatchesQueueEntry(pending, out var schemaVersion))
         {
             await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
@@ -61,6 +65,8 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         // until the server explicitly advertises that schema.
         var unknownSchema = schemaVersion > 1 && response.StatusCode == HttpStatusCode.BadRequest && !SupportsSchema(response, schemaVersion);
         if (unknownSchema && schemaVersion == BaselineBatchCodec.SchemaVersion) DeferBaseline(owner);
+        if (unknownSchema && schemaVersion == Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion)
+            lock (gate) { deferredYaraOwner = owner; deferredYaraSince = clock.GetTimestamp(); }
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
@@ -106,6 +112,20 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         lock (gate) { deferredOwner = owner; deferredSince = clock.GetTimestamp(); }
     }
 
+    private bool ShouldDeferYara(AgentSettingsOwner owner)
+    {
+        lock (gate)
+        {
+            if (deferredYaraOwner != owner || deferredYaraSince is null || clock.GetElapsedTime(deferredYaraSince.Value) >= TimeSpan.FromMinutes(5))
+            {
+                deferredYaraOwner = null;
+                deferredYaraSince = null;
+                return false;
+            }
+            return true;
+        }
+    }
+
     private static bool SupportsSchema(HttpResponseMessage response, int schemaVersion) =>
         response.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var values) &&
         values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
@@ -143,6 +163,11 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
             schemaVersion = BaselineBatchCodec.SchemaVersion;
             return baseline!.BatchId == pending.BatchId && baseline.EnqueuedAt == pending.EnqueuedAt &&
                 baseline.Items.Count == pending.RecordCount;
+        }
+        if (Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.TryRead(pending.Payload, out var yara))
+        {
+            schemaVersion = Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion;
+            return yara!.BatchId == pending.BatchId && yara.EnqueuedAt == pending.EnqueuedAt && pending.RecordCount == 1;
         }
         return false;
     }

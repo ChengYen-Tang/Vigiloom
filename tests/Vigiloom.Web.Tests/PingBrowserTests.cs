@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Network;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -34,6 +35,8 @@ public sealed class PingBrowserTests
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+                await db.Database.MigrateAsync(token);
+            await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
             var url = factory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
             using var playwright = await Playwright.CreateAsync();

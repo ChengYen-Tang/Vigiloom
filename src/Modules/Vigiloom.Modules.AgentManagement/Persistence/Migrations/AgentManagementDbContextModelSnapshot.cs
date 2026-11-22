@@ -1698,6 +1698,78 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                     b.ToTable("RuntimeObservations", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.YaraScan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(65536)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<long>("MaximumBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Output")
+                        .HasMaxLength(65536)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool?>("OutputTruncated")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("RequestedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Rules")
+                        .IsRequired()
+                        .HasMaxLength(65536)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("AgentId", "CompletedAt", "RequestedAt");
+
+                    b.HasIndex("DeviceId", "RequestedAt", "RowId");
+
+                    b.ToTable("YaraScans", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentAudit", b =>
                 {
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
@@ -1858,6 +1930,15 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.RuntimeObservation", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.YaraScan", b =>
                 {
                     b.HasOne("Vigiloom.Modules.AgentManagement.Domain.Agent", null)
                         .WithMany()
