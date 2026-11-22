@@ -60,7 +60,7 @@ public sealed class AssignmentVerifierTests(TestContext context)
     private static PackageManifest Manifest()
     {
         var json = $$"""{"schema":1,"version":"1.0.0","rid":"win-x64","size":1,"sha256":"{{new string('a', 64)}}","minimumUpdaterVersion":"1.0.0","minimumAgentVersion":null,"maximumAgentVersion":null}""";
-        return PackageManifest.Parse(new VerifiedManifest(Encoding.UTF8.GetBytes(json), DateTimeOffset.UtcNow.AddMinutes(5)), DateTimeOffset.UtcNow);
+        return PackageManifest.Parse(new VerifiedManifest(Encoding.UTF8.GetBytes(json)));
     }
 
     private sealed class SequenceHandler(AgentVersionTarget target) : HttpMessageHandler

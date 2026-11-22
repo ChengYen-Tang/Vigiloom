@@ -30,15 +30,12 @@ cleanup() {
     exit "$rc"
 }
 trap cleanup EXIT
-root=$base/tests/Vigiloom.UpdateSecurity.Tests/Fixtures/PythonTuf/root.json
-fp=$(sha256sum "$root" | cut -d ' ' -f1)
 mkdir "$tmp/out" "$tmp/bundle"
-bash "$base/packaging/agent/linux/bundle.sh" "$agent_publish" "$updater_publish" "$root" "$fp" "$tmp/out"
+bash "$base/packaging/agent/linux/bundle.sh" "$agent_publish" "$updater_publish" "$tmp/out"
 tar -xzf "$tmp/out/vigiloom-agent-linux-x64.tar.gz" -C "$tmp/bundle"
-printf '%s\n' 'https://127.0.0.1:1' '01991234-5678-7abc-8def-123456789abc' "$fp" 'vle_01991234-5678-7abc-8def-123456789abc.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' | bash "$tmp/bundle/install.sh"
+printf '%s\n' 'https://127.0.0.1:1' '01991234-5678-7abc-8def-123456789abc' 'vle_01991234-5678-7abc-8def-123456789abc.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' | bash "$tmp/bundle/install.sh"
 for i in {1..30}; do [[ -f /var/lib/vigiloom/agent/identity.dat ]] && break; sleep 1; done
 identity=$(sha256sum /var/lib/vigiloom/agent/identity.dat)
-trust=$(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite)
 echo next >"$tmp/bundle/payload/updater/repair-test-marker"
 systemctl stop vigiloom-updater.service
 rm -- /opt/vigiloom/updater/Vigiloom.Updater
@@ -46,8 +43,8 @@ mv -- /opt/vigiloom/updater /opt/vigiloom/updater.previous
 bash "$tmp/bundle/repair-updater.sh"
 [[ -f /opt/vigiloom/updater/repair-test-marker && ! -e /opt/vigiloom/updater.previous ]]
 systemctl is-active --quiet vigiloom-updater.service
-[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" && $(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite) == "$trust" ]]
-echo 'PASS: interrupted repair of a missing Updater preserved identity and trust.'
+[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" ]]
+echo 'PASS: interrupted repair of a missing Updater preserved identity.'
 mv "$tmp/bundle/payload/updater/Vigiloom.Updater" "$tmp/bundle/payload/updater/Vigiloom.Updater.real"
 cat >"$tmp/bundle/payload/updater/Vigiloom.Updater" <<'SCRIPT'
 #!/usr/bin/env bash
@@ -61,7 +58,7 @@ if bash "$tmp/bundle/repair-updater.sh"; then echo 'Expected replacement failure
 [[ -f $tmp/replacement-started ]]
 [[ -f /opt/vigiloom/updater/repair-test-marker && ! -e /opt/vigiloom/updater.previous ]]
 systemctl is-active --quiet vigiloom-updater.service
-[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" && $(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite) == "$trust" ]]
+[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" ]]
 echo 'PASS: failed replacement restored the previous Updater.'
 exec {busy}>>/opt/vigiloom/agent/repair.lock
 flock -n "$busy"
@@ -75,5 +72,5 @@ touch /opt/vigiloom/updater.next/.vigiloom-updater-stage
 if bash "$tmp/bundle/repair-updater.sh"; then echo 'Expected interrupted-repair recovery notice'; exit 1; fi
 [[ -f /opt/vigiloom/updater/repair-test-marker && ! -e /opt/vigiloom/updater.previous && ! -e /opt/vigiloom/updater.next ]]
 systemctl is-active --quiet vigiloom-updater.service
-[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" && $(sha256sum /var/lib/vigiloom/updater/trust/trust.sqlite) == "$trust" ]]
+[[ $(sha256sum /var/lib/vigiloom/agent/identity.dat) == "$identity" ]]
 echo 'PASS: concurrent repair rejected and interrupted replacement recovered.'

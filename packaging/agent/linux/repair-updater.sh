@@ -95,4 +95,4 @@ if ! systemctl start vigiloom-updater.service || ! wait_for_recovery; then
 fi
 rm -f -- "$current/.vigiloom-updater-stage"
 rm -rf -- "$previous"
-printf '%s\n' 'The Updater was replaced. Agent identity, queued data, trust, settings and recovery journal were retained.'
+printf '%s\n' 'The Updater was replaced. Agent identity, queued data, settings and recovery journal were retained.'

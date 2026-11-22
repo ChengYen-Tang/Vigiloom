@@ -62,9 +62,7 @@ public sealed class UpdateRequestProcessorTests(TestContext context)
             var previous = Path.Combine(root, "old");
             Directory.CreateDirectory(previous);
             File.Copy(typeof(AgentHost).Assembly.Location, Path.Combine(previous, "Vigiloom.Agent.dll"));
-            var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "PythonTuf");
-            await new LocalTrustStore(Path.Combine(root, "trust")).ProvisionAsync(
-                await File.ReadAllBytesAsync(Path.Combine(fixture, "root.json"), context.CancellationToken), context.CancellationToken);
+            var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures");
             var request = Request();
             var device = Guid.CreateVersion7();
             var target = new AgentVersionTarget(request.UpdateId, Guid.CreateVersion7(), "1.0.0", "linux-x64",
@@ -92,7 +90,7 @@ public sealed class UpdateRequestProcessorTests(TestContext context)
             var device = Guid.CreateVersion7();
             var target = new AgentVersionTarget(request.UpdateId, Guid.CreateVersion7(), "1.0.0", "linux-x64",
                 "50abf0641e53ea3c0a39aa72c37e4d2e360e7b890abaff62537d3d3613d0e1d1", Convert.ToBase64String(new byte[8]));
-            var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", "PythonTuf");
+            var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures");
             var handler = new FixtureHandler(fixture, request, device, target);
             using var http = new HttpClient(handler);
             var runtime = new TestRuntime(Path.Combine(root, "new"));
@@ -111,7 +109,7 @@ public sealed class UpdateRequestProcessorTests(TestContext context)
 
     private static UpdateRequestProcessor Processor(HttpClient http, TestRuntime runtime, string root, Guid device) => new(
         new CentralAssignmentClient(http, TimeProvider.System),
-        new CentralPackageAcquirer(new Uri("https://example.test/"), Path.Combine(root, "trust"), Path.Combine(root, "cache"), 1024, TimeProvider.System, http),
+        new CentralPackageAcquirer(new Uri("https://example.test/"), Path.Combine(root, "cache"), TimeProvider.System, http),
         new UpdateTransaction(http, new UpdateJournal(Path.Combine(root, "state")), runtime, TimeProvider.System),
         new UpdateJournal(Path.Combine(root, "state")), runtime,
         new Uri("https://example.test/"), device, root, "linux-x64", "1.0.0");

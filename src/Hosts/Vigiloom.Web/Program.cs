@@ -152,10 +152,8 @@ builder.Services.AddScoped<AgentVersionAssignments>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
-builder.Services.AddScoped<UpdateTrustStore>();
-builder.Services.AddScoped<AgentPackageSourceSettings>();
 builder.Services.AddScoped<PackageLibrary>();
-builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.GitHubAgentReleases>(client =>
+builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Vigiloom");
@@ -170,8 +168,7 @@ builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
         if (string.IsNullOrWhiteSpace(localData)) throw new InvalidOperationException("Set Vigiloom:AgentPackages:CachePath to a private node-local directory.");
         directory = Path.Combine(localData, "Vigiloom", "agent-packages");
     }
-    return new PackageLibraryTransport(directory, builder.Configuration.GetValue<long?>("Vigiloom:AgentPackages:CacheQuotaBytes") ?? 5L * 1024 * 1024 * 1024,
-        services.GetRequiredService<TimeProvider>());
+    return new PackageLibraryTransport(directory);
 });
 builder.Services.AddScoped<HostLogMonitoring>();
 builder.Services.AddScoped<HostLogHistory>();
@@ -422,9 +419,7 @@ app.MapInventoryEndpoints();
 app.MapVulnerabilityEndpoints();
 app.MapIntegrityMonitoringEndpoints();
 app.MapAgentPackageEndpoints();
-app.MapAgentUpdateMetadataEndpoints();
 app.MapAgentUpdateDownloadEndpoints();
-app.MapAgentPackageSourceEndpoints();
 app.MapAgentPackageUiEndpoints();
 app.MapHostMetricEndpoints();
 app.MapHostMetricThresholdEndpoints();

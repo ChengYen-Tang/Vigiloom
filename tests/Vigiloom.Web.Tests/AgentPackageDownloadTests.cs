@@ -49,15 +49,11 @@ public sealed class AgentPackageDownloadTests(TestContext context)
         var agent = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
         Assert.IsNotNull(agent.AgentId);
         var credential = $"vla_{agent.AgentId.Value:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
-        var source = scope.ServiceProvider.GetRequiredService<AgentPackageSourceSettings>();
-        Assert.IsNotNull(await source.UpdateAsync(new("https://packages.example.test/", PackageCredentialAction.Clear, null, ""), actor, token));
-        var root = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "AgentPackages", "root.json"), token);
-        await scope.ServiceProvider.GetRequiredService<UpdateTrustStore>().ProvisionAsync(root, token);
         var packageId = Guid.CreateVersion7();
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
             db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = archive.Length,
-                Sha256 = hash, ManifestSha256 = digest, Listed = true, VerifiedUntil = DateTimeOffset.UtcNow.AddHours(1) });
+                Sha256 = hash, ManifestSha256 = digest });
             await db.SaveChangesAsync(token);
         }
         var assignments = scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>();
@@ -69,7 +65,6 @@ public sealed class AgentPackageDownloadTests(TestContext context)
         Assert.AreEqual(HttpStatusCode.NotFound, (await client.GetAsync("/api/v1/agent/update/targets/catalog.json", token)).StatusCode);
         Assert.AreEqual(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/agent/update/targets/{new string('a', 64)}.json", token)).StatusCode);
         CollectionAssert.AreEqual(bytes, await client.GetByteArrayAsync($"/api/v1/agent/update/targets/{digest}.json", token));
-        CollectionAssert.AreEqual(bytes, await client.GetByteArrayAsync($"/api/v1/agent/update/targets/{digest}.{digest}.json", token));
         CollectionAssert.AreEqual(archive, await client.GetByteArrayAsync($"/api/v1/agent/update/packages/{hash}", token));
         Assert.AreEqual(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/agent/update/packages/{new string('a', 64)}", token)).StatusCode);
         var otherDevice = new Device("other target", "127.0.0.2", true, DateTimeOffset.UtcNow);
@@ -102,15 +97,9 @@ public sealed class AgentPackageDownloadTests(TestContext context)
         public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token) => throw new NotSupportedException();
         public Func<Task>? BeforeOpenReturns { get; set; }
         public MemoryStream? LastStream { get; private set; }
-        public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken token) =>
-            Task.FromResult(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
-        public Task CacheAsync(Uri origin, string? credential, PackageManifest package, CancellationToken token) => Task.CompletedTask;
-        public Task SaveManifestAsync(VerifiedManifest value, PackageManifest package, CancellationToken token) => Task.CompletedTask;
-        public Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken token) =>
-            Task.FromResult<VerifiedManifest?>(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
-        public async Task<Stream?> OpenCachedAsync(PackageManifest package, CancellationToken token) =>
-            await OpenAsync(new Uri("https://localhost/"), null, package, token);
-        public async Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest package, CancellationToken token)
+        public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] bytes, GitHubAgentReleases github, CancellationToken token) => Task.CompletedTask;
+        public Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token) => Task.FromResult<byte[]?>(manifest);
+        public async Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token)
         {
             LastStream = new MemoryStream(archive, writable: false);
             if (BeforeOpenReturns is not null) await BeforeOpenReturns();

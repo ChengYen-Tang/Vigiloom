@@ -3,7 +3,6 @@
     <ProjectReference Include="../../src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="../Vigiloom.UpdateSecurity.Tests/Fixtures/PythonTuf/root.json" Link="Fixtures/root.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../packaging/agent/windows/*.ps1" Link="Fixtures/WindowsPackage/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

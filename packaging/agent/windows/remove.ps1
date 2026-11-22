@@ -38,7 +38,7 @@ try {
     [Vigiloom.Setup.Native]::Delete($agentName)
     [Vigiloom.Setup.Native]::Delete($updaterName)
 } finally { $lock.Dispose() }
-Write-Host 'Vigiloom services were removed. Identity, queued data, settings, trust and installed versions were retained.'
+Write-Host 'Vigiloom services were removed. Identity, queued data, settings and installed versions were retained.'
 Write-Host 'Run restore.ps1 from the installed Tools directory to restore this installation.'
 Write-Host 'Removing local services does not revoke the Agent credential in the central platform.'
 } finally { $maintenance.Dispose() }

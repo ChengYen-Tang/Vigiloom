@@ -53,13 +53,10 @@ public sealed class WindowsBundleTests(TestContext context)
         var agent = Path.Combine(root, "agent");
         var updater = Path.Combine(root, "updater");
         var output = Path.Combine(root, "out");
-        var trust = Path.Combine(root, "root.json");
         try
         {
             Directory.CreateDirectory(agent);
             Directory.CreateDirectory(updater);
-            await File.WriteAllTextAsync(trust, "test root", context.CancellationToken);
-            var fingerprint = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(trust, context.CancellationToken)));
             foreach (var directory in new[] { agent, updater })
             {
                 await File.WriteAllBytesAsync(Path.Combine(directory, "coreclr.dll"), [], context.CancellationToken);
@@ -72,7 +69,7 @@ public sealed class WindowsBundleTests(TestContext context)
             {
                 await WriteExecutableAsync(Path.Combine(agent, "Vigiloom.Agent.exe"), machine, context.CancellationToken);
                 await WriteExecutableAsync(Path.Combine(updater, "Vigiloom.Updater.exe"), machine, context.CancellationToken);
-                var result = await BundleAsync(agent, updater, trust, fingerprint, output, context.CancellationToken);
+                var result = await BundleAsync(agent, updater, output, context.CancellationToken);
                 Assert.AreEqual(0, result.ExitCode, result.Error);
                 using var archive = ZipFile.OpenRead(Path.Combine(output, $"vigiloom-agent-win-{architecture}.zip"));
                 Assert.IsNotNull(archive.GetEntry("install.ps1"));
@@ -85,13 +82,13 @@ public sealed class WindowsBundleTests(TestContext context)
             }
 
             await WriteExecutableAsync(Path.Combine(updater, "Vigiloom.Updater.exe"), 0x014c, context.CancellationToken);
-            var mixed = await BundleAsync(agent, updater, trust, fingerprint, Path.Combine(root, "mixed"), context.CancellationToken);
+            var mixed = await BundleAsync(agent, updater, Path.Combine(root, "mixed"), context.CancellationToken);
             Assert.AreNotEqual(0, mixed.ExitCode);
             Assert.Contains("same Windows architecture", mixed.Error);
             Assert.IsFalse(Directory.Exists(Path.Combine(root, "mixed")));
 
             await File.WriteAllBytesAsync(Path.Combine(agent, "Vigiloom.Agent.exe"), [1, 2, 3], context.CancellationToken);
-            var invalid = await BundleAsync(agent, updater, trust, fingerprint, Path.Combine(root, "invalid"), context.CancellationToken);
+            var invalid = await BundleAsync(agent, updater, Path.Combine(root, "invalid"), context.CancellationToken);
             Assert.AreNotEqual(0, invalid.ExitCode);
             Assert.Contains("Invalid Windows executable", invalid.Error);
             Assert.IsFalse(Directory.Exists(Path.Combine(root, "invalid")));
@@ -111,13 +108,13 @@ public sealed class WindowsBundleTests(TestContext context)
         return File.WriteAllBytesAsync(path, bytes, token);
     }
 
-    private static async Task<(int ExitCode, string Error)> BundleAsync(string agent, string updater, string trust, string fingerprint, string output, CancellationToken token)
+    private static async Task<(int ExitCode, string Error)> BundleAsync(string agent, string updater, string output, CancellationToken token)
     {
         var script = Path.Combine(AppContext.BaseDirectory, "Fixtures", "WindowsPackage", "bundle.ps1");
         var start = new ProcessStartInfo("powershell.exe") { RedirectStandardOutput = true, RedirectStandardError = true };
         start.Environment["PSModulePath"] = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "Modules");
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
-            "-AgentPublish", agent, "-UpdaterPublish", updater, "-TrustedRoot", trust, "-RootSha256", fingerprint, "-OutputDirectory", output })
+            "-AgentPublish", agent, "-UpdaterPublish", updater, "-OutputDirectory", output })
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start PowerShell.");
         try

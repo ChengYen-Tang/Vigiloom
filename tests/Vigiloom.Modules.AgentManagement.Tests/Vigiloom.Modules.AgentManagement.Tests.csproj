@@ -9,7 +9,6 @@
   <ItemGroup>
     <PackageReference Include="Respawn" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <Compile Include="../Vigiloom.UpdateSecurity.Tests/TestRepository.cs" Link="Fixtures/TestRepository.cs" />
     <Compile Include="../Fixtures/AgentPackages/AvailablePackageTransport.cs" Link="Fixtures/AvailablePackageTransport.cs" />
   </ItemGroup>
 </Project>
