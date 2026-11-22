@@ -612,6 +612,16 @@ public sealed class AgentIdentityHttpTests
                 serviceDb.TraceSpans.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [] });
                 await serviceDb.SaveChangesAsync(token);
             }
+            await using (var securityDb = await security.CreateDbContextAsync(token))
+            {
+                var source = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource { Key = "event-test" };
+                var revision = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "1", RetrievedAt = now, Digest = new byte[32], Artifact = [1], SchemaVersion = "1", MappingVersion = "1", LicenseEvidence = "test", RecordCount = 1 };
+                var finding = new Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityFinding { DeviceId = device.Id, SourceId = source.Id, PackageKey = "test", AdvisoryId = "CVE-2025-1234", IdentityHash = new byte[32], FirstEvaluatedAt = now, LastEvaluatedAt = now, LastRevisionId = revision.Id };
+                var evaluation = new Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityEvaluation { RunId = Guid.CreateVersion7(), FindingId = finding.Id, SourceId = source.Id, RevisionId = revision.Id, AgentId = Guid.CreateVersion7(), HostSnapshotId = Guid.CreateVersion7(), PackageSnapshotId = Guid.CreateVersion7(), EvaluatedAt = now, MatcherVersion = "1", SourcePackage = "test", SourceVersion = "1", BinaryVersion = "1", Ecosystem = "Ubuntu:24.04:LTS", Architecture = "amd64" };
+                securityDb.IntelligenceSources.Add(source); securityDb.IntelligenceRevisions.Add(revision);
+                securityDb.VulnerabilityFindings.Add(finding); securityDb.VulnerabilityEvaluations.Add(evaluation);
+                await securityDb.SaveChangesAsync(token);
+            }
             var eventUrl = $"/api/v1/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
             using (var denied = await client.GetAsync(eventUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             using var timelineResponse = await reader.GetAsync(eventUrl, token);
@@ -623,6 +633,7 @@ public sealed class AgentIdentityHttpTests
                 x.Evidence.Contains("原文：event", StringComparison.Ordinal) && x.Evidence.Contains("解析版本 1", StringComparison.Ordinal) && x.Evidence.EndsWith('…')));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-log" && x.Summary.Contains("unique service event", StringComparison.Ordinal)));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-trace" && x.Evidence.Contains("0202020202020202", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "vulnerability" && x.Link == $"/devices/{device.Id:D}?tab=vulnerabilities&search=CVE-2025-1234"));
             Guid apiId;
             using (var apiClient = PingTestSite.Client(factory))
             {
