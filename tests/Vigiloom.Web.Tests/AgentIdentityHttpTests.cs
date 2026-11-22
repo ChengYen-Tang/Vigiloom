@@ -563,7 +563,7 @@ public sealed class AgentIdentityHttpTests
             }
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
-            var item = new AgentLogRecord(Guid.CreateVersion7(), now, "event", null, null, null, null, null);
+            var item = new AgentLogRecord(Guid.CreateVersion7(), now, "event" + new string(' ', 600), null, null, null, null, null);
             var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [item]);
             var bytes = AgentLogBatchCodec.Serialize(batch);
             using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(bytes), token))
@@ -598,7 +598,7 @@ public sealed class AgentIdentityHttpTests
             Assert.IsTrue(response.Headers.CacheControl?.NoStore);
             var history = await response.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
             Assert.IsNotNull(history); Assert.HasCount(1, history.Items);
-            Assert.AreEqual("event", history.Items[0].Content);
+            Assert.AreEqual(item.Content, history.Items[0].Content);
             await using (var serviceDb = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             {
                 var serviceSource = new Vigiloom.Modules.ServiceObservability.Domain.ServiceSource("events", new byte[32], now);
@@ -619,7 +619,8 @@ public sealed class AgentIdentityHttpTests
             Assert.IsTrue(timelineResponse.Headers.CacheControl?.NoStore);
             var timeline = await timelineResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
             Assert.IsNotNull(timeline);
-            Assert.IsTrue(timeline.Items.Any(x => x.Source == "host-log" && x.ResourceId == device.Id));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "host-log" && x.ResourceId == device.Id &&
+                x.Evidence.Contains("原文：event", StringComparison.Ordinal) && x.Evidence.Contains("解析版本 1", StringComparison.Ordinal) && x.Evidence.EndsWith('…')));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-log" && x.Summary.Contains("unique service event", StringComparison.Ordinal)));
             Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-trace" && x.Evidence.Contains("0202020202020202", StringComparison.Ordinal)));
             Guid apiId;
