@@ -362,11 +362,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 await using (var locked = vault.Acquire())
                 {
                     await host.StartAsync(token);
-                    await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+                    await clock.LocalRetryScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
                     Assert.AreEqual(AgentSettings.Default, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
                 }
-                clock.Advance(TimeSpan.FromSeconds(361));
-                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                clock.Advance(TimeSpan.FromSeconds(31));
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
                 var runtime = host.Services.GetRequiredService<AgentSettingsRuntime>();
                 Assert.AreEqual(cached.Settings, runtime.Current);
                 Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
@@ -380,7 +380,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 metricRuntime.Bind(firstOwner);
                 Assert.AreEqual(AgentSettings.Default, runtime.Current);
                 clock.Advance(TimeSpan.FromSeconds(361));
-                await clock.ThirdSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
                 Assert.AreEqual(cached.Settings, runtime.Current);
                 Assert.AreEqual(cachedMetrics.Settings, metricRuntime.Current);
                 Assert.AreEqual(AgentConfigurationFailure.Unavailable, runtime.Report()?.Report.Failure);
@@ -438,12 +438,12 @@ public sealed class HostLifecycleTests(TestContext testContext)
             try
             {
                 await host.StartAsync(token);
-                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
+                await clock.LocalRetryScheduled.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
                 Assert.AreEqual(cached.Settings, host.Services.GetRequiredService<AgentSettingsRuntime>().Current);
                 Assert.AreEqual(AgentMetricSettings.Default, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
                 await File.WriteAllBytesAsync(metricPath, validMetricBytes, token);
-                clock.Advance(TimeSpan.FromSeconds(361));
-                await clock.SecondSettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+                clock.Advance(TimeSpan.FromSeconds(31));
+                await clock.SettingsScheduled.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
                 var runtime = host.Services.GetRequiredService<AgentSettingsRuntime>();
                 Assert.AreEqual(cached.Settings, runtime.Current);
                 Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
@@ -1583,6 +1583,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public TaskCompletionSource FirstDailyScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SecondDailyScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource LocalRetryScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource SecondSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ThirdSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ConfiguredBatchScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1596,6 +1597,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             var timer = inner.CreateTimer(callback, state, dueTime, period);
+            if (dueTime == TimeSpan.FromSeconds(30)) LocalRetryScheduled.TrySetResult();
             if (dueTime == TimeSpan.FromMilliseconds(250))
             {
                 Interlocked.Increment(ref burstCount);

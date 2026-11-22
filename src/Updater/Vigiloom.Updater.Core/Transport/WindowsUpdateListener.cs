@@ -15,18 +15,21 @@ public sealed class WindowsUpdateListener : ILocalUpdateListener
 {
     private readonly string pipeName;
     private readonly PipeSecurity security;
+    private readonly Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential;
     private readonly Channel<UpdateHandoff> requests = Channel.CreateBounded<UpdateHandoff>(new BoundedChannelOptions(1)
     { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly CancellationTokenSource shutdown = new();
     private int started;
 
-    public WindowsUpdateListener(SecurityIdentifier agentSid) : this(agentSid, UpdateHandoff.WindowsPipeName) { }
+    public WindowsUpdateListener(SecurityIdentifier agentSid, Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential = null)
+        : this(agentSid, UpdateHandoff.WindowsPipeName, stageCredential) { }
 
-    internal WindowsUpdateListener(SecurityIdentifier agentSid, string pipeName)
+    internal WindowsUpdateListener(SecurityIdentifier agentSid, string pipeName, Func<UpdateHandoff, CancellationToken, Task<bool>>? stageCredential = null)
     {
         ArgumentNullException.ThrowIfNull(agentSid);
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
         this.pipeName = pipeName;
+        this.stageCredential = stageCredential;
         using var identity = WindowsIdentity.GetCurrent();
         var owner = identity.User ?? throw new UnauthorizedAccessException("The Updater identity is unavailable.");
         security = new PipeSecurity();
@@ -60,8 +63,9 @@ public sealed class WindowsUpdateListener : ILocalUpdateListener
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
                     deadline.CancelAfter(TimeSpan.FromSeconds(15));
                     var request = await BoundedJsonFrame.ReadAsync<UpdateHandoff>(pipe, deadline.Token);
-                    var status = !request.IsValid() ? UpdateHandoffStatus.Rejected :
-                        requests.Writer.TryWrite(request) ? UpdateHandoffStatus.Accepted : UpdateHandoffStatus.Busy;
+                    var status = !request.IsValid() ? UpdateHandoffStatus.Rejected : request.StageCredential
+                        ? stageCredential is not null && await stageCredential(request, deadline.Token) ? UpdateHandoffStatus.CredentialStaged : UpdateHandoffStatus.Rejected
+                        : requests.Writer.TryWrite(request) ? UpdateHandoffStatus.Accepted : UpdateHandoffStatus.Busy;
                     await BoundedJsonFrame.WriteAsync(pipe, new UpdateHandoffResponse { Status = status }, deadline.Token);
                     // Wait for the client to consume the reply and close; Disconnect can discard unread bytes.
                     if (await pipe.ReadAsync(new byte[1], deadline.Token) != 0)

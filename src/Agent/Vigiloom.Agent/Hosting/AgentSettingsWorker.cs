@@ -47,6 +47,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                 do
                 {
                     if (!IsCurrent(directory, server)) break;
+                    var retryLocalRead = false;
                     try
                     {
                         owner = await AgentSettingsClient.GetOwnerAsync(vault, uri, stoppingToken);
@@ -62,22 +63,22 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                         {
                             if (runtime.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await client.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => runtime.RestoreIfEmpty(owner, saved), () => runtime.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => runtime.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; runtime.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                             if (metrics.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await metricClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => metrics.RestoreIfEmpty(owner, saved), () => metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => metrics.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                             if (inventory.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await inventoryClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => inventory.RestoreIfEmpty(owner, saved), () => inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => inventory.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                             if (logs.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await logClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => logs.RestoreIfEmpty(owner, saved), () => logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => logs.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                             if (integrity.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await integrityClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => integrity.RestoreIfEmpty(owner, saved), () => integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => integrity.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                             if (baseline.NeedsRestore(owner)) await RestoreAsync(
                                 async () => (await baselineClient.LoadSavedAsync(vault, uri, stoppingToken)).Settings,
-                                saved => baseline.RestoreIfEmpty(owner, saved), () => baseline.MarkFailure(owner, AgentConfigurationFailure.LocalStorage), directory, server, stoppingToken);
+                                saved => baseline.RestoreIfEmpty(owner, saved), () => { retryLocalRead = true; baseline.MarkFailure(owner, AgentConfigurationFailure.LocalStorage); }, directory, server, stoppingToken);
                         }
                         var result = await client.SyncAsync(vault, uri, stoppingToken);
                         if (!IsCurrent(directory, server)) break;
@@ -97,6 +98,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         runtime.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent configuration synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -117,6 +119,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         capacity.SetFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent queue capacity synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -142,6 +145,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         metrics.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent metric settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -167,6 +171,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         inventory.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent inventory settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -192,6 +197,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         logs.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent log settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -217,6 +223,7 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         integrity.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent integrity settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
@@ -244,10 +251,11 @@ internal sealed class AgentSettingsWorker(AgentSettingsClient client, AgentQueue
                     }
                     catch (Exception ex) when (IsRecoverable(ex, stoppingToken))
                     {
+                        if (ex is IOException) retryLocalRead = true;
                         baseline.MarkFailure(owner, AgentConfigurationFailure.LocalStorage);
                         logger.LogWarning("Agent baseline settings synchronization failed: {ErrorType}.", ex.GetType().Name);
                     }
-                    var seconds = runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
+                    var seconds = retryLocalRead ? 30 : runtime.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
                     if (!await DelayAsync(TimeSpan.FromSeconds(seconds), stoppingToken)) return;
                 } while (IsCurrent(directory, server));
             }

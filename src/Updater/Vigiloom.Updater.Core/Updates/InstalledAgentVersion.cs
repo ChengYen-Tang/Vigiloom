@@ -7,17 +7,22 @@ namespace Vigiloom.Updater.Core.Updates;
 /// <summary>Reads the installed Agent's informational version without loading or executing it.</summary>
 public static class InstalledAgentVersion
 {
-    public static string Read(string versionDirectory)
+    public static string Read(string versionDirectory) => ReadAssembly(versionDirectory, "Vigiloom.Agent");
+
+    /// <summary>Reads a staged Updater version without loading or executing it.</summary>
+    public static string ReadUpdater(string versionDirectory) => ReadAssembly(versionDirectory, "Vigiloom.Updater");
+
+    private static string ReadAssembly(string versionDirectory, string assemblyName)
     {
-        var path = Path.Combine(versionDirectory, "Vigiloom.Agent.dll");
+        var path = Path.Combine(versionDirectory, assemblyName + ".dll");
         using var stream = File.OpenRead(path);
         using var image = new PEReader(stream);
         if (!image.HasMetadata) throw new InvalidDataException("The installed Agent assembly has no metadata.");
         var metadata = image.GetMetadataReader();
         if (!metadata.IsAssembly) throw new InvalidDataException("The installed Agent is not an assembly.");
         var assembly = metadata.GetAssemblyDefinition();
-        if (metadata.GetString(assembly.Name) != "Vigiloom.Agent")
-            throw new InvalidDataException("The installed assembly is not the Agent.");
+        if (metadata.GetString(assembly.Name) != assemblyName)
+            throw new InvalidDataException("The installed assembly does not match the expected component.");
         foreach (var handle in assembly.GetCustomAttributes())
         {
             var attribute = metadata.GetCustomAttribute(handle);

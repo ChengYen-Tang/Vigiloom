@@ -4,17 +4,18 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Updater.Core.Updates;
 
-public enum UpdatePhase { Prepared, Stopping, Switching, Starting, Verifying, RollingBack, Succeeded, RolledBack, RollbackFailed }
+public enum UpdatePhase { Prepared, Stopping, Switching, Starting, Verifying, RollingBack, Succeeded, RolledBack, RollbackFailed, Failed }
 
 public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Error, Guid? MessageId = null);
 
 /// <summary>Local recovery information for the single update handled by an Updater service.</summary>
 public sealed record UpdateState(Guid Id, string PreviousDirectory, string TargetDirectory, UpdatePhase Phase,
-    DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, int RollbackAttempts = 0, string? Error = null, bool RetryAllowed = false,
-    UpdateProvenance? Provenance = null);
+    DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, string? Error = null, bool RetryAllowed = false,
+    UpdateProvenance? Provenance = null, IReadOnlyList<string>? RetainedFailedDirectories = null,
+    string? PendingUpdaterDirectory = null, string? PreviousAgentVersion = null, int SequenceOffset = 0);
 
 /// <summary>Non-secret target identity retained across local recovery.</summary>
-public sealed record UpdateProvenance(Guid AgentId, Guid PackageId, string ManifestSha256)
+public sealed record UpdateProvenance(Guid AgentId, Guid PackageId, string ManifestSha256, string? PackageVersion = null)
 {
     public bool IsValid() => AgentId.Version == 7 && PackageId.Version == 7 && ManifestSha256 is { Length: 64 } &&
         ManifestSha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
@@ -32,6 +33,7 @@ public sealed record UpdateOutcome(Guid MessageId, Guid UpdateId, UpdateProvenan
             UpdatePhase.Succeeded => AgentUpdateResultKind.Succeeded,
             UpdatePhase.RolledBack => AgentUpdateResultKind.RolledBack,
             UpdatePhase.RollbackFailed => AgentUpdateResultKind.RollbackFailed,
+            UpdatePhase.Failed => AgentUpdateResultKind.Failed,
             _ => throw new InvalidDataException("The update outcome is not terminal.")
         }, OccurredAt, RetryAllowed, Failure switch
         {
@@ -53,6 +55,31 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
 {
     private readonly string directory = Path.GetFullPath(stateDirectory);
     private string PathName => Path.Combine(directory, "update.db");
+
+    /// <summary>Retains one retryable preparation failure without replacing an earlier recovery state.</summary>
+    public async Task RecordPreparationFailureAsync(Guid updateId, UpdateProvenance provenance, DateTimeOffset occurredAt, CancellationToken token)
+    {
+        if (updateId.Version != 7 || !provenance.IsValid()) throw new ArgumentException("The update provenance is invalid.");
+        Directory.CreateDirectory(directory);
+        var outcome = new UpdateOutcome(Guid.CreateVersion7(), updateId, provenance, 1, UpdatePhase.Failed,
+            occurredAt.ToUniversalTime(), true, UpdateFailure.Other);
+        await using var connection = Open(SqliteOpenMode.ReadWriteCreate);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO UpdateOutbox (MessageId, AgentId, UpdateId, Sequence, Payload) VALUES ($message, $agent, $update, 1, $payload) ON CONFLICT(UpdateId, Sequence) DO NOTHING";
+        command.Parameters.AddWithValue("$message", outcome.MessageId.ToString("D"));
+        command.Parameters.AddWithValue("$agent", provenance.AgentId.ToString("D"));
+        command.Parameters.AddWithValue("$update", updateId.ToString("D"));
+        command.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(outcome));
+        if (await command.ExecuteNonQueryAsync(token) == 0)
+        {
+            command.CommandText = "SELECT Payload FROM UpdateOutbox WHERE UpdateId = $update AND Sequence = 1";
+            var stored = await command.ExecuteScalarAsync(token) as string;
+            var existing = stored is null ? null : JsonSerializer.Deserialize<UpdateOutcome>(stored);
+            if (existing is null || existing.Provenance != provenance || existing.Phase != UpdatePhase.Failed ||
+                !existing.RetryAllowed || existing.Failure != UpdateFailure.Other)
+                throw new InvalidDataException("A different preparation outcome already exists for this update.");
+        }
+    }
 
     public async Task<UpdateState?> ReadAsync(CancellationToken token)
     {
@@ -79,9 +106,9 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
         command.CommandText = "INSERT INTO UpdateJournal (Id, State) VALUES (1, $state) ON CONFLICT(Id) DO UPDATE SET State = excluded.State";
         command.Parameters.AddWithValue("$state", JsonSerializer.Serialize(state));
         await command.ExecuteNonQueryAsync(token);
-        if (state.Provenance is { } provenance && state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed)
+        if (state.Provenance is { } provenance && state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed or UpdatePhase.Failed)
         {
-            var outcome = new UpdateOutcome(Guid.CreateVersion7(), state.Id, provenance, state.Steps.Count, state.Phase,
+            var outcome = new UpdateOutcome(Guid.CreateVersion7(), state.Id, provenance, checked(state.Steps.Count + state.SequenceOffset), state.Phase,
                 state.UpdatedAt.ToUniversalTime(), state.RetryAllowed, Failure(state.Error));
             command.Parameters.Clear();
             command.CommandText = "INSERT INTO UpdateOutbox (MessageId, AgentId, UpdateId, Sequence, Payload) VALUES ($message, $agent, $update, $sequence, $payload) ON CONFLICT(UpdateId, Sequence) DO NOTHING";
@@ -130,6 +157,26 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
         command.Parameters.AddWithValue("$agent", agentId.ToString("D"));
         command.Parameters.AddWithValue("$message", messageId.ToString("D"));
         await command.ExecuteNonQueryAsync(token);
+    }
+
+    /// <summary>Removes delivered history while retaining the current journal and assignment for deduplication.</summary>
+    public async Task PruneAcknowledgedAsync(Guid activeUpdateId, CancellationToken token)
+    {
+        if (activeUpdateId.Version != 7) throw new ArgumentException("A valid update identifier is required.", nameof(activeUpdateId));
+        if (!File.Exists(PathName)) return;
+        await using var connection = Open(SqliteOpenMode.ReadWrite);
+        await using var transaction = connection.BeginTransaction();
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT State FROM UpdateJournal WHERE Id = 1";
+        var value = await command.ExecuteScalarAsync(token) as string;
+        var current = value is null ? null : JsonSerializer.Deserialize<UpdateState>(value)
+            ?? throw new InvalidDataException("The update journal is empty.");
+        command.CommandText = "DELETE FROM UpdateOutbox WHERE Acknowledged = 1 AND UpdateId <> $active AND UpdateId <> $current";
+        command.Parameters.AddWithValue("$active", activeUpdateId.ToString("D"));
+        command.Parameters.AddWithValue("$current", current?.Id.ToString("D") ?? "");
+        await command.ExecuteNonQueryAsync(token);
+        await transaction.CommitAsync(token);
     }
 
     private static UpdateFailure? Failure(string? error) => error switch

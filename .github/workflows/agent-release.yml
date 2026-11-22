@@ -58,14 +58,16 @@ jobs:
           python-version: '3.12'
       - name: Install packaging dependencies
         run: python -m pip install --require-hashes -r tools/agent-release/requirements.txt
-      - name: Validate version and publish Agent
+      - name: Publish Agent and Updater packages
         shell: pwsh
         run: |
           python -c "import sys; sys.path.insert(0, 'tools/agent-release'); import publisher; publisher.normalized_version(sys.argv[1])" $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Invalid Agent version.' }
           dotnet publish src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj --configuration Release --runtime $env:RELEASE_RID --self-contained true --output "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" "-p:Version=$env:RELEASE_VERSION"
           if ($LASTEXITCODE -ne 0) { throw 'Agent publishing failed.' }
-          python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" --output-directory "$env:RUNNER_TEMP/agent-package-$env:RELEASE_RID" --rid $env:RELEASE_RID --version $env:RELEASE_VERSION
+          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime $env:RELEASE_RID --self-contained true --output "$env:RUNNER_TEMP/updater-publish-$env:RELEASE_RID"
+          if ($LASTEXITCODE -ne 0) { throw 'Updater publishing failed.' }
+          python tools/agent-release/package.py --publish-directory "$env:RUNNER_TEMP/agent-publish-$env:RELEASE_RID" --updater-directory "$env:RUNNER_TEMP/updater-publish-$env:RELEASE_RID" --output-directory "$env:RUNNER_TEMP/agent-package-$env:RELEASE_RID" --rid $env:RELEASE_RID --version $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Agent packaging failed.' }
       - name: Build installer bundle
         shell: pwsh
@@ -77,8 +79,6 @@ jobs:
           $updater = Join-Path $env:RUNNER_TEMP "updater-publish-$env:RELEASE_RID"
           $agent = Join-Path $env:RUNNER_TEMP "agent-publish-$env:RELEASE_RID"
           $output = Join-Path $env:RUNNER_TEMP "installer-$env:RELEASE_RID"
-          dotnet publish src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj --configuration Release --runtime $env:RELEASE_RID --self-contained true --output $updater "-p:Version=$env:RELEASE_VERSION"
-          if ($LASTEXITCODE -ne 0) { throw 'Updater publishing failed.' }
           if ($IsWindows) {
             & ./packaging/agent/windows/bundle.ps1 -AgentPublish $agent -UpdaterPublish $updater -TrustedRoot $root -RootSha256 $env:BOOTSTRAP_ROOT_SHA256 -OutputDirectory $output
           } else {

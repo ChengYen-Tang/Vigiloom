@@ -1,3 +1,11 @@
+function Test-AgentWindowsVersion([version]$Version, [int]$ProductType) {
+    if ($Version.Major -eq 6) {
+        return $Version.Minor -in @(2, 3) -and $ProductType -in @(2, 3)
+    }
+    if ($Version.Major -eq 10) { return $Version.Build -ge 14393 }
+    return $Version.Major -gt 10
+}
+
 function Get-AgentExecutableArchitecture([string]$Path) {
     $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try {

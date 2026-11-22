@@ -474,19 +474,34 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 await verify.Database.ExecuteSqlRawAsync("DROP TRIGGER [service].[RejectOtlpTest]", token);
                 await verify.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO [service].[LogRecords] ([ServiceId],[ContextId],[InstanceId],[OccurredAt],[ReceivedAt],[UsedReceivedTime],[UsedObservedTime],[TraceId],[SpanId],[RecordPayload])
-                    SELECT TOP (2500) l.[ServiceId],l.[ContextId],l.[InstanceId],l.[OccurredAt],l.[ReceivedAt],l.[UsedReceivedTime],l.[UsedObservedTime],l.[TraceId],l.[SpanId],l.[RecordPayload]
-                    FROM [service].[LogRecords] l CROSS JOIN sys.all_objects a CROSS JOIN sys.all_objects b WHERE l.[ServiceId] = {approved.ServiceId}
+                    SELECT l.[ServiceId],l.[ContextId],l.[InstanceId],l.[OccurredAt],l.[ReceivedAt],l.[UsedReceivedTime],l.[UsedObservedTime],l.[TraceId],l.[SpanId],l.[RecordPayload]
+                    FROM (SELECT TOP (1) * FROM [service].[LogRecords] WHERE [ServiceId] = {approved.ServiceId} ORDER BY [RowId]) l
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) a(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) b(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) c(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) d(n)
                     """, token);
                 await verify.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO [service].[TraceSpans] ([ServiceId],[InstanceId],[ContextId],[StartedAt],[EndedAt],[ReceivedAt],[TraceId],[SpanId],[ParentSpanId],[SpanPayload])
-                    SELECT TOP (2500) s.[ServiceId],s.[InstanceId],s.[ContextId],s.[StartedAt],s.[EndedAt],s.[ReceivedAt],s.[TraceId],s.[SpanId],s.[ParentSpanId],s.[SpanPayload]
-                    FROM [service].[TraceSpans] s CROSS JOIN sys.all_objects a CROSS JOIN sys.all_objects b WHERE s.[ServiceId] = {approved.ServiceId}
+                    SELECT s.[ServiceId],s.[InstanceId],s.[ContextId],s.[StartedAt],s.[EndedAt],s.[ReceivedAt],s.[TraceId],s.[SpanId],s.[ParentSpanId],s.[SpanPayload]
+                    FROM (SELECT TOP (1) * FROM [service].[TraceSpans] WHERE [ServiceId] = {approved.ServiceId} ORDER BY [RowId]) s
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) a(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) b(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) c(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) d(n)
                     """, token);
                 await verify.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO [service].[MetricPoints] ([ServiceId],[InstanceId],[ContextId],[OccurredAt],[ReceivedAt],[Kind],[PointPayload])
-                    SELECT TOP (2500) m.[ServiceId],m.[InstanceId],m.[ContextId],m.[OccurredAt],m.[ReceivedAt],m.[Kind],m.[PointPayload]
-                    FROM [service].[MetricPoints] m CROSS JOIN sys.all_objects a CROSS JOIN sys.all_objects b WHERE m.[ServiceId] = {approved.ServiceId}
+                    SELECT m.[ServiceId],m.[InstanceId],m.[ContextId],m.[OccurredAt],m.[ReceivedAt],m.[Kind],m.[PointPayload]
+                    FROM (SELECT TOP (1) * FROM [service].[MetricPoints] WHERE [ServiceId] = {approved.ServiceId} ORDER BY [RowId]) m
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) a(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) b(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) c(n)
+                    CROSS JOIN (VALUES (0),(1),(2),(3),(4)) d(n)
                     """, token);
+                Assert.AreEqual(2501, await verify.LogRecords.CountAsync(x => x.ServiceId == approved.ServiceId, token));
+                Assert.AreEqual(2501, await verify.TraceSpans.CountAsync(x => x.ServiceId == approved.ServiceId, token));
+                Assert.AreEqual(2501, await verify.MetricPoints.CountAsync(x => x.ServiceId == approved.ServiceId, token));
             }
             var lastLogs = await reader.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"{history}/logs?{window}&page=100", token);
             var lastTraces = await reader.GetFromJsonAsync<TelemetryPage<TelemetrySpan, TelemetryContext>>($"{history}/traces?{window}&page=100", token);

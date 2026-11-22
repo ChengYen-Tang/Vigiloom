@@ -83,12 +83,21 @@ class PublisherTests(unittest.TestCase):
         executable.write_bytes(b"test executable")
         executable.chmod(0o755)
         (directory / "appsettings.json").write_text("{}", encoding="utf-8")
+        updater = self.path / "updater-publish"
+        updater.mkdir()
+        updater_executable = updater / "Vigiloom.Updater"
+        updater_executable.write_bytes(b"updater executable")
+        updater_executable.chmod(0o755)
+        (updater / "Vigiloom.Updater.dll").write_bytes(b"updater assembly")
         output = self.path / "archives"
-        archive = package.package(directory, output, "linux-x64", "1.2.3")
+        archive = package.package(directory, output, "linux-x64", "1.2.3", updater)
         with ZipFile(archive) as result:
             self.assertEqual(b"test executable", result.read("Vigiloom.Agent"))
+            self.assertEqual(b"updater executable", result.read("updater/Vigiloom.Updater"))
+            self.assertEqual(b"updater assembly", result.read("updater/Vigiloom.Updater.dll"))
             if os.name != "nt":
                 self.assertNotEqual(0, (result.getinfo("Vigiloom.Agent").external_attr >> 16) & 0o111)
+                self.assertNotEqual(0, (result.getinfo("updater/Vigiloom.Updater").external_attr >> 16) & 0o111)
         with self.assertRaises(FileExistsError):
             package.package(directory, output, "linux-x64", "1.2.3")
         with self.assertRaises(ValueError):
