@@ -1,6 +1,8 @@
 name: Agent package release
 
 on:
+  push:
+    branches: [release/agent]
   schedule:
     - cron: '47 */6 * * *'
   workflow_dispatch:
@@ -28,8 +30,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Select Agent release version
+    if: github.event_name != 'schedule' || vars.VIGILOOM_RELEASE_AUTOMATIC == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      operation: ${{ steps.version.outputs.operation }}
+      version: ${{ steps.version.outputs.version }}
+      minimum_updater: ${{ steps.version.outputs.minimum_updater }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_MINIMUM_UPDATER: ${{ inputs.minimum_updater }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == push ]]; then
+            python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          release = json.loads(Path('packaging/agent/release.json').read_text(encoding='utf-8'))
+          for key in ('version', 'minimum_updater'):
+              value = release[key]
+              if not isinstance(value, str) or not value or '\n' in value or '\r' in value:
+                  raise ValueError(f'Invalid {key} in Agent release configuration')
+              print(f'{key}={value}')
+          print('operation=release')
+          PY
+          else
+            printf 'operation=%s\nversion=%s\nminimum_updater=%s\n' "${INPUT_OPERATION:-refresh}" "$INPUT_VERSION" "$INPUT_MINIMUM_UPDATER" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
-    if: github.ref == 'refs/heads/master' && inputs.operation == 'release'
+    needs: prepare
+    if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/release/agent') && needs.prepare.outputs.operation == 'release'
     name: Build Agent (${{ matrix.rid }})
     strategy:
       fail-fast: false
@@ -44,7 +82,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
-      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       RELEASE_RID: ${{ matrix.rid }}
       BOOTSTRAP_ROOT_BASE64: ${{ vars.VIGILOOM_BOOTSTRAP_ROOT_BASE64 }}
       BOOTSTRAP_ROOT_SHA256: ${{ vars.VIGILOOM_BOOTSTRAP_ROOT_SHA256 }}
@@ -100,13 +138,13 @@ jobs:
 
   publish:
     name: Sign and publish Agent catalogue
-    needs: build
+    needs: [prepare, build]
     if: >-
-      always() && github.ref == 'refs/heads/master' &&
+      always() && needs.prepare.result == 'success' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/release/agent') &&
       ((github.event_name == 'schedule' && vars.VIGILOOM_RELEASE_AUTOMATIC == 'true' && needs.build.result == 'skipped') ||
-       (github.event_name == 'workflow_dispatch' &&
-        ((inputs.operation == 'release' && needs.build.result == 'success') ||
-         (inputs.operation != 'release' && needs.build.result == 'skipped'))))
+       (github.event_name != 'schedule' &&
+        ((needs.prepare.outputs.operation == 'release' && needs.build.result == 'success') ||
+         (needs.prepare.outputs.operation != 'release' && needs.build.result == 'skipped'))))
     # A dedicated private runner owns the single-host publication store.
     runs-on: [self-hosted, Linux, vigiloom-release]
     environment: agent-release
@@ -114,9 +152,9 @@ jobs:
       contents: write
     timeout-minutes: 45
     env:
-      RELEASE_OPERATION: ${{ inputs.operation || 'refresh' }}
-      RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_MINIMUM_UPDATER: ${{ inputs.minimum_updater }}
+      RELEASE_OPERATION: ${{ needs.prepare.outputs.operation }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_MINIMUM_UPDATER: ${{ needs.prepare.outputs.minimum_updater }}
       RELEASE_REVOKE: ${{ inputs.revoke }}
       VIGILOOM_RELEASE_STORE: ${{ vars.VIGILOOM_RELEASE_STORE }}
       VIGILOOM_RELEASE_BOOTSTRAP: ${{ vars.VIGILOOM_RELEASE_BOOTSTRAP }}
@@ -134,19 +172,19 @@ jobs:
         with:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
-        if: inputs.operation == 'release'
+        if: needs.prepare.outputs.operation == 'release'
         with:
           pattern: agent-*
           path: ${{ runner.temp }}/vigiloom-release-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           merge-multiple: true
       - uses: actions/download-artifact@v4
-        if: inputs.operation == 'release'
+        if: needs.prepare.outputs.operation == 'release'
         with:
           pattern: installer-*
           path: ${{ runner.temp }}/vigiloom-installer-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           merge-multiple: true
       - name: Prepare draft installer release
-        if: inputs.operation == 'release'
+        if: needs.prepare.outputs.operation == 'release'
         shell: bash
         env:
           INSTALLERS: ${{ runner.temp }}/vigiloom-installer-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
@@ -198,11 +236,11 @@ jobs:
           esac
           "$work/venv/bin/python" tools/agent-release/run_release.py "${args[@]}"
       - name: Publish installer release
-        if: inputs.operation == 'release'
+        if: needs.prepare.outputs.operation == 'release'
         shell: bash
         run: gh release edit "agent-v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
       - name: Remove this run's downloaded archives
-        if: always() && inputs.operation == 'release'
+        if: always() && needs.prepare.outputs.operation == 'release'
         shell: bash
         run: |
           set -euo pipefail
