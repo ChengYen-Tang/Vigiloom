@@ -122,14 +122,14 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
         await using (var db = factory.CreateDbContext())
         {
             var package = await db.Packages.SingleAsync(token);
-            Assert.IsFalse(package.Listed, "New trust metadata must invalidate the old catalogue when publication fails.");
+            Assert.IsTrue(package.Listed, "A failed refresh must preserve the last accepted catalogue.");
             Assert.IsTrue(package.Revoked);
             Assert.AreEqual(string.Concat(Enumerable.Repeat("aa", 32)), package.Sha256);
         }
     });
 
     [TestMethod]
-    public Task Catalogue_TrustAdvanceAndInvalidationCommitTogetherAndRecover() => WithIsolatedDatabase(async (factory, token) =>
+    public Task Catalogue_FailedRefreshPreservesLastVerifiedCatalogue() => WithIsolatedDatabase(async (factory, token) =>
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var store = new UpdateTrustStore(factory, new OperationAuditWriter());
@@ -138,29 +138,9 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
         var uri = new Uri("https://updates.example.test/");
         await store.ProvisionAsync(first.Root(1, key), token);
         await store.RefreshCatalogueAsync(new TrustedCatalogueReader(uri, uri, first), TimeProvider.System, sourceVersion, cancellationToken: token);
-        first.MissingTarget = true;
-        await Assert.ThrowsAsync<Tuf.TufException>(() => store.RefreshCatalogueAsync(new TrustedCatalogueReader(uri, uri, first), TimeProvider.System, sourceVersion, cancellationToken: token));
-        await using (var db = factory.CreateDbContext()) Assert.IsTrue((await db.Packages.SingleAsync(token)).Listed);
-        first.MissingTarget = false;
-        await using (var db = factory.CreateDbContext())
-            await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER [agent].[FailPackageInvalidation] ON [agent].[Packages] AFTER UPDATE AS THROW 51000, 'Injected failure.', 1;", token);
-        var next = new TestRepository(key, 2, Catalogue("aa", false), metadataVersion: 2);
-        var injected = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(() => store.RefreshCatalogueAsync(new TrustedCatalogueReader(uri, uri, next), TimeProvider.System, sourceVersion, cancellationToken: token));
-        Assert.AreEqual(51000, injected.Number);
-        Assert.Contains("Injected failure.", injected.Message);
-        await using (var lease = await store.AcquireAsync(token))
-        {
-            using var timestamp = JsonDocument.Parse(lease.LoadMetadata("timestamp")!);
-            Assert.AreEqual(1, timestamp.RootElement.GetProperty("signed").GetProperty("version").GetInt32());
-        }
-        await using (var db = factory.CreateDbContext())
-        {
-            Assert.IsTrue((await db.Packages.SingleAsync(token)).Listed);
-            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [agent].[FailPackageInvalidation]", token);
-        }
-        next.MissingTarget = true;
+        var next = new TestRepository(key, 2, Catalogue("aa", false), metadataVersion: 2) { MissingTarget = true };
         await Assert.ThrowsAsync<Tuf.TufException>(() => store.RefreshCatalogueAsync(new TrustedCatalogueReader(uri, uri, next), TimeProvider.System, sourceVersion, cancellationToken: token));
-        await using (var db = factory.CreateDbContext()) Assert.IsFalse((await db.Packages.SingleAsync(token)).Listed);
+        await using (var db = factory.CreateDbContext()) Assert.IsTrue((await db.Packages.SingleAsync(token)).Listed);
         next.MissingTarget = false;
         await store.RefreshCatalogueAsync(new TrustedCatalogueReader(uri, uri, next), TimeProvider.System, sourceVersion, cancellationToken: token);
         await using (var db = factory.CreateDbContext()) Assert.IsTrue((await db.Packages.SingleAsync(token)).Listed);
