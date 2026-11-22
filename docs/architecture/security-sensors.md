@@ -31,6 +31,12 @@ event reader running as that account read a process event; running the script a
 second time also succeeded. This test does not by itself establish end-to-end
 delivery to the central platform.
 
+A separate check captured a real process event from Sysmon 15.22 in Windows
+Sandbox and sent that XML through the authenticated Agent batch endpoint. The
+event was stored and appeared in the authorized event timeline with its source,
+parser version and bounded original content. The capture and transmission were
+separate steps; this does not establish continuous Sandbox-to-server delivery.
+
 On Fedora 42 x64 under WSL, the Vigiloom scanner was exercised with the installed
 YARA engine: a match, a non-match, the file size check, timeout and cancellation
 of a running scan passed. The test package was removed afterward. The Windows x64
