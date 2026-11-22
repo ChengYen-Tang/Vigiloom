@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ using Vigiloom.UpdateSecurity;
 using Vigiloom.UpdateSecurity.Tests;
 using Vigiloom.Updater.Core.Updates;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Web.AgentPackages;
 
 namespace Vigiloom.Web.Tests;
 
@@ -45,9 +47,16 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             var repository = new TestRepository(signer, catalogue: catalog, additionalTargets: new Dictionary<string, byte[]> { [digest + ".json"] = manifest });
             var handler = new PublisherHandler(repository, hash, archive);
             using var publisher = new HttpClient(handler);
+            using var github = new HttpClient(new ReleaseHandler()) { BaseAddress = new Uri("https://api.github.com/") };
             var transport = new PackageLibraryTransport(Path.Combine(path, "server-cache"), 1024, TimeProvider.System, publisher);
             using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
-                builder.ConfigureServices(services => { services.RemoveAll<IPackageLibraryTransport>(); services.AddSingleton<IPackageLibraryTransport>(transport); }));
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IPackageLibraryTransport>();
+                    services.AddSingleton<IPackageLibraryTransport>(transport);
+                    services.RemoveAll<GitHubAgentReleases>();
+                    services.AddSingleton(new GitHubAgentReleases(github));
+                }));
             await PingTestSite.InitializeAsync(factory, token);
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var device = new Device("pipeline", "127.0.0.1", true, DateTimeOffset.UtcNow);
@@ -71,7 +80,20 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) packageId = (await db.Packages.SingleAsync(token)).Id;
             Assert.AreEqual(VersionAssignmentResult.Conflict, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, packageId, "", actor, token));
             Assert.IsNull((await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().GetAsync(agent.AgentId.Value, token))!.PackageId);
-            Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<PackageLibrary>().CacheAsync(packageId, token));
+            using (var admin = PingTestSite.Client(factory))
+            {
+                await PingTestSite.LoginAsync(admin, "admin", token);
+                using var page = await admin.GetAsync("/settings/agent-packages?releases=1", token);
+                var html = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                var form = html.QuerySelector($"form[action^='/settings/agent-packages/{packageId:D}/download']");
+                Assert.IsNotNull(form);
+                var anti = form.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+                using var response = await admin.PostAsync(form.GetAttribute("action"),
+                    new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = anti }), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+                Assert.AreEqual("/settings/agent-packages?releases=1&download=saved", response.Headers.Location?.OriginalString);
+            }
+            Assert.IsTrue(transport.IsCached(hash, digest));
             handler.Offline = true;
             Assert.AreEqual(VersionAssignmentResult.Saved, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, packageId, "", actor, token));
             var localTrust = Path.Combine(path, "updater-trust");
@@ -130,6 +152,13 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             }
             return bytes is null ? new(HttpStatusCode.NotFound) : new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
         }
+    }
+
+    private sealed class ReleaseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = new StringContent("[{\"tag_name\":\"agent-v1.0.0\",\"draft\":false,\"prerelease\":false}]", Encoding.UTF8, "application/json") });
     }
 
     private sealed class TestRuntime(string previous) : IAgentUpdateRuntime
