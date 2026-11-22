@@ -157,6 +157,14 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     : await ServiceAgentProcess.InstallLinuxAsync(script, bundle, caPath, server, device.Id, fingerprint, issued.Secret!, token);
                 var agentId = await WaitForAgentAsync(agents, device.Id, rid, token);
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
+                var logPath = windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Agent", "cursor-test.log")
+                    : "/var/lib/vigiloom/agent/cursor-test.log";
+                await AppendLogAsync(windows, logPath, "before-update", token);
+                var logSource = await scope.ServiceProvider.GetRequiredService<HostLogConfiguration>().CreateAsync(device.Id,
+                    new(AgentLogSourceKind.TextFile, "update-cursor-test", logPath, true, AgentTextLogMode.SingleLine), actor, token);
+                Assert.AreEqual(HostLogConfigurationStatus.Success, logSource.Status);
+                Assert.IsNotNull(logSource.Source);
                 // Enrollment can finish after the settings worker enters its normal five-minute polling delay.
                 // Restarting the installed service starts the next synchronization without extending the test by minutes.
                 await SetServiceRunningAsync(windows, running: false, token);
@@ -171,6 +179,8 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     return true;
                 }, token);
                 gate.BlockSettings();
+                var logMonitoring = scope.ServiceProvider.GetRequiredService<HostLogMonitoring>();
+                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -199,12 +209,16 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
                 }, token);
+                await AppendLogAsync(windows, logPath, "after-upgrade", token);
+                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
+                await AppendLogAsync(windows, logPath, "after-downgrade", token);
+                await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 var reportAfterUpdate = DateTimeOffset.UtcNow;
                 await gate.SettingsRejected.WaitAsync(TimeSpan.FromMinutes(3), token);
                 await WaitUntilAsync(async () =>
@@ -266,6 +280,18 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     await using var db = await agents.CreateDbContextAsync(token);
                     return await db.ReceivedBatches.CountAsync(x => x.AgentId == agentId && x.BatchId == original.BatchId, token) == 1;
                 }, token);
+                await WaitUntilAsync(async () =>
+                {
+                    await using var db = await agents.CreateDbContextAsync(token);
+                    return await db.HostLogs.CountAsync(x => x.AgentId == agentId && x.SourceId == logSource.Source.Settings.SourceId, token) >= 3;
+                }, token);
+                await using (var db = await agents.CreateDbContextAsync(token))
+                {
+                    var records = await db.HostLogs.AsNoTracking().Where(x => x.AgentId == agentId && x.SourceId == logSource.Source.Settings.SourceId)
+                        .OrderBy(x => x.RowId).ToArrayAsync(token);
+                    CollectionAssert.AreEqual(new[] { "before-update\n", "after-upgrade\n", "after-downgrade\n" }, records.Select(x => x.Content).ToArray());
+                    Assert.IsTrue(records.All(x => x.GapReason is null));
+                }
             }
             finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
         }, context.CancellationToken);
@@ -287,6 +313,20 @@ public sealed class AgentServiceUpdateTests(TestContext context)
     private static Task<string> ServicePidAsync(bool windows, bool agent, CancellationToken token) => windows
         ? RunAsync("powershell.exe", token, "-NoProfile", "-Command", $"(Get-CimInstance Win32_Service -Filter \"Name='{(agent ? "Vigiloom Agent" : "Vigiloom Updater")}'\").ProcessId")
         : RunAsync("systemctl", token, "show", agent ? "vigiloom-agent.service" : "vigiloom-updater.service", "--property=MainPID", "--value");
+
+    private static async Task AppendLogAsync(bool windows, string path, string line, CancellationToken token)
+    {
+        if (windows) await File.AppendAllTextAsync(path, line + "\n", token);
+        else await RunAsync("sudo", token, "-n", "sh", "-c", "printf '%s\\n' \"$2\" >> \"$1\" && chmod 0644 \"$1\"", "sh", path, line);
+    }
+
+    private static Task WaitForLogEndAsync(HostLogMonitoring monitoring, Guid deviceId, AgentLogSourceSetting source,
+        DateTimeOffset after, CancellationToken token) => WaitUntilAsync(async () =>
+    {
+        var status = await monitoring.GetAsync(deviceId, token);
+        return status?.Report.Throttled == false && status.Report.Sources.Any(x => x.SourceId == source.SourceId &&
+            x.Generation == source.Generation && x.State == AgentLogSourceState.End && x.ObservedAt >= after);
+    }, token);
 
     private static Task<string> VerifyLinuxInstallationPermissionsAsync(CancellationToken token) =>
         RunAsync("sudo", token, "-n", "-u", "nobody", "--", "/bin/sh", "-c",
