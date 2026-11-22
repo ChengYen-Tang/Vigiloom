@@ -6,7 +6,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 
-/// <summary>Applies the audit policy to security settings and abandoned import staging data.</summary>
+/// <summary>Applies the audit policy to security settings, change history and abandoned import staging data.</summary>
 public sealed class SecurityAuditRetention : IAuditRetentionSource
 {
     public async Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token)
@@ -14,6 +14,8 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         await using var db = await OpenAsync(connection, transaction, token);
         return await AuditRetentionQueries.CountAsync(db.InventorySettingAudits, cutoff, token) +
             await AuditRetentionQueries.CountAsync(db.IntegrityScopeAudits, cutoff, token) +
+            await db.InventoryChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
+            await db.IntegrityChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
             await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
@@ -25,6 +27,16 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         await using var db = await OpenAsync(connection, transaction, token);
         var removed = await AuditRetentionQueries.DeleteBatchAsync(db.InventorySettingAudits, cutoff, batchSize, token);
         if (removed < batchSize) removed += await AuditRetentionQueries.DeleteBatchAsync(db.IntegrityScopeAudits, cutoff, batchSize - removed, token);
+        if (removed < batchSize)
+        {
+            var changes = db.InventoryChanges.Where(x => x.RecordedAt < cutoff).OrderBy(x => x.RecordedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.InventoryChanges.Where(x => changes.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
+        if (removed < batchSize)
+        {
+            var changes = db.IntegrityChanges.Where(x => x.RecordedAt < cutoff).OrderBy(x => x.RecordedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.IntegrityChanges.Where(x => changes.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
         if (removed < batchSize)
         {
             // The source lock is shared with import and abandonment, so references cannot change mid-batch.
