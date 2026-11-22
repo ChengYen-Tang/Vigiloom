@@ -155,6 +155,12 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloo
 builder.Services.AddScoped<UpdateTrustStore>();
 builder.Services.AddScoped<AgentPackageSourceSettings>();
 builder.Services.AddScoped<PackageLibrary>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.GitHubAgentReleases>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Vigiloom");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
 {
     var directory = builder.Configuration["Vigiloom:AgentPackages:CachePath"];

@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Web.AgentPackages;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -21,6 +24,34 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class AgentPackageUiTests(TestContext context)
 {
+    [TestMethod]
+    public Task GitHubRelease_ShowsMatchingVerifiedPlatformAndDownload() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var github = new HttpClient(new ReleaseHandler()) { BaseAddress = new Uri("https://api.github.com/") };
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<GitHubAgentReleases>();
+                services.AddSingleton(new GitHubAgentReleases(github));
+            }));
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var id = Guid.CreateVersion7();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Packages.Add(new AgentPackage { Id = id, Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = 10,
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = DateTimeOffset.UtcNow.AddHours(1) });
+            await db.SaveChangesAsync(token);
+        }
+        using var client = PingTestSite.Client(factory);
+        await PingTestSite.LoginAsync(client, "admin", token);
+        using var response = await client.GetAsync("/settings/agent-packages?releases=1", token);
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var html = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
+        Assert.IsNotNull(html.QuerySelector($"form[action^='/settings/agent-packages/{id:D}/download']"));
+        Assert.Contains("win-x64", html.Body!.TextContent);
+        Assert.Contains("Preview", html.Body.TextContent);
+    }, context.CancellationToken);
+
     [TestMethod]
     public Task Administrator_CanInitializeIndependentlyVerifiedRoot() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
@@ -73,4 +104,11 @@ public sealed class AgentPackageUiTests(TestContext context)
         await using var check = await services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token);
         Assert.AreEqual(1, await check.UpdateTrustStates.CountAsync(token));
     }, context.CancellationToken);
+
+    private sealed class ReleaseHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = new StringContent("[{\"tag_name\":\"agent-v1.0.0\",\"draft\":false,\"prerelease\":true}]", System.Text.Encoding.UTF8, "application/json") });
+    }
 }
