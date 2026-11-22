@@ -62,6 +62,29 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
     }
 
     [TestMethod]
+    public async Task Download_InterruptedBodyRemovesPartialFileAndCanBeRetried()
+    {
+        var content = "package content"u8.ToArray();
+        var catalogue = Catalogue(content);
+        var directory = Path.Combine(Path.GetTempPath(), $"vigiloom-package-test-{Guid.CreateVersion7():N}");
+        try
+        {
+            using (var interrupted = new HttpClient(new InterruptedHandler(content)))
+            {
+                var downloader = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), interrupted);
+                await Assert.ThrowsAsync<IOException>(() => downloader.DownloadAsync(catalogue, catalogue.Packages[0], directory,
+                    TimeProvider.System, context.CancellationToken));
+                Assert.IsEmpty(Directory.EnumerateFiles(directory));
+            }
+            using var restored = new HttpClient(new Handler(content));
+            var retry = new PackageArchiveDownloader(new Uri("https://updates.example.test/packages/"), restored);
+            var path = await retry.DownloadAsync(catalogue, catalogue.Packages[0], directory, TimeProvider.System, context.CancellationToken);
+            CollectionAssert.AreEqual(content, await File.ReadAllBytesAsync(path, context.CancellationToken));
+        }
+        finally { TestDirectories.Delete(directory); }
+    }
+
+    [TestMethod]
     public async Task Download_RetriesTransientServerFailure()
     {
         var content = "package content"u8.ToArray();
@@ -122,6 +145,30 @@ public sealed class PackageArchiveDownloaderTests(TestContext context)
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(data).AsTask();
         protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult<Stream>(new MemoryStream(data));
+    }
+
+    private sealed class InterruptedHandler(byte[] data) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new InterruptedContent(data) });
+    }
+
+    private sealed class InterruptedContent(byte[] data) : HttpContent
+    {
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => throw new NotSupportedException();
+        protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult<Stream>(new InterruptedStream(data));
+    }
+
+    private sealed class InterruptedStream(byte[] data) : MemoryStream(data)
+    {
+        private bool read;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (read) throw new IOException("Simulated interrupted download.");
+            read = true;
+            return base.ReadAsync(buffer[..Math.Min(3, buffer.Length)], cancellationToken);
+        }
     }
 
     private sealed class TransientHandler(byte[] data) : HttpMessageHandler
