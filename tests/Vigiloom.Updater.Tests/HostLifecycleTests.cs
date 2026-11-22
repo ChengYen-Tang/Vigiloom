@@ -29,41 +29,6 @@ public sealed class HostLifecycleTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task HostRestoresPreparedUpdateOnStartupWithoutContactingServer()
-    {
-        var root = Path.Combine(testContext.TestRunDirectory!, $"recovery-{Guid.NewGuid():N}");
-        var stateDirectory = Path.Combine(root, "state");
-        Directory.CreateDirectory(root);
-        try
-        {
-            var journal = new UpdateJournal(stateDirectory);
-            var now = DateTimeOffset.UtcNow;
-            var prepared = Path.Combine(root, "staging", Guid.CreateVersion7().ToString("N"));
-            Directory.CreateDirectory(prepared);
-            await journal.WriteAsync(new UpdateState(Guid.CreateVersion7(), Path.Combine(root, "old"), prepared,
-                UpdatePhase.Prepared, now, [new(UpdatePhase.Prepared, now, null)]), testContext.CancellationToken);
-            var builder = UpdaterHost.CreateBuilder([]);
-            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Vigiloom:Updater:InstallationRoot"] = root,
-                ["Vigiloom:Updater:StateDirectory"] = stateDirectory
-            });
-            using var host = builder.Build();
-            await host.StartAsync(testContext.CancellationToken);
-            UpdateState? state;
-            do
-            {
-                state = await journal.ReadAsync(testContext.CancellationToken);
-                if (state?.Phase != UpdatePhase.RolledBack || Directory.Exists(prepared)) await Task.Delay(50, testContext.CancellationToken);
-            } while (state?.Phase != UpdatePhase.RolledBack || Directory.Exists(prepared));
-            Assert.AreEqual("InterruptedBeforeStop", state.Error);
-            await host.StopAsync(testContext.CancellationToken);
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [TestMethod]
-    [Timeout(10000, CooperativeCancellation = true)]
     public async Task HostDoesNotRecoverWhileAnotherUpdaterOwnsTheInstallation()
     {
         var root = Path.Combine(testContext.TestRunDirectory!, $"ownership-{Guid.NewGuid():N}");

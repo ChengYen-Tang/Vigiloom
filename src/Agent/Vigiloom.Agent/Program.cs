@@ -1,6 +1,8 @@
 using Vigiloom.Agent.Hosting;
 using Vigiloom.Agent.Core.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Agent.Core.Updates;
+using Vigiloom.Contracts.Agent;
 
 if (args is ["check-runtime"])
 {
@@ -21,7 +23,19 @@ if (args.Length == 1 && args[0] is "enroll" or "reset-pending-enrollment" or "ro
     var vault = new IdentityVault(directory);
     if (args[0] == "rotate-credential")
     {
-        await client.RotateAsync(vault, server, CancellationToken.None);
+        async Task StageUpdaterAsync(string current, string pending, CancellationToken token)
+        {
+            var request = new UpdateHandoff { SyncOnly = true, StageCredential = true, Credential = current, PendingCredential = pending };
+            UpdateHandoffStatus status;
+            if (OperatingSystem.IsWindows() && builder.Configuration["Vigiloom:Agent:UpdaterPipe"] == WindowsUpdaterClient.PipeName)
+                status = await WindowsUpdaterClient.SubmitAsync(request, token);
+            else if (OperatingSystem.IsLinux() && builder.Configuration["Vigiloom:Agent:UpdaterSocket"] is { Length: > 0 } socket)
+                status = await LinuxUpdaterClient.SubmitAsync(socket, request, token);
+            else throw new InvalidOperationException("The Updater connection must be configured before credential rotation.");
+            if (status != UpdateHandoffStatus.CredentialStaged)
+                throw new InvalidOperationException("The Updater did not confirm durable credential staging. Upgrade or repair the Updater before rotating.");
+        }
+        await client.RotateAsync(vault, server, CancellationToken.None, StageUpdaterAsync);
         Console.WriteLine("Agent credential rotation confirmed.");
         return;
     }

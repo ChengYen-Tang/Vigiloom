@@ -92,14 +92,16 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
             var transaction = new UpdateTransaction(http, new UpdateJournal(Path.Combine(root, "state")), runtime, TimeProvider.System);
             var stopped = await transaction.ApplyAsync(new Uri("https://localhost/"), credential, target, verified, archive,
                 root, previous, "win-x64", "1.0.0", "1.0.0", token);
-            Assert.AreEqual(UpdatePhase.RolledBack, stopped.Phase);
+            Assert.AreEqual(UpdatePhase.Failed, stopped.Phase);
+            Assert.IsFalse(stopped.RetryAllowed);
             Assert.AreEqual(VersionAssignmentResult.Saved, cancellation);
             var cancelled = await assignments.GetAsync(agent.AgentId.Value, token);
             Assert.IsNotNull(cancelled);
             Assert.IsNull(cancelled.PackageId);
-            Assert.AreEqual(previous, runtime.Selected);
-            CollectionAssert.AreEqual(new[] { previous }, runtime.Selections);
-            Assert.IsFalse(Directory.Exists(stopped.TargetDirectory));
+            Assert.AreEqual(previous, await runtime.GetSelectedDirectoryAsync(token));
+            Assert.IsEmpty(runtime.Selections);
+            Assert.AreEqual(0, runtime.StartCalls);
+            Assert.IsTrue(Directory.Exists(stopped.TargetDirectory));
             Assert.AreEqual("old version", await File.ReadAllTextAsync(Path.Combine(previous, "Vigiloom.Agent.exe"), token));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -215,6 +217,7 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
     private sealed class TestRuntime(string previous, Func<Task> cancelAssignment) : IAgentUpdateRuntime
     {
         private bool stopped;
+        public int StartCalls { get; private set; }
         public string? Selected { get; private set; }
         public List<string> Selections { get; } = [];
         public Task<string> GetSelectedDirectoryAsync(CancellationToken token) => Task.FromResult(Selected ?? previous);
@@ -225,7 +228,7 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
             await cancelAssignment();
         }
         public Task SelectVersionAsync(string directory, CancellationToken token) { Selected = directory; Selections.Add(directory); return Task.CompletedTask; }
-        public Task StartAsync(CancellationToken token) => Task.CompletedTask;
+        public Task StartAsync(CancellationToken token) { StartCalls++; return Task.CompletedTask; }
         public Task<bool> WaitHealthyAsync(CancellationToken token) => Task.FromResult(true);
     }
 }

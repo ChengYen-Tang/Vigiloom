@@ -42,7 +42,7 @@ public sealed class AssignmentVerifierTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task CoordinatorRestoresPreviousVersionWhenCentralAssignmentChangesDuringStop()
+    public async Task CoordinatorDoesNotSwitchWhenCentralAssignmentChangesDuringStop()
     {
         var manifest = Manifest();
         var target = new AgentVersionTarget(Guid.CreateVersion7(), Guid.CreateVersion7(), manifest.Version, manifest.RuntimeIdentifier,
@@ -52,8 +52,8 @@ public sealed class AssignmentVerifierTests(TestContext context)
         var verifier = new AssignmentVerifier(http, new Uri("https://vigiloom.example/"), "vla_test", target, manifest, TimeProvider.System);
         var runtime = new TestRuntime();
         var result = await new UpdateCoordinator(new MemoryJournal(), runtime).ApplyAsync(target.UpdateId, "old", "new", verifier.CheckAsync, context.CancellationToken);
-        Assert.AreEqual(UpdatePhase.RolledBack, result.Phase);
-        Assert.AreEqual("old", runtime.Selected);
+        Assert.AreEqual(UpdatePhase.Failed, result.Phase);
+        Assert.IsNull(runtime.Selected);
         Assert.AreEqual(2, handler.Calls);
     }
 

@@ -66,7 +66,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "指派版本", Exact = true }).ClickAsync();
         await page.GetByText("已儲存版本指派；設備是否安裝仍以實際回報為準。", new() { Exact = true }).WaitForAsync();
-        await page.GetByText("Agent 目前尚未連線，指派將等待 Agent 重新連線後取得。重新整理頁面可查看連線狀態。", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。", new() { Exact = true }).WaitForAsync();
         Assert.Contains("尚無盤點資料", await page.Locator("main").InnerTextAsync());
         var observed = DateTimeOffset.UtcNow;
         var host = new InventoryEntry("host", "test", "1.0", "X64", OperatingSystem: "Linux", ProcessArchitecture: "X64",
@@ -107,7 +107,28 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         {
             var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
             db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
-                MessageId = Guid.CreateVersion7(), Sequence = 2, Result = AgentUpdateResultKind.RolledBack,
+                MessageId = Guid.CreateVersion7(), Sequence = 2, Result = AgentUpdateResultKind.Failed,
+                OccurredAt = observed.AddSeconds(20), ReceivedAt = observed.AddSeconds(25), RetryAllowed = true, Failure = AgentUpdateFailure.Other });
+            await db.SaveChangesAsync(token);
+        }
+        await page.ReloadAsync();
+        await page.GetByText("1.2.3：準備曾失敗，將自動重試；本次未停止 Agent", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
+            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
+                MessageId = Guid.CreateVersion7(), Sequence = 3, Result = AgentUpdateResultKind.Failed,
+                OccurredAt = observed.AddSeconds(30), ReceivedAt = observed.AddSeconds(40), Failure = AgentUpdateFailure.Interrupted });
+            await db.SaveChangesAsync(token);
+        }
+        await page.ReloadAsync();
+        await page.GetByText("1.2.3：更新失敗，等待管理員處理", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("原因：更新流程中斷", new() { Exact = true }).WaitForAsync();
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
+        {
+            var target = await db.UpdateTargets.SingleAsync(x => x.AgentId == agent.AgentId.Value, token);
+            db.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.AgentId.Value, UpdateId = target.Id,
+                MessageId = Guid.CreateVersion7(), Sequence = 4, Result = AgentUpdateResultKind.RolledBack,
                 OccurredAt = observed.AddMinutes(1), ReceivedAt = observed.AddMinutes(2), Failure = AgentUpdateFailure.Interrupted });
             await db.SaveChangesAsync(token);
         }

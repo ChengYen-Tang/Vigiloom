@@ -117,7 +117,7 @@ public sealed class LinuxUpdateListenerTests(TestContext context)
             except (BrokenPipeError, ConnectionResetError, PermissionError):
                 print('denied')
             """;
-        var start = new ProcessStartInfo("/usr/sbin/setpriv")
+        var start = new ProcessStartInfo("setpriv")
         {
             UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             ArgumentList = { $"--reuid={uid}", "--regid=65534", "--clear-groups", "/usr/bin/python3", "-c", script, socketPath }

@@ -5,6 +5,7 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.UpdateSecurity;
 using Vigiloom.Updater.Core.Transport;
 using Vigiloom.Updater.Core.Updates;
+using NuGet.Versioning;
 
 namespace Vigiloom.Updater.Hosting;
 
@@ -58,7 +59,9 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
 
             try
             {
-                await using var listener = CreateListener(options!);
+                try { await LocalPackageCache.CleanupInterruptedDownloadsAsync(options!.CacheDirectory, stoppingToken); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                { logger.LogWarning("Updater could not clean interrupted downloads: {ErrorType}.", error.GetType().Name); }
                 using var http = new HttpClient(new SocketsHttpHandler
                 {
                     AllowAutoRedirect = false, UseCookies = false,
@@ -66,19 +69,68 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                 }) { Timeout = Timeout.InfiniteTimeSpan };
                 var clock = TimeProvider.System;
                 var delivery = new UpdateResultDelivery(http, journal, clock);
-                var processor = new UpdateRequestProcessor(new CentralAssignmentClient(http, clock),
+                var credentialStore = new MachineCredentialStore(stateDirectory!);
+                var central = new CentralAssignmentClient(http, clock);
+                using var serial = new SemaphoreSlim(1, 1);
+                async Task<bool> StageCredentialAsync(UpdateHandoff request, CancellationToken token)
+                {
+                    await serial.WaitAsync(token);
+                    try
+                    {
+                        var status = await central.GetCurrentAsync(options!.Server, options.DeviceId, request.Credential, token);
+                        if (status.Status == CurrentAssignmentStatus.Unauthorized)
+                            status = await central.GetCurrentAsync(options.Server, options.DeviceId, request.PendingCredential!, token);
+                        if (status.Status is not (CurrentAssignmentStatus.Available or CurrentAssignmentStatus.Changed)) return false;
+                        await credentialStore.StageAsync(request.Credential, request.PendingCredential!, token);
+                        return true;
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                    catch (Exception error)
+                    {
+                        logger.LogWarning("Updater could not stage credential rotation: {ErrorType}.", error.GetType().Name);
+                        return false;
+                    }
+                    finally { serial.Release(); }
+                }
+                await using var listener = CreateListener(options!, StageCredentialAsync);
+                var processor = new UpdateRequestProcessor(central,
                     new CentralPackageAcquirer(options!.Server, options.TrustDirectory, options.CacheDirectory,
                         4L * 1024 * 1024 * 1024, clock),
                     new UpdateTransaction(http, journal, runtime, clock), journal, runtime, options.Server,
                     options.DeviceId, root!, options.RuntimeIdentifier, options.UpdaterVersion,
-                    delivery);
-                await RunListenerAsync(listener, async (request, token) =>
+                    delivery, credentialStore.WriteAsync);
+                await StartPendingReplacementAsync(journal, runtime, root!, stateDirectory!, options.UpdaterVersion, stoppingToken);
+                async Task HandleAsync(UpdateHandoff request, CancellationToken token)
                 {
-                    var result = await processor.ProcessAsync(request, token);
-                    logger.LogInformation("Updater request result: {Assignment}, {Phase}.", result.Assignment, result.State?.Phase);
-                }, (request, token) => RecoverAndDeliverAsync(request,
-                    recoveryToken => RecoverAsync(coordinator, runtime, root!, recoveryToken), delivery,
-                    options.Server, logger, token), logger, stoppingToken);
+                    await serial.WaitAsync(token);
+                    try
+                    {
+                        try
+                        {
+                            var result = await processor.ProcessAsync(request, token);
+                            logger.LogInformation("Updater request result: {Assignment}, {Phase}.", result.Assignment, result.State?.Phase);
+                        }
+                        finally
+                        {
+                            await RecoverAndDeliverAsync(request, recoveryToken => RecoverAsync(coordinator, runtime, root!, recoveryToken),
+                                delivery, options.Server, logger, token);
+                            await StartPendingReplacementAsync(journal, runtime, root!, stateDirectory!, options.UpdaterVersion, token);
+                        }
+                    }
+                    finally { serial.Release(); }
+                }
+
+                using var pollStop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                var polling = PollAsync(credentialStore, central, options.Server, options.DeviceId, HandleAsync, logger, pollStop.Token);
+                try
+                {
+                    await RunListenerAsync(listener, HandleAsync, (_, _) => Task.FromResult(true), logger, stoppingToken);
+                }
+                finally
+                {
+                    await pollStop.CancelAsync();
+                    await polling;
+                }
                 if (!stoppingToken.IsCancellationRequested) lifetime.StopApplication();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -90,6 +142,80 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
         }
     }
 
+    private async Task StartPendingReplacementAsync(UpdateJournal journal, IAgentUpdateRuntime runtime, string root,
+        string stateDirectory, string runningVersion, CancellationToken token)
+    {
+        var state = await journal.ReadAsync(token);
+        if (state is not { Phase: UpdatePhase.Succeeded }) return;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var selected = Path.GetFullPath(await runtime.GetSelectedDirectoryAsync(token));
+        var target = Path.GetFullPath(state.TargetDirectory);
+        var staging = Path.GetFullPath(Path.Combine(root, "staging"));
+        if (!string.Equals(selected, target, comparison) || !string.Equals(Path.GetDirectoryName(target), staging, comparison) ||
+            !Guid.TryParseExact(Path.GetFileName(target), "N", out var targetId) || targetId.Version != 7)
+            throw new InvalidDataException("The pending Updater does not belong to the selected Agent.");
+        var source = Path.Combine(target, "updater");
+        if (state.PendingUpdaterDirectory is null)
+        {
+            if (Directory.Exists(source) && (File.GetAttributes(source) & FileAttributes.ReparsePoint) == 0)
+                Directory.Delete(source, recursive: true);
+            return;
+        }
+        if (!string.Equals(Path.GetFullPath(state.PendingUpdaterDirectory), source, comparison))
+            throw new InvalidDataException("The pending Updater does not belong to the selected Agent.");
+        var candidate = InstalledAgentVersion.ReadUpdater(source);
+        if (!NuGetVersion.TryParse(runningVersion, out var running) || !NuGetVersion.TryParse(candidate, out var replacement))
+            throw new InvalidDataException("The Updater version is invalid.");
+        if (running >= replacement)
+        {
+            await journal.WriteAsync(state with { PendingUpdaterDirectory = null }, token);
+            if (Directory.Exists(source) && (File.GetAttributes(source) & FileAttributes.ReparsePoint) == 0)
+                Directory.Delete(source, recursive: true);
+            return;
+        }
+        var statusPath = Path.Combine(stateDirectory, "updater-replacement.status");
+        var status = File.Exists(statusPath) ? await File.ReadAllTextAsync(statusPath, token) : null;
+        if (status is not null && status.Trim() is var recorded &&
+            (recorded == $"{state.Id:N} started" || recorded.StartsWith($"{state.Id:N} failed", StringComparison.Ordinal)))
+        {
+            logger.LogWarning("Updater replacement remains {Status}; inspect the local replacement status.", recorded.StartsWith($"{state.Id:N} failed", StringComparison.Ordinal) ? "failed" : "in progress");
+            return;
+        }
+        await UpdaterReplacementLauncher.LaunchAsync(state, root, stateDirectory, token);
+        logger.LogInformation("Updater replacement was handed to the operating system.");
+    }
+
+    internal static async Task PollAsync(MachineCredentialStore credentials, CentralAssignmentClient central, Uri server, Guid deviceId,
+        Func<UpdateHandoff, CancellationToken, Task> handle, ILogger logger, CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
+        {
+            do
+            {
+                try
+                {
+                    var saved = await credentials.ReadCandidatesAsync(token);
+                    if (saved is null) continue;
+                    var credential = saved.Current;
+                    var current = await central.GetCurrentAsync(server, deviceId, credential, token);
+                    if (current.Status == CurrentAssignmentStatus.Unauthorized && saved.Pending is not null)
+                    {
+                        credential = saved.Pending;
+                        current = await central.GetCurrentAsync(server, deviceId, credential, token);
+                    }
+                    if (current.Status == CurrentAssignmentStatus.Available && current.Target is { } target)
+                        await handle(new UpdateHandoff { UpdateId = target.UpdateId, Credential = credential }, token);
+                    else if (current.Status == CurrentAssignmentStatus.Changed)
+                        await handle(new UpdateHandoff { SyncOnly = true, Credential = credential }, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception error) { logger.LogWarning("Updater polling failed: {ErrorType}.", error.GetType().Name); }
+            } while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
     private async Task<bool> RecoverAsync(UpdateCoordinator coordinator, IAgentUpdateRuntime runtime, string root, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
@@ -97,10 +223,18 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
             try
             {
                 var state = await coordinator.RecoverAsync(token);
-                if (state is null) return true;
                 try
                 {
+                    if (state?.Phase != UpdatePhase.Succeeded)
+                        PreparedPackageCleanup.RemoveUnreferenced(state, root, await runtime.GetSelectedDirectoryAsync(token));
+                    if (state is null) return true;
                     PreparedPackageCleanup.RemoveRolledBack(state, root);
+                    PreparedPackageCleanup.RemoveRetainedFailures(state, root);
+                    if (state.Phase == UpdatePhase.Succeeded && state.RetainedFailedDirectories is { Count: > 0 })
+                    {
+                        state = state with { RetainedFailedDirectories = null };
+                        await new UpdateJournal(stateDirectory: configuration["Vigiloom:Updater:StateDirectory"]!).WriteAsync(state, token);
+                    }
                     if (state.Phase == UpdatePhase.Succeeded)
                         PreparedPackageCleanup.RemoveSuperseded(state, root, await runtime.GetSelectedDirectoryAsync(token));
                 }
@@ -110,13 +244,9 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
                     // Disk cleanup is not required to keep the current Agent running.
                     logger.LogWarning("Updater could not remove old package files: {ErrorType}.", error.GetType().Name);
                 }
+                if (state is null) return true;
                 logger.LogInformation("Updater recovery state: {Phase}.", state.Phase);
-                if (state.Phase == UpdatePhase.RollbackFailed)
-                {
-                    logger.LogError("Updater recovery failed; new updates are disabled until the installation is repaired.");
-                    return false;
-                }
-                if (state.Phase != UpdatePhase.RollingBack) return true;
+                return true;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return false; }
             catch (Exception error)
@@ -191,11 +321,11 @@ internal sealed class RecoveryWorker(IConfiguration configuration, IHostApplicat
         return true;
     }
 
-    private static ILocalUpdateListener CreateListener(Settings settings)
+    private static ILocalUpdateListener CreateListener(Settings settings, Func<UpdateHandoff, CancellationToken, Task<bool>> stageCredential)
     {
-        if (OperatingSystem.IsWindows()) return new WindowsUpdateListener(new SecurityIdentifier(settings.AgentSid!));
+        if (OperatingSystem.IsWindows()) return new WindowsUpdateListener(new SecurityIdentifier(settings.AgentSid!), stageCredential);
         if (OperatingSystem.IsLinux()) return LinuxUpdateListener.Create(settings.SocketDirectory!,
-            uint.Parse(settings.AgentUid!), uint.Parse(settings.AgentGroupId!));
+            uint.Parse(settings.AgentUid!), uint.Parse(settings.AgentGroupId!), stageCredential);
         throw new PlatformNotSupportedException();
     }
 

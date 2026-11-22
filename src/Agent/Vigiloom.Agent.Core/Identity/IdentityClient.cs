@@ -79,7 +79,8 @@ public sealed class IdentityClient(HttpClient http)
     }
 
     /// <summary>Persist the replacement before rotation, retaining both secrets until the server confirms it.</summary>
-    public async Task RotateAsync(IdentityVault vault, Uri server, CancellationToken token)
+    public async Task RotateAsync(IdentityVault vault, Uri server, CancellationToken token,
+        Func<string, string, CancellationToken, Task>? stageUpdaterCredential = null)
     {
         var baseUri = NormalizeServer(server);
         await using var session = vault.Acquire();
@@ -105,6 +106,8 @@ public sealed class IdentityClient(HttpClient http)
             using var startResponse = await http.SendAsync(start, token);
             if (!startResponse.IsSuccessStatusCode && startResponse.StatusCode != HttpStatusCode.Unauthorized)
                 throw new InvalidOperationException($"Agent credential rotation could not start (HTTP {(int)startResponse.StatusCode}). Both credentials were retained.");
+            if (stageUpdaterCredential is not null)
+                await stageUpdaterCredential($"vla_{agentId:D}.{state.MachineSecret}", $"vla_{agentId:D}.{state.PendingSecret}", token);
             // An old credential may have stopped working because finish committed but its response was lost.
             using var finish = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/v1/agent/rotation/finish"));
             finish.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{agentId:D}.{state.PendingSecret}");

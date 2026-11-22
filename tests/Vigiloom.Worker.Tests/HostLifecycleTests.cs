@@ -541,7 +541,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
     [TestMethod]
     [TestCategory("Integration")]
     [TestCategory("Database")]
-    [Timeout(120000, CooperativeCancellation = true)]
+    [Timeout(150000, CooperativeCancellation = true)]
     public Task Host_ScannerFailure_IsPersistedWithoutStoppingWorker() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         GlobalConfiguration.Configuration.UseNoOpLogProvider();
@@ -591,12 +591,22 @@ public sealed class HostLifecycleTests(TestContext testContext)
             using var scope = restarted.Services.CreateScope();
             var store = scope.ServiceProvider.GetRequiredService<WorkerDiagnosticsStore>();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-            deadline.CancelAfter(TimeSpan.FromSeconds(30));
-            while (true)
+            // Allow the immediate attempt and multiple 15-second publisher retries to finish.
+            deadline.CancelAfter(TimeSpan.FromSeconds(45));
+            WorkerDiagnosticsSnapshot? latest = null;
+            try
             {
-                var snapshot = await store.GetSnapshotAsync(deadline.Token);
-                if (snapshot.Workers.Any(worker => worker.BootId != originalBoot && worker.LeaseUntil > snapshot.ObservedAt)) break;
-                await Task.Delay(250, deadline.Token);
+                while (true)
+                {
+                    latest = await store.GetSnapshotAsync(deadline.Token);
+                    if (latest.Workers.Any(worker => worker.BootId != originalBoot && worker.LeaseUntil > latest.ObservedAt)) break;
+                    await Task.Delay(250, deadline.Token);
+                }
+            }
+            catch (OperationCanceledException error) when (!token.IsCancellationRequested)
+            {
+                var stopping = restarted.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested;
+                throw new TimeoutException($"Restarted Worker did not publish diagnostics; observed slots: {latest?.Workers.Count.ToString() ?? "unknown"}, host stopping: {stopping}.", error);
             }
         }
         catch (Exception exception) { restartFailure = exception; throw; }

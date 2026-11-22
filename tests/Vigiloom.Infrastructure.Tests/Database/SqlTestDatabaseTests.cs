@@ -450,6 +450,7 @@ public sealed class SqlTestDatabaseTests
             string? manifest = null;
             string? runManifest = null;
             string? databaseName = null;
+            Exception? testFailure = null;
             try
             {
                 using var handshakeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -476,18 +477,30 @@ public sealed class SqlTestDatabaseTests
                 Assert.IsTrue(await after.ReadAsync(token));
                 for (var i = 0; i < before.Length; i++) Assert.AreEqual(before[i], after.GetValue(i));
             }
+            catch (Exception exception)
+            {
+                testFailure = exception;
+                throw;
+            }
             finally
             {
-                if (!child.HasExited)
+                try
                 {
-                    child.Kill(entireProcessTree: true);
-                    await child.WaitForExitAsync(CancellationToken.None);
-                }
+                    if (!child.HasExited)
+                    {
+                        child.Kill(entireProcessTree: true);
+                        await child.WaitForExitAsync(CancellationToken.None);
+                    }
 
-                if (runManifest is not null && Directory.Exists(Path.GetDirectoryName(runManifest)))
+                    if (runManifest is not null && Directory.Exists(Path.GetDirectoryName(runManifest)))
+                    {
+                        var runLock = Path.Combine(Path.GetDirectoryName(runManifest)!, "run.lock");
+                        if (File.Exists(runLock)) await SqlTestDatabase.RecoverRunAsync(runManifest, server);
+                    }
+                }
+                catch (Exception cleanupFailure) when (testFailure is not null)
                 {
-                    var runLock = Path.Combine(Path.GetDirectoryName(runManifest)!, "run.lock");
-                    if (File.Exists(runLock)) await SqlTestDatabase.RecoverRunAsync(runManifest, server);
+                    throw new AggregateException("Recovery test and cleanup both failed.", testFailure, cleanupFailure);
                 }
             }
         }, TestContext.CancellationToken);

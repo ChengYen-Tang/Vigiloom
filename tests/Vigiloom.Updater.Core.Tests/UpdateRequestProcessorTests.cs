@@ -11,6 +11,29 @@ namespace Vigiloom.Updater.Core.Tests;
 public sealed class UpdateRequestProcessorTests(TestContext context)
 {
     [TestMethod]
+    public async Task FailedRecoveryRetainsSelectedBrokenAgentVersionAcrossRestart()
+    {
+        var root = Path.Combine(context.TestRunDirectory!, $"failed-versions-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var selected = Path.Combine(root, "broken");
+            var target = Path.Combine(root, "next");
+            Directory.CreateDirectory(selected);
+            var now = DateTimeOffset.UtcNow;
+            var journal = new UpdateJournal(Path.Combine(root, "state"));
+            var previousFailure = new UpdateState(Guid.CreateVersion7(), selected, target, UpdatePhase.Failed, now,
+                [new(UpdatePhase.Failed, now, "Interrupted")], PreviousAgentVersion: "1.2.0");
+            await journal.WriteAsync(previousFailure, context.CancellationToken);
+            var restarted = await new UpdateJournal(Path.Combine(root, "state")).ReadAsync(context.CancellationToken);
+            Assert.IsNotNull(restarted);
+            Assert.AreEqual("1.2.0", UpdateRequestProcessor.ReadCurrentVersion(selected, restarted));
+            Assert.ThrowsExactly<DirectoryNotFoundException>(() => UpdateRequestProcessor.ReadCurrentVersion(Path.Combine(root, "unrelated"), restarted));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
     public async Task UnauthorizedHandoffNeverReadsOrStopsAgent()
     {
         var root = Path.Combine(context.TestRunDirectory!, $"processor-{Guid.NewGuid():N}");
