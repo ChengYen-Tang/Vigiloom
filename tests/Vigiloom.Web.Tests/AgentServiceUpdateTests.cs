@@ -234,6 +234,28 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
                 await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                var successfulUpdate = await ReadUpdateStateAsync(windows, updaterState, token);
+                Assert.IsNotNull(successfulUpdate);
+                Assert.AreEqual(UpdatePhase.Succeeded, successfulUpdate.Phase);
+                IAgentUpdateRuntime agentRuntime = OperatingSystem.IsWindows()
+                    ? new WindowsAgentRuntime(installationRoot) : OperatingSystem.IsLinux()
+                        ? new SystemdAgentRuntime(installationRoot) : throw new PlatformNotSupportedException();
+                for (var crash = 0; crash < 2; crash++)
+                {
+                    var agentPid = await ServicePidAsync(windows, agent: true, token);
+                    Assert.AreNotEqual("0", agentPid);
+                    if (windows) await RunAsync("taskkill.exe", token, "/PID", agentPid, "/F");
+                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", agentPid);
+                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: true, token) != agentPid, token);
+                    var afterCrash = await ReadUpdateStateAsync(windows, updaterState, token);
+                    Assert.IsNotNull(afterCrash);
+                    Assert.AreEqual(successfulUpdate.Id, afterCrash.Id);
+                    Assert.AreEqual(UpdatePhase.Succeeded, afterCrash.Phase);
+                    Assert.IsTrue(Directory.Exists(afterCrash.TargetDirectory));
+                    Assert.AreEqual(Path.GetFullPath(afterCrash.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
+                    Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
+                    await SetServiceRunningAsync(windows, running: true, token);
+                }
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
