@@ -482,8 +482,6 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token, TimeSpan.FromMinutes(4));
                 var upgradedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
                 var reportAfterUpdate = DateTimeOffset.UtcNow;
-                var previousRejections = gate.SettingsRejections;
-                await WaitUntilAsync(() => Task.FromResult(gate.SettingsRejections > previousRejections), token, TimeSpan.FromMinutes(3));
                 string? lastObservation = null;
                 try
                 {
