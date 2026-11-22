@@ -46,7 +46,15 @@
                         @if (!string.IsNullOrWhiteSpace(result.Error)) { <p>@result.Error</p> }
                         @if (result.OutputTruncated) { <p>輸出過長，僅顯示部分內容。</p> }
                     }
-                    else { <p>等待 Agent 執行。</p> }
+                    else
+                    {
+                        <p>等待 Agent 執行或回報。</p>
+                        <AuthorizeView Roles="Administrator" Context="cancelAuthorization"><Authorized>
+                            <EditForm Model="job" FormName="@($"yara-scan-cancel-{job.Id:D}")" method="post" OnSubmit="@(() => CancelAsync(job.Id))">
+                                <button type="submit">取消掃描</button>
+                            </EditForm>
+                        </Authorized></AuthorizeView>
+                    }
                     <details><summary>查看規則</summary><pre>@job.Request.Rules</pre></details>
                 </article>
             }
@@ -91,10 +99,21 @@
         catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to create YARA scan: {ErrorType}.", ex.GetType().Name); error = "無法建立掃描，請稍後重試。"; }
     }
 
+    private async Task CancelAsync(Guid scanId)
+    {
+        if (!HttpContext.User.IsInRole("Administrator")) { error = "無法確認管理員身分。"; return; }
+        try
+        {
+            if (!await Scans.CancelAsync(Id, scanId, HttpContext.RequestAborted)) { error = "掃描已結束或不存在，請重新整理。"; return; }
+            Navigation.NavigateTo($"/devices/{Id:D}/yara-scans", forceLoad: true);
+        }
+        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to cancel YARA scan: {ErrorType}.", ex.GetType().Name); error = "無法取消掃描，請稍後重試。"; }
+    }
+
     private static string Outcome(YaraScanOutcome value) => value switch
     {
         YaraScanOutcome.Completed => "已完成", YaraScanOutcome.FileTooLarge => "檔案超過大小上限", YaraScanOutcome.TimedOut => "已逾時",
-        YaraScanOutcome.Unavailable => "無法使用", _ => "掃描失敗"
+        YaraScanOutcome.Unavailable => "無法使用", YaraScanOutcome.Cancelled => "已取消（Agent 連線後停止）", _ => "掃描失敗"
     };
 
     private sealed class ScanForm

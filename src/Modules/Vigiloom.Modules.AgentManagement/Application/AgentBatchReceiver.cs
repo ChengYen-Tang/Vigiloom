@@ -201,12 +201,16 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
 
         if (yara is not null)
         {
-            var scan = await db.YaraScans.SingleOrDefaultAsync(x => x.Id == yara.BatchId && x.AgentId == agent.Id, token);
+            var scan = await db.YaraScans.FromSqlInterpolated($"SELECT * FROM [agent].[YaraScans] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {yara.BatchId} AND [AgentId] = {agent.Id}")
+                .SingleOrDefaultAsync(token);
             if (scan is null) return BatchReceiptStatus.Invalid;
-            if (scan.Outcome is not null) return BatchReceiptStatus.Conflict;
-            scan.Outcome = (int)yara.Result.Outcome;
-            scan.Output = yara.Result.Output; scan.Error = yara.Result.Error;
-            scan.OutputTruncated = yara.Result.OutputTruncated; scan.CompletedAt = yara.Result.CompletedAt;
+            if (scan.Outcome is not null && scan.Outcome != (int)YaraScanOutcome.Cancelled) return BatchReceiptStatus.Conflict;
+            if (scan.Outcome is null)
+            {
+                scan.Outcome = (int)yara.Result.Outcome;
+                scan.Output = yara.Result.Output; scan.Error = yara.Result.Error;
+                scan.OutputTruncated = yara.Result.OutputTruncated; scan.CompletedAt = yara.Result.CompletedAt;
+            }
         }
 
         var receivedAt = clock.GetUtcNow();

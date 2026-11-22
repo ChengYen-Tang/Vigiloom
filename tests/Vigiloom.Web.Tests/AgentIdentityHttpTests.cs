@@ -627,6 +627,22 @@ public sealed class AgentIdentityHttpTests
             using var eventPage = await reader.GetAsync("/events", token);
             Assert.AreEqual(HttpStatusCode.OK, eventPage.StatusCode);
             Assert.Contains(item.MessageId.ToString("D"), await eventPage.Content.ReadAsStringAsync(token));
+            await using var serviceScope = factory.Services.CreateAsyncScope();
+            var scans = serviceScope.ServiceProvider.GetRequiredService<YaraScans>();
+            var scan = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule example { condition: true }", 1024, 60), Guid.CreateVersion7(), token);
+            Assert.IsNotNull(scan);
+            var scanPage = $"/devices/{device.Id:D}/yara-scans";
+            using var readerPage = await reader.GetAsync(scanPage, token);
+            Assert.DoesNotContain($"yara-scan-cancel-{scan.Id:D}", await readerPage.Content.ReadAsStringAsync(token));
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            using var adminPage = await admin.GetAsync(scanPage, token);
+            var document = await new HtmlParser().ParseDocumentAsync(await adminPage.Content.ReadAsStringAsync(token), token);
+            var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == $"yara-scan-cancel-{scan.Id:D}");
+            var fields = form.QuerySelectorAll("input[name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            using var cancelled = await admin.PostAsync(scanPage, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, cancelled.StatusCode);
+            Assert.AreEqual(Vigiloom.Contracts.Agent.Security.YaraScanOutcome.Cancelled, (await scans.ListAsync(device.Id, token)).Single(x => x.Id == scan.Id).Result?.Outcome);
         }, TestContext.CancellationToken);
 
     [TestMethod]
