@@ -53,6 +53,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             var prefix = windows ? "VIGILOOM_WINDOWS_" : "VIGILOOM_SYSTEMD_";
             var initial = Required(prefix + "INITIAL_AGENT");
             var updater = Required(prefix + "UPDATER");
+            var replacementUpdater = Required(prefix + "REPLACEMENT_UPDATER");
             var archivePath = Required(prefix + "UPDATE_ARCHIVE");
             var initialArchivePath = Required(prefix + "INITIAL_ARCHIVE");
             var rid = windows ? Required("VIGILOOM_WINDOWS_RID") : "linux-x64";
@@ -198,15 +199,40 @@ public sealed class AgentServiceUpdateTests(TestContext context)
 
                 var agentPidBeforeRepair = await ServicePidAsync(windows, agent: true, token);
                 Assert.AreNotEqual("0", agentPidBeforeRepair);
+                var replacementOutput = Path.Combine(path, "replacement-output");
+                var replacementBundle = Path.Combine(path, "replacement-bundle");
+                Directory.CreateDirectory(replacementBundle);
+                if (windows)
+                {
+                    await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                        Path.Combine(workspace, "packaging/agent/windows/bundle.ps1"), "-AgentPublish", initial,
+                        "-UpdaterPublish", replacementUpdater, "-TrustedRoot", rootPath, "-RootSha256", fingerprint,
+                        "-OutputDirectory", replacementOutput);
+                    ZipFile.ExtractToDirectory(Path.Combine(replacementOutput, $"vigiloom-agent-{rid}.zip"), replacementBundle);
+                }
+                else
+                {
+                    await RunAsync("bash", token, Path.Combine(workspace, "packaging/agent/linux/bundle.sh"), initial,
+                        replacementUpdater, rootPath, fingerprint, replacementOutput);
+                    await RunAsync("tar", token, "-xzf", Path.Combine(replacementOutput, "vigiloom-agent-linux-x64.tar.gz"), "-C", replacementBundle);
+                }
+                var installedUpdater = Path.Combine(windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
+                    : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
+                var originalHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(updater, "Vigiloom.Updater.dll"), token));
+                var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
+                Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
+                CollectionAssert.AreEqual(originalHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
                 if (windows)
                     await RunAsync("powershell.exe", token, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                        Path.Combine(bundle, "repair-updater.ps1"));
+                        Path.Combine(replacementBundle, "repair-updater.ps1"));
                 else
-                    await RunAsync("sudo", token, "-n", "bash", Path.Combine(bundle, "repair-updater.sh"));
+                    await RunAsync("sudo", token, "-n", "bash", Path.Combine(replacementBundle, "repair-updater.sh"));
                 var repairedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
                 Assert.AreNotEqual("0", repairedUpdaterPid);
                 Assert.AreNotEqual(updaterPid, repairedUpdaterPid);
                 Assert.AreEqual(agentPidBeforeRepair, await ServicePidAsync(windows, agent: true, token));
+                CollectionAssert.AreEqual(replacementHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
 
                 gate.Allow();
                 var replay = await gate.Retried.WaitAsync(TimeSpan.FromMinutes(3), token);
