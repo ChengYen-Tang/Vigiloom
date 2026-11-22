@@ -13,24 +13,40 @@ internal sealed class AgentTransportGate : IStartupFilter
     private readonly TaskCompletionSource<byte[]> retried = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource assignmentPaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource assignmentReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource packagePaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource packageReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private volatile Func<CancellationToken, Task<bool>>? pauseAssignment;
     private int settingsRejections;
     private volatile bool reject = true;
     private volatile bool rejectSettings;
+    private volatile bool pausePackage;
 
     internal Task<byte[]> Blocked => blocked.Task;
     internal Task<byte[]> Retried => retried.Task;
     internal int SettingsRejections => Volatile.Read(ref settingsRejections);
     internal Task AssignmentPaused => assignmentPaused.Task;
+    internal Task PackagePaused => packagePaused.Task;
     internal void Allow() => reject = false;
     internal void BlockSettings() => rejectSettings = true;
     internal void PauseAssignmentWhen(Func<CancellationToken, Task<bool>> condition) => pauseAssignment = condition;
     internal void ReleaseAssignment() { pauseAssignment = null; assignmentReleased.TrySetResult(); }
+    internal void PausePackage() => pausePackage = true;
+    internal void ReleasePackage() { pausePackage = false; packageReleased.TrySetResult(); }
 
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, following) =>
         {
+            if (pausePackage && context.Request.Method == "GET" && context.Request.Path.StartsWithSegments("/api/v1/agent/update/packages"))
+            {
+                context.Response.StatusCode = StatusCodes.Status200OK;
+                await context.Response.Body.WriteAsync(new byte[128 * 1024], context.RequestAborted);
+                await context.Response.Body.FlushAsync(context.RequestAborted);
+                packagePaused.TrySetResult();
+                try { await packageReleased.Task.WaitAsync(context.RequestAborted); }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+                return;
+            }
             if (pauseAssignment is { } condition && context.Request.Method == "GET" &&
                 context.Request.Path == "/api/v1/agent/version-assignment" && await condition(context.RequestAborted))
             {

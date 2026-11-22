@@ -30,6 +30,9 @@ internal sealed class SignedAgentPackages : IDisposable
                 using var output = zip.CreateEntry("Vigiloom.Agent.exe").Open();
                 input.CopyTo(output);
             }
+            // Keep the deliberately broken package large enough to interrupt a streamed download.
+            using var padding = zip.CreateEntry("test-padding", CompressionLevel.NoCompression).Open();
+            padding.Write(new byte[256 * 1024]);
         }
 
         var targets = new Dictionary<string, byte[]>();

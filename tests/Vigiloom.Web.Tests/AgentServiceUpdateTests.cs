@@ -306,6 +306,47 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual(killedPid, updaterPid);
                 await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(interruptedDirectory)), token);
 
+                // Interrupt the real Updater after a partial archive is written; the same
+                // assignment should be retried and the incomplete download removed.
+                var cacheDirectory = Path.Combine(updaterState, "cache");
+                var runningPid = await ServicePidAsync(windows, agent: true, token);
+                gate.PausePackage();
+                var downloadId = await SetAssignmentAsync(agents, assignments, agentId, "1.2.0", actor, token);
+                Assert.IsNotNull(downloadId);
+                installed.TrackReplacement(downloadId.Value);
+                try
+                {
+                    await gate.PackagePaused.WaitAsync(TimeSpan.FromMinutes(7), token);
+                    await WaitUntilAsync(() => HasPartialDownloadAsync(windows, cacheDirectory, token), token);
+                    Assert.AreEqual(runningPid, await ServicePidAsync(windows, agent: true, token));
+                    killedPid = updaterPid;
+                    if (windows) await RunAsync("taskkill.exe", token, "/PID", killedPid, "/F");
+                    else await RunAsync("sudo", token, "-n", "kill", "-KILL", killedPid);
+                }
+                finally { gate.ReleasePackage(); }
+                if (windows)
+                {
+                    await WaitUntilAsync(async () => await ServicePidAsync(windows, agent: false, token) != killedPid, token);
+                    if (await ServicePidAsync(windows, agent: false, token) == "0")
+                        await RunAsync("powershell.exe", token, "-NoProfile", "-Command", "Start-Service -Name 'Vigiloom Updater'");
+                }
+                else await RunAsync("sudo", token, "-n", "systemctl", "restart", "vigiloom-updater.service");
+                // Version 1.2.0 is deliberately broken, so the retry completes as an
+                // Agent startup failure; it must not leave a partial archive behind.
+                await WaitForResultAsync(agents, agentId, downloadId.Value, AgentUpdateResultKind.Failed, token, TimeSpan.FromMinutes(7));
+                UpdateState? failedRetry = null;
+                await WaitUntilAsync(async () =>
+                {
+                    failedRetry = await ReadUpdateStateAsync(windows, updaterState, token);
+                    return failedRetry is { Phase: UpdatePhase.Failed, RetryAllowed: false } && failedRetry.Id == downloadId;
+                }, token, TimeSpan.FromMinutes(7));
+                Assert.IsNotNull(failedRetry);
+                Assert.IsTrue(Directory.Exists(failedRetry.TargetDirectory));
+                Assert.AreEqual(Path.GetFullPath(failedRetry.TargetDirectory), await agentRuntime.GetSelectedDirectoryAsync(token));
+                Assert.IsFalse(await HasPartialDownloadAsync(windows, cacheDirectory, token, requireData: false));
+                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                updaterPid = await ServicePidAsync(windows, agent: false, token);
+
                 // The real service stays in health verification for at least ten seconds,
                 // giving us a durable phase to interrupt without adding hooks to the product.
                 var verifyingId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
@@ -558,6 +599,12 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         RunAsync("sudo", token, "-n", "-u", "nobody", "--", "/bin/sh", "-c",
             "test -r \"$1\" && test -x \"$1\" && test ! -w \"$1\" && test -d \"$2\" && test ! -w \"$2\" && test -d \"$3\" && test ! -w \"$3\"",
             "sh", "/opt/vigiloom/agent/current/Vigiloom.Agent", "/opt/vigiloom/agent/current", "/opt/vigiloom/agent");
+
+    private static async Task<bool> HasPartialDownloadAsync(bool windows, string directory, CancellationToken token, bool requireData = true) => windows
+        ? Directory.Exists(directory) && Directory.EnumerateFiles(directory, "*.download").Any(path => !requireData || new FileInfo(path).Length > 0)
+        : (await RunAsync("sudo", token, "-n", "sh", "-c", requireData
+            ? "find \"$1\" -maxdepth 1 -name '*.download' -size +0c -print -quit"
+            : "find \"$1\" -maxdepth 1 -name '*.download' -print -quit", "sh", directory)).Length > 0;
 
     private static async Task VerifyWindowsRuntimePreflightAsync(string bundle, CancellationToken token)
     {
