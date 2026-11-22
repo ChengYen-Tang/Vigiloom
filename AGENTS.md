@@ -14,6 +14,10 @@ CodeQL 警示須先核對實際程式路徑、資料流、既有防護及影響�
 
 PR 合併後，確認目標分支已包含變更，再清理由本次工作建立且沒有未合併提交的本機與遠端分支；先保護工作區現有修改，遠端刪除時確認分支未被更新。不刪除他人的分支或尚未完成的工作。
 
+## Windows x86 驗收與發布
+
+依使用者決定，Windows x86 的驗收以對應 Windows x64 驗收結果為依據，不額外執行 x86 測試；記錄結果時區分 x64 實測與依規則認定的 x86 結果。發布時仍須產生獨立的 Windows x86 Agent／Updater 套件。
+
 ## 識別碼與資料庫：先讀再做
 
 新增或修改 entity、migration、API 識別碼、Agent 訊息或遙測接收以前，必須閱讀並遵循 [ADR-0001](docs/architecture/ADR-0001-identifiers-and-keys.md)。這是已採用的決策，不是自行選擇 generator 的參考清單。
