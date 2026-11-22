@@ -12,6 +12,27 @@ Runtime eligibility is necessary but insufficient for a Vigiloom support claim. 
 
 Record the tested OS edition, version and updates; OS and process architecture; Linux distribution, kernel and libc where applicable; runtime and Agent/package versions; native dependencies; service account and effective permissions. Verify installation, startup, collection, transmission, disconnect/recovery, update, administrator-selected rollback and removal on representative Windows x64 and Linux x64 environments. As explicitly approved by the project owner, corresponding Windows x86 acceptance follows the x64 result without requiring a separate x86 run; distinguish that acceptance from a native x86 test and publish separate x86 and x64 packages. REQ-20 and REQ-40 own installation/update and release evidence; collector requirements own their native functionality.
 
+### Representative service integration results
+
+The [service integration run](https://github.com/ChengYen-Tang/Vigiloom/actions/runs/45066403827)
+passed on Windows Server 2025 x64 (hosted image `windows-2025-vs2026`,
+`20261116.315.1`) and Ubuntu 24.04 x64 (hosted image `20261116.376`). It used
+test-generated self-contained .NET 10 Agent and Updater packages, exercised the
+installed services and authenticated TLS transport, disconnected and resumed
+delivery, and checked update, administrator-selected rollback and removal.
+Windows runs the Agent as `NT SERVICE\Vigiloom Agent`; Linux uses the
+`vigiloom-agent` systemd account. Installation and the Updater need elevated
+permissions. Linux requires systemd and the distribution's ICU package;
+journal collection additionally uses `libsystemd.so.0` and access to the
+configured journal. Windows event channels may require separate read access.
+
+The run did not record the exact Linux kernel or libc versions. Those versions
+and the image's servicing state are described by the linked runner image, not
+an independently tested compatibility range. Windows x86 acceptance follows
+the x64 result by the owner's decision; it is not a native x86 run. Optional
+sensor-specific validation and restrictions are described in
+[security-sensors.md](security-sensors.md).
+
 ## Collector capability observations
 
 Collector modules report their own capability independently of host Ping, Agent connectivity and other collectors. REQ-19 owns transmission and reception, and each collector owns its signal, prerequisites, measurement time and required validation. This section defines semantics for those implementations; it does not add an unused wire DTO or claim a receiver exists. Protocol fields and compatible evolution must follow the versioned first-party batch contract in `api-and-ingestion-contract.md`.
