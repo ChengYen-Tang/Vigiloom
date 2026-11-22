@@ -63,14 +63,15 @@
         <section class="device-panel" aria-labelledby="package-list-title">
             <h2 id="package-list-title">套件版本</h2>
             <p>此處顯示發布者清單；是否能套用到設備，仍取決於平台、相容性與版本指派。</p>
+            @if (RemoveMessage is not null) { <p class="package-status" role="status">@RemoveMessage</p> }
             @if (cacheMessage is not null) { <p class="package-status" role="status">@cacheMessage</p> }
             @if (packageListError) { <p role="alert">目前無法讀取套件清單，請重新整理。</p> }
             else if (page?.Items.Count > 0)
             {
                 <p class="package-scroll-hint">左右滑動查看完整的套件狀態與有效期限。</p>
                 <div class="device-table-wrap" role="region" aria-label="套件版本，可左右捲動" tabindex="0"><table>
-                    <thead><tr><th>版本</th><th>平台</th><th>大小</th><th>清單狀態</th><th>驗證有效期限（UTC）</th></tr></thead>
-                    <tbody>@foreach (var item in page.Items) { <tr @key="item.Id"><td>@item.Version</td><td>@item.RuntimeIdentifier</td><td>@((item.Size / 1048576d).ToString("N1")) MiB</td><td>@Status(item)</td><td>@item.VerifiedUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td></tr> }</tbody>
+                    <thead><tr><th>版本</th><th>平台</th><th>大小</th><th>下載狀態</th><th>清單狀態</th><th>驗證有效期限（UTC）</th><th>操作</th></tr></thead>
+                    <tbody>@foreach (var item in page.Items) { <tr @key="item.Id"><td>@item.Version</td><td>@item.RuntimeIdentifier</td><td>@((item.Size / 1048576d).ToString("N1")) MiB</td><td>@(item.Cached ? "已下載" : "未下載")</td><td>@Status(item)</td><td>@item.VerifiedUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>@if (item.Cached) { <form method="post" action="@($"/settings/agent-packages/{item.Id:D}/remove")"><AntiforgeryToken /><button type="submit" aria-label="@($"刪除 {item.Version} {item.RuntimeIdentifier}")">刪除</button></form> }</td></tr> }</tbody>
                 </table></div>
                 <nav class="device-pagination" aria-label="套件清單分頁">@if (page.Page > 1) { <a href="@($"?page={page.Page - 1}")">上一頁</a> }<span>第 @(page.Page) 頁</span>@if (page.HasMore) { <a href="@($"?page={page.Page + 1}")">下一頁</a> }</nav>
             }
@@ -89,6 +90,7 @@
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromQuery(Name = "page")] private int? PageNumber { get; set; }
     [SupplyParameterFromQuery(Name = "trust")] private string? TrustResult { get; set; }
+    [SupplyParameterFromQuery(Name = "remove")] private string? RemoveResult { get; set; }
     [SupplyParameterFromForm(FormName = "package-source")] private SourceForm SourceInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "package-refresh")] private EmptyForm RefreshInput { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "package-cache")] private CacheForm CacheInput { get; set; } = default!;
@@ -102,6 +104,7 @@
     private string? cacheMessage;
     private IEnumerable<AgentPackageView> Eligible => page?.Items.Where(item => item.Listed && !item.Revoked && item.VerifiedUntil > Clock.GetUtcNow()) ?? [];
     private string? TrustMessage => TrustResult switch { "saved" => "信任根已初始化。", "invalid" => "檔案或指紋無效，請確認兩者來自可信管道。", "exists" => "信任根已設定，請重新整理。", "error" => "無法確認初始化結果，請重新整理並檢查。", _ => null };
+    private string? RemoveMessage => RemoveResult switch { "removed" => "已刪除下載的套件。", "in-use" => "此版本已指派或仍由設備使用，無法刪除。", "missing" => "找不到此版本。", "error" => "無法刪除套件，請稍後重試。", _ => null };
     private string Status(AgentPackageView item) => item.Revoked ? "已撤銷" : !item.Listed ? "已不在清單中" : item.VerifiedUntil <= Clock.GetUtcNow() ? "驗證已過期" : "已驗證";
 
     protected override async Task OnInitializedAsync()

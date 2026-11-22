@@ -49,7 +49,7 @@
                             @foreach (var package in packages.Items)
                             {
                                 <tr @key="package.Id"><td><input type="radio" name="agent-version-package" value="@package.Id" checked="@(selected == package.Id.ToString())" @onchange="() => selected = package.Id.ToString()" disabled="@(!Available(package))" aria-label="@($"{package.Version} {package.RuntimeIdentifier}")" /></td>
-                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(Available(package) ? "可指派" : "不可用")</td></tr>
+                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(!package.Cached ? "未下載" : Available(package) ? "可指派" : "不可用")</td></tr>
                             }
                         </tbody></table></div>
                     </fieldset>
@@ -112,7 +112,7 @@
         AgentUpdateFailure.Other => "更新或回復發生錯誤",
         _ => "未知"
     };
-    private bool Available(AgentPackageView package) => package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow();
+    private bool Available(AgentPackageView package) => package.Cached && package.Listed && !package.Revoked && package.VerifiedUntil > Clock.GetUtcNow();
 
     protected override Task OnParametersSetAsync() => ReloadAsync();
 

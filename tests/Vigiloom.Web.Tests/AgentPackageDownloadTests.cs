@@ -98,12 +98,14 @@ public sealed class AgentPackageDownloadTests(TestContext context)
 
     private sealed class FixtureTransport(byte[] manifest, byte[] archive) : IPackageLibraryTransport
     {
+        public bool IsCached(string archiveHash, string manifestHash) => true;
+        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token) => throw new NotSupportedException();
         public Func<Task>? BeforeOpenReturns { get; set; }
         public MemoryStream? LastStream { get; private set; }
         public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken token) =>
             Task.FromResult(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
         public Task CacheAsync(Uri origin, string? credential, PackageManifest package, CancellationToken token) => Task.CompletedTask;
-        public Task SaveManifestAsync(VerifiedManifest value, string hash, CancellationToken token) => Task.CompletedTask;
+        public Task SaveManifestAsync(VerifiedManifest value, PackageManifest package, CancellationToken token) => Task.CompletedTask;
         public Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken token) =>
             Task.FromResult<VerifiedManifest?>(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
         public async Task<Stream?> OpenCachedAsync(PackageManifest package, CancellationToken token) =>

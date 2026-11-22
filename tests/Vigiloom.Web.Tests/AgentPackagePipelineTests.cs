@@ -69,6 +69,8 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             await trust.RefreshCatalogueAsync(new TrustedCatalogueReader(origin, origin, repository), TimeProvider.System, Convert.FromBase64String(source.Version), cancellationToken: token);
             Guid packageId;
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token)) packageId = (await db.Packages.SingleAsync(token)).Id;
+            Assert.AreEqual(VersionAssignmentResult.Conflict, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, packageId, "", actor, token));
+            Assert.IsNull((await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().GetAsync(agent.AgentId.Value, token))!.PackageId);
             Assert.IsTrue(await scope.ServiceProvider.GetRequiredService<PackageLibrary>().CacheAsync(packageId, token));
             handler.Offline = true;
             Assert.AreEqual(VersionAssignmentResult.Saved, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, packageId, "", actor, token));
@@ -100,6 +102,12 @@ public sealed class AgentPackagePipelineTests(TestContext context)
             Assert.AreEqual(CurrentAssignmentStatus.Available, result.Assignment);
             Assert.AreEqual(UpdatePhase.Succeeded, result.State?.Phase);
             Assert.AreEqual("new version", await File.ReadAllTextAsync(Path.Combine(result.State!.TargetDirectory, "Vigiloom.Agent.exe"), token));
+            var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
+            Assert.AreEqual(PackageRemovalResult.InUse, await library.RemoveAsync(packageId, token));
+            var assignment = await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().GetAsync(agent.AgentId.Value, token);
+            Assert.AreEqual(VersionAssignmentResult.Saved, await scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>().SetAsync(agent.AgentId.Value, null, assignment!.Revision, actor, token));
+            Assert.AreEqual(PackageRemovalResult.Removed, await library.RemoveAsync(packageId, token));
+            Assert.IsFalse(transport.IsCached(hash, digest));
         }
         finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
     }, context.CancellationToken);

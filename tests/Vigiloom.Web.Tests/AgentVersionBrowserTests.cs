@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Playwright;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -28,7 +30,12 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
     [Timeout(180000, CooperativeCancellation = true)]
     public Task AdministratorCanAssignAndCancelVersion() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
-        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPackageLibraryTransport>();
+                services.AddSingleton<IPackageLibraryTransport, Vigiloom.Tests.Fixtures.AvailablePackageTransport>();
+            }));
         factory.UseKestrel(0);
         factory.StartServer();
         await PingTestSite.InitializeAsync(factory, token);

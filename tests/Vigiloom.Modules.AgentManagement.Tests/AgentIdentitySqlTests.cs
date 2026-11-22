@@ -104,7 +104,7 @@ public sealed class AgentIdentitySqlTests
                 Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Listed = true, VerifiedUntil = clock.Now.AddDays(1) });
             await db.SaveChangesAsync(token);
         }
-        var assignments = new AgentVersionAssignments(agents, devices, identity, clock);
+        var assignments = new AgentVersionAssignments(agents, devices, identity, clock, new Vigiloom.Tests.Fixtures.AvailablePackageTransport());
         var credential = Credential(agentId, secret);
         var emptyTarget = await assignments.GetForAgentAsync(credential, token);
         Assert.IsTrue(emptyTarget.Authenticated);

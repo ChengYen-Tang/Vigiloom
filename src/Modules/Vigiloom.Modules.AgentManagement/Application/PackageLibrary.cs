@@ -27,8 +27,29 @@ public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> c
         await transport.CacheAsync(source.BaseUri, source.Credential, manifest, cancellationToken);
         var after = await ReadEligibleAsync(packageId, source.Version, cancellationToken);
         if (after is null || !Matches(after, manifest) || manifest.Expires <= clock.GetUtcNow()) return false;
-        await transport.SaveManifestAsync(verified, manifest.ManifestSha256, cancellationToken);
+        await transport.SaveManifestAsync(verified, manifest, cancellationToken);
         return true;
+    }
+
+    /// <summary>Removes an unused local package while preserving files shared by other versions.</summary>
+    public async Task<PackageRemovalResult> RemoveAsync(Guid packageId, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var candidate = await db.Packages.AsNoTracking().Where(x => x.Id == packageId)
+            .Select(x => new { x.Sha256 }).SingleOrDefaultAsync(cancellationToken);
+        if (candidate is null) return PackageRemovalResult.NotFound;
+        var related = await db.Packages.FromSqlInterpolated($"SELECT * FROM [agent].[Packages] WITH (UPDLOCK, HOLDLOCK) WHERE [Sha256] = {candidate.Sha256}")
+            .ToArrayAsync(cancellationToken);
+        var selected = related.SingleOrDefault(x => x.Id == packageId);
+        if (selected is null) return PackageRemovalResult.NotFound;
+        if (await db.VersionAssignments.AnyAsync(x => x.PackageId == packageId, cancellationToken) ||
+            await db.Agents.AnyAsync(x => x.RevokedAt == null && x.RuntimeVersion == selected.Version &&
+                x.RuntimeIdentifier == selected.RuntimeIdentifier, cancellationToken)) return PackageRemovalResult.InUse;
+        var otherManifests = related.Where(x => x.Id != packageId).Select(x => x.ManifestSha256).ToArray();
+        await transport.RemoveCachedAsync(selected.Sha256, selected.ManifestSha256, otherManifests, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return PackageRemovalResult.Removed;
     }
 
     private async Task<PackageSnapshot?> ReadEligibleAsync(Guid id, byte[] sourceVersion, CancellationToken token)
@@ -54,11 +75,15 @@ public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> c
 /// <summary>Obtains publisher-authenticated manifests and stores their archives in a bounded node-local cache.</summary>
 public interface IPackageLibraryTransport
 {
+    bool IsCached(string archiveHash, string manifestHash);
     Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease, string manifestSha256, CancellationToken cancellationToken);
     Task CacheAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
-    Task SaveManifestAsync(VerifiedManifest manifest, string hash, CancellationToken cancellationToken);
+    Task SaveManifestAsync(VerifiedManifest verified, PackageManifest manifest, CancellationToken cancellationToken);
     Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken cancellationToken);
     Task<Stream?> OpenCachedAsync(PackageManifest manifest, CancellationToken cancellationToken);
+    Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken cancellationToken);
     /// <summary>Opens the verified cached archive; the caller owns the returned stream.</summary>
     Task<Stream> OpenAsync(Uri origin, string? credential, PackageManifest manifest, CancellationToken cancellationToken);
 }
+
+public enum PackageRemovalResult { Removed, InUse, NotFound }
