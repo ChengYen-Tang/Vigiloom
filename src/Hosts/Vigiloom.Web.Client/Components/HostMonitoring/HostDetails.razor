@@ -18,7 +18,7 @@
     </nav>
     @if (tab == "vulnerabilities")
     {
-        <VulnerabilityPanel DeviceId="DeviceId" />
+        <VulnerabilityPanel DeviceId="DeviceId" InitialSearch="@InitialSearch" />
     }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {

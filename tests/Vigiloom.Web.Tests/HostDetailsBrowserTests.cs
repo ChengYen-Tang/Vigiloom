@@ -234,6 +234,9 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
         await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/devices/{device.Id:D}?tab=vulnerabilities&search=CVE-2025-1234");
+        await page.Locator(".host-tabs button.active").GetByText("漏洞", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("尚無評估結果", new() { Exact = false }).First.WaitForAsync();
         var thresholdUrl = $"{url}/devices/{device.Id:D}/metric-threshold?agentId={agent.Id:D}&kind=1&source=test.cpu";
         await page.GotoAsync(thresholdUrl);
         Assert.AreNotEqual(thresholdUrl, page.Url);

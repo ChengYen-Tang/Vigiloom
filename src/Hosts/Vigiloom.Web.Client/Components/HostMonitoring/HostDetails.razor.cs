@@ -10,6 +10,8 @@ namespace Vigiloom.Web.Client.Components.HostMonitoring;
 public partial class HostDetails
 {
     [Parameter] public Guid DeviceId { get; set; }
+    [Parameter] public string? InitialTab { get; set; }
+    [Parameter] public string? InitialSearch { get; set; }
     private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("detections", "行為偵測"), ("vulnerabilities", "漏洞"), ("integrity", "檔案完整性")];
     private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = Enum.GetValues<AgentMetricKind>()
         .Where(kind => kind != AgentMetricKind.CollectionUnavailable).Select(kind => (kind, HostMetricUnits.Name(kind))).ToArray();
@@ -60,7 +62,7 @@ public partial class HostDetails
         if (!RendererInfo.IsInteractive) { loading = true; return; }
         if (loadedDevice == DeviceId) return;
         loadedDevice = DeviceId;
-        tab = "inventory";
+        tab = Tabs.Any(x => x.Key == InitialTab) ? InitialTab! : "inventory";
         await ReloadAsync();
     }
 

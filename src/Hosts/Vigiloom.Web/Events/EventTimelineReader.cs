@@ -134,7 +134,7 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
                     orderby evaluation.EvaluatedAt descending, evaluation.RowId descending
                     select new { finding.DeviceId, finding.AdvisoryId, evaluation.EvaluatedAt, evaluation.RevisionId, evaluation.State }).Take(limit).ToArrayAsync(token);
                 entries.AddRange(rows.Select(x => new EventTimelineEntry("vulnerability", x.EvaluatedAt, x.DeviceId, "device",
-                    $"漏洞評估：{x.AdvisoryId}", $"情報版本 {x.RevisionId:D}；狀態 {x.State}", $"/devices/{x.DeviceId:D}")));
+                    $"漏洞評估：{x.AdvisoryId}", $"情報版本 {x.RevisionId:D}；狀態 {x.State}", $"/devices/{x.DeviceId:D}?tab=vulnerabilities&search={Uri.EscapeDataString(x.AdvisoryId)}")));
             }
             if (Include("baseline"))
             {
