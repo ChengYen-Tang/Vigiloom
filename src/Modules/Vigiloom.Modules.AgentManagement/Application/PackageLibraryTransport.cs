@@ -19,6 +19,10 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
     internal PackageLibraryTransport(string cacheDirectory, long maximumBytes, TimeProvider clock, HttpClient client)
         : this(cacheDirectory, maximumBytes, clock) => this.client = client ?? throw new ArgumentNullException(nameof(client));
 
+    public bool IsCached(string archiveHash, string manifestHash) =>
+        PackageRules.IsHash(archiveHash) && PackageRules.IsHash(manifestHash) &&
+        File.Exists(Path.Combine(cacheDirectory, archiveHash + ".pkg")) && File.Exists(ManifestPath(manifestHash));
+
     public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease,
         string manifestSha256, CancellationToken cancellationToken)
     {
@@ -34,14 +38,17 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
         await using var stream = await OpenAsync(origin, credential, manifest, cancellationToken);
     }
 
-    public async Task SaveManifestAsync(VerifiedManifest manifest, string hash, CancellationToken cancellationToken)
+    public async Task SaveManifestAsync(VerifiedManifest verified, PackageManifest manifest, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(cacheDirectory);
-        var path = ManifestPath(hash);
+        var path = ManifestPath(manifest.ManifestSha256);
+        await using var cacheLock = await ExclusiveLocalLock.AcquireAsync(Path.Combine(cacheDirectory, ".cache.lock"), cancellationToken);
+        if (!File.Exists(Path.Combine(cacheDirectory, manifest.Sha256 + ".pkg")))
+            throw new IOException("The downloaded package is no longer available.");
         var temporary = path + "." + Guid.CreateVersion7().ToString("N") + ".tmp";
         try
         {
-            await File.WriteAllBytesAsync(temporary, manifest.Content.ToArray(), cancellationToken);
+            await File.WriteAllBytesAsync(temporary, verified.Content.ToArray(), cancellationToken);
             File.Move(temporary, path, overwrite: true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -63,6 +70,17 @@ public sealed class PackageLibraryTransport : IPackageLibraryTransport
     {
         var downloader = new PackageArchiveDownloader(new Uri("https://localhost/"));
         return new LocalPackageCache(cacheDirectory, maximumBytes, downloader, clock).OpenCachedManifestAsync(manifest, cancellationToken);
+    }
+
+    public async Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken cancellationToken)
+    {
+        if (!PackageRules.IsHash(archiveHash)) throw new ArgumentException("A lowercase SHA-256 archive identifier is required.", nameof(archiveHash));
+        var manifest = ManifestPath(manifestHash);
+        if (!Directory.Exists(cacheDirectory)) return;
+        await using var cacheLock = await ExclusiveLocalLock.AcquireAsync(Path.Combine(cacheDirectory, ".cache.lock"), cancellationToken);
+        if (!otherManifests.Contains(manifestHash, StringComparer.Ordinal)) File.Delete(manifest);
+        if (!otherManifests.Any(hash => File.Exists(ManifestPath(hash))))
+            File.Delete(Path.Combine(cacheDirectory, archiveHash + ".pkg"));
     }
 
     private string ManifestPath(string hash)

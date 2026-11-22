@@ -312,6 +312,8 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
 
     private sealed class FixturePackageTransport(byte[] manifest) : IPackageLibraryTransport
     {
+        public bool IsCached(string archiveHash, string manifestHash) => true;
+        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken cancellationToken) => throw new NotSupportedException();
         public int Cached { get; private set; }
         public Func<CancellationToken, Task>? DuringCache { get; set; }
         public Task<VerifiedManifest> ReadManifestAsync(Uri origin, string? credential, ITrustMetadataLease lease,
@@ -322,7 +324,7 @@ public sealed class AgentPackageSourceSqlTests(TestContext testContext)
             Cached++;
             if (DuringCache is not null) await DuringCache(cancellationToken);
         }
-        public Task SaveManifestAsync(VerifiedManifest value, string hash, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SaveManifestAsync(VerifiedManifest value, PackageManifest package, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<VerifiedManifest?> ReadCachedManifestAsync(ITrustMetadataLease lease, string hash, CancellationToken cancellationToken) =>
             Task.FromResult<VerifiedManifest?>(new VerifiedManifest(manifest, DateTimeOffset.UtcNow.AddHours(1)));
         public Task<Stream?> OpenCachedAsync(PackageManifest package, CancellationToken cancellationToken) => throw new NotSupportedException();

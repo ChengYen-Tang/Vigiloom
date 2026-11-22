@@ -33,5 +33,15 @@ internal static class AgentPackageEndpoints
             .Produces(204).ProducesProblem(401).ProducesProblem(403).Produces(409).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Verify and cache an eligible Agent package on this node")
             .WithDescription("Caching does not grant an Agent access or assign a version.");
+        app.MapDelete("/api/v1/agent-packages/{id:guid}/cache", async (Guid id, PackageLibrary library, HttpContext context, CancellationToken token) =>
+            await ApiMutation.ExecuteAsync(context, async _ => (await library.RemoveAsync(id, token)) switch
+            {
+                PackageRemovalResult.Removed => Results.NoContent(),
+                PackageRemovalResult.InUse => Results.Conflict(),
+                _ => Results.NotFound()
+            }, allowApiCredential: false))
+            .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesProblem(401).ProducesProblem(403).Produces(404).Produces(409)
+            .WithSummary("Remove an unused cached Agent package");
     }
 }

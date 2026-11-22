@@ -180,7 +180,7 @@ public sealed class UpdateTrustStoreSqlTests(TestContext testContext)
                 });
             await db.SaveChangesAsync(token);
         }
-        var query = new AgentPackageQuery(factory);
+        var query = new AgentPackageQuery(factory, new PackageLibraryTransport(testContext.TestRunDirectory!, 1024, TimeProvider.System));
         var first = await query.GetAsync(1, token);
         var second = await query.GetAsync(2, token);
         Assert.HasCount(50, first.Items);

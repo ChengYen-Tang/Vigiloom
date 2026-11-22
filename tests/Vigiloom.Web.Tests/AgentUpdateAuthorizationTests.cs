@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Hosting;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
@@ -27,7 +29,12 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
     [Timeout(120000, CooperativeCancellation = true)]
     public Task VerifierTracksRealAssignmentCancellationAndRevocation() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
-        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPackageLibraryTransport>();
+                services.AddSingleton<IPackageLibraryTransport, Vigiloom.Tests.Fixtures.AvailablePackageTransport>();
+            }));
         await PingTestSite.InitializeAsync(factory, token);
         var device = new Device("Agent test", "127.0.0.1", true, DateTimeOffset.UtcNow);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))

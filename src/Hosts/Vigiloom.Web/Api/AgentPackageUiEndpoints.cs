@@ -10,6 +10,25 @@ internal static class AgentPackageUiEndpoints
 {
     public static void MapAgentPackageUiEndpoints(this WebApplication app)
     {
+        app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, PackageLibrary library,
+            ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
+        {
+            try
+            {
+                var result = await library.RemoveAsync(id, token);
+                return Results.Redirect(result switch
+                {
+                    PackageRemovalResult.Removed => "/settings/agent-packages?remove=removed",
+                    PackageRemovalResult.InUse => "/settings/agent-packages?remove=in-use",
+                    _ => "/settings/agent-packages?remove=missing"
+                });
+            }
+            catch (IOException error)
+            {
+                logger.LogWarning(error, "Could not remove cached Agent package.");
+                return Results.Redirect("/settings/agent-packages?remove=error");
+            }
+        }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         app.MapPost("/settings/agent-packages/trust", async ([FromForm] IFormFile root, [FromForm] string sha256,
             HttpContext context, UpdateTrustStore trust, ILogger<UpdateTrustStore> logger, CancellationToken token) =>
         {
