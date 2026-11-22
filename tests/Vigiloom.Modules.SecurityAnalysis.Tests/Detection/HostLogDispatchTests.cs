@@ -25,10 +25,10 @@ public sealed class HostLogDispatchTests(TestContext context)
             await connection.OpenAsync(token);
             await using (var schema = connection.CreateCommand())
             {
-                schema.CommandText = "EXEC('CREATE SCHEMA security'); CREATE TABLE security.SigmaRuleActivations (Enabled bit NOT NULL)";
+                schema.CommandText = "EXEC('CREATE SCHEMA security'); CREATE TABLE security.SigmaRuleActivations (Enabled bit NOT NULL); CREATE TABLE security.IntelligenceSources ([Key] varchar(64) NOT NULL, Enabled bit NOT NULL, IocDetectionEnabled bit NOT NULL)";
                 await schema.ExecuteNonQueryAsync(token);
             }
-            var writer = new HostLogDispatchWriter(new OutboxWriter([new Handler()]));
+            var writer = new HostLogDispatchWriter(new OutboxWriter([new Handler(HostLogDispatch.MessageType), new Handler(HostLogDispatch.IocMessageType)]));
             var dispatch = new HostLogDispatch(Guid.CreateVersion7(), Guid.CreateVersion7(), 2, [Guid.CreateVersion7()]);
             await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
             {
@@ -75,9 +75,9 @@ public sealed class HostLogDispatchTests(TestContext context)
             Assert.IsFalse(await row.ReadAsync(token));
         }, context.CancellationToken);
 
-    private sealed class Handler : IOutboxHandler
+    private sealed class Handler(string messageType) : IOutboxHandler
     {
-        public string MessageType => HostLogDispatch.MessageType;
+        public string MessageType => messageType;
         public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }

@@ -145,6 +145,23 @@
         }
         else { <p>這段時間沒有偵測紀錄。</p> }
         @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
+        <h3>IOC 比對線索</h3>
+        <p>僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。</p>
+        @if (iocDetections?.Items.Count > 0)
+        {
+            <div class="host-table" tabindex="0" role="region" aria-label="IOC 比對線索，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>指標</th><th>來源與證據</th></tr></thead><tbody>
+            @foreach (var item in iocDetections.Items)
+            {
+                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · 事件 @item.MessageId<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">查看來源</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">授權</a></td></tr>
+            }
+            </tbody></table></div>
+        }
+        else { <p>這段時間沒有 IOC 命中紀錄。</p> }
+        @if (iocDetections is not null && (iocDetections.Page > 1 || iocDetections.HasMore))
+        {
+            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">較新線索</button>
+            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">較早線索</button>
+        }
         <h3>資料缺口</h3>
         @if (detectionGaps?.Items.Count > 0)
         {
