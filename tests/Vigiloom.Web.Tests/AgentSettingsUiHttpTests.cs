@@ -455,11 +455,11 @@ public sealed class AgentSettingsUiHttpTests
             using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             var observation = new AgentLogSourceObservation(source.Settings.SourceId, source.Settings.Generation,
-                AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 0);
+                AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 0, PermissionDenied: true);
             var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, LogStatus: new(snapshot.Revision, false, [observation]));
             using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
-                Assert.Contains("無法讀取來源", await BodyTextAsync(statusPage, token));
+                Assert.Contains("讀取權限不足", await BodyTextAsync(statusPage, token));
             var duplicateSource = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation, observation] } };
             using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", duplicateSource, token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             var wrongGeneration = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation with { Generation = Guid.CreateVersion7() }] } };
