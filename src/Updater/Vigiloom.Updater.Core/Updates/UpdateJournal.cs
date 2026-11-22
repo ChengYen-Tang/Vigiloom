@@ -12,7 +12,7 @@ public sealed record UpdateStep(UpdatePhase Phase, DateTimeOffset At, string? Er
 public sealed record UpdateState(Guid Id, string PreviousDirectory, string TargetDirectory, UpdatePhase Phase,
     DateTimeOffset UpdatedAt, IReadOnlyList<UpdateStep> Steps, string? Error = null, bool RetryAllowed = false,
     UpdateProvenance? Provenance = null, IReadOnlyList<string>? RetainedFailedDirectories = null,
-    string? PendingUpdaterDirectory = null, string? PreviousAgentVersion = null);
+    string? PendingUpdaterDirectory = null, string? PreviousAgentVersion = null, int SequenceOffset = 0);
 
 /// <summary>Non-secret target identity retained across local recovery.</summary>
 public sealed record UpdateProvenance(Guid AgentId, Guid PackageId, string ManifestSha256, string? PackageVersion = null)
@@ -56,6 +56,31 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
     private readonly string directory = Path.GetFullPath(stateDirectory);
     private string PathName => Path.Combine(directory, "update.db");
 
+    /// <summary>Retains one retryable preparation failure without replacing an earlier recovery state.</summary>
+    public async Task RecordPreparationFailureAsync(Guid updateId, UpdateProvenance provenance, DateTimeOffset occurredAt, CancellationToken token)
+    {
+        if (updateId.Version != 7 || !provenance.IsValid()) throw new ArgumentException("The update provenance is invalid.");
+        Directory.CreateDirectory(directory);
+        var outcome = new UpdateOutcome(Guid.CreateVersion7(), updateId, provenance, 1, UpdatePhase.Failed,
+            occurredAt.ToUniversalTime(), true, UpdateFailure.Other);
+        await using var connection = Open(SqliteOpenMode.ReadWriteCreate);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO UpdateOutbox (MessageId, AgentId, UpdateId, Sequence, Payload) VALUES ($message, $agent, $update, 1, $payload) ON CONFLICT(UpdateId, Sequence) DO NOTHING";
+        command.Parameters.AddWithValue("$message", outcome.MessageId.ToString("D"));
+        command.Parameters.AddWithValue("$agent", provenance.AgentId.ToString("D"));
+        command.Parameters.AddWithValue("$update", updateId.ToString("D"));
+        command.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(outcome));
+        if (await command.ExecuteNonQueryAsync(token) == 0)
+        {
+            command.CommandText = "SELECT Payload FROM UpdateOutbox WHERE UpdateId = $update AND Sequence = 1";
+            var stored = await command.ExecuteScalarAsync(token) as string;
+            var existing = stored is null ? null : JsonSerializer.Deserialize<UpdateOutcome>(stored);
+            if (existing is null || existing.Provenance != provenance || existing.Phase != UpdatePhase.Failed ||
+                !existing.RetryAllowed || existing.Failure != UpdateFailure.Other)
+                throw new InvalidDataException("A different preparation outcome already exists for this update.");
+        }
+    }
+
     public async Task<UpdateState?> ReadAsync(CancellationToken token)
     {
         if (!File.Exists(PathName)) return null;
@@ -83,7 +108,7 @@ public sealed class UpdateJournal(string stateDirectory) : IUpdateJournal
         await command.ExecuteNonQueryAsync(token);
         if (state.Provenance is { } provenance && state.Phase is UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.RollbackFailed or UpdatePhase.Failed)
         {
-            var outcome = new UpdateOutcome(Guid.CreateVersion7(), state.Id, provenance, state.Steps.Count, state.Phase,
+            var outcome = new UpdateOutcome(Guid.CreateVersion7(), state.Id, provenance, checked(state.Steps.Count + state.SequenceOffset), state.Phase,
                 state.UpdatedAt.ToUniversalTime(), state.RetryAllowed, Failure(state.Error));
             command.Parameters.Clear();
             command.CommandText = "INSERT INTO UpdateOutbox (MessageId, AgentId, UpdateId, Sequence, Payload) VALUES ($message, $agent, $update, $sequence, $payload) ON CONFLICT(UpdateId, Sequence) DO NOTHING";

@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Updater.Core.Updates;
 
@@ -9,6 +10,41 @@ namespace Vigiloom.Updater.Core.Tests;
 [TestClass]
 public sealed class UpdateOutcomeTests(TestContext context)
 {
+    [TestMethod]
+    public async Task PreparationFailureIsDurableAndDoesNotReplaceEarlierRecoveryState()
+    {
+        var directory = Path.Combine(context.TestRunDirectory!, $"preparation-outcome-{Guid.CreateVersion7():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var agent = Guid.CreateVersion7();
+            var originalTarget = new UpdateProvenance(agent, Guid.CreateVersion7(), new string('a', 64), "1.0.0");
+            var target = new UpdateProvenance(agent, Guid.CreateVersion7(), new string('b', 64), "1.1.0");
+            var now = DateTimeOffset.UtcNow;
+            var previous = new UpdateState(Guid.CreateVersion7(), Path.Combine(directory, "old"), Path.Combine(directory, "failed"),
+                UpdatePhase.Failed, now, [new(UpdatePhase.Failed, now, "Interrupted")], Error: "Interrupted",
+                Provenance: originalTarget, RetainedFailedDirectories: [Path.Combine(directory, "retained")],
+                PendingUpdaterDirectory: Path.Combine(directory, "pending"));
+            var journal = new UpdateJournal(directory);
+            await journal.WriteAsync(previous, context.CancellationToken);
+            var update = Guid.CreateVersion7();
+            await journal.RecordPreparationFailureAsync(update, target, now, context.CancellationToken);
+            await journal.RecordPreparationFailureAsync(update, target, now.AddMinutes(1), context.CancellationToken);
+            var recovered = await new UpdateJournal(directory).ReadAsync(context.CancellationToken);
+            Assert.IsNotNull(recovered);
+            Assert.AreEqual(JsonSerializer.Serialize(previous), JsonSerializer.Serialize(recovered));
+            var pending = await journal.ReadPendingAsync(agent, 10, context.CancellationToken);
+            Assert.HasCount(2, pending);
+            var failure = pending.Single(x => x.UpdateId == update);
+            Assert.AreEqual(1, failure.Sequence);
+            Assert.IsTrue(failure.RetryAllowed);
+            Assert.AreEqual(now, failure.OccurredAt);
+            await Assert.ThrowsExactlyAsync<InvalidDataException>(() => journal.RecordPreparationFailureAsync(update,
+                target with { PackageId = Guid.CreateVersion7() }, now, context.CancellationToken));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     [TestMethod]
     public async Task TerminalOutcomesSurviveLaterUpdatesAndAcknowledgementIsAgentScoped()
     {

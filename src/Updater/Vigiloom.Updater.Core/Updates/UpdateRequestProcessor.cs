@@ -8,9 +8,9 @@ public sealed record UpdateRequestResult(CurrentAssignmentStatus Assignment, Upd
 /// <summary>Resolves a local request, acquires its publisher-signed package and performs the update.</summary>
 /// <remarks>All settings are installer-owned. Requests are processed sequentially after recovery.</remarks>
 public sealed class UpdateRequestProcessor(CentralAssignmentClient central, CentralPackageAcquirer packages,
-    UpdateTransaction transaction, IUpdateJournal journal, IAgentUpdateRuntime runtime, Uri server, Guid deviceId,
+    UpdateTransaction transaction, UpdateJournal journal, IAgentUpdateRuntime runtime, Uri server, Guid deviceId,
     string installationRoot, string runtimeIdentifier, string updaterVersion, UpdateResultDelivery? delivery = null,
-    Func<string, CancellationToken, Task>? retainCredential = null)
+    Func<string, CancellationToken, Task>? retainCredential = null, TimeProvider? clock = null)
 {
     public async Task<UpdateRequestResult> ProcessAsync(UpdateHandoff request, CancellationToken token)
     {
@@ -28,29 +28,40 @@ public sealed class UpdateRequestProcessor(CentralAssignmentClient central, Cent
         if (existing is not null && existing.Phase is not (UpdatePhase.Succeeded or UpdatePhase.RolledBack or UpdatePhase.Failed))
             throw new InvalidOperationException("The previous update must be recovered first.");
 
-        if (assignment.Target.RuntimeIdentifier != runtimeIdentifier)
-            throw new InvalidDataException("The assigned package targets a different platform.");
-        var previous = await runtime.GetSelectedDirectoryAsync(token);
-        var currentVersion = ReadCurrentVersion(previous, existing);
         var target = assignment.Target;
         var provenance = new UpdateProvenance(Guid.ParseExact(request.Credential.AsSpan(4, 36), "D"), target.PackageId, target.ManifestSha256, target.PackageVersion);
-        await using var package = await packages.AcquireAsync(target.ManifestSha256, target.PackageVersion, runtimeIdentifier,
-            updaterVersion, currentVersion, request.Credential, token);
-        using var stopProgress = CancellationTokenSource.CreateLinkedTokenSource(token);
-        var progress = delivery is null ? Task.CompletedTask : ReportProgressAsync(request.Credential, stopProgress.Token);
-        UpdateState result;
         try
         {
-            result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
-                installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
+            if (target.RuntimeIdentifier != runtimeIdentifier)
+                throw new InvalidDataException("The assigned package targets a different platform.");
+            var previous = await runtime.GetSelectedDirectoryAsync(token);
+            var currentVersion = ReadCurrentVersion(previous, existing);
+            await using var package = await packages.AcquireAsync(target.ManifestSha256, target.PackageVersion, runtimeIdentifier,
+                updaterVersion, currentVersion, request.Credential, token);
+            using var stopProgress = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var progress = delivery is null ? Task.CompletedTask : ReportProgressAsync(request.Credential, stopProgress.Token);
+            UpdateState result;
+            try
+            {
+                result = await transaction.ApplyAsync(server, request.Credential, target, package.Manifest, package.Archive,
+                    installationRoot, previous, runtimeIdentifier, updaterVersion, currentVersion, token, provenance);
+            }
+            finally
+            {
+                await stopProgress.CancelAsync();
+                await progress;
+            }
+            if (delivery is not null) await delivery.FlushAsync(server, request.Credential, token);
+            return new(CurrentAssignmentStatus.Available, result);
         }
-        finally
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception)
         {
-            await stopProgress.CancelAsync();
-            await progress;
+            var state = await journal.ReadAsync(token);
+            if (state?.Id != target.UpdateId)
+                await journal.RecordPreparationFailureAsync(target.UpdateId, provenance, (clock ?? TimeProvider.System).GetUtcNow(), token);
+            throw;
         }
-        if (delivery is not null) await delivery.FlushAsync(server, request.Credential, token);
-        return new(CurrentAssignmentStatus.Available, result);
     }
 
     internal static string? ReadCurrentVersion(string selectedDirectory, UpdateState? existing)

@@ -52,7 +52,7 @@ public sealed class UpdateCoordinator(IUpdateJournal journal, IAgentUpdateRuntim
             : existing?.RetainedFailedDirectories;
         var state = new UpdateState(id, previousDirectory, targetDirectory, UpdatePhase.Prepared, now, steps,
             Provenance: provenance, RetainedFailedDirectories: retained, PendingUpdaterDirectory: pendingUpdaterDirectory,
-            PreviousAgentVersion: previousAgentVersion);
+            PreviousAgentVersion: previousAgentVersion, SequenceOffset: 1);
         await journal.WriteAsync(state, token);
         try
         {
