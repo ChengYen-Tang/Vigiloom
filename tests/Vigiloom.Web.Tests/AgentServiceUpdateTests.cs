@@ -202,8 +202,21 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual(cancelled, replaced);
                 Assert.AreNotEqual(replaced, current);
                 await SetServiceRunningAsync(windows, running: true, token);
-                await WaitForResultAsync(agents, agentId, current.Value, AgentUpdateResultKind.RolledBack, token, TimeSpan.FromMinutes(7));
+                await WaitForResultAsync(agents, agentId, current.Value, AgentUpdateResultKind.Failed, token, TimeSpan.FromMinutes(7));
+                var updaterState = windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Updater")
+                    : "/var/lib/vigiloom/updater";
+                var failed = windows
+                    ? await new UpdateJournal(updaterState).ReadAsync(token)
+                    : System.Text.Json.JsonSerializer.Deserialize<UpdateState>(await RunAsync("sudo", token, "-n", "python3", "-c",
+                        "import sqlite3,sys; print(sqlite3.connect(sys.argv[1]).execute('SELECT State FROM UpdateJournal WHERE Id=1').fetchone()[0])",
+                        Path.Combine(updaterState, "update.db")));
+                Assert.IsNotNull(failed);
+                Assert.AreEqual(UpdatePhase.Failed, failed.Phase);
+                Assert.IsTrue(Directory.Exists(failed.TargetDirectory));
+                Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
                 await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(failed.TargetDirectory)), token);
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
@@ -219,6 +232,38 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
                 await WaitForLogEndAsync(logMonitoring, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
+                    "An Agent rollback or downgrade must not replace the Updater.");
+                var installedUpdater = Path.Combine(windows
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
+                    : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
+                var originalHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(updater, "Vigiloom.Updater.dll"), token));
+                var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
+                Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
+                var upgradeId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                Assert.IsNotNull(upgradeId);
+                installed.TrackReplacement(upgradeId.Value);
+                await WaitForResultAsync(agents, agentId, upgradeId.Value, AgentUpdateResultKind.Succeeded, token, TimeSpan.FromMinutes(7));
+                await WaitUntilAsync(async () =>
+                {
+                    if (!File.Exists(installedUpdater)) return false;
+                    try
+                    {
+                        var statusPath = Path.Combine(updaterState, "updater-replacement.status");
+                        var status = windows
+                            ? File.Exists(statusPath) ? await File.ReadAllTextAsync(statusPath, token) : ""
+                            : await RunAsync("sudo", token, "-n", "sh", "-c", "test ! -f /var/lib/vigiloom/updater/updater-replacement.status || cat /var/lib/vigiloom/updater/updater-replacement.status");
+                        if (status.Trim() != $"{upgradeId.Value:N} succeeded") return false;
+                        var baseDirectory = Path.GetDirectoryName(Path.GetDirectoryName(installedUpdater))!;
+                        if (Directory.Exists(Path.Combine(baseDirectory, "Updater.previous")) || Directory.Exists(Path.Combine(baseDirectory, "Updater.next")) ||
+                            Directory.Exists(Path.Combine(baseDirectory, "updater.previous")) || Directory.Exists(Path.Combine(baseDirectory, "updater.next"))) return false;
+                        var hash = SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token));
+                        var pid = await ServicePidAsync(windows, agent: false, token);
+                        return hash.AsSpan().SequenceEqual(replacementHash) && pid != "0" && pid != updaterPid;
+                    }
+                    catch (IOException) { return false; }
+                }, token, TimeSpan.FromMinutes(4));
+                var upgradedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
                 var reportAfterUpdate = DateTimeOffset.UtcNow;
                 await gate.SettingsRejected.WaitAsync(TimeSpan.FromMinutes(3), token);
                 await WaitUntilAsync(async () =>
@@ -228,7 +273,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                         x.AppliedConfigurationRevision == configured.Effective.Revision && x.ConfigurationAppliedAt == appliedAt &&
                         x.ConfigurationFailure == AgentConfigurationFailure.Unavailable, token);
                 }, token);
-                Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
+                Assert.AreEqual(upgradedUpdaterPid, await ServicePidAsync(windows, agent: false, token));
                 Assert.AreNotEqual(originalAgentPid, await ServicePidAsync(windows, agent: true, token));
                 if (!windows) await VerifyLinuxInstallationPermissionsAsync(token);
                 await using (var db = await agents.CreateDbContextAsync(token))
@@ -254,13 +299,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                         replacementUpdater, rootPath, fingerprint, replacementOutput);
                     await RunAsync("tar", token, "-xzf", Path.Combine(replacementOutput, "vigiloom-agent-linux-x64.tar.gz"), "-C", replacementBundle);
                 }
-                var installedUpdater = Path.Combine(windows
-                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "VigiloomAgent", "Updater")
-                    : "/opt/vigiloom/updater", "Vigiloom.Updater.dll");
-                var originalHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(updater, "Vigiloom.Updater.dll"), token));
-                var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
-                Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
-                CollectionAssert.AreEqual(originalHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
+                CollectionAssert.AreEqual(replacementHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
                 // Repair must work even when the installed Updater executable itself is missing.
                 if (windows)
                     await RunAsync("powershell.exe", token, "-NoProfile", "-Command",
@@ -278,7 +317,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     await RunAsync("sudo", token, "-n", "bash", Path.Combine(replacementBundle, "repair-updater.sh"));
                 var repairedUpdaterPid = await ServicePidAsync(windows, agent: false, token);
                 Assert.AreNotEqual("0", repairedUpdaterPid);
-                Assert.AreNotEqual(updaterPid, repairedUpdaterPid);
+                Assert.AreNotEqual(upgradedUpdaterPid, repairedUpdaterPid);
                 Assert.AreEqual(agentPidBeforeRepair, await ServicePidAsync(windows, agent: true, token));
                 CollectionAssert.AreEqual(replacementHash, SHA256.HashData(await File.ReadAllBytesAsync(installedUpdater, token)));
 
@@ -304,7 +343,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.0.0", token);
+                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.1.0", token);
                 }, token);
 
                 gate.Allow();

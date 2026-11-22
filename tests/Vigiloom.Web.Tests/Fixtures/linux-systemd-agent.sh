@@ -25,9 +25,14 @@ for path in "${paths[@]}"; do [[ ! -e $path && ! -L $path ]] || exit 1; done
 ! systemctl cat vigiloom-agent.service >/dev/null 2>&1 || exit 1
 ! systemctl cat vigiloom-updater.service >/dev/null 2>&1 || exit 1
 
+cleanup_allowed=1
 cleanup() {
     local status=$?
     trap - EXIT
+    if [[ $cleanup_allowed != 1 ]]; then
+        echo 'The parent did not confirm safe cleanup; the test installation was retained.' >&2
+        exit 1
+    fi
     local unit state pid
     # Emit only the known, non-secret status messages; never dump service journals.
     journalctl -u vigiloom-agent.service -u vigiloom-updater.service --no-pager -o cat 2>/dev/null \
@@ -75,5 +80,8 @@ read -r fingerprint
 read -r enrollment
 printf '%s\n' "$server" "$device" "$fingerprint" "$enrollment" | bash "$bundle/install.sh" >&2
 unset enrollment
+cleanup_allowed=0
 echo READY
-read -r _ || true
+command=''
+read -r command || true
+[[ $command == CLEANUP ]] && cleanup_allowed=1

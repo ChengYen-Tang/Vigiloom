@@ -28,6 +28,7 @@ $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($c
 $store = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
 $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
 $addedCertificate = $false
+$cleanupAllowed = $true
 $startedAt = Get-Date
 try {
     if ($store.Certificates.Find('FindByThumbprint', $certificate.Thumbprint, $false).Count -ne 0) {
@@ -43,11 +44,17 @@ try {
         return $value
     }
     & (Join-Path $bundlePath 'install.ps1') *>&1 | Out-Null
+    $cleanupAllowed = $false
     [Console]::Out.WriteLine('READY')
     [Console]::Out.Flush()
-    [void][Console]::In.ReadLine()
+    if ([Console]::In.ReadLine() -eq 'CLEANUP') { $cleanupAllowed = $true }
 }
 finally {
+    if (-not $cleanupAllowed) {
+        $store.Close()
+        $certificate.Dispose()
+        throw 'The parent did not confirm safe cleanup; the test installation was retained.'
+    }
     try {
         # Only emit fixed, non-secret status messages; never dump the Windows event log.
         try {
