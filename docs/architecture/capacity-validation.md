@@ -191,6 +191,19 @@ does not represent the intended full offered load after that point. A 503 alone
 does not establish whether the receiver gate, a downstream timeout or another
 condition caused it. This result is not a passing 500-device capacity test.
 
+Two subsequent 10-second diagnostic attempts used the same 500-Agent,
+50-service fixture. With the existing four OTLP request slots, 46 log requests
+returned 503 `receiver-busy`; the service sender reported 40 accepted logs,
+40 points and four spans in 22.43 seconds. A temporary local experiment with
+16 slots reported 34 `receiver-busy` responses and nine `export-retry`
+responses, with 70 logs, 70 points and seven spans in 22.91 seconds. Each
+service stopped at its first failure, the results were not SQL-verified, and
+these short attempts do not demonstrate sustainable throughput. The original
+four-slot setting was restored. Raising the limit alone did not remove the
+failures; exporter batching and the actual retry configuration need separate
+evaluation. The failure breakdown covers HTTP failures received by the
+synthetic sender, not transport errors or OTLP partial rejections.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
