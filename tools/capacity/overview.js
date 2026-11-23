@@ -5,14 +5,14 @@ import { check, sleep } from 'k6';
 const sizes = { 30: 2, 100: 5, 300: 10, 500: 15 };
 const size = Number(__ENV.VIGILOOM_DEVICES);
 const base = (__ENV.VIGILOOM_URL || '').replace(/\/$/, '');
-const token = __ENV.VIGILOOM_API_TOKEN;
-if (!sizes[size] || !base || !token) {
-  throw new Error('Set VIGILOOM_DEVICES (30, 100, 300 or 500), VIGILOOM_URL and VIGILOOM_API_TOKEN.');
+const session = __ENV.VIGILOOM_SESSION_COOKIE;
+if (!sizes[size] || !base || !session) {
+  throw new Error('Set VIGILOOM_DEVICES (30, 100, 300 or 500), VIGILOOM_URL and VIGILOOM_SESSION_COOKIE.');
 }
 if (!/^https:\/\//i.test(base) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(base)) {
   throw new Error('Use HTTPS, or HTTP only for a loopback test host.');
 }
-const params = { headers: { Authorization: `Bearer ${token}` }, redirects: 0 };
+const params = { headers: { Cookie: session }, redirects: 0 };
 const url = `${base}/api/v1/workspace/overview`;
 
 export const options = {
@@ -36,8 +36,12 @@ export default function () {
   check(response, {
     'overview available': (r) => {
       if (r.status !== 200) return false;
-      const data = r.json();
-      return !data.ping.unavailable && !data.agents.unavailable && !data.services.unavailable && !data.groupsUnavailable && data.ping.total === size;
+      try {
+        const data = r.json();
+        return !data.ping.unavailable && !data.agents.unavailable && !data.services.unavailable && !data.groupsUnavailable && data.ping.total === size;
+      } catch (_) {
+        return false;
+      }
     },
   });
   sleep(5);
