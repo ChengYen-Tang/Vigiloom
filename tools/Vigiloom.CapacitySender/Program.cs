@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Vigiloom.Contracts.Agent;
 
@@ -15,7 +18,21 @@ if (credentials.Length is not (30 or 100 or 300 or 500) || credentials.Any(strin
     credentials.Distinct(StringComparer.Ordinal).Count() != credentials.Length)
     throw new InvalidOperationException("Supply 30, 100, 300, or 500 distinct test Agent credentials.");
 
+var testRootPath = Environment.GetEnvironmentVariable("VIGILOOM_TEST_CA");
+using var testRoot = string.IsNullOrWhiteSpace(testRootPath) ? null : X509CertificateLoader.LoadCertificateFromFile(testRootPath);
 using var handler = new SocketsHttpHandler { MaxConnectionsPerServer = 100, AllowAutoRedirect = false };
+if (testRoot is not null)
+    handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+    {
+        if (certificate is null || (errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
+        using var chain = new X509Chain();
+        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+        chain.ChainPolicy.CustomTrustStore.Add(testRoot);
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+        using var leaf = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+        return chain.Build(leaf);
+    };
 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
 var statusCounts = new ConcurrentDictionary<string, long>();

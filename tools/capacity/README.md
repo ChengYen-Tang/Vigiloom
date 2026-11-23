@@ -41,6 +41,11 @@ log every five seconds. It requires 30, 100, 300 or 500 **distinct** already
 enrolled test Agent credentials. Put the credentials in a private JSON array
 file outside the repository; use only an isolated environment and revoke the
 credentials and remove the file when finished.
+For an isolated test server directly signed by a private root CA,
+`VIGILOOM_TEST_CA` can point to that root certificate file. The sender still
+verifies the certificate chain and hostname; omit this setting to use the
+operating system trust store. Private CA chains with an intermediate have not
+been verified by this test tool.
 
 ```powershell
 $env:VIGILOOM_URL = 'https://localhost:5001'

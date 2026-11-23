@@ -134,6 +134,15 @@ four measured checks passed. This was a short integration check of the script
 and authorization, not a sustained load test: there was no Worker or simulated
 Agent/application ingestion. The isolated database was cleaned by the fixture.
 
+On 2026-11-23, the Agent capacity sender was checked against a real isolated
+Kestrel HTTPS endpoint and LocalDB with 30 enrolled test identities. In a
+10-second run, the staggered senders received 204 for 10 metric batches (200
+points) and 60 log batches (60 logs); database counts matched. No failed HTTP
+status was recorded. This checks the sender, authentication and persistence,
+not sustained capacity, Worker processing, actual host collection or the
+30-second complete metric cycle. The private test CA was trusted only by the
+sender and the test database was cleaned by the fixture.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
