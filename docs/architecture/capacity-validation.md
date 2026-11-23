@@ -157,9 +157,11 @@ This is a short, Agent-only observation, not the full 30-device profile or a
 capacity guarantee: there were no concurrent UI readers, application telemetry,
 production Worker, retention, replay, storage-growth or long-running tests.
 The sender measures closed-loop input and cancellation can leave an in-flight
-result unknown. Fixture provisioning for this run was temporary; the sender
-itself is reusable, but end-to-end provisioning still needs to be made
-repeatable before T03 can be accepted.
+result unknown. Fixture provisioning for that run was temporary. A subsequent
+SQL Server 2022 integration check verified the repeatable
+`tools/capacity/run-agent-load.ps1` provisioning, TLS, database count checks and
+cleanup with 30 identities for six seconds; it is not a sustained load result.
+Full workload and storage measurements remain necessary before T03 acceptance.
 
 ## Initial recovery check
 
