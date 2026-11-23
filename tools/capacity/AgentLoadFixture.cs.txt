@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Google.Protobuf;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -16,6 +19,16 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using OpenTelemetry.Proto.Collector.Logs.V1;
+using OpenTelemetry.Proto.Collector.Metrics.V1;
+using OpenTelemetry.Proto.Collector.Trace.V1;
+using OpenTelemetry.Proto.Common.V1;
+using OpenTelemetry.Proto.Logs.V1;
+using OpenTelemetry.Proto.Metrics.V1;
+using OpenTelemetry.Proto.Resource.V1;
+using OpenTelemetry.Proto.Trace.V1;
 
 namespace Vigiloom.Web.Tests;
 
@@ -80,6 +93,24 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                 credentials.Add($"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
             }
             await File.WriteAllTextAsync(credentialPath, JsonSerializer.Serialize(credentials), token);
+            var services = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            string? sourceSecret = null;
+            if (Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_INCLUDE_SERVICES") == "1")
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("capacity source", token);
+                sourceSecret = source.Secret;
+                var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+                var approval = scope.ServiceProvider.GetRequiredService<ServiceApproval>();
+                for (var i = 0; i < count / 10; i++)
+                {
+                    var name = $"capacity-service-{i}";
+                    Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, name, "prod", name, token));
+                    await using var db = await services.CreateDbContextAsync(token);
+                    var id = await db.Candidates.Where(x => x.SourceId == source.SourceId && x.ServiceKey == name).Select(x => x.Id).SingleAsync(token);
+                    Assert.AreEqual(ApprovalStatus.Approved, (await approval.ApproveAsync(id, Guid.CreateVersion7(), token)).Status);
+                }
+            }
             var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
             start.ArgumentList.Add(Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_SENDER")!);
             start.Environment["VIGILOOM_URL"] = url.ToString();
@@ -87,11 +118,27 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             start.Environment["VIGILOOM_AGENT_CREDENTIALS_FILE"] = credentialPath;
             start.Environment["VIGILOOM_DURATION_SECONDS"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
             using var process = Process.Start(start)!;
+            using var telemetryStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var telemetry = sourceSecret is null ? Task.CompletedTask :
+                RunTelemetryAsync(url, root, sourceSecret, count / 10, seconds, services, telemetryStop.Token);
             var stdout = process.StandardOutput.ReadToEndAsync(token);
             var stderr = process.StandardError.ReadToEndAsync(token);
-            try { await process.WaitForExitAsync(token); }
+            var completed = false;
+            try
+            {
+                await process.WaitForExitAsync(token);
+                context.WriteLine(await stdout);
+                context.WriteLine(await stderr);
+                await telemetry;
+                completed = true;
+            }
             finally
             {
+                telemetryStop.Cancel();
+                if (!completed)
+                {
+                    try { await telemetry; } catch { /* Preserve the original error during cleanup. */ }
+                }
                 if (!process.HasExited)
                 {
                     process.Kill(entireProcessTree: true);
@@ -100,8 +147,6 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                 }
             }
             var result = await stdout;
-            context.WriteLine(result);
-            context.WriteLine(await stderr);
             Assert.AreEqual(0, process.ExitCode);
             using var json = JsonDocument.Parse(result);
             var points = json.RootElement.GetProperty("acceptedMetricPoints").GetInt32();
@@ -129,4 +174,83 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             if (File.Exists(rootPath)) File.Delete(rootPath);
         }
     }, context.CancellationToken);
+
+    private async Task RunTelemetryAsync(Uri url, X509Certificate2 root, string secret, int count, int seconds,
+        IDbContextFactory<ServiceObservabilityDbContext> databases, CancellationToken token)
+    {
+        using var handler = new SocketsHttpHandler { MaxConnectionsPerServer = count, AllowAutoRedirect = false };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+        {
+            if (certificate is null || (errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
+            using var chain = new X509Chain();
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.CustomTrustStore.Add(root);
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+            using var leaf = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+            return chain.Build(leaf);
+        };
+        using var client = new HttpClient(handler) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(30) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret);
+        long logs = 0, points = 0, spans = 0;
+        var watch = Stopwatch.StartNew();
+        try { await Task.WhenAll(Enumerable.Range(0, count).Select(SendServiceAsync)); }
+        finally
+        {
+            var result = new { services = count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, logs, points, spans };
+            context.WriteLine($"OTLP: {JsonSerializer.Serialize(result)}");
+        }
+        await using var db = await databases.CreateDbContextAsync(token);
+        Assert.AreEqual(logs, await db.LogRecords.LongCountAsync(token));
+        Assert.AreEqual(points, await db.MetricPoints.LongCountAsync(token));
+        Assert.AreEqual(spans, await db.TraceSpans.LongCountAsync(token));
+        Assert.AreEqual((long)count * seconds, logs, "The closed-loop sender did not complete the planned log count.");
+
+        async Task SendServiceAsync(int index)
+        {
+            var resource = new Resource { Attributes = {
+                new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = $"capacity-service-{index}" } },
+                new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } },
+                new KeyValue { Key = "service.instance.id", Value = new AnyValue { StringValue = $"instance-{index}" } }
+            } };
+            await Task.Delay(TimeSpan.FromSeconds((double)index / count), token);
+            for (var tick = 0; tick < seconds; tick++)
+            {
+                var due = TimeSpan.FromSeconds(tick + (double)index / count) - watch.Elapsed;
+                if (due > TimeSpan.Zero) await Task.Delay(due, token);
+                var nanos = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+                var log = new ExportLogsServiceRequest { ResourceLogs = { new ResourceLogs { Resource = resource,
+                    ScopeLogs = { new ScopeLogs { LogRecords = { new LogRecord { TimeUnixNano = nanos, Body = new AnyValue { StringValue = new string('x', 512) } } } } } } } };
+                var reply = await SendAsync("logs", log.ToByteArray());
+                var logReply = ExportLogsServiceResponse.Parser.ParseFrom(reply);
+                if (logReply.PartialSuccess?.RejectedLogRecords > 0) throw new InvalidOperationException("OTLP logs were partially rejected.");
+                Interlocked.Increment(ref logs);
+                if (tick % 60 == 0)
+                {
+                    var scope = new ScopeMetrics();
+                    for (var metric = 0; metric < 10; metric++) scope.Metrics.Add(new Metric { Name = $"capacity.metric.{metric}", Gauge = new Gauge { DataPoints = { new NumberDataPoint { TimeUnixNano = nanos, AsDouble = 1.5 } } } });
+                    var request = new ExportMetricsServiceRequest { ResourceMetrics = { new ResourceMetrics { Resource = resource, ScopeMetrics = { scope } } } };
+                    var response = ExportMetricsServiceResponse.Parser.ParseFrom(await SendAsync("metrics", request.ToByteArray()));
+                    if (response.PartialSuccess?.RejectedDataPoints > 0) throw new InvalidOperationException("OTLP metrics were partially rejected.");
+                    Interlocked.Add(ref points, 10);
+                }
+                if (tick % 10 == 0)
+                {
+                    var span = new OpenTelemetry.Proto.Trace.V1.Span { Name = "request", TraceId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(16)), SpanId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(8)), StartTimeUnixNano = nanos, EndTimeUnixNano = nanos };
+                    var request = new ExportTraceServiceRequest { ResourceSpans = { new ResourceSpans { Resource = resource, ScopeSpans = { new ScopeSpans { Spans = { span } } } } } };
+                    var response = ExportTraceServiceResponse.Parser.ParseFrom(await SendAsync("traces", request.ToByteArray()));
+                    if (response.PartialSuccess?.RejectedSpans > 0) throw new InvalidOperationException("OTLP traces were partially rejected.");
+                    Interlocked.Increment(ref spans);
+                }
+            }
+        }
+        async Task<byte[]> SendAsync(string signal, byte[] body)
+        {
+            using var content = new ByteArrayContent(body);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+            using var response = await client.PostAsync($"/api/v1/otlp/v1/{signal}", content, token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsByteArrayAsync(token);
+        }
+    }
 }

@@ -1,7 +1,8 @@
 param(
     [ValidateSet(30, 100, 300, 500)][int]$Agents = 30,
     [ValidateRange(1, 86400)][int]$Seconds = 300,
-    [string]$SdkVersion = ''
+    [string]$SdkVersion = '',
+    [switch]$IncludeServices
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,11 +18,13 @@ $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $oldTemp = $env:TEMP; $oldTmp = $env:TMP; $oldTmpDir = $env:TMPDIR
 $oldSize = $env:VIGILOOM_CAPACITY_SIZE; $oldDuration = $env:VIGILOOM_DURATION_SECONDS
 $oldSender = $env:VIGILOOM_CAPACITY_SENDER
+$oldServices = $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES
 $copied = $false
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
     $env:TEMP = $scratch; $env:TMP = $scratch; $env:TMPDIR = $scratch
     $env:VIGILOOM_CAPACITY_SIZE = "$Agents"; $env:VIGILOOM_DURATION_SECONDS = "$Seconds"
+    $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = if ($IncludeServices) { '1' } else { '0' }
     if ($SdkVersion) {
         @{ sdk = @{ version = $SdkVersion; rollForward = 'disable' } } | ConvertTo-Json -Compress | Set-Content -Encoding utf8 (Join-Path $scratch 'global.json')
     }
@@ -35,7 +38,7 @@ try {
         $output = Join-Path $scratch 'result.log'
         dotnet test (Join-Path $root 'tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj') -c Release -p:UseSharedCompilation=false --filter 'FullyQualifiedName~ManualAgentCapacityTests' --logger 'console;verbosity=detailed' *> $output
         if ($LASTEXITCODE -ne 0) {
-            Select-String -LiteralPath $output -Pattern 'SqlException|deadlocked|Timeout expired|Error Number|Agent device lock' | Select-Object -First 20 | ForEach-Object { $_.Line }
+            Select-String -LiteralPath $output -Pattern '"agents":|OTLP:|SqlException|deadlocked|Timeout expired|Error Number|Agent device lock|InvalidOperationException|HttpRequestException|Exception|Error Message|錯誤訊息|Stack Trace' -Context 0,3 | Select-Object -First 30 | ForEach-Object { $_.ToString() }
             Get-Content -LiteralPath $output -Tail 60
             throw 'Capacity run failed.'
         }
@@ -43,6 +46,11 @@ try {
         $sqlVersion = @(Select-String -LiteralPath $output -Pattern 'SQL:')
         if ($summary.Count -ne 1 -or $sqlVersion.Count -ne 1) { throw 'Capacity test produced no unique result; check test discovery.' }
         $summary[0].Line; $sqlVersion[0].Line
+        if ($IncludeServices) {
+            $serviceSummary = @(Select-String -LiteralPath $output -Pattern 'OTLP:')
+            if ($serviceSummary.Count -ne 1) { throw 'Capacity test produced no unique OTLP result.' }
+            $serviceSummary[0].Line
+        }
     }
     finally { Pop-Location }
 }
@@ -50,6 +58,7 @@ finally {
     $env:TEMP = $oldTemp; $env:TMP = $oldTmp; $env:TMPDIR = $oldTmpDir
     $env:VIGILOOM_CAPACITY_SIZE = $oldSize; $env:VIGILOOM_DURATION_SECONDS = $oldDuration
     $env:VIGILOOM_CAPACITY_SENDER = $oldSender
+    $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = $oldServices
     if ($copied -and (Test-Path -LiteralPath $fixture)) {
         if ((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $sourceHash) { throw "Fixture changed during the run; retain $fixture for inspection." }
         Remove-Item -LiteralPath $fixture -Force
