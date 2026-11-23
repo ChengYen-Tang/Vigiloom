@@ -22,7 +22,7 @@ if (credentials.Length is not (30 or 100 or 300 or 500) || credentials.Any(strin
 
 var testRootPath = Environment.GetEnvironmentVariable("VIGILOOM_TEST_CA");
 using var testRoot = string.IsNullOrWhiteSpace(testRootPath) ? null : X509CertificateLoader.LoadCertificateFromFile(testRootPath);
-using var handler = new SocketsHttpHandler { MaxConnectionsPerServer = 100, AllowAutoRedirect = false };
+using var handler = new SocketsHttpHandler { MaxConnectionsPerServer = credentials.Length, AllowAutoRedirect = false };
 if (testRoot is not null)
     handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
     {

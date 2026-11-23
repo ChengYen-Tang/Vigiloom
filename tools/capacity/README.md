@@ -80,7 +80,8 @@ average and maximum time for all HTTP attempts by type, including failures and
 time waiting for a connection, through response headers. These are not
 server-only timings. The
 sender produces samples independently of HTTP responses and uses a bounded
-128-batch in-memory queue per Agent with one sender per queue. The summary
+128-batch in-memory queue per Agent with one sender per queue. Its shared HTTP
+client permits as many connections as simulated Agents. The summary
 reports generated, accepted, queue-rejected and remaining counts. After the
 configured production period it has up to 60 seconds to drain the queues;
 the output includes actual elapsed time. A timeout or drain-cancelled request
