@@ -146,6 +146,18 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
                 Assert.AreEqual(0, await verify.LogContexts.CountAsync(token));
                 candidateId = (await verify.Candidates.SingleAsync(token)).Id;
             }
+            using var eventReader = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(eventReader, "reader", token);
+            var eventFrom = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O"));
+            var eventUntil = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(1).ToString("O"));
+            var eventUrl = $"/api/v1/events?from={eventFrom}&until={eventUntil}&source=service-log";
+            using (var pendingEvents = await eventReader.GetAsync(eventUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, pendingEvents.StatusCode);
+                var page = await pendingEvents.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
+                Assert.IsNotNull(page);
+                Assert.IsEmpty(page.Items);
+            }
             var approved = await scope.ServiceProvider.GetRequiredService<ServiceApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
             Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
             // A new reading after approval is eligible; pre-approval samples are not backfilled.
@@ -155,6 +167,15 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
                 Assert.IsNull(ExportLogsServiceResponse.Parser.ParseFrom(await accepted.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
+            }
+            using (var approvedEvents = await eventReader.GetAsync(eventUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, approvedEvents.StatusCode);
+                var page = await approvedEvents.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
+                Assert.IsNotNull(page);
+                Assert.HasCount(1, page.Items);
+                Assert.AreEqual(approved.ServiceId, page.Items[0].ResourceId);
+                Assert.Contains("private payload", page.Items[0].Summary);
             }
             var nanos = log.ObservedTimeUnixNano;
             var metric = new Metric { Name = "load", Gauge = new Gauge { DataPoints = { new NumberDataPoint { TimeUnixNano = nanos, AsDouble = 1.5 } } } };
