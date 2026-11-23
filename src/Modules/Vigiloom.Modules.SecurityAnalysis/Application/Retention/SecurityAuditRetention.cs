@@ -14,6 +14,7 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
     public async Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token)
     {
         await using var db = await OpenAsync(connection, transaction, token);
+        var previous = await IntelligenceContentRetention.ProtectedPreviousAsync(db, token);
         return await AuditRetentionQueries.CountAsync(db.InventorySettingAudits, cutoff, token) +
             await AuditRetentionQueries.CountAsync(db.IntegrityScopeAudits, cutoff, token) +
             await db.InventoryChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
@@ -22,10 +23,9 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             await OldBaselineObservations(db, cutoff).LongCountAsync(token) +
             await IntelligenceContentRetention.CountAsync(db, cutoff, token) +
             await VendorContentRetention.CountAsync(db, cutoff, token) +
-            await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
-                !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
-            await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
-                !db.AdvisoryImportEntries.Any(entry => entry.PageRowId == page.RowId && db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId)), token);
+            await AdvisoryContentRetention.CountAsync(db, cutoff, previous, token) +
+            await AdvisoryContentRetention.ReclaimableEntries(db, cutoff, previous).LongCountAsync(token) +
+            await AdvisoryContentRetention.ReclaimablePages(db, cutoff, previous).LongCountAsync(token);
     }
 
     public async Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token)
@@ -64,6 +64,12 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             var vendorRows = await VendorContentRetention.DeleteBatchAsync(db, cutoff, batchSize - removed, token);
             if (vendorRows == 0) break;
             removed += vendorRows;
+        }
+        while (removed < batchSize)
+        {
+            var advisoryRows = await AdvisoryContentRetention.DeleteBatchAsync(db, cutoff, batchSize - removed, token);
+            if (advisoryRows == 0) break;
+            removed += advisoryRows;
         }
         if (removed < batchSize)
         {
