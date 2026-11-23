@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -16,6 +17,32 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 [TestCategory("Database")]
 public sealed class RepositoryContentRetentionTests(TestContext context)
 {
+    [TestMethod]
+    public Task Cleanup_KeepsCurrentPreviousAndOfflineKevCatalogs() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true, LastSuccessfulCheckAt = now.AddDays(-30) };
+        IntelligenceRevision Revision(int day, byte value) => new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), Digest = Enumerable.Repeat(value, 32).ToArray(), Artifact = [value], SchemaVersion = KevCatalogValidator.SchemaRevision, MappingVersion = KevUpdate.MappingVersion, LicenseEvidence = KevUpdate.LicenseEvidence, Normalized = true };
+        var current = Revision(-1, 1); var previous = Revision(-50, 2); var unused = Revision(-80, 3); var offline = Revision(-90, 4);
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, previous, unused, offline);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        db.IntelligenceActivationEvents.AddRange(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = previous.Id, OccurredAt = now.AddDays(-40), Scheduled = true }, new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = current.Id, PreviousRevisionId = previous.Id, OccurredAt = now, Scheduled = true });
+        db.OfflineImports.Add(new OfflineImport { SourceId = source.Id, RevisionId = offline.Id, ActorId = Guid.CreateVersion7(), ImportedAt = now });
+        db.KevRecords.Add(new KevRecord { RevisionId = unused.Id, CveId = "CVE-2026-1234", VendorProject = "Vendor", Product = "Product", VulnerabilityName = "Test", Description = "Test", RequiredAction = "Update" });
+        await db.SaveChangesAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
+        Assert.AreEqual(2L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
+        Assert.AreEqual(2, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
+        await transaction.CommitAsync(token); db.ChangeTracker.Clear();
+        var removed = await db.IntelligenceRevisions.SingleAsync(x => x.Id == unused.Id, token);
+        Assert.IsNotNull(removed.ContentPurgedAt); Assert.IsEmpty(removed.Artifact);
+        Assert.IsNull((await db.IntelligenceRevisions.SingleAsync(x => x.Id == previous.Id, token)).ContentPurgedAt);
+        Assert.IsNull((await db.IntelligenceRevisions.SingleAsync(x => x.Id == offline.Id, token)).ContentPurgedAt);
+        Assert.AreEqual(0, await db.KevRecords.CountAsync(token));
+    }, context.CancellationToken);
+
     [TestMethod]
     public Task Cleanup_SkipsUnusablePriorAndPreservesEarlierUsableRevision() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
     {
