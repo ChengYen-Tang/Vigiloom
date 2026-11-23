@@ -163,6 +163,34 @@ SQL Server 2022 integration check verified the repeatable
 cleanup with 30 identities for six seconds; it is not a sustained load result.
 Full workload and storage measurements remain necessary before T03 acceptance.
 
+The same script accepts `-IncludeServices` to run one pre-approved application
+service per ten synthetic Agents using the real OTLP HTTP endpoints. A single
+test source credential represents a shared Collector. Each service schedules a
+512-character log per second, ten metric points per minute and one span per
+ten seconds. HTTP errors and OTLP partial rejection fail the run; accepted
+counts are checked against SQL rows. Services send in a closed loop and catch
+up when delayed: compare elapsed time with the requested duration rather than
+assuming a sustained rate. This synthetic producer is not the sample SDK or
+the real Agent's offline queue, and it does not exercise Worker or UI traffic.
+
+On 2026-11-23, the isolated SQL Server 2022 / Kestrel fixture completed a
+10-second smoke run with 30 Agents and three services. The Agent producer
+reported 200 accepted metric points and 59 accepted logs in 10.02 seconds;
+OTLP reported 30 logs, 30 metric points and three spans in 9.73 seconds. All
+accepted totals matched SQL; no HTTP error, rejection or remaining Agent batch
+was reported. This validates the fixture, not sustained release capacity.
+
+A 60-second attempt with 500 Agents and 50 services sharing one source on the
+same host did not pass: at least one OTLP request received HTTP 503. The Agent
+sender reported 19,980 accepted metric points and 5,993 accepted logs with no
+remaining batches after 110.99 seconds. OTLP reported 240 accepted logs, 40
+points and 24 spans after 112.15 seconds. Since the test stopped on the OTLP
+error, neither set of counts was subsequently checked against SQL in this run.
+The OTLP sender stops an individual service's loop on its first failure and
+does not represent the intended full offered load after that point. A 503 alone
+does not establish whether the receiver gate, a downstream timeout or another
+condition caused it. This result is not a passing 500-device capacity test.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
