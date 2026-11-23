@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -193,11 +194,12 @@ public sealed class ManualAgentCapacityTests(TestContext context)
         using var client = new HttpClient(handler) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret);
         long logs = 0, points = 0, spans = 0;
+        var failures = new ConcurrentDictionary<string, int>();
         var watch = Stopwatch.StartNew();
         try { await Task.WhenAll(Enumerable.Range(0, count).Select(SendServiceAsync)); }
         finally
         {
-            var result = new { services = count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, logs, points, spans };
+            var result = new { services = count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, logs, points, spans, failures };
             context.WriteLine($"OTLP: {JsonSerializer.Serialize(result)}");
         }
         await using var db = await databases.CreateDbContextAsync(token);
@@ -249,6 +251,25 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             using var content = new ByteArrayContent(body);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
             using var response = await client.PostAsync($"/api/v1/otlp/v1/{signal}", content, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var reason = "other";
+                var data = await response.Content.ReadAsByteArrayAsync(token);
+                try
+                {
+                    reason = Google.Rpc.Status.Parser.ParseFrom(data).Message switch
+                    {
+                        "Receiver capacity is busy; retry later." => "receiver-busy",
+                        "Receiver deadline exceeded; retry later." => "receiver-deadline",
+                        "Telemetry storage is unavailable; retry later." => "storage-unavailable",
+                        "Telemetry storage timed out; retry later." => "storage-timeout",
+                        "Telemetry is temporarily unavailable; retry later." => "export-retry",
+                        _ => "other"
+                    };
+                }
+                catch (InvalidProtocolBufferException) { }
+                failures.AddOrUpdate($"{signal}/{(int)response.StatusCode}/{reason}", 1, (_, previous) => previous + 1);
+            }
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsByteArrayAsync(token);
         }
