@@ -19,6 +19,50 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 public sealed class RepositoryContentRetentionTests(TestContext context)
 {
     [TestMethod]
+    [DataRow("ubuntu-osv")]
+    [DataRow("msrc-cvrf")]
+    public Task Cleanup_RemovesOldArchiveButKeepsSharedDocuments(string sourceKey) => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = sourceKey, Enabled = true };
+        IntelligenceRevision Revision(int day, byte value) => new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), Digest = Enumerable.Repeat(value, 32).ToArray(), Artifact = [value], SchemaVersion = sourceKey == "ubuntu-osv" ? UbuntuRevisionStage.SchemaVersion : MsrcSnapshotStage.Schema, MappingVersion = sourceKey == "ubuntu-osv" ? UbuntuRevisionStage.MappingVersion : MsrcSnapshotStage.Mapping, LicenseEvidence = sourceKey == "ubuntu-osv" ? UbuntuRevisionStage.LicenseEvidence : MsrcRefresh.LicenseEvidence, RecordCount = 1, Normalized = true };
+        var current = Revision(-1, 1); var old = Revision(-80, 2); var documentDigest = Enumerable.Repeat((byte)7, 32).ToArray();
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, old);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        if (sourceKey == "ubuntu-osv")
+        {
+            db.UbuntuDocuments.Add(new UbuntuDocument { Digest = documentDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1234", Compressed = [1], OriginalLength = 1, ModifiedAt = now.AddDays(-60), WithdrawnAt = now.AddDays(-50) });
+            db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = old.Id, Digest = documentDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1234" });
+        }
+        else
+        {
+            db.MsrcArtifacts.Add(new MsrcArtifact { Digest = documentDigest, Content = [1], IndexedCveCount = 0 });
+            db.MsrcDocuments.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcDocument { RevisionId = old.Id, Digest = documentDigest, DocumentId = "2026-Jan", ModifiedAt = now.AddDays(-60) });
+        }
+        await db.SaveChangesAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
+        Assert.AreEqual(1L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
+        Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
+        await transaction.CommitAsync(token); db.ChangeTracker.Clear();
+        var retained = await db.IntelligenceRevisions.SingleAsync(x => x.Id == old.Id, token);
+        Assert.IsEmpty(retained.Artifact); Assert.IsTrue(retained.Normalized); Assert.IsNull(retained.ContentPurgedAt);
+        if (sourceKey == "ubuntu-osv")
+        {
+            Assert.IsTrue(await UbuntuRevisionEligibility.IsPublishableAsync(db, source.Id, old.Id, now, token));
+            Assert.IsNotNull((await db.UbuntuDocuments.SingleAsync(token)).WithdrawnAt);
+            Assert.AreEqual(1, await db.UbuntuRevisionDocuments.CountAsync(token));
+        }
+        else
+        {
+            Assert.IsTrue(await MsrcRevisionEligibility.IsPublishableAsync(db, source.Id, old.Id, token));
+            Assert.AreEqual(1, await db.MsrcArtifacts.CountAsync(token));
+            Assert.AreEqual(1, await db.MsrcDocuments.CountAsync(token));
+        }
+    }, context.CancellationToken);
+
+    [TestMethod]
     public Task Cleanup_KeepsCurrentAndPreviousDebianCatalogs() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
     {
         var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
