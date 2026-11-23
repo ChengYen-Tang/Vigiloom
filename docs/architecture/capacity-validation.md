@@ -17,6 +17,24 @@ is deferred; this does not defer host Agents or rule-based security monitoring.
 The initial platform has one shared organization and two built-in roles; this
 profile does not assume multi-tenant isolation or add SSO.
 
+The release acceptance must include all of these requirement groups:
+
+| Requirements | Coverage |
+| --- | --- |
+| REQ-01–06 | Platform architecture, storage, accounts, API, UI and scheduling |
+| REQ-07–16 | Devices, groups, Ping, speed tests, publication, alerts and LINE |
+| REQ-17–21 | Agent platform, enrollment, transport, installation and versions |
+| REQ-22–25 | Application discovery, telemetry, health and service details |
+| REQ-26–31 | Host inventory, performance, processes, logs, integrity and details |
+| REQ-32–37 | Intelligence, Sigma, vulnerabilities, baselines, IOC/YARA and events |
+| REQ-38–41 | Audit, diagnostics, retention, release validation and CI |
+
+This is a scope index, not a claim that every release scenario has passed.
+Use the current requirement acceptance and actual test evidence when running
+T05; do not infer end-to-end completion from the list or from a feature being
+merged. REQ-38 diagnostics and REQ-40 release validation remain in progress at
+the time of this profile.
+
 Agent distribution targets Windows x64 and x86 and Linux x64 within the .NET 10
 support conditions. Linux x86 and legacy Windows are excluded. The owner has
 approved using the Windows x64 result for corresponding Windows x86 acceptance;
