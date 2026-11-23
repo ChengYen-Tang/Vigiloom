@@ -107,6 +107,9 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             var points = json.RootElement.GetProperty("acceptedMetricPoints").GetInt32();
             var logs = json.RootElement.GetProperty("acceptedLogs").GetInt32();
             Assert.IsGreaterThan(0, points); Assert.IsGreaterThan(0, logs);
+            Assert.IsTrue(json.RootElement.GetProperty("statusCounts").EnumerateObject()
+                .All(entry => entry.Name.EndsWith("/204", StringComparison.Ordinal)),
+                "The sender reported failed or unknown HTTP results; inspect the summary.");
             await using var verify = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(points, await verify.HostMetrics.CountAsync(token));
             Assert.AreEqual(logs, await verify.HostLogs.CountAsync(token));

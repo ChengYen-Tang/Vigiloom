@@ -38,12 +38,14 @@ using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) 
 var elapsed = Stopwatch.StartNew();
 using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
 var statusCounts = new ConcurrentDictionary<string, long>();
+var metricLatency = new Latency();
+var logLatency = new Latency();
 long attemptedPayloadBytes = 0;
 long acceptedMetricPoints = 0;
 long acceptedLogs = 0;
 var senders = credentials.Select((credential, index) => RunAgentAsync(credential, index)).ToArray();
 await Task.WhenAll(senders);
-Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, elapsedSeconds = elapsed.Elapsed.TotalSeconds, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts }));
+Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, elapsedSeconds = elapsed.Elapsed.TotalSeconds, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts, metricLatency = metricLatency.Summary(), logLatency = logLatency.Summary() }));
 
 async Task RunAgentAsync(string credential, int index)
 {
@@ -91,6 +93,7 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
     request.Content = new ByteArrayContent(bytes);
     request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
     Interlocked.Add(ref attemptedPayloadBytes, bytes.Length);
+    var started = Stopwatch.GetTimestamp();
     try
     {
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
@@ -103,6 +106,30 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
     }
     catch (HttpRequestException) { Count("connection_error"); }
     catch (OperationCanceledException) { Count("timeout"); }
+    finally { (kind == "metrics" ? metricLatency : logLatency).Record(Stopwatch.GetTimestamp() - started); }
 
     void Count(string status) => statusCounts.AddOrUpdate($"{kind}/{status}", 1, (_, old) => old + 1);
+}
+
+sealed class Latency
+{
+    private long count;
+    private long totalTicks;
+    private long maxTicks;
+
+    public void Record(long ticks)
+    {
+        Interlocked.Increment(ref count);
+        Interlocked.Add(ref totalTicks, ticks);
+        long current;
+        do { current = Interlocked.Read(ref maxTicks); if (ticks <= current) return; }
+        while (Interlocked.CompareExchange(ref maxTicks, ticks, current) != current);
+    }
+
+    public object Summary() => new
+    {
+        count,
+        averageMilliseconds = count == 0 ? 0 : totalTicks * 1000d / Stopwatch.Frequency / count,
+        maximumMilliseconds = maxTicks * 1000d / Stopwatch.Frequency
+    };
 }

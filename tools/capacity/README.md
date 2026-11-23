@@ -47,7 +47,8 @@ described in `tests/Vigiloom.Testing.SqlServer/README.md`. Then run:
 The optional `-SdkVersion` overrides the pinned SDK only inside the temporary
 working directory. The script uses a run-owned temporary database and real
 Kestrel HTTPS, creates test Agent credentials, checks accepted counts against
-database rows and prints the sender summary and SQL version. It is not part of
+database rows, fails on non-204 or unknown HTTP results, and prints the sender
+summary and SQL version. It is not part of
 the regular CI tests. It removes its temporary fixture, credentials, certificate
 and database. If database cleanup cannot complete, the script preserves the
 scratch directory and directs the operator to the fixture's recovery procedure.
@@ -74,7 +75,10 @@ Remove-Item Env:VIGILOOM_AGENT_CREDENTIALS_FILE
 ```
 
 The JSON summary separates accepted metric points and logs from batch HTTP
-statuses; attempted payload bytes include cancelled and failed requests. The
+statuses; attempted payload bytes include failed requests. It also reports
+average and maximum time for all HTTP attempts by type, including failures and
+time waiting for a connection, through response headers. These are not
+server-only timings. The
 sender waits for each response, so slow responses reduce the actual input rate.
 At the configured deadline it stops starting requests and waits up to the HTTP
 timeout for in-flight requests; the output includes actual elapsed time. Use
