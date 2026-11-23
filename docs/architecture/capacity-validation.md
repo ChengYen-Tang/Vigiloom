@@ -143,6 +143,24 @@ not sustained capacity, Worker processing, actual host collection or the
 30-second complete metric cycle. The private test CA was trusted only by the
 sender and the test database was cleaned by the fixture.
 
+On 2026-11-23, a 60-second Agent-only check used the same isolated Kestrel
+test host and the capacity sender with 30 enrolled test identities, backed by
+SQL Server 2022 container `16.0.4325.4`, Developer Edition, compatibility 160.
+The host was Windows 11 Enterprise build 26300, 8 logical CPUs and 32 GiB RAM;
+Web, sender and SQL shared that machine. The sender reported 1,200 accepted
+metric points (60 batches), 359 accepted logs, 554,422 attempted payload bytes,
+and one cancelled request of each kind at the deadline. No HTTP rejection was
+reported, and both accepted counts matched SQL rows. The fixture database and
+container were removed after the run.
+
+This is a short, Agent-only observation, not the full 30-device profile or a
+capacity guarantee: there were no concurrent UI readers, application telemetry,
+production Worker, retention, replay, storage-growth or long-running tests.
+The sender measures closed-loop input and cancellation can leave an in-flight
+result unknown. Fixture provisioning for this run was temporary; the sender
+itself is reusable, but end-to-end provisioning still needs to be made
+repeatable before T03 can be accepted.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
