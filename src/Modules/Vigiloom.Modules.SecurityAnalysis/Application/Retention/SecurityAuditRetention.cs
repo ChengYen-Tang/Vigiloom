@@ -8,7 +8,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 
-/// <summary>Applies the audit policy to security settings, change history and abandoned import staging data.</summary>
+/// <summary>Applies the audit policy to security settings, change history and finished import staging data.</summary>
 public sealed class SecurityAuditRetention : IAuditRetentionSource
 {
     public async Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token)
@@ -20,9 +20,9 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             await db.IntegrityChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await OldEvaluations(db, cutoff).LongCountAsync(token) +
             await OldBaselineObservations(db, cutoff).LongCountAsync(token) +
-            await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
+            await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
-            await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
+            await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryImportEntries.Any(entry => entry.PageRowId == page.RowId && db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId)), token);
     }
 
@@ -56,13 +56,13 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             // The source lock is shared with import and abandonment, so references cannot change mid-batch.
             await db.IntelligenceSources.FromSqlRaw("SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Key] = 'github-reviewed'")
                 .AsNoTracking().SingleOrDefaultAsync(token);
-            var entries = db.AdvisoryImportEntries.Where(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
+            var entries = db.AdvisoryImportEntries.Where(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId)).OrderBy(entry => entry.RowId).Select(entry => entry.RowId).Take(batchSize - removed);
             removed += await db.AdvisoryImportEntries.Where(entry => entries.Contains(entry.RowId)).ExecuteDeleteAsync(token);
         }
         if (removed < batchSize)
         {
-            var pages = db.AdvisoryImportPages.Where(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && import.Phase == 5 && import.StartedAt < cutoff) &&
+            var pages = db.AdvisoryImportPages.Where(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryImportEntries.Any(entry => entry.PageRowId == page.RowId)).OrderBy(page => page.RowId).Select(page => page.RowId).Take(batchSize - removed);
             removed += await db.AdvisoryImportPages.Where(page => pages.Contains(page.RowId)).ExecuteDeleteAsync(token);
         }

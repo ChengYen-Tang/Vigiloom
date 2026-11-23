@@ -15,7 +15,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 public sealed class AdvisoryStagingRetentionTests(TestContext context)
 {
     [TestMethod]
-    public Task Cleanup_RemovesAbandonedUnreferencedStagingInBatches() =>
+    public Task Cleanup_RemovesFinishedUnreferencedStagingInBatches() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>()
@@ -58,7 +58,9 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
             await using var transaction = await db.Database.BeginTransactionAsync(token);
             var retention = new SecurityAuditRetention();
             var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction(); var cutoff = now.AddDays(-30);
-            Assert.AreEqual(6L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(8L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
             Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, cutoff, 1, token));
@@ -68,8 +70,8 @@ public sealed class AdvisoryStagingRetentionTests(TestContext context)
             Assert.AreEqual(0L, await retention.CountAsync(connection, sqlTransaction, cutoff, token));
             await transaction.CommitAsync(token);
 
-            Assert.AreEqual(3, await db.AdvisoryImportPages.AsNoTracking().CountAsync(token));
-            Assert.AreEqual(3, await db.AdvisoryImportEntries.AsNoTracking().CountAsync(token));
+            Assert.AreEqual(2, await db.AdvisoryImportPages.AsNoTracking().CountAsync(token));
+            Assert.AreEqual(2, await db.AdvisoryImportEntries.AsNoTracking().CountAsync(token));
             Assert.IsTrue(await db.AdvisoryImportEntries.AsNoTracking().AnyAsync(x => x.RowId == referencedEntry.RowId, token));
             Assert.IsTrue(await db.IntelligenceRevisions.AsNoTracking().AnyAsync(x => x.Id == revision.Id, token));
             Assert.AreEqual(3, await db.AdvisoryImports.AsNoTracking().CountAsync(token));
