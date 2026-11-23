@@ -253,6 +253,21 @@ up rather than continuing at a fixed offered rate, this result does not prove
 that the host can sustain the stated workload, nor does it cover UI, Worker,
 replay, retention or storage growth.
 
+An additional comparison on the same host and fixture moved Agent Log quota
+admission to after the Agent data `SaveChanges` but before outbox staging and
+commit, retaining a single transaction. SQL request snapshots in both runs
+showed substantial `Vigiloom.LogAdmission` lock contention; a baseline
+snapshot identified 97 waiting requests and several snapshots in the changed
+run also showed approximately 95–98. The baseline completed the Agent work in
+110.64 seconds and the closed-loop application work in 156.07 seconds. The
+changed run completed them in 91.36 and 136.39 seconds respectively, then
+waited 1.04 seconds for the Collector's central counts. It stored 19,980 Agent
+metric points, 5,993 Agent logs, 3,000 application logs, 500 points and 300
+spans, matching the sender counts, with no reported HTTP failures or Agent
+queue overflow. This is one comparison, not a sustained-capacity claim or
+proof that the lock is the only bottleneck. The targeted SQL tests for quota
+rejection, replay, transactional rollback and actual outbox dispatch passed.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
