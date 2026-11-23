@@ -163,6 +163,30 @@ SQL Server 2022 integration check verified the repeatable
 cleanup with 30 identities for six seconds; it is not a sustained load result.
 Full workload and storage measurements remain necessary before T03 acceptance.
 
+Further Agent-only 60-second runs used the same SQL Server 2022 container
+version and host as above. Each run used a fresh isolated database. Accepted
+counts matched the database; none of these runs included application telemetry,
+Worker, concurrent UI, retention or replay:
+
+| Agents | Accepted metric points | Accepted logs | Attempted payload bytes | Result |
+| ---: | ---: | ---: | ---: | --- |
+| 100 | 4,000 | 1,196 | 1,836,931 | One metric and one log request cancelled at deadline |
+| 300 | 12,000 | 2,745 | 4,698,368 | All responses 204; 66.67 s including drain |
+| 500 | 20,000 | 2,893 | 6,236,149 | All responses 204; 71.29 s including drain |
+
+The first 300-Agent attempt cancelled in-flight requests at the deadline and
+failed the database-count check; the sender was corrected to drain requests and
+the successful rerun is shown above. Timeouts or connection failures can still
+leave an individual request's commit status unknown.
+
+The target profile calls for about 3,600 and 6,000 host logs respectively for
+300 and 500 Agents over 60 seconds. The closed-loop sender achieved less than
+those targets, so these results do **not** establish that the platform handles
+the intended workload. Web, SQL and the sender shared one machine, and the run
+did not isolate their resource usage or establish the cause of the reduced
+rate. Investigate using measured request latency and SQL/host resource data
+before deciding whether any change is needed.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB

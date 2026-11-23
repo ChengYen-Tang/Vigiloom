@@ -76,7 +76,10 @@ Remove-Item Env:VIGILOOM_AGENT_CREDENTIALS_FILE
 The JSON summary separates accepted metric points and logs from batch HTTP
 statuses; attempted payload bytes include cancelled and failed requests. The
 sender waits for each response, so slow responses reduce the actual input rate.
-Use the observed counts and duration, not the target intervals, to calculate
-throughput. It does not retry or simulate offline replay; 204 confirms batch
+At the configured deadline it stops starting requests and waits up to the HTTP
+timeout for in-flight requests; the output includes actual elapsed time. Use
+observed counts and time, not target intervals, to calculate throughput. A
+timed-out request may have been committed despite an unknown response. It does
+not retry or simulate offline replay; 204 confirms batch
 receipt but does not measure processing lag or the resources used by real
 Agents. It does not generate application telemetry. Measure those separately.

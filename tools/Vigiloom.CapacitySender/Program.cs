@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Security.Cryptography;
@@ -34,6 +35,7 @@ if (testRoot is not null)
         return chain.Build(leaf);
     };
 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+var elapsed = Stopwatch.StartNew();
 using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
 var statusCounts = new ConcurrentDictionary<string, long>();
 long attemptedPayloadBytes = 0;
@@ -41,7 +43,7 @@ long acceptedMetricPoints = 0;
 long acceptedLogs = 0;
 var senders = credentials.Select((credential, index) => RunAgentAsync(credential, index)).ToArray();
 await Task.WhenAll(senders);
-Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts }));
+Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, elapsedSeconds = elapsed.Elapsed.TotalSeconds, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts }));
 
 async Task RunAgentAsync(string credential, int index)
 {
@@ -55,7 +57,11 @@ async Task RunAgentAsync(string credential, int index)
         {
             await Task.Delay(period * position / credentials.Length, stop.Token);
             using var timer = new PeriodicTimer(period);
-            do { await SendAsync(createBatch(), credential, kind); }
+            do
+            {
+                if (stop.IsCancellationRequested) break;
+                await SendAsync(createBatch(), credential, kind);
+            }
             while (await timer.WaitForNextTickAsync(stop.Token));
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
@@ -87,7 +93,7 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
     Interlocked.Add(ref attemptedPayloadBytes, bytes.Length);
     try
     {
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop.Token);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         Count(((int)response.StatusCode).ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
         {
@@ -95,9 +101,8 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
             else Interlocked.Increment(ref acceptedLogs);
         }
     }
-    catch (OperationCanceledException) when (stop.IsCancellationRequested) { Count("cancelled"); }
     catch (HttpRequestException) { Count("connection_error"); }
-    catch (TaskCanceledException) { Count("timeout"); }
+    catch (OperationCanceledException) { Count("timeout"); }
 
     void Count(string status) => statusCounts.AddOrUpdate($"{kind}/{status}", 1, (_, old) => old + 1);
 }
