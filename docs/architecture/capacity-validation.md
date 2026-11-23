@@ -325,6 +325,42 @@ during the run observed up to 149 user sessions and 127 requests waiting on
 This single comparison does not establish a general regression, but it does
 not support raising the product's default connection pool as a solution.
 
+### Initial table and index space measurement
+
+`-MeasureStorage` records before/after SQL partition statistics for the eight
+tables below after fixture provisioning and after successful ingestion and
+count verification. Heap/clustered and nonclustered figures are **reserved**
+bytes, including allocated but unused pages; row counts are approximate DMV
+values. It does not include other tables, transaction logs or the total database
+file size. SQL Server 2022 requires test-database `VIEW DATABASE PERFORMANCE
+STATE` and `VIEW SECURITY DEFINITION` permissions for this DMV; do not grant
+these to the production runtime solely for this manual measurement. See
+[Microsoft's DMV documentation](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-db-partition-stats-transact-sql).
+
+On 2026-11-23, the isolated SQL Server 2022 fixture ran 500 synthetic Agents
+and 50 services through Collector for the planned 60-second workload, with
+no concurrent overview readers, Worker, Ping scheduling or retention. Agent
+generation and drain took 89.95 seconds, application generation took 121.23
+seconds, and all reported data counts matched SQL. The per-table increase in
+reserved bytes was:
+
+| Table | Approximate added rows | Heap / clustered bytes | Nonclustered bytes |
+| --- | ---: | ---: | ---: |
+| agent.HostLogs | 5,993 | 8,527,872 | 2,203,648 |
+| agent.HostMetrics | 19,980 | 3,219,456 | 4,882,432 |
+| agent.ReceivedBatches | 6,992 | 991,232 | 999,424 |
+| service.LogContexts | 3,000 | 532,480 | 344,064 |
+| service.LogRecords | 3,000 | 2,105,344 | 958,464 |
+| service.MetricContexts | 500 | 204,800 | 212,992 |
+| service.MetricPoints | 500 | 73,728 | 368,640 |
+| service.TraceSpans | 300 | 73,728 | 442,368 |
+
+The selected tables reserved approximately 24.93 MiB in total. This short
+run includes initial allocation granularity and a synthetic payload; it is
+not a long-term storage forecast, a sustained-rate result, or a complete
+database-size estimate. More representative duration and retention runs are
+still required.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,

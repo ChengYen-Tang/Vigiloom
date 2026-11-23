@@ -168,6 +168,8 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                     await PingTestSite.LoginAsync(reader, "reader", token);
                 }
             }
+            var storageBefore = Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_STORAGE") == "1"
+                ? await ReadStorageAsync(agents, token) : null;
             var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
             start.ArgumentList.Add(Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_SENDER")!);
             start.Environment["VIGILOOM_URL"] = url.ToString();
@@ -220,6 +222,14 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             await using var verify = await agents.CreateDbContextAsync(token);
             Assert.AreEqual(points, await verify.HostMetrics.CountAsync(token));
             Assert.AreEqual(logs, await verify.HostLogs.CountAsync(token));
+            if (storageBefore is not null)
+            {
+                var after = await ReadStorageAsync(agents, token);
+                var changes = after.Select(entry => new { table = entry.Key, approximateRows = entry.Value.Rows - storageBefore[entry.Key].Rows,
+                    heapClusteredReservedBytes = (entry.Value.DataPages - storageBefore[entry.Key].DataPages) * 8192,
+                    nonclusteredReservedBytes = (entry.Value.IndexPages - storageBefore[entry.Key].IndexPages) * 8192 }).ToArray();
+                context.WriteLine($"STORAGE: {JsonSerializer.Serialize(changes)}");
+            }
             var connection = verify.Database.GetDbConnection();
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
@@ -245,6 +255,31 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             }
         }
     }, context.CancellationToken);
+
+    private sealed record Storage(long Rows, long DataPages, long IndexPages);
+
+    private static async Task<Dictionary<string, Storage>> ReadStorageAsync(IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var connection = db.Database.GetDbConnection();
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT SCHEMA_NAME(t.schema_id) + N'.' + t.name,
+                SUM(CASE WHEN p.index_id IN (0, 1) THEN CONVERT(bigint, p.row_count) ELSE 0 END),
+                SUM(CASE WHEN p.index_id IN (0, 1) THEN CONVERT(bigint, p.reserved_page_count) ELSE 0 END),
+                SUM(CASE WHEN p.index_id > 1 THEN CONVERT(bigint, p.reserved_page_count) ELSE 0 END)
+            FROM sys.tables t JOIN sys.dm_db_partition_stats p ON p.object_id = t.object_id
+            WHERE (SCHEMA_NAME(t.schema_id) = N'agent' AND t.name IN (N'HostMetrics', N'HostLogs', N'ReceivedBatches'))
+               OR (SCHEMA_NAME(t.schema_id) = N'service' AND t.name IN (N'LogContexts', N'LogRecords', N'MetricContexts', N'MetricPoints', N'TraceSpans'))
+            GROUP BY t.schema_id, t.name ORDER BY SCHEMA_NAME(t.schema_id), t.name
+            """;
+        var result = new Dictionary<string, Storage>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) result.Add(reader.GetString(0), new(reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3)));
+        if (result.Count != 8) throw new InvalidOperationException("Expected storage tables are missing.");
+        return result;
+    }
 
     private async Task RunQueriesAsync(List<HttpClient> clients, int expectedDevices, int seconds, CancellationToken token)
     {

@@ -4,7 +4,8 @@ param(
     [string]$SdkVersion = '',
     [switch]$IncludeServices,
     [switch]$Collector,
-    [switch]$IncludeQueries
+    [switch]$IncludeQueries,
+    [switch]$MeasureStorage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,7 @@ $oldSender = $env:VIGILOOM_CAPACITY_SENDER
 $oldServices = $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES
 $oldCollector = $env:VIGILOOM_CAPACITY_COLLECTOR
 $oldQueries = $env:VIGILOOM_CAPACITY_QUERIES
+$oldStorage = $env:VIGILOOM_CAPACITY_STORAGE
 $copied = $false
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
@@ -32,6 +34,7 @@ try {
     $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = if ($IncludeServices) { '1' } else { '0' }
     $env:VIGILOOM_CAPACITY_COLLECTOR = if ($Collector) { '1' } else { '0' }
     $env:VIGILOOM_CAPACITY_QUERIES = if ($IncludeQueries) { '1' } else { '0' }
+    $env:VIGILOOM_CAPACITY_STORAGE = if ($MeasureStorage) { '1' } else { '0' }
     if ($SdkVersion) {
         @{ sdk = @{ version = $SdkVersion; rollForward = 'disable' } } | ConvertTo-Json -Compress | Set-Content -Encoding utf8 (Join-Path $scratch 'global.json')
     }
@@ -53,6 +56,11 @@ try {
         $sqlVersion = @(Select-String -LiteralPath $output -Pattern 'SQL:')
         if ($summary.Count -ne 1 -or $sqlVersion.Count -ne 1) { throw 'Capacity test produced no unique result; check test discovery.' }
         $summary[0].Line; $sqlVersion[0].Line
+        if ($MeasureStorage) {
+            $storageSummary = @(Select-String -LiteralPath $output -Pattern 'STORAGE:')
+            if ($storageSummary.Count -ne 1) { throw 'Capacity test produced no unique storage result.' }
+            $storageSummary[0].Line
+        }
         if ($IncludeQueries) {
             $querySummary = @(Select-String -LiteralPath $output -Pattern 'QUERIES:')
             if ($querySummary.Count -ne 1) { throw 'Capacity test produced no unique query result.' }
@@ -76,6 +84,7 @@ finally {
     $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = $oldServices
     $env:VIGILOOM_CAPACITY_COLLECTOR = $oldCollector
     $env:VIGILOOM_CAPACITY_QUERIES = $oldQueries
+    $env:VIGILOOM_CAPACITY_STORAGE = $oldStorage
     if ($copied -and (Test-Path -LiteralPath $fixture)) {
         if ((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $sourceHash) { throw "Fixture changed during the run; retain $fixture for inspection." }
         Remove-Item -LiteralPath $fixture -Force
