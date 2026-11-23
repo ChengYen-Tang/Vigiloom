@@ -61,6 +61,12 @@ public sealed class ServiceDetailsBrowserTests
             Assert.AreEqual(LogIngestionStatus.Accepted, (await new LogIngestion(db).WriteAsync(source.SourceId, new ResourceLogs { Resource = resource, ScopeLogs = { logs } }, logs, token)).Status);
             var spans = new ScopeSpans { Spans = { new Span { Name = "order request", TraceId = id, SpanId = spanId, StartTimeUnixNano = time, EndTimeUnixNano = time } } };
             Assert.AreEqual(TraceIngestionStatus.Accepted, await new TraceIngestion(db).WriteAsync(source.SourceId, new ResourceSpans { Resource = resource, ScopeSpans = { spans } }, spans, token));
+            await using (var serviceDb = await db.CreateDbContextAsync(token))
+            {
+                var service = await serviceDb.Services.SingleAsync(x => x.Id == serviceId, token);
+                service.Revoke(DateTimeOffset.UtcNow);
+                await serviceDb.SaveChangesAsync(token);
+            }
             Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "long-service", new string('e', 64), new string('W', 128), token));
             var longCandidate = (await discovery.ListAsync(1, token)).Single(x => x.ServiceKey == "long-service");
             var longService = await scope.ServiceProvider.GetRequiredService<ServiceApproval>().ApproveAsync(longCandidate.Id, Guid.CreateVersion7(), token);
@@ -87,10 +93,15 @@ public sealed class ServiceDetailsBrowserTests
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync();
         var page = await context.NewPageAsync();
-        await page.GotoAsync($"{url}/services/{serviceId:D}");
+        await page.GotoAsync($"{url}/workspace");
         await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await page.Locator(".workspace").WaitForAsync(new() { Timeout = 60000 });
+        var orderLink = page.GetByRole(AriaRole.Link, new() { Name = "Orders", Exact = true });
+        await Assertions.Expect(orderLink.Locator("xpath=ancestor::li")).ToContainTextAsync("收集已停止");
+        await orderLink.ClickAsync();
+        await page.WaitForURLAsync($"**/services/{serviceId:D}");
         await page.Locator(".service-overview[data-interactive='true']").GetByRole(AriaRole.Heading, new() { Name = "Orders" }).WaitForAsync(new() { Timeout = 60000 });
         var groupLink = page.GetByRole(AriaRole.Link, new() { Name = "Associated group" });
         await groupLink.WaitForAsync();
@@ -137,6 +148,12 @@ public sealed class ServiceDetailsBrowserTests
         await longHeading.WaitForAsync(new() { Timeout = 60000 });
         Assert.IsTrue(await longHeading.EvaluateAsync<bool>("element => element.scrollWidth <= element.clientWidth"));
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            var service = await db.Services.SingleAsync(x => x.Id == serviceId, token);
+            service.Resume(DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(token);
+        }
         await using var administrator = await browser.NewContextAsync();
         var adminPage = await administrator.NewPageAsync();
         await adminPage.GotoAsync($"{url}/services/connect?service={serviceId:D}");
