@@ -29,13 +29,9 @@ public static class LogAdmission
 
         var policy = await ReadPolicyAsync(connection, transaction, token);
         if (count > policy.SourceBurst || count > policy.GlobalBurst) return new(LogAdmissionStatus.BatchTooLarge);
-        await using (var guard = connection.CreateCommand())
-        {
-            guard.Transaction = transaction;
-            guard.CommandText = "DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.LogAdmission', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
-            if (Convert.ToInt32(await guard.ExecuteScalarAsync(token)) < 0) return new(LogAdmissionStatus.Busy);
-        }
-        var (now, global, individual) = await ReadBucketsAsync(connection, transaction, source, token);
+        var locked = await LockAndReadBucketsAsync(connection, transaction, source, token);
+        if (locked is null) return new(LogAdmissionStatus.Busy);
+        var (now, global, individual) = locked.Value;
         global = TokenBucket.Refill(global, policy.GlobalBurst, policy.GlobalRate, policy.Version, policy.UpdatedAt, now);
         individual = TokenBucket.Refill(individual, policy.SourceBurst, policy.SourceRate, policy.Version, policy.UpdatedAt, now);
         var needed = count * TokenBucket.Unit;
@@ -61,19 +57,29 @@ public static class LogAdmission
             : new(20, 100, 1_000, 2_000, [], DateTimeOffset.MinValue);
     }
 
-    private static async Task<(DateTimeOffset Now, TokenBucket.State? Global, TokenBucket.State? Individual)> ReadBucketsAsync(
+    private static async Task<(DateTimeOffset Now, TokenBucket.State? Global, TokenBucket.State? Individual)?> LockAndReadBucketsAsync(
         DbConnection connection, DbTransaction transaction, LogSource source, CancellationToken token)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
-            SELECT [Kind], [Microtokens], [LastRefill], [PolicyVersion] FROM [logquota].[Buckets]
-            WHERE ([Kind] = 0 AND [SourceId] = @global) OR ([Kind] = @kind AND [SourceId] = @source);
+            SET NOCOUNT ON;
+            DECLARE @r int;
+            EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.LogAdmission', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000;
+            SELECT @r;
+            IF @r >= 0
+            BEGIN
+                SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00');
+                SELECT [Kind], [Microtokens], [LastRefill], [PolicyVersion] FROM [logquota].[Buckets]
+                WHERE ([Kind] = 0 AND [SourceId] = @global) OR ([Kind] = @kind AND [SourceId] = @source);
+            END
             """;
         Add(command, "@global", DbType.Guid, Guid.Empty);
         Add(command, "@kind", DbType.Byte, (byte)source.Kind); Add(command, "@source", DbType.Guid, source.Id);
         await using var reader = await command.ExecuteReaderAsync(token);
+        await reader.ReadAsync(token);
+        if (reader.GetInt32(0) < 0) return null;
+        await reader.NextResultAsync(token);
         await reader.ReadAsync(token);
         var now = reader.GetFieldValue<DateTimeOffset>(0);
         await reader.NextResultAsync(token);

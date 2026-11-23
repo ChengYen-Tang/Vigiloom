@@ -298,6 +298,15 @@ timeouts, whose commit status is unknown. The second run failed and the trial
 change was reverted. These runs show possible throughput improvement but do not
 establish a reliable change or identify the timeout cause.
 
+The admission lock acquisition and bucket reads were subsequently combined
+into one SQL command without changing the lock or transaction boundary. A
+500-Agent run with 500 allowed HTTP connections generated and accepted 19,960
+metric points and 5,984 logs, with no HTTP errors or remaining batches; SQL
+counts matched. Total time was 107.91 seconds including drain, compared with
+117.46 seconds for the earlier single run with the same connection limit. This
+is a limited observation, not a statistically established improvement or a
+sustained-capacity result; both runs accumulated backlog on a shared host.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
