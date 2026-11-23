@@ -18,6 +18,34 @@ public sealed class LogAdmissionTests(TestContext context)
 {
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
+    public Task Admission_LockTimeoutReturnsBusyAndCanRetry() =>
+        ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
+        {
+            var source = new LogSource(LogSourceKind.Agent, Guid.CreateVersion7());
+            await using var owner = new SqlConnection(database.ConnectionString);
+            await using var contender = new SqlConnection(database.ConnectionString);
+            await owner.OpenAsync(token);
+            await contender.OpenAsync(token);
+            await using (var ownerTx = await owner.BeginTransactionAsync(token))
+            {
+                await using var command = owner.CreateCommand();
+                command.Transaction = (SqlTransaction)ownerTx;
+                command.CommandText = "DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.LogAdmission', @LockMode = 'Exclusive', @LockOwner = 'Transaction'; SELECT @r";
+                Assert.IsGreaterThanOrEqualTo(0, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
+                await using var contenderTx = await contender.BeginTransactionAsync(token);
+                Assert.AreEqual(LogAdmissionStatus.Busy, (await Admission.AdmitAsync(contender, contenderTx, source, 1, token)).Status);
+                await contenderTx.RollbackAsync(token);
+                await ownerTx.RollbackAsync(token);
+            }
+            await using (var tx = await contender.BeginTransactionAsync(token))
+            {
+                Assert.AreEqual(LogAdmissionStatus.Accepted, (await Admission.AdmitAsync(contender, tx, source, 1, token)).Status);
+                await tx.CommitAsync(token);
+            }
+        }, context.CancellationToken);
+
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
     public Task Admission_WholeRequestRejectsWithoutDebitingPrefixAndCanRetry() =>
         ReusableLogQuotaDatabase.ExecuteAsync(async (database, token) =>
         {
