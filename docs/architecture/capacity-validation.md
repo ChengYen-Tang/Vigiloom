@@ -115,6 +115,18 @@ scripts will be supplied by REQ-40-T02/T03. Failed or unexecuted scenarios must
 remain visible as such. Backup/restore and upgrade exercises belong to T04;
 cross-feature user journeys and platform combinations belong to T05.
 
+### Initial overview query
+
+On 2026-11-23, the existing
+`WorkspaceOverviewTests.Reader_SeesIndependentStatesAndAbnormalDevicesAcrossPages`
+test passed with 500 fixture devices. It reported 439 ms for one overview HTTP
+request on Windows 11 Enterprise x64 build 26300, .NET SDK 11.0.100 and LocalDB
+17.0.4025.3 Express, using the isolated test database at compatibility level
+150. The request used the in-process test host, a single reader and sparse
+fixture data. This is one observation, not a latency percentile, sustained
+load, a network measurement or evidence that the profile above is supported.
+The SQL fixture was cleaned up by the test harness.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
