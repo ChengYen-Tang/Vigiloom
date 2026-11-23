@@ -84,10 +84,20 @@ internal sealed class EpssSnapshotStage(IDbContextFactory<SecurityAnalysisDbCont
         var existing = await db.IntelligenceRevisions.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId && x.Digest == digest && x.MappingVersion == Mapping && x.UpstreamVersion != "staging", token);
         if (existing is not null)
         {
-            await db.EpssScores.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
+            if (existing.ContentPurgedAt is not null)
+            {
+                if (await db.EpssScores.AnyAsync(x => x.RevisionId == existing.Id, token)) return new(EpssStageStatus.Conflict);
+                await db.EpssScores.Where(x => x.RevisionId == revision.Id).ExecuteUpdateAsync(x => x.SetProperty(s => s.RevisionId, existing.Id), token);
+                await db.IntelligenceRevisions.Where(x => x.Id == existing.Id).ExecuteUpdateAsync(x => x
+                    .SetProperty(r => r.Artifact, artifact).SetProperty(r => r.RecordCount, count)
+                    .SetProperty(r => r.RetrievedAt, clock.GetUtcNow().ToUniversalTime())
+                    .SetProperty(r => r.Normalized, true).SetProperty(r => r.ContentPurgedAt, (DateTimeOffset?)null), token);
+            }
+            else await db.EpssScores.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
             await db.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteDeleteAsync(token);
             await final.CommitAsync(token);
-            return existing.Revoked ? new(EpssStageStatus.Unavailable) : new(EpssStageStatus.Unchanged, existing.Id);
+            return existing.Revoked || !existing.Normalized && existing.ContentPurgedAt is null ? new(EpssStageStatus.Unavailable) :
+                new(existing.ContentPurgedAt is null ? EpssStageStatus.Unchanged : EpssStageStatus.Staged, existing.Id);
         }
         await db.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteUpdateAsync(x => x
             .SetProperty(r => r.Digest, digest).SetProperty(r => r.UpstreamVersion, metadata.ModelVersion)

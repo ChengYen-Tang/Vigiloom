@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -17,6 +18,30 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 [TestCategory("Database")]
 public sealed class RepositoryContentRetentionTests(TestContext context)
 {
+    [TestMethod]
+    public Task Cleanup_KeepsPreviousEpssEvenWhenSourceIsStale() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = "first-epss", Enabled = true, LastSuccessfulCheckAt = now.AddDays(-30) };
+        IntelligenceRevision Revision(int day, byte value) { var artifact = Enumerable.Repeat(value, 20).ToArray(); return new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), ReleasedAt = now.AddDays(day), Digest = SHA256.HashData(artifact), Artifact = artifact, SchemaVersion = EpssSnapshotStage.Schema, MappingVersion = EpssSnapshotStage.Mapping, LicenseEvidence = EpssRefresh.LicenseEvidence, RecordCount = 1, Normalized = true }; }
+        var current = Revision(-1, 1); var previous = Revision(-50, 2); var unused = Revision(-80, 3);
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, previous, unused);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        db.IntelligenceActivationEvents.AddRange(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = previous.Id, OccurredAt = now.AddDays(-40), Scheduled = true }, new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = current.Id, PreviousRevisionId = previous.Id, OccurredAt = now, Scheduled = true });
+        db.EpssScores.AddRange(new EpssScoreRecord { RevisionId = previous.Id, Cve = "CVE-2026-1234", Probability = 0.1m, Percentile = 0.2m }, new EpssScoreRecord { RevisionId = unused.Id, Cve = "CVE-2026-1234", Probability = 0.1m, Percentile = 0.2m });
+        await db.SaveChangesAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
+        Assert.AreEqual(2L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
+        Assert.AreEqual(2, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
+        await transaction.CommitAsync(token); db.ChangeTracker.Clear();
+        Assert.IsNull((await db.IntelligenceRevisions.SingleAsync(x => x.Id == previous.Id, token)).ContentPurgedAt);
+        var removed = await db.IntelligenceRevisions.SingleAsync(x => x.Id == unused.Id, token);
+        Assert.IsNotNull(removed.ContentPurgedAt); Assert.IsEmpty(removed.Artifact);
+        Assert.AreEqual(1, await db.EpssScores.CountAsync(token));
+    }, context.CancellationToken);
+
     [TestMethod]
     public Task Cleanup_KeepsCurrentPreviousAndOfflineKevCatalogs() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
     {
