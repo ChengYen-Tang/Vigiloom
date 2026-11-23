@@ -21,6 +21,9 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Web.Tests;
 
@@ -93,6 +96,7 @@ public sealed class DashboardSecurityTests
             {
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+                Assert.AreEqual(JsonValueKind.Null, payload.RootElement.GetProperty("telemetrySources").ValueKind);
                 var scheduler = payload.RootElement.GetProperty("scheduler");
                 Assert.AreEqual(1, scheduler.GetProperty("current").GetInt32());
                 Assert.AreEqual(1, scheduler.GetProperty("stale").GetInt32());
@@ -110,6 +114,29 @@ public sealed class DashboardSecurityTests
             }
             command.CommandText = "DELETE FROM [hangfire].[Server] WHERE Id LIKE 'health-%'";
             await command.ExecuteNonQueryAsync(token);
+        }
+        var serviceFactory = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+        var telemetryTime = DateTimeOffset.UtcNow;
+        await using (var db = await serviceFactory.CreateDbContextAsync(token))
+        {
+            await db.Database.MigrateAsync(token);
+            var source = new ServiceSource("diagnostic source", new byte[32], telemetryTime);
+            var service = new MonitoredService(new ServiceCandidate(source.Id, "diagnostic", "test", "Diagnostic", telemetryTime), telemetryTime);
+            db.Sources.Add(source);
+            db.Services.Add(service);
+            var logContext = new LogContext { ServiceId = service.Id, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+            db.LogRecords.Add(new LogRecord { ServiceId = service.Id, Context = logContext, OccurredAt = telemetryTime, ReceivedAt = telemetryTime, RecordPayload = [] });
+            await db.SaveChangesAsync(token);
+        }
+        using (var response = await admin.GetAsync("/api/v1/operations/platform-status", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            var source = payload.RootElement.GetProperty("telemetrySources").EnumerateArray().Single();
+            Assert.AreEqual("diagnostic source", source.GetProperty("name").GetString());
+            Assert.AreNotEqual(JsonValueKind.Null, source.GetProperty("lastLogAt").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, source.GetProperty("lastMetricAt").ValueKind);
+            Assert.AreEqual(JsonValueKind.Null, source.GetProperty("lastTraceAt").ValueKind);
         }
         await using (var seedConnection = new SqlConnection(database.ConnectionString))
         {
@@ -144,6 +171,10 @@ public sealed class DashboardSecurityTests
             Assert.Contains("平台健康", text);
             Assert.Contains("目前沒有心跳資料", text);
             Assert.Contains("保留範圍內沒有成功批次紀錄", text);
+            Assert.Contains("diagnostic source", text);
+            Assert.Contains("Metrics 尚無資料", text);
+            Assert.Contains("Traces 尚無資料", text);
+            Assert.Contains("/settings/service-reception", html);
             Assert.Contains("Worker 掃描摘要", text);
             Assert.DoesNotContain("診斷槽位已達上限", text);
             Assert.Contains("背景資料處理失敗", text);
