@@ -49,14 +49,14 @@ internal sealed class RepositoryRefreshRunner(IDbContextFactory<SecurityAnalysis
             {
                 var existing = await db.IntelligenceRevisions.AsNoTracking().Where(x => x.SourceId == source.Id && x.UpstreamVersion == commit &&
                     x.SchemaVersion == spec.SchemaVersion && x.MappingVersion == spec.MappingVersion).OrderByDescending(x => x.RowId)
-                    .Select(x => new { x.Id, x.Revoked, x.Normalized, x.RecordCount, x.Artifact, x.Digest, x.LicenseEvidence }).FirstOrDefaultAsync(token);
-                if (existing is not null)
+                    .Select(x => new { x.Id, x.Revoked, x.Normalized, x.ContentPurgedAt, x.RecordCount, x.Artifact, x.Digest, x.LicenseEvidence }).FirstOrDefaultAsync(token);
+                if (existing is not null && (existing.ContentPurgedAt is null || existing.Revoked))
                 {
                     var valid = existing.Normalized && !existing.Revoked && existing.RecordCount > 0 && existing.LicenseEvidence == spec.LicenseEvidence &&
                         SHA256.HashData(existing.Artifact).AsSpan().SequenceEqual(existing.Digest) &&
                         await spec.CountAsync(db, existing.Id, token) == existing.RecordCount &&
                         !await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == source.Id && x.Digest == existing.Digest && x.Revoked, token);
-                    return await RecordCheckAsync(source, valid ? null : $"{spec.Name} revision is revoked or incomplete.", token)
+                    return await RecordCheckAsync(source, valid ? null : $"{spec.Name} revision is revoked or incomplete.", token, valid ? existing.Id : null)
                         ? valid ? RepositoryRefreshResult.Unchanged : RepositoryRefreshResult.Failed : RepositoryRefreshResult.Conflict;
                 }
             }
@@ -85,19 +85,38 @@ internal sealed class RepositoryRefreshRunner(IDbContextFactory<SecurityAnalysis
         var source = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {observed.Id}")
             .SingleOrDefaultAsync(token);
         if (source is null || !source.Enabled || source.Key != spec.SourceKey || !source.Version.AsSpan().SequenceEqual(observed.Version)) return RepositoryRefreshResult.Conflict;
-        var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = commit, RetrievedAt = clock.GetUtcNow(),
+        var revision = await db.IntelligenceRevisions.SingleOrDefaultAsync(x => x.SourceId == source.Id && x.UpstreamVersion == commit &&
+            x.SchemaVersion == spec.SchemaVersion && x.MappingVersion == spec.MappingVersion && x.ContentPurgedAt != null, token);
+        var previousDigest = revision?.Digest;
+        if (revision is { Revoked: true }) return RepositoryRefreshResult.Failed;
+        if (revision is not null)
+        {
+            await db.IocEntries.Where(x => db.SignatureFiles.Any(file => file.RowId == x.SignatureFileRowId && file.RevisionId == revision.Id)).ExecuteDeleteAsync(token);
+            await db.SignatureFiles.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
+            await db.SigmaRules.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
+            await db.SigmaManifests.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
+        }
+        else
+        {
+            revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = commit, RetrievedAt = clock.GetUtcNow(),
             Digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{spec.SourceKey}-pending:{commit}")), Artifact = [], SchemaVersion = spec.SchemaVersion,
             MappingVersion = spec.MappingVersion, LicenseEvidence = spec.LicenseEvidence };
-        db.IntelligenceRevisions.Add(revision);
-        await db.SaveChangesAsync(token);
+            db.IntelligenceRevisions.Add(revision);
+            await db.SaveChangesAsync(token);
+        }
         var revisionId = revision.Id;
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous | FileOptions.SequentialScan);
         var count = await spec.StageAsync(db, revisionId, file, commit, Math.Min(source.MaximumRecords, 50_000), token);
         var manifest = spec.Manifest(commit, archiveHash, count);
         revision.Artifact = manifest;
-        revision.Digest = SHA256.HashData(manifest);
+        var digest = SHA256.HashData(manifest);
+        if (previousDigest is not null && !CryptographicOperations.FixedTimeEquals(previousDigest, digest))
+            throw new InvalidDataException("The restored revision does not match its retained digest.");
+        revision.Digest = digest;
         revision.RecordCount = count;
         revision.Normalized = true;
+        revision.ContentPurgedAt = null;
+        source.LastObservedRevisionId = revision.Id;
         source.LastCheckedAt = clock.GetUtcNow();
         source.LastSuccessfulCheckAt = source.LastCheckedAt;
         source.LastError = null;
@@ -106,15 +125,18 @@ internal sealed class RepositoryRefreshRunner(IDbContextFactory<SecurityAnalysis
         return RepositoryRefreshResult.Staged;
     }
 
-    private async Task<bool> RecordCheckAsync(IntelligenceSource observed, string? reason, CancellationToken token)
+    private async Task<bool> RecordCheckAsync(IntelligenceSource observed, string? reason, CancellationToken token, Guid? observedRevisionId = null)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var current = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {observed.Id}")
             .SingleOrDefaultAsync(token);
         if (current is null || !current.Enabled || current.Key != spec.SourceKey || !current.Version.AsSpan().SequenceEqual(observed.Version)) return false;
+        if (observedRevisionId is { } revisionId && !await db.IntelligenceRevisions.AnyAsync(x => x.Id == revisionId && x.SourceId == current.Id &&
+            x.ContentPurgedAt == null && x.Normalized && !x.Revoked && !db.IntelligenceRevisions.Any(other => other.SourceId == x.SourceId && other.Digest == x.Digest && other.Revoked), token)) return false;
         current.LastCheckedAt = clock.GetUtcNow();
         current.LastError = reason;
+        if (observedRevisionId is not null) current.LastObservedRevisionId = observedRevisionId;
         if (reason is null) current.LastSuccessfulCheckAt = current.LastCheckedAt;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);

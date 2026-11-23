@@ -24,6 +24,36 @@ public sealed class SignatureRefreshTests(TestContext context)
     private const string First = "eb8c53cb08ed103d031fe9c98d1d23e94904839d";
 
     [TestMethod]
+    public Task Refresh_RestoresPurgedUpstreamRevision() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        var contexts = new Factory(options); var clock = new TestClock(DateTimeOffset.UtcNow);
+        using var archive = SignatureArchiveTests.Archive(commit: First);
+        var bytes = archive.ToArray();
+        var clients = new ClientFactory(request => request.RequestUri!.Host == "api.github.com"
+            ? new(HttpStatusCode.OK) { Content = new StringContent($"{{\"sha\":\"{First}\"}}") }
+            : new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) });
+        var refresh = new SignatureRefresh(contexts, clients, clock);
+        Assert.AreEqual(SignatureRefreshResult.Staged, await refresh.RunDueAsync(token));
+        Guid revisionId;
+        await using (var db = contexts.CreateDbContext())
+        {
+            var revision = await db.IntelligenceRevisions.SingleAsync(token); revisionId = revision.Id;
+            revision.ContentPurgedAt = clock.GetUtcNow(); revision.Normalized = false;
+            await db.IocEntries.ExecuteDeleteAsync(token);
+            await db.SignatureFiles.Where(x => x.Path == "yara/example.yar").ExecuteDeleteAsync(token);
+            await db.SaveChangesAsync(token);
+        }
+        clock.Advance(TimeSpan.FromDays(2));
+        Assert.AreEqual(SignatureRefreshResult.Staged, await refresh.RunDueAsync(token));
+        await using var check = contexts.CreateDbContext();
+        var restored = await check.IntelligenceRevisions.SingleAsync(token);
+        Assert.AreEqual(revisionId, restored.Id); Assert.IsNull(restored.ContentPurgedAt); Assert.IsTrue(restored.Normalized);
+        Assert.AreEqual(revisionId, (await check.IntelligenceSources.SingleAsync(token)).LastObservedRevisionId);
+        Assert.AreEqual(5, await check.SignatureFiles.CountAsync(token)); Assert.AreEqual(1, await check.IocEntries.CountAsync(token));
+    }, context.CancellationToken);
+
+    [TestMethod]
     public Task Evidence_IsBoundedAndChecksEncodingAndIntegrity() =>
         ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
         {
