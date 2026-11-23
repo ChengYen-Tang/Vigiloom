@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -23,6 +24,7 @@ using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Contracts.Workspace;
 using OpenTelemetry.Proto.Collector.Logs.V1;
 using OpenTelemetry.Proto.Collector.Metrics.V1;
 using OpenTelemetry.Proto.Collector.Trace.V1;
@@ -64,6 +66,7 @@ public sealed class ManualAgentCapacityTests(TestContext context)
         var rootPath = Path.Combine(Path.GetTempPath(), "capacity-root.cer");
         var credentialPath = Path.Combine(Path.GetTempPath(), "capacity-credentials.json");
         var collectorMarker = Path.Combine(Path.GetTempPath(), "capacity-collector.txt");
+        var queryClients = new List<HttpClient>();
         try
         {
             await File.WriteAllBytesAsync(rootPath, root.Export(X509ContentType.Cert), token);
@@ -153,6 +156,18 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                     context.WriteLine("Collector: Contrib 0.164.0; source log quota 100/s burst 100; batch 50 max 100 timeout 1s.");
                 }
             }
+            if (Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_QUERIES") == "1")
+            {
+                var readers = count switch { 30 => 2, 100 => 5, 300 => 10, 500 => 15, _ => throw new InvalidOperationException("Unsupported capacity size.") };
+                for (var i = 0; i < readers; i++)
+                {
+                    var handler = new HttpClientHandler { AllowAutoRedirect = false, ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+                        errors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors && cert is not null && cert.GetCertHashString() == tls.GetCertHashString() };
+                    var reader = new HttpClient(handler) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(30) };
+                    queryClients.Add(reader);
+                    await PingTestSite.LoginAsync(reader, "reader", token);
+                }
+            }
             var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
             start.ArgumentList.Add(Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_SENDER")!);
             start.Environment["VIGILOOM_URL"] = url.ToString();
@@ -163,6 +178,7 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             using var telemetryStop = CancellationTokenSource.CreateLinkedTokenSource(token);
             var telemetry = sourceSecret is null ? Task.CompletedTask :
                 RunTelemetryAsync(collectorUrl ?? url, root, collectorIngress ?? sourceSecret, count / 10, seconds, services, useCollector, telemetryStop.Token);
+            var queries = queryClients.Count == 0 ? Task.CompletedTask : RunQueriesAsync(queryClients, count + 1, seconds, telemetryStop.Token);
             var stdout = process.StandardOutput.ReadToEndAsync(token);
             var stderr = process.StandardError.ReadToEndAsync(token);
             var completed = false;
@@ -171,7 +187,7 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                 await process.WaitForExitAsync(token);
                 context.WriteLine(await stdout);
                 context.WriteLine(await stderr);
-                await telemetry;
+                await Task.WhenAll(telemetry, queries);
                 completed = true;
             }
             finally
@@ -179,7 +195,7 @@ public sealed class ManualAgentCapacityTests(TestContext context)
                 telemetryStop.Cancel();
                 if (!completed)
                 {
-                    try { await telemetry; } catch { /* Preserve the original error during cleanup. */ }
+                    try { await Task.WhenAll(telemetry, queries); } catch { /* Preserve the original error during cleanup. */ }
                 }
                 if (!process.HasExited)
                 {
@@ -223,11 +239,54 @@ public sealed class ManualAgentCapacityTests(TestContext context)
             }
             finally
             {
+                foreach (var client in queryClients) client.Dispose();
                 if (File.Exists(credentialPath)) File.Delete(credentialPath);
                 if (File.Exists(rootPath)) File.Delete(rootPath);
             }
         }
     }, context.CancellationToken);
+
+    private async Task RunQueriesAsync(List<HttpClient> clients, int expectedDevices, int seconds, CancellationToken token)
+    {
+        var samples = new ConcurrentBag<double>();
+        var errors = new ConcurrentDictionary<string, int>();
+        var watch = Stopwatch.StartNew();
+        await Task.WhenAll(clients.Select(ReadAsync));
+        var ordered = samples.Order().ToArray();
+        double Percentile(double fraction) => ordered.Length == 0 ? 0 : ordered[(int)Math.Ceiling(ordered.Length * fraction) - 1];
+        context.WriteLine($"QUERIES: {JsonSerializer.Serialize(new { readers = clients.Count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, count = ordered.Length, p50Milliseconds = Percentile(0.5), p95Milliseconds = Percentile(0.95), maxMilliseconds = ordered.LastOrDefault(), errors })}");
+        Assert.IsNotEmpty(ordered, "No overview requests completed.");
+        Assert.IsEmpty(errors, "Overview requests failed or returned unavailable data.");
+
+        async Task ReadAsync(HttpClient client)
+        {
+            while (watch.Elapsed < TimeSpan.FromSeconds(seconds))
+            {
+                var started = Stopwatch.GetTimestamp();
+                try
+                {
+                    using var response = await client.GetAsync("/api/v1/workspace/overview", token);
+                    if (!response.IsSuccessStatusCode) errors.AddOrUpdate($"http-{(int)response.StatusCode}", 1, (_, n) => n + 1);
+                    else
+                    {
+                        var overview = await response.Content.ReadFromJsonAsync<WorkspaceOverview>(cancellationToken: token);
+                        if (overview is null || overview.Ping.Unavailable || overview.Agents.Unavailable || overview.Services.Unavailable || overview.GroupsUnavailable || overview.Ping.Total != expectedDevices)
+                            errors.AddOrUpdate("unavailable-or-count", 1, (_, n) => n + 1);
+                    }
+                }
+                catch (HttpRequestException) { errors.AddOrUpdate("transport", 1, (_, n) => n + 1); }
+                catch (TaskCanceledException) when (!token.IsCancellationRequested) { errors.AddOrUpdate("timeout", 1, (_, n) => n + 1); }
+                finally { samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds); }
+                var remaining = TimeSpan.FromSeconds(seconds) - watch.Elapsed;
+                if (remaining <= TimeSpan.FromSeconds(5))
+                {
+                    if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
+                    break;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+            }
+        }
+    }
 
     private async Task RunTelemetryAsync(Uri url, X509Certificate2 root, string secret, int count, int seconds,
         IDbContextFactory<ServiceObservabilityDbContext> databases, bool viaCollector, CancellationToken token)

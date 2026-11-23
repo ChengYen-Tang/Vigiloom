@@ -20,9 +20,16 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
     public const int PageSize = 50;
     public const int MaxAdditionalTargets = 16;
 
-    public async Task<DevicePage> ListAsync(string? search, string? sort, bool descending, bool archived, int page, CancellationToken token)
+    public Task<DevicePage> ListAsync(string? search, string? sort, bool descending, bool archived, int page, CancellationToken token) =>
+        ListCoreAsync(search, sort, descending, archived, page, PageSize, token);
+
+    /// <summary>Reads bounded batches for the authenticated monitoring overview.</summary>
+    public Task<DevicePage> ListForOverviewAsync(int page, CancellationToken token) =>
+        ListCoreAsync(null, "name", false, false, page, 250, token);
+
+    private async Task<DevicePage> ListCoreAsync(string? search, string? sort, bool descending, bool archived, int page, int pageSize, CancellationToken token)
     {
-        page = Math.Clamp(page, 1, int.MaxValue / PageSize);
+        page = Math.Clamp(page, 1, int.MaxValue / pageSize);
         search = search?.Trim();
         await using var db = await contexts.CreateDbContextAsync(token);
         var query = db.Devices.AsNoTracking().Where(x => x.IsArchived == archived);
@@ -38,11 +45,11 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
             (_, true) => query.OrderByDescending(x => x.Name),
             _ => query.OrderBy(x => x.Name)
         };
-        var devices = await ordered.ThenBy(x => x.RowId).Skip((page - 1) * PageSize).Take(PageSize).ToListAsync(token);
+        var devices = await ordered.ThenBy(x => x.RowId).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(token);
         var ids = devices.Select(x => x.Id).ToArray();
         var targets = await db.DeviceTargets.AsNoTracking().Where(x => ids.Contains(x.DeviceId)).OrderBy(x => x.Address).ToListAsync(token);
         var lookup = targets.ToLookup(x => x.DeviceId, x => x.Address);
-        return new DevicePage(devices.Select(x => Map(x, lookup[x.Id])).ToArray(), page, PageSize, total);
+        return new DevicePage(devices.Select(x => Map(x, lookup[x.Id])).ToArray(), page, pageSize, total);
     }
 
     public async Task<DeviceDetails?> GetAsync(Guid id, CancellationToken token)

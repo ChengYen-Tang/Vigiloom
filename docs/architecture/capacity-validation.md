@@ -281,6 +281,38 @@ but is not evidence that the intended rate is sustained. Targeted SQL and HTTP
 tests covered namespaces, concurrent approval, stale and revoked source
 credentials, the discovery lock and transactional receiver behavior.
 
+The manual mixed-load script also accepts `-IncludeQueries`. It signs in one
+Read only test client per reader and calls the workspace overview API, with a
+five-second pause after each completed request. The profile uses 2 / 5 / 10 /
+15 readers for 30 / 100 / 300 / 500 Agents. The fixture additionally contains
+one test router, so it validates the expected device count as Agents plus one.
+It measures API round trips and response parsing, not browser rendering, and
+records failed or unavailable responses. Readers run during the configured
+generation window rather than the subsequent ingestion drain.
+
+On 2026-11-23, a preliminary 10-second run with 30 Agents, three services and
+two readers returned six successful overview responses, with p50 58.82 ms and
+p95 400.33 ms; the small sample is not a stable percentile. All Agent and
+application ingestion counts matched SQL. This fixture contains only synthetic
+data and the real Collector, and does not include the production Worker or
+actual Ping scheduling. The interval loop was subsequently adjusted to prevent
+an extra request at the duration boundary.
+
+Two 60-second mixed-load attempts on the same SQL Server / shared Windows host
+used 500 synthetic Agents, 50 application services through the Collector and
+15 overview API readers. Before the overview batching change, 30 of 45 overview
+requests timed out at 30 seconds; the Agent sender reported nine timeouts.
+Application telemetry reported 3,000 logs, 500 points and 300 spans; the
+combined failure does not independently prove its SQL count check completed,
+and the Agent SQL count check was not reached. After changing only overview's internal device batch from 50 to
+250, 60 overview requests completed without reported errors; p50 was 5.62 s and
+p95 26.38 s. The Agent sender still reported two log timeouts. Application
+telemetry again matched SQL, while Agent counts were not checked because its
+generated and acknowledged counts differed. A timeout leaves the write outcome
+unknown; it is not a measured loss count. Neither run passed the full mixed
+check or demonstrates a sustained target rate. The reader results are API
+measurements with small samples, not browser rendering or a universal SLA.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
