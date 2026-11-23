@@ -79,13 +79,13 @@ statuses; attempted payload bytes include failed requests. It also reports
 average and maximum time for all HTTP attempts by type, including failures and
 time waiting for a connection, through response headers. These are not
 server-only timings. The
-sender serializes requests per Agent as the real Agent batch worker does and
-waits for each response, so slow responses reduce the actual input rate. This
-does not simulate the real Agent queue or its batching behavior.
-At the configured deadline it stops starting requests and waits up to the HTTP
-timeout for in-flight requests; the output includes actual elapsed time. Use
-observed counts and time, not target intervals, to calculate throughput. A
-timed-out request may have been committed despite an unknown response. It does
-not retry or simulate offline replay; 204 confirms batch
+sender produces samples independently of HTTP responses and uses a bounded
+128-batch in-memory queue per Agent with one sender per queue. The summary
+reports generated, accepted, queue-rejected and remaining counts. After the
+configured production period it has up to 60 seconds to drain the queues;
+the output includes actual elapsed time. A timeout or drain-cancelled request
+may have been committed despite an unknown response. This simplified generator
+does not model the real Agent's disk queue, batching, jitter or retry behavior;
+timer ticks may coalesce, so inspect actual generated counts. A 204 confirms batch
 receipt but does not measure processing lag or the resources used by real
 Agents. It does not generate application telemetry. Measure those separately.

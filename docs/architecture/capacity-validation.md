@@ -239,6 +239,27 @@ includes client connection waiting. Web, SQL and generator shared one machine;
 these short runs do not isolate the bottleneck or establish capacity with
 production Agent batching, durable queues, application telemetry or UI load.
 
+### Synthetic in-memory queue runs
+
+The generator was later changed to produce samples independently of HTTP and
+queue up to 128 batches per Agent, with one sender per Agent. On 2026-11-23,
+the same SQL Server 2022 / shared-host setup produced these results:
+
+| Agents | Generated points / logs | Accepted points / logs | Result |
+| ---: | ---: | ---: | --- |
+| 300 | 12,000 / 3,595 | 12,000 / 3,595 | No rejection or remaining batches; 85.99 s total |
+| 500 | 19,980 / 5,990 | 17,220 / 5,068 | 561 batches unsent; 499 in-flight requests cancelled at drain deadline; 120.03 s total |
+
+The 300-Agent SQL counts matched all accepted records; generating ended at 60
+seconds and draining took about another 26 seconds. The 500-Agent run failed
+the fixture's drain requirement. Its 499 cancelled requests have unknown commit
+status and the fixture did not reach its final SQL count comparison; neither
+the cancellations nor unsent batches establish lost production Agent data.
+No queue-full rejection was reported. These are one-minute synthetic runs,
+not a production capacity or durability guarantee. The test queue is in
+memory and does not reproduce the Agent's disk queue, batching, retries or
+continuous operation, and the Web host, sender and SQL shared one machine.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB

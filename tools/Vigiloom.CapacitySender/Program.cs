@@ -5,12 +5,13 @@ using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using System.Threading.Channels;
 using Vigiloom.Contracts.Agent;
 
 var endpointText = Environment.GetEnvironmentVariable("VIGILOOM_URL");
 var credentialsFile = Environment.GetEnvironmentVariable("VIGILOOM_AGENT_CREDENTIALS_FILE");
 if (!Uri.TryCreate(endpointText, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps ||
-    !int.TryParse(Environment.GetEnvironmentVariable("VIGILOOM_DURATION_SECONDS"), out var seconds) || seconds <= 0 ||
+    !int.TryParse(Environment.GetEnvironmentVariable("VIGILOOM_DURATION_SECONDS"), out var seconds) || seconds is <= 0 or > 86400 ||
     string.IsNullOrWhiteSpace(credentialsFile))
     throw new InvalidOperationException("Set an HTTPS VIGILOOM_URL, positive VIGILOOM_DURATION_SECONDS, and VIGILOOM_AGENT_CREDENTIALS_FILE.");
 
@@ -37,24 +38,38 @@ if (testRoot is not null)
 using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 var elapsed = Stopwatch.StartNew();
 using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+using var drain = new CancellationTokenSource(TimeSpan.FromSeconds(seconds + 60));
 var statusCounts = new ConcurrentDictionary<string, long>();
 var metricLatency = new Latency();
 var logLatency = new Latency();
 long attemptedPayloadBytes = 0;
 long acceptedMetricPoints = 0;
 long acceptedLogs = 0;
+long generatedMetricPoints = 0;
+long generatedLogs = 0;
+long rejectedBatches = 0;
+long remainingBatches = 0;
 var senders = credentials.Select((credential, index) => RunAgentAsync(credential, index)).ToArray();
 await Task.WhenAll(senders);
-Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, elapsedSeconds = elapsed.Elapsed.TotalSeconds, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts, metricLatency = metricLatency.Summary(), logLatency = logLatency.Summary() }));
+Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, durationSeconds = seconds, elapsedSeconds = elapsed.Elapsed.TotalSeconds, generatedMetricPoints, generatedLogs, rejectedBatches, remainingBatches, attemptedPayloadBytes, acceptedMetricPoints, acceptedLogs, statusCounts, metricLatency = metricLatency.Summary(), logLatency = logLatency.Summary() }));
 
 async Task RunAgentAsync(string credential, int index)
 {
     var sourceId = Guid.CreateVersion7();
-    using var agentGate = new SemaphoreSlim(1, 1);
-    await Task.WhenAll(SendPeriodicallyAsync(TimeSpan.FromSeconds(30), index, "metrics", CreateMetrics),
-        SendPeriodicallyAsync(TimeSpan.FromSeconds(5), index, "logs", CreateLog));
+    var queue = Channel.CreateBounded<Batch>(new BoundedChannelOptions(128) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+    var consumer = ConsumeAsync();
+    try
+    {
+        await Task.WhenAll(ProduceAsync(TimeSpan.FromSeconds(30), index, "metrics", CreateMetrics),
+            ProduceAsync(TimeSpan.FromSeconds(5), index, "logs", CreateLog));
+    }
+    finally
+    {
+        queue.Writer.TryComplete();
+        await consumer;
+    }
 
-    async Task SendPeriodicallyAsync(TimeSpan period, int position, string kind, Func<byte[]> createBatch)
+    async Task ProduceAsync(TimeSpan period, int position, string kind, Func<byte[]> createBatch)
     {
         try
         {
@@ -63,17 +78,27 @@ async Task RunAgentAsync(string credential, int index)
             do
             {
                 if (stop.IsCancellationRequested) break;
-                await agentGate.WaitAsync(stop.Token);
-                try
-                {
-                    if (stop.IsCancellationRequested) break;
-                    await SendAsync(createBatch(), credential, kind);
-                }
-                finally { agentGate.Release(); }
+                if (kind == "metrics") Interlocked.Add(ref generatedMetricPoints, 20);
+                else Interlocked.Increment(ref generatedLogs);
+                if (!queue.Writer.TryWrite(new(kind, createBatch()))) Interlocked.Increment(ref rejectedBatches);
             }
             while (await timer.WaitForNextTickAsync(stop.Token));
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    async Task ConsumeAsync()
+    {
+        try
+        {
+            await foreach (var batch in queue.Reader.ReadAllAsync(drain.Token))
+            {
+                if (drain.IsCancellationRequested) { Interlocked.Increment(ref remainingBatches); break; }
+                await SendAsync(batch.Payload, credential, batch.Kind);
+            }
+        }
+        catch (OperationCanceledException) when (drain.IsCancellationRequested) { }
+        finally { Interlocked.Add(ref remainingBatches, queue.Reader.Count); }
     }
 
     byte[] CreateMetrics()
@@ -103,7 +128,7 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
     var started = Stopwatch.GetTimestamp();
     try
     {
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, drain.Token);
         Count(((int)response.StatusCode).ToString(System.Globalization.CultureInfo.InvariantCulture));
         if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
         {
@@ -112,11 +137,13 @@ async Task SendAsync(byte[] bytes, string credential, string kind)
         }
     }
     catch (HttpRequestException) { Count("connection_error"); }
-    catch (OperationCanceledException) { Count("timeout"); }
+    catch (OperationCanceledException) { Count(drain.IsCancellationRequested ? "drain_cancelled" : "timeout"); }
     finally { (kind == "metrics" ? metricLatency : logLatency).Record(Stopwatch.GetTimestamp() - started); }
 
     void Count(string status) => statusCounts.AddOrUpdate($"{kind}/{status}", 1, (_, old) => old + 1);
 }
+
+sealed record Batch(string Kind, byte[] Payload);
 
 sealed class Latency
 {
