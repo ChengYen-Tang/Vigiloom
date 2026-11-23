@@ -6,6 +6,11 @@ tested commit, configuration versions, hardware, OS, SQL Server version and
 compatibility level alongside every result. A different workload or retention
 period needs its own measurement.
 
+The owner has decided that this release is accepted on functional checks;
+high-load and capacity stress tests are not release acceptance criteria. The
+profile and results below are retained as prior work for the later architecture
+phase and do not establish a supported device count.
+
 ## Scope
 
 The release covers the existing device and Ping workflows, scheduled network
@@ -102,7 +107,7 @@ services / 6 points per second. These are averages; record
 batch sizes and burst shape as well. Keep per-source and global quota values in
 the result so admission rejection is not mistaken for successful ingestion.
 
-For each size, run a steady period and a separate short burst, disconnect and
+For a future capacity assessment, run a steady period and a separate short burst, disconnect and
 resume a subset of Agents, and record the input and accepted counts, backlog,
 retries and any lost or rejected data. Measure API/UI latency, ingestion lag,
 Web/Worker/SQL and Agent CPU, memory, disk I/O, database and index growth.
@@ -110,9 +115,9 @@ Record actual duration and extrapolate storage only with the observed rate and
 stated assumptions. Exercise time-window reads and deduplication receipt growth;
 do not infer performance from UUID ordering or a successful migration.
 
-Test results, SQL edition and compatibility level, infrastructure and the exact
-scripts will be supplied by REQ-40-T02/T03. Failed or unexecuted scenarios must
-remain visible as such. Backup/restore and upgrade exercises belong to T04;
+Record test results, SQL edition and compatibility level, infrastructure and
+the exact scripts if a future capacity assessment is performed. Failed or
+unexecuted scenarios must remain visible as such. Backup/restore and upgrade exercises belong to T04;
 cross-feature user journeys and platform combinations belong to T05.
 
 ### Initial overview query
