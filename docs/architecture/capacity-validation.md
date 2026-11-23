@@ -204,6 +204,26 @@ failures; exporter batching and the actual retry configuration need separate
 evaluation. The failure breakdown covers HTTP failures received by the
 synthetic sender, not transport errors or OTLP partial rejections.
 
+The 50-service profile also exceeds the default application-source Log budget
+when all services share one source: 50 logs/s offered versus a 20 logs/s
+refill rate and 100-record burst. Starting with a full bucket, no more than
+approximately 1,300 records can be admitted over 60 seconds at that default,
+even if batching eliminates HTTP concurrency failures. This is a calculation
+from the configured token bucket, not a measured throughput result or an
+explanation of the earlier `receiver-busy` responses. A sustained test needs
+to record and deliberately select a suitable source quota or representative
+source grouping, along with actual Collector batch, retry and loss behavior.
+These settings can be changed by an administrator; no default was changed by
+this diagnostic.
+
+On 2026-11-23 the existing `Collector_SeparatesAuthenticatedSourcesAndForwardsToRealPlatform`
+integration test passed against LocalDB and Collector Contrib 0.164.0 using the
+repository's Collector example. It verifies actual forwarding and recovery
+after an injected downstream write failure and an exhausted source quota,
+along with other source and signal checks. This is a functional retry check,
+not a mixed-capacity benchmark, durable-delivery guarantee or measurement of
+Collector loss under a sustained overload.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
