@@ -23,6 +23,13 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
         var proposed = new ServiceCandidate(sourceId, serviceKey, environment, displayName, DateTimeOffset.UnixEpoch, serviceNamespace);
         var namespaceBytes = Encoding.Unicode.GetBytes(proposed.ServiceNamespace);
         await using var db = await contexts.CreateDbContextAsync(token);
+        // Existing services need no candidate mutation. The actual telemetry write
+        // still revalidates source credentials and service authorization in its transaction.
+        if (await db.Sources.AsNoTracking().AnyAsync(source => source.Id == sourceId && source.RevokedAt == null &&
+            (version == null || source.Version == version) && db.Services.Any(service => service.SourceId == sourceId &&
+                service.ServiceNamespaceBytes == namespaceBytes && service.ServiceKey == proposed.ServiceKey &&
+                service.Environment == proposed.Environment), token))
+            return CandidateObservation.AlreadyApproved;
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         // Serialize short capacity transactions across Web instances. Approval and
         // cleanup must take the same lock before touching a source or candidate.

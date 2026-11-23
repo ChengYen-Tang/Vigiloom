@@ -268,6 +268,19 @@ queue overflow. This is one comparison, not a sustained-capacity claim or
 proof that the lock is the only bottleneck. The targeted SQL tests for quota
 rejection, replay, transactional rollback and actual outbox dispatch passed.
 
+A subsequent run on the same fixture added a read-only check for an already
+approved service before entering the serialized candidate-discovery transaction.
+Unapproved services still use the existing discovery transaction, and writes
+still revalidate the source and service. The Agent run took 91.00 seconds; the
+closed-loop application producer took 122.06 seconds and central drain took
+2.04 seconds. All 19,960 Agent metric points, 5,984 Agent logs, 3,000
+application logs, 500 points and 300 spans were verified in SQL, with no
+reported HTTP failures or remaining Agent batches. This one comparison against
+the 91.36 / 136.39 second run above suggests less application-side overhead,
+but is not evidence that the intended rate is sustained. Targeted SQL and HTTP
+tests covered namespaces, concurrent approval, stale and revoked source
+credentials, the discovery lock and transactional receiver behavior.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
