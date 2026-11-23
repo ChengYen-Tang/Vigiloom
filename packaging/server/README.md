@@ -26,10 +26,11 @@ package library together. Protect secrets in the deployment environment.
 Start Web and Worker separately. Run Web with Kestrel or IIS (on Linux,
 systemd can supervise the Kestrel process). Run Worker as a Windows Service or
 systemd service; Migrator is a one-time deployment command. IIS requires the
-ASP.NET Core Module / Hosting Bundle. Configure an HTTPS endpoint for Web, and
-provide a setup token for the first administrator as described in
-`docs/getting-started.md`. Once bootstrap is complete, remove the token and
-restart Web. Configure startup, service accounts, TLS and firewall rules for
+ASP.NET Core Module / Hosting Bundle. Configure an HTTPS endpoint for Web and
+provide a random `Vigiloom__SetupToken` of at least 32 characters. Open
+`/account/setup` over HTTPS and use that token to create the first
+administrator. Once bootstrap is complete, remove the token and restart Web.
+Configure startup, service accounts, TLS and firewall rules for
 the selected environment. Reverse-proxy deployment requires separate trusted
 forwarded-header configuration and has not yet been validated.
 
