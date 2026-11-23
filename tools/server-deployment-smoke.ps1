@@ -1,6 +1,7 @@
-param([string]$SdkVersion = '', [switch]$Recovery)
+param([string]$SdkVersion = '', [switch]$Recovery, [string]$AgentPackageVersion = '')
 
 $ErrorActionPreference = 'Stop'
+if ($AgentPackageVersion -and -not $Recovery) { throw 'AgentPackageVersion requires -Recovery.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $scratch = Join-Path $root '.codex-deployment-smoke'
 if (Test-Path -LiteralPath $scratch) { throw "Scratch directory already exists: $scratch" }
@@ -130,14 +131,42 @@ try {
             $overview = Invoke-WebRequest -Uri "$base/api/v1/workspace/overview" -WebSession $session -SkipCertificateCheck
             if ($overview.StatusCode -ne 200) { throw 'Test administrator login failed.' }
             if (@(Get-ChildItem -LiteralPath (Join-Path $scratch 'keys') -Filter '*.xml').Count -eq 0) { throw 'Data Protection key ring was not created.' }
-            [IO.File]::WriteAllText((Join-Path $scratch 'packages/recovery-fixture.txt'), 'isolated package-directory fixture')
-            $packageHash = (Get-FileHash -LiteralPath (Join-Path $scratch 'packages/recovery-fixture.txt')).Hash
+            if ($AgentPackageVersion) {
+                $anti = Invoke-RestMethod -Uri "$base/api/v1/session/antiforgery" -WebSession $session -SkipCertificateCheck
+                $adminHeaders = @{ RequestVerificationToken = $anti.requestToken }
+                $packageBody = @{ version = $AgentPackageVersion; runtimeIdentifier = 'linux-x64' } | ConvertTo-Json -Compress
+                $null = Invoke-WebRequest -Uri "$base/api/v1/agent-packages/cache" -Method Post -Body $packageBody -ContentType 'application/json' -Headers $adminHeaders -WebSession $session -SkipCertificateCheck -TimeoutSec 240
+                $packagePage = Invoke-RestMethod -Uri "$base/api/v1/agent-packages" -WebSession $session -SkipCertificateCheck
+                $package = @($packagePage.items | Where-Object { $_.version -eq $AgentPackageVersion -and $_.runtimeIdentifier -eq 'linux-x64' -and $_.cached })
+                if ($package.Count -ne 1) { throw 'Downloaded Agent package is not present in the central library.' }
+                $package = $package[0]
+                $deviceBody = @{ name = 'Recovery Agent'; address = 'recovery-agent.invalid'; additionalTargets = @(); deepMonitoring = $true; enabled = $true; public = $false } | ConvertTo-Json -Compress
+                $device = Invoke-RestMethod -Uri "$base/api/v1/devices/" -Method Post -Body $deviceBody -ContentType 'application/json' -Headers $adminHeaders -WebSession $session -SkipCertificateCheck
+                $enrollment = Invoke-RestMethod -Uri "$base/api/v1/agent-management/devices/$($device.id)/enrollments" -Method Post -Headers $adminHeaders -WebSession $session -SkipCertificateCheck
+                $machineSecret = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+                $verifier = [Convert]::ToBase64String([Security.Cryptography.SHA256]::HashData($machineSecret))
+                $enrollBody = @{ enrollmentSecret = $enrollment.secret; machineVerifier = $verifier } | ConvertTo-Json -Compress
+                $registered = Invoke-RestMethod -Uri "$base/api/v1/agent/enroll" -Method Post -Body $enrollBody -ContentType 'application/json' -SkipCertificateCheck
+                $encodedSecret = [Convert]::ToBase64String($machineSecret).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+                [Array]::Clear($machineSecret, 0, $machineSecret.Length)
+                $agentHeaders = @{ Authorization = "Bearer vla_$($registered.agentId).$encodedSecret" }
+                $assignmentBody = @{ packageId = $package.id; revision = '' } | ConvertTo-Json -Compress
+                $null = Invoke-WebRequest -Uri "$base/api/v1/agents/$($registered.agentId)/version-assignment" -Method Put -Body $assignmentBody -ContentType 'application/json' -Headers $adminHeaders -WebSession $session -SkipCertificateCheck
+                $assignment = Invoke-RestMethod -Uri "$base/api/v1/agent/version-assignment" -Headers $agentHeaders -SkipCertificateCheck
+                if ($assignment.packageId -ne $package.id -or $assignment.packageVersion -ne $AgentPackageVersion) { throw 'Agent package assignment was not available before backup.' }
+                $originalArchive = Join-Path $scratch "packages/$($package.sha256).pkg"
+                if ((Get-FileHash -LiteralPath $originalArchive -Algorithm SHA256).Hash -ine $package.sha256) { throw 'Downloaded Agent package hash mismatch.' }
+            }
+            else {
+                [IO.File]::WriteAllText((Join-Path $scratch 'packages/recovery-fixture.txt'), 'isolated package-directory fixture')
+                $packageHash = (Get-FileHash -LiteralPath (Join-Path $scratch 'packages/recovery-fixture.txt')).Hash
+            }
             docker stop -t 10 $webName $workerName | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Could not stop test hosts before backup.' }
             Copy-Item -LiteralPath (Join-Path $scratch 'keys') -Destination (Join-Path $scratch 'restored-keys') -Recurse
             Copy-Item -LiteralPath (Join-Path $scratch 'packages') -Destination (Join-Path $scratch 'restored-packages') -Recurse
             Copy-Item -LiteralPath (Join-Path $scratch 'tls.pfx') -Destination (Join-Path $scratch 'restored-tls.pfx')
-            if ((Get-FileHash -LiteralPath (Join-Path $scratch 'restored-packages/recovery-fixture.txt')).Hash -ne $packageHash) { throw 'Package-directory fixture copy failed.' }
+            if (-not $AgentPackageVersion -and (Get-FileHash -LiteralPath (Join-Path $scratch 'restored-packages/recovery-fixture.txt')).Hash -ne $packageHash) { throw 'Package-directory fixture copy failed.' }
             $backup = "BACKUP DATABASE [VigiloomSmoke] TO DISK = N'/var/opt/mssql/data/vigiloom-recovery.bak' WITH COPY_ONLY, CHECKSUM, INIT"
             docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -Q $backup | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Test database backup failed.' }
@@ -160,7 +189,8 @@ EXEC sys.sp_executesql @sql;
             $restoredKeys = (Join-Path $scratch 'restored-keys') + ':/data/keys'
             $restoredPackages = (Join-Path $scratch 'restored-packages') + ':/data/packages'
             $restoredTls = (Join-Path $scratch 'restored-tls.pfx') + ':/run/tls.pfx:ro'
-            docker create --name $webName --network $accessNetwork -p '127.0.0.1::7043' -e 'ASPNETCORE_URLS=https://+:7043' -e 'ASPNETCORE_Kestrel__Certificates__Default__Path=/run/tls.pfx' -e "ASPNETCORE_Kestrel__Certificates__Default__Password=$certPassword" -e "ConnectionStrings__Vigiloom=$restoredConnection" -e 'Vigiloom__DataProtection__KeyRingPath=/data/keys' -e 'Vigiloom__AgentPackages__CachePath=/data/packages' -v $restoredKeys -v $restoredPackages -v $restoredTls $tag | Out-Null
+            $offlineHosts = if ($AgentPackageVersion) { @('--add-host', 'api.github.com:127.0.0.1', '--add-host', 'github.com:127.0.0.1') } else { @() }
+            docker create --name $webName --network $accessNetwork -p '127.0.0.1::7043' @offlineHosts -e 'ASPNETCORE_URLS=https://+:7043' -e 'ASPNETCORE_Kestrel__Certificates__Default__Path=/run/tls.pfx' -e "ASPNETCORE_Kestrel__Certificates__Default__Password=$certPassword" -e "ConnectionStrings__Vigiloom=$restoredConnection" -e 'Vigiloom__DataProtection__KeyRingPath=/data/keys' -e 'Vigiloom__AgentPackages__CachePath=/data/packages' -v $restoredKeys -v $restoredPackages -v $restoredTls $tag | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Restored Web container creation failed.' }
             docker network connect $network $webName
             if ($LASTEXITCODE -ne 0) { throw 'Could not connect restored Web to isolated SQL network.' }
@@ -181,8 +211,18 @@ EXEC sys.sp_executesql @sql;
                 if ($null -eq $restoredOverview -or -not $restoredHeartbeat) { Start-Sleep -Seconds 1 }
             }
             if ($null -eq $restoredOverview -or $restoredOverview.StatusCode -ne 200 -or -not $restoredHeartbeat) { throw 'Restored login or Worker heartbeat was not verified.' }
+            if ($AgentPackageVersion) {
+                $restoredAssignment = Invoke-RestMethod -Uri "$restoredBase/api/v1/agent/version-assignment" -Headers $agentHeaders -SkipCertificateCheck
+                if ($restoredAssignment.packageId -ne $package.id -or $restoredAssignment.manifestSha256 -ne $assignment.manifestSha256) { throw 'Restored Agent assignment differs from the original.' }
+                $manifest = Invoke-WebRequest -Uri "$restoredBase/api/v1/agent/update/targets/$($assignment.manifestSha256).json" -Headers $agentHeaders -SkipCertificateCheck
+                if ($manifest.StatusCode -ne 200) { throw 'Restored Agent manifest could not be read.' }
+                $download = Join-Path $scratch 'restored-agent-package.zip'
+                Invoke-WebRequest -Uri "$restoredBase/api/v1/agent/update/packages/$($package.sha256)" -Headers $agentHeaders -SkipCertificateCheck -OutFile $download -TimeoutSec 120
+                if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ine $package.sha256 -or (Get-Item -LiteralPath $download).Length -ne $package.size) { throw 'Restored Agent package content mismatch.' }
+            }
             $timer.Stop()
-            "Recovery: restored database, copied key ring / TLS / package-directory fixture, reused authenticated session and observed Worker heartbeat in $([math]::Round($timer.Elapsed.TotalSeconds, 2)) seconds."
+            if ($AgentPackageVersion) { "Recovery: restored database, key ring and Agent $AgentPackageVersion package; verified session, Agent download and Worker heartbeat in $([math]::Round($timer.Elapsed.TotalSeconds, 2)) seconds." }
+            else { "Recovery: restored database, copied key ring / TLS / package-directory fixture, reused authenticated session and observed Worker heartbeat in $([math]::Round($timer.Elapsed.TotalSeconds, 2)) seconds." }
         }
     } finally { Pop-Location }
 } finally {
