@@ -76,8 +76,9 @@ was present and both Administrator and Read only test accounts could sign in.
 No notification was sent, and both test databases and the backup were removed.
 This same-machine exercise did not restore Agent packages, start Worker, run the
 Migrator after restore, validate an old-version upgrade or measure RPO/RTO.
-REQ-40-T04 stays open until those checks and the chosen RPO/RTO have been
-measured in a representative deployment.
+The later exercises below extend this check. The owner has since confirmed
+that functional verification, rather than measured RPO/RTO, is the acceptance
+criterion for this release.
 
 On 2026-11-23, `tools/server-deployment-smoke.ps1 -Recovery` performed an
 additional same-machine Linux x64 container exercise using self-contained
