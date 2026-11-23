@@ -282,6 +282,22 @@ and 499 unknown in-flight results at its 120-second deadline, so no exact
 completion-time comparison is available. More representative mixed traffic and
 longer measurements remain necessary.
 
+The synthetic sender previously limited all Agents to 100 shared HTTP
+connections. It was changed to permit one connection per simulated Agent; this
+still uses one process and is not equivalent to independent machines. With the
+combined bucket SQL and 500 connections, a 500-Agent run generated and accepted
+19,980 metric points and 5,984 logs without HTTP errors; total time was 117.46
+seconds, including drain. One snapshot during the run showed 98 SQL requests
+waiting for an exclusive lock. The run remains too short and too concentrated
+on one host to establish production capacity.
+
+Moving Agent log admission to the end of its transaction was also tried with
+the combined bucket SQL and 500 allowed connections. One run drained in
+81.86 seconds without HTTP errors; a second took 82.93 seconds but reported 44
+timeouts, whose commit status is unknown. The second run failed and the trial
+change was reverted. These runs show possible throughput improvement but do not
+establish a reliable change or identify the timeout cause.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
