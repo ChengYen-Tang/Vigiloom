@@ -224,6 +224,35 @@ along with other source and signal checks. This is a functional retry check,
 not a mixed-capacity benchmark, durable-delivery guarantee or measurement of
 Collector loss under a sustained overload.
 
+The manual script also supports `-IncludeServices -Collector`, which uses the
+repository's Collector Contrib 0.164.0 configuration and a test-only shared
+Log policy with a per-source rate of 100 records/s, burst 100 (global 1,000/s,
+burst 2,000). Application requests go through Collector; the fixture waits for
+central SQL row counts before declaring success. Collector acknowledgements
+alone do not prove persistence. This is still a synthetic, closed-loop
+producer; the reported elapsed time must be compared with the requested period.
+
+On 2026-11-23, with the same SQL Server 2022 / Kestrel shared host as above,
+10-second tests passed through the real Collector: 30 Agents / 3 services
+stored 30 application logs, 30 metric points and 3 spans; 500 Agents / 50
+services stored 500 application logs, 500 points and 50 spans. The latter
+service producer took 29.13 seconds to complete its planned 10-second work;
+the Agent sender took 22.38 seconds to generate and drain 3,320 metric points
+and 992 logs. Both were checked against SQL. These are short completion checks,
+not evidence that the requested rates can be sustained.
+
+A subsequent 60-second run with the same 500 Agents, 50 services, Collector
+configuration and test-only quota completed with all accepted counts matching
+SQL: 19,980 Agent metric points and 5,992 Agent logs, plus 3,000 application
+logs, 500 metric points and 300 spans. The Agent producer and drain took
+109.16 seconds; the closed-loop application producer took 154.82 seconds to
+complete the planned 60-second work, followed by 2.04 seconds waiting for
+central counts. No generator queue overflow, remaining Agent batch or HTTP
+failure was reported. Because the application sender falls behind and catches
+up rather than continuing at a fixed offered rate, this result does not prove
+that the host can sustain the stated workload, nor does it cover UI, Worker,
+replay, retention or storage growth.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
