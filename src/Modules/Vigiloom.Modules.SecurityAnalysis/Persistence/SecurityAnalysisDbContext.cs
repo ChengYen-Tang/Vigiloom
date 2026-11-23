@@ -53,6 +53,7 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     public DbSet<SigmaRuleTest> SigmaRuleTests => Set<SigmaRuleTest>();
     public DbSet<SigmaRuleActivation> SigmaRuleActivations => Set<SigmaRuleActivation>();
     public DbSet<SigmaDetectionResult> SigmaDetectionResults => Set<SigmaDetectionResult>();
+    public DbSet<IocDetection> IocDetections => Set<IocDetection>();
     public DbSet<SigmaCorrelationEvent> SigmaCorrelationEvents => Set<SigmaCorrelationEvent>();
     public DbSet<SigmaCorrelationCoverage> SigmaCorrelationCoverages => Set<SigmaCorrelationCoverage>();
     public DbSet<SigmaEventGap> SigmaEventGaps => Set<SigmaEventGap>();

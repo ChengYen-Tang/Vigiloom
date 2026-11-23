@@ -17,6 +17,7 @@ public interface IHostMonitoringClient
     Task<HostLogPage?> GetLogsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token);
     Task<SigmaDetectionEventPage?> GetDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token);
     Task<SigmaDetectionGapPage?> GetDetectionGapsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token);
+    Task<IocDetectionPage?> GetIocDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, int page, CancellationToken token);
     Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token);
     Task<IntegritySnapshotChunkView?> GetIntegrityChunkAsync(Guid deviceId, Guid scopeId, Guid snapshotId, int chunkIndex, CancellationToken token);
     Task<IntegrityChangePage?> GetIntegrityChangesAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token);

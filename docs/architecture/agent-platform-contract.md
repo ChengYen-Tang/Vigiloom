@@ -10,7 +10,43 @@ Microsoft's [current .NET 10 supported OS table](https://github.com/dotnet/core/
 
 Runtime eligibility is necessary but insufficient for a Vigiloom support claim. Self-contained publishing, compilation, an installed runtime or a passing unit test does not prove installation or a collector works. Native APIs, kernel, libc, packages, filesystem policy, service identity and granted privileges can differ within an eligible OS. Agent installation, update and download experiences must explain incompatibilities instead of offering an incompatible package or suggesting it works.
 
-No OS/architecture combination or collector is currently declared product-supported by this document. Before publishing a claim, record the exact OS edition, version and updates; OS and process architecture; Linux distribution, kernel and libc where applicable; runtime and Agent/package versions; native dependencies; service account and effective permissions. Verify installation, startup, each claimed collector, transmission, disconnect/recovery, update, rollback and removal on the actual target or a representative VM. Record dates, test procedure and evidence, including any limitations. Revalidate on material changes and when the underlying support conditions expire. REQ-20 and REQ-40 own their installation/update and release evidence; collector requirements own their native functionality. A single successful combination does not establish support for an entire OS family.
+Record the tested OS edition, version and updates; OS and process architecture; Linux distribution, kernel and libc where applicable; runtime and Agent/package versions; native dependencies; service account and effective permissions. Verify installation, startup, collection, transmission, disconnect/recovery, update, administrator-selected rollback and removal on representative Windows x64 and Linux x64 environments. As explicitly approved by the project owner, corresponding Windows x86 acceptance follows the x64 result without requiring a separate x86 run; distinguish that acceptance from a native x86 test and publish separate x86 and x64 packages. REQ-20 and REQ-40 own installation/update and release evidence; collector requirements own their native functionality.
+
+### Representative service integration results
+
+The [service integration run](https://github.com/ChengYen-Tang/Vigiloom/actions/runs/45066403827)
+passed on Windows Server 2025 x64 (build `10.0.26100`, hosted image `windows-2025-vs2026`,
+`20261116.315.1`) and Ubuntu 24.04 x64 (hosted image `20261116.376.1`). It used
+test-generated self-contained .NET 10 Agent and Updater packages, exercised the
+installed services and authenticated TLS transport, disconnected and resumed
+delivery, and checked update, administrator-selected rollback and removal.
+Windows runs the Agent as `NT SERVICE\Vigiloom Agent`; Linux uses the
+`vigiloom-agent` systemd account. The runners used .NET SDK `10.0.403`;
+the test scenarios used package versions `1.0.0`, `1.1.0` and `1.2.0`.
+Installation and the Updater need elevated
+permissions. Linux requires systemd and the distribution's ICU package;
+journal collection additionally uses `libsystemd.so.0` and access to the
+configured journal. Windows event channels may require separate read access.
+
+The run did not record the exact Linux kernel or libc versions. Those versions
+and the image's servicing state are described by the linked runner image, not
+an independently tested compatibility range. Windows x86 acceptance follows
+the x64 result by the owner's decision; it is not a native x86 run. Optional
+sensor-specific validation and restrictions are described in
+[security-sensors.md](security-sensors.md).
+
+Capability details are reported by their owning collectors: inventory and
+integrity include outcomes and observation times; host-log sources report
+their configuration and last observation; baseline checks include their
+outcomes and times; metrics expose sample times and recent unavailable-source
+reasons. A missing or stale observation remains unknown. A collector without a
+global disable switch is not reported as disabled merely because it has no data.
+
+The Fedora 42 WSL environment used for the separate Linux journal and YARA
+checks currently reports x86-64, WSL kernel `6.18.33.2`, glibc `2.41`,
+systemd `257.3` and ICU `76.1`. Those checks do not replace the Ubuntu
+installed-service integration above or establish support for every Fedora
+kernel or distribution configuration.
 
 ## Collector capability observations
 

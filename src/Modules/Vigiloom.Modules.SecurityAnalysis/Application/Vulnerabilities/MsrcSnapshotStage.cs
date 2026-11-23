@@ -152,11 +152,21 @@ internal sealed class MsrcSnapshotStage(IDbContextFactory<SecurityAnalysisDbCont
         var existing = await db.IntelligenceRevisions.AsNoTracking().SingleOrDefaultAsync(x => x.SourceId == sourceId && x.Digest == finalDigest && x.MappingVersion == Mapping && x.UpstreamVersion != "staging", token);
         if (existing is not null)
         {
-            await db.MsrcDocuments.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
+            if (existing.ContentPurgedAt is not null)
+            {
+                if (await db.MsrcDocuments.AnyAsync(x => x.RevisionId == existing.Id, token)) return new(MsrcStageStatus.Conflict);
+                await db.MsrcDocuments.Where(x => x.RevisionId == revision.Id).ExecuteUpdateAsync(x => x.SetProperty(d => d.RevisionId, existing.Id), token);
+                await db.IntelligenceRevisions.Where(x => x.Id == existing.Id).ExecuteUpdateAsync(x => x
+                    .SetProperty(r => r.Artifact, manifest).SetProperty(r => r.RecordCount, ordered.Length)
+                    .SetProperty(r => r.RetrievedAt, clock.GetUtcNow().ToUniversalTime())
+                    .SetProperty(r => r.Normalized, true).SetProperty(r => r.ContentPurgedAt, (DateTimeOffset?)null), token);
+            }
+            else await db.MsrcDocuments.Where(x => x.RevisionId == revision.Id).ExecuteDeleteAsync(token);
             await db.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteDeleteAsync(token);
             await db.MsrcArtifacts.Where(x => !db.MsrcDocuments.Any(d => d.Digest == x.Digest)).ExecuteDeleteAsync(token);
             await transaction.CommitAsync(token);
-            return existing.Revoked ? new(MsrcStageStatus.Unavailable) : new(MsrcStageStatus.Unchanged, existing.Id);
+            return existing.Revoked || !existing.Normalized && existing.ContentPurgedAt is null ? new(MsrcStageStatus.Unavailable) :
+                new(existing.ContentPurgedAt is null ? MsrcStageStatus.Unchanged : MsrcStageStatus.Staged, existing.Id);
         }
         await db.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteUpdateAsync(x => x
             .SetProperty(r => r.Digest, finalDigest).SetProperty(r => r.UpstreamVersion, Convert.ToHexStringLower(finalDigest))

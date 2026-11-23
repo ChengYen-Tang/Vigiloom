@@ -10,7 +10,9 @@ namespace Vigiloom.Agent.Tests;
 public sealed class AgentLogStatusRuntimeTests
 {
     [TestMethod]
-    public void Status_PreservesObservationAgeAndClearsOnRevisionOrOwnerChange()
+    [DataRow(LogSourceCycleStatus.Unavailable, false)]
+    [DataRow(LogSourceCycleStatus.PermissionDenied, true)]
+    public void Status_PreservesObservationAgeAndClearsOnRevisionOrOwnerChange(LogSourceCycleStatus sourceStatus, bool denied)
     {
         var clock = new FakeTimeProvider();
         var runtime = new AgentLogStatusRuntime(clock);
@@ -19,7 +21,7 @@ public sealed class AgentLogStatusRuntimeTests
         var other = new AgentLogSourceSetting(Guid.CreateVersion7(), Guid.CreateVersion7(), AgentLogSourceKind.Journal, "other", "local", true, 1, null);
         var snapshot = AgentLogSettingsSnapshot.Create([source, other]);
         runtime.Bind(owner);
-        var firstObservation = new LogSourceCycleResult(source.SourceId, LogSourceCycleStatus.Unavailable, 0,
+        var firstObservation = new LogSourceCycleResult(source.SourceId, sourceStatus, 0,
             ObservedAt: clock.GetUtcNow(), Timestamp: clock.GetTimestamp());
         // A slow later source must not make the first source's completed observation appear new.
         clock.Advance(TimeSpan.FromSeconds(10));
@@ -32,6 +34,7 @@ public sealed class AgentLogStatusRuntimeTests
         Assert.HasCount(1, report.Sources);
         Assert.AreEqual(52, report.Sources[0].AgeSeconds);
         Assert.AreEqual(AgentLogSourceState.Unavailable, report.Sources[0].State);
+        Assert.AreEqual(denied, report.Sources[0].PermissionDenied);
         var next = AgentLogSettingsSnapshot.Create([source, other], 1);
         runtime.Record(owner, next, false, [], clock.GetUtcNow());
         Assert.IsEmpty(runtime.ForOwner(owner)!.Report.Sources);

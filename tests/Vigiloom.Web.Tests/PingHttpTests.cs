@@ -50,6 +50,8 @@ public sealed class PingHttpTests
             await db.Database.MigrateAsync(token);
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
         var now = DateTimeOffset.UtcNow;
         var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
         var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now.AddDays(-20), Guid.CreateVersion7(), AgentLogSourceKind.Journal,

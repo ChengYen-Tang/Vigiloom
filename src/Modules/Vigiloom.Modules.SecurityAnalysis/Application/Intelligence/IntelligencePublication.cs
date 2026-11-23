@@ -64,9 +64,9 @@ public sealed class IntelligencePublication(IDbContextFactory<SecurityAnalysisDb
             return IntelligencePublicationResult.Conflict;
         var candidate = await db.IntelligenceRevisions
             .FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceRevisions] WITH (UPDLOCK, HOLDLOCK) WHERE [SourceId] = {sourceId} AND [Id] = {revisionId}")
-            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.Normalized, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.Digest, x.ReleasedAt }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.Id, x.RecordCount, x.Revoked, x.Normalized, x.ContentPurgedAt, x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.Digest, x.ReleasedAt }).SingleOrDefaultAsync(token);
         if (candidate is null) return IntelligencePublicationResult.NotFound;
-        if (candidate.Revoked || !candidate.Normalized) return IntelligencePublicationResult.Unavailable;
+        if (candidate.Revoked || !candidate.Normalized || candidate.ContentPurgedAt is not null) return IntelligencePublicationResult.Unavailable;
         var offline = source.Key == "cisa-kev" && candidate.MappingVersion == KevUpdate.OfflineMappingVersion;
         if (BaselineEligibility.IsCustomKey(source.Key, source.Id) && actorId is null) return IntelligencePublicationResult.Unavailable;
         if (source.Key == "cisa-kev")

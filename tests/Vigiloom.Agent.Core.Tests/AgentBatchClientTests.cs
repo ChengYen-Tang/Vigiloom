@@ -8,6 +8,7 @@ using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Agent.Security;
 
 namespace Vigiloom.Agent.Core.Tests;
 
@@ -15,6 +16,69 @@ namespace Vigiloom.Agent.Core.Tests;
 public sealed class AgentBatchClientTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task Sender_RestoresAndDefersYaraResultAcrossVersionChanges()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomYaraUpgradeTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var clock = new FakeTimeProvider();
+            var now = clock.GetUtcNow();
+            var yara = new YaraResultBatch(YaraResultBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                new(YaraScanOutcome.Completed, "matched", "", false, now));
+            var bytes = YaraResultBatchCodec.Serialize(yara);
+            var metric = new AgentMetricBatch(AgentMetricBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "host", null, 1024)]);
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(yara.BatchId, now, 1, bytes, token));
+            Assert.IsTrue(await queue.QuarantineAsync(yara.BatchId, QueueRejection.InvalidLocalBatch, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(metric.BatchId, now, 1, AgentMetricBatchCodec.Serialize(metric), token));
+            var handler = new YaraCompatibilityHandler();
+            using var http = new HttpClient(handler);
+            var sender = new AgentBatchClient(http, clock);
+            Assert.AreEqual(BatchSendResult.Retry, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Deferred, (await sender.SendNextAsync(vault, server, token)).Status);
+            handler.Supported = true;
+            clock.Advance(TimeSpan.FromMinutes(5));
+            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            CollectionAssert.AreEqual(bytes, handler.LastYara!);
+            Assert.IsNull(await queue.PeekAsync(token));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class YaraCompatibilityHandler : HttpMessageHandler
+    {
+        public bool Supported { get; set; }
+        public byte[]? LastYara { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var bytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            using var json = JsonDocument.Parse(bytes);
+            if (json.RootElement.GetProperty("schemaVersion").GetInt32() == YaraResultBatchCodec.SchemaVersion)
+            {
+                LastYara = bytes;
+                if (!Supported) return new(HttpStatusCode.BadRequest);
+            }
+            return new(HttpStatusCode.NoContent);
+        }
+    }
 
     [TestMethod]
     public async Task Sender_RestoresValidBaselineQuarantinedByOlderAgent()

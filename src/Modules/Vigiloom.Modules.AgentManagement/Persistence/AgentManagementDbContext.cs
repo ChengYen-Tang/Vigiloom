@@ -30,10 +30,25 @@ public sealed class AgentManagementDbContext(DbContextOptions<AgentManagementDbC
     public DbSet<AgentVersionAssignment> VersionAssignments => Set<AgentVersionAssignment>();
     public DbSet<AgentUpdateTarget> UpdateTargets => Set<AgentUpdateTarget>();
     public DbSet<AgentUpdateReceipt> UpdateReceipts => Set<AgentUpdateReceipt>();
+    public DbSet<YaraScan> YaraScans => Set<YaraScan>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("agent");
+        var yara = modelBuilder.Entity<YaraScan>();
+        yara.ToTable("YaraScans");
+        yara.HasKey(x => x.Id).IsClustered(false);
+        yara.Property(x => x.Id).ValueGeneratedNever();
+        yara.Property(x => x.RowId).UseIdentityColumn();
+        yara.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        yara.Property(x => x.FilePath).HasMaxLength(1024).IsRequired();
+        yara.Property(x => x.Rules).HasMaxLength(65536).IsRequired();
+        yara.Property(x => x.Output).HasMaxLength(65536);
+        yara.Property(x => x.Error).HasMaxLength(65536);
+        yara.Property(x => x.EngineVersion).HasMaxLength(64);
+        yara.HasIndex(x => new { x.AgentId, x.CompletedAt, x.RequestedAt });
+        yara.HasIndex(x => new { x.DeviceId, x.RequestedAt, x.RowId });
+        yara.HasOne<Agent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
         var package = modelBuilder.Entity<AgentPackage>();
         package.ToTable("Packages", table =>
         {

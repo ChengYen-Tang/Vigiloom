@@ -8,6 +8,7 @@ using Vigiloom.Agent.Hosting.Logs;
 using Vigiloom.Agent.Hosting.Inventory;
 using Vigiloom.Agent.Core.Inventory;
 using Vigiloom.Agent.Core.Updates;
+using Vigiloom.Agent.Core.Security;
 
 namespace Vigiloom.Agent.Hosting;
 
@@ -23,6 +24,7 @@ public static class AgentHost
         builder.Services.AddHttpClient<IdentityClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddTransient<AgentEnrollmentBootstrap>();
         builder.Services.AddHttpClient<AgentVersionClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
+        builder.Services.AddHttpClient<AgentYaraClient>(client => { ConfigureClient(client); client.MaxResponseContentBufferSize = 512 * 1024; }).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentHeartbeatClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentBatchClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
         builder.Services.AddHttpClient<AgentSettingsClient>(ConfigureClient).ConfigurePrimaryHttpMessageHandler(CreateHandler);
@@ -47,6 +49,7 @@ public static class AgentHost
         builder.Services.AddHostedService<AgentEnrollmentWorker>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<AgentUpdateWorker>();
+        builder.Services.AddHostedService<YaraScanWorker>();
         builder.Services.AddHostedService<HeartbeatWorker>();
         builder.Services.AddHostedService<BatchWorker>();
         // Stop the producer before the sender during default sequential shutdown.

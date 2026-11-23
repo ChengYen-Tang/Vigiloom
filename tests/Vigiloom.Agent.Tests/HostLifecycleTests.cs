@@ -1333,9 +1333,11 @@ public sealed class HostLifecycleTests(TestContext testContext)
 
     private static void DisableUnrelatedWorkers(HostApplicationBuilder builder)
     {
-        // The update poll uses the same jitter range as settings; it is tested independently.
+        // Update and YARA polling use the same jitter range as settings; they are tested independently.
         var updateWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "AgentUpdateWorker");
         builder.Services.Remove(updateWorker);
+        var yaraWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "YaraScanWorker");
+        builder.Services.Remove(yaraWorker);
         var descriptor = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(MetricWorker));
         builder.Services.Remove(descriptor);
         var logWorker = builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(LogWorker));

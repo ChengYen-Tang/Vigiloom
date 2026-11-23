@@ -51,7 +51,7 @@
         </section>
         @if (device.DeepMonitoring)
         {
-            <Vigiloom.Web.Client.Components.HostMonitoring.HostDetails DeviceId="Id" @rendermode="InteractiveAuto" />
+            <Vigiloom.Web.Client.Components.HostMonitoring.HostDetails DeviceId="Id" InitialTab="@Tab" InitialSearch="@Search" @rendermode="InteractiveAuto" />
             <BaselinePanel DeviceId="Id" />
             <section class="device-panel">
                 <h2>Agent 本機傳送佇列</h2>
@@ -214,6 +214,8 @@
 
 @code {
     [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     [SupplyParameterFromForm(FormName = "device-archive")] private ArchiveInput Action { get; set; } = default!;
     private DeviceDto? device;

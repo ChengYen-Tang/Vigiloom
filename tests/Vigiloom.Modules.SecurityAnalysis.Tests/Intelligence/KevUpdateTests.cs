@@ -25,6 +25,32 @@ public sealed class KevUpdateTests(TestContext context)
         """;
 
     [TestMethod]
+    public Task Update_RestoresPurgedCatalogFromSameSource() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        var contexts = new ContextFactory(options); var source = new IntelligenceSource { Key = "cisa-kev", Enabled = true };
+        await using (var db = contexts.CreateDbContext()) { db.IntelligenceSources.Add(source); await db.SaveChangesAsync(token); }
+        var clients = new ClientFactory(_ => new(HttpStatusCode.OK) { Content = new StringContent(Catalog, Encoding.UTF8, "application/json") });
+        var update = new KevUpdate(contexts, clients, TimeProvider.System);
+        Assert.AreEqual(KevUpdateResult.Staged, await update.RunAsync(source.Id, token));
+        Guid revisionId;
+        await using (var db = contexts.CreateDbContext())
+        {
+            var revision = await db.IntelligenceRevisions.SingleAsync(token); revisionId = revision.Id;
+            revision.ContentPurgedAt = DateTimeOffset.UtcNow; revision.Normalized = false; revision.Artifact = [];
+            await db.SaveChangesAsync(token);
+        }
+        Assert.AreEqual(KevUpdateResult.Conflict, await update.RunAsync(source.Id, token));
+        await using (var db = contexts.CreateDbContext()) await db.KevRecords.ExecuteDeleteAsync(token);
+        Assert.AreEqual(KevUpdateResult.Staged, await update.RunAsync(source.Id, token));
+        await using var check = contexts.CreateDbContext();
+        var restored = await check.IntelligenceRevisions.SingleAsync(token);
+        Assert.AreEqual(revisionId, restored.Id); Assert.IsTrue(restored.Normalized); Assert.IsNull(restored.ContentPurgedAt);
+        Assert.AreEqual(1, await check.KevRecords.CountAsync(x => x.RevisionId == revisionId, token));
+        Assert.AreEqual(revisionId, (await check.IntelligenceCaches.SingleAsync(token)).RevisionId);
+    }, context.CancellationToken);
+
+    [TestMethod]
     public Task NormalizationFailure_RollsBackRevisionCacheAndSuccessfulCheck() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {

@@ -34,14 +34,17 @@ public sealed class IntelligencePolicy(IDbContextFactory<SecurityAnalysisDbConte
         if (source is null) return IntelligencePolicyResult.NotFound;
         if (!source.Version.AsSpan().SequenceEqual(version)) return IntelligencePolicyResult.Conflict;
         if (!IntelligencePolicyLimits.ValidForSource(source.Key, input.MaximumBytes, input.MaximumRecords)) return IntelligencePolicyResult.Invalid;
+        if (source.Key != "signature-base" && input.IocDetectionEnabled == true) return IntelligencePolicyResult.Invalid;
         var before = Values(source);
-        var after = new IntelligencePolicyValues(input.Enabled, input.UpdateIntervalSeconds, input.StaleAfterSeconds, input.MaximumBytes, input.MaximumRecords);
+        var after = new IntelligencePolicyValues(input.Enabled, input.UpdateIntervalSeconds, input.StaleAfterSeconds, input.MaximumBytes, input.MaximumRecords,
+            source.Key == "signature-base" ? input.IocDetectionEnabled ?? source.IocDetectionEnabled : null);
         if (before == after) return IntelligencePolicyResult.Unchanged;
         source.Enabled = input.Enabled;
         source.UpdateIntervalSeconds = input.UpdateIntervalSeconds;
         source.StaleAfterSeconds = input.StaleAfterSeconds;
         source.MaximumBytes = input.MaximumBytes;
         source.MaximumRecords = input.MaximumRecords;
+        if (source.Key == "signature-base") source.IocDetectionEnabled = after.IocDetectionEnabled == true;
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new OperationAudit(actor, source.Id, clock.GetUtcNow().ToUniversalTime(),
@@ -51,5 +54,5 @@ public sealed class IntelligencePolicy(IDbContextFactory<SecurityAnalysisDbConte
     }
 
     private static IntelligencePolicyValues Values(IntelligenceSource value) => new(value.Enabled, value.UpdateIntervalSeconds,
-        value.StaleAfterSeconds, value.MaximumBytes, value.MaximumRecords);
+        value.StaleAfterSeconds, value.MaximumBytes, value.MaximumRecords, value.Key == "signature-base" ? value.IocDetectionEnabled : null);
 }

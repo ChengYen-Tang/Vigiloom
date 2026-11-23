@@ -28,6 +28,10 @@ public sealed class ServiceEvidenceReader(TelemetryHistory history)
         return new(items, result.HasMore, result.Truncated);
     }
 
+    /// <summary>Formats one retained OTLP log body with the same bounds as service evidence.</summary>
+    public static (string Text, bool Truncated) FormatLogBody(byte[] payload) =>
+        LogBodyFormatter.Format(OtlpLog.Parser.ParseFrom(payload).Body);
+
     public async Task<ServiceEvidencePage<ServiceTraceEvidence>> TracesAsync(Guid serviceId, DateTimeOffset from, DateTimeOffset to, int page, CancellationToken token)
     {
         var result = await history.TracesAsync(serviceId, from, to, page, null, token);

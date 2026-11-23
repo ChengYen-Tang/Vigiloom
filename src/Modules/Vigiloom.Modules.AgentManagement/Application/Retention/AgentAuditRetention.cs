@@ -17,7 +17,8 @@ public sealed class AgentAuditRetention : IAuditRetentionSource
             await AuditRetentionQueries.CountAsync(db.SettingAudits, cutoff, token) +
             await AuditRetentionQueries.CountAsync(db.QueueCapacityAudits, cutoff, token) +
             await AuditRetentionQueries.CountAsync(db.MetricSettingAudits, cutoff, token) +
-            await AuditRetentionQueries.CountAsync(db.HostMetricThresholdAudits, cutoff, token);
+            await AuditRetentionQueries.CountAsync(db.HostMetricThresholdAudits, cutoff, token) +
+            await db.YaraScans.LongCountAsync(x => x.CompletedAt != null && x.CompletedAt < cutoff, token);
     }
 
     public async Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token)
@@ -29,6 +30,12 @@ public sealed class AgentAuditRetention : IAuditRetentionSource
         if (removed < batchSize) removed += await AuditRetentionQueries.DeleteBatchAsync(db.QueueCapacityAudits, cutoff, batchSize - removed, token);
         if (removed < batchSize) removed += await AuditRetentionQueries.DeleteBatchAsync(db.MetricSettingAudits, cutoff, batchSize - removed, token);
         if (removed < batchSize) removed += await AuditRetentionQueries.DeleteBatchAsync(db.HostMetricThresholdAudits, cutoff, batchSize - removed, token);
+        if (removed < batchSize)
+        {
+            var scans = db.YaraScans.Where(x => x.CompletedAt != null && x.CompletedAt < cutoff)
+                .OrderBy(x => x.CompletedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.YaraScans.Where(x => scans.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
         return removed;
     }
 
