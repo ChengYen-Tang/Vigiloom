@@ -30,8 +30,22 @@
                 <div><dt>資料庫連線</dt><dd>@StateText(platform.Database)</dd></div>
                 <div><dt>排程服務心跳</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
                 <div><dt>Agent 批次接收</dt><dd>@AgentBatchText(platform)</dd></div>
-                <div><dt>應用遙測接收</dt><dd>尚未接入</dd></div>
+                <div><dt>應用遙測接收</dt><dd>
+                    @if (platform.TelemetrySources is null) { <span>無法取得接收資料。</span> }
+                    else if (platform.TelemetrySources.Count == 0) { <span>目前沒有來源，接收狀態未知。</span> }
+                    else { <span>顯示最新建立的來源；沒有資料不代表接收故障。</span> }
+                    <a href="/settings/service-reception">查看所有來源與接收拒絕摘要</a>
+                </dd></div>
             </dl>
+            @if (platform.TelemetrySources is { Count: > 0 } telemetrySources)
+            {
+                <ul aria-label="應用遙測接收摘要">
+                    @foreach (var source in telemetrySources.Take(3))
+                    {
+                        <li @key="source.SourceId">@source.Name：Logs @ReceptionTime(source.LastLogAt)；Metrics @ReceptionTime(source.LastMetricAt)；Traces @ReceptionTime(source.LastTraceAt)</li>
+                    }
+                </ul>
+            }
             <p>接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。</p>
             <h3>Worker 掃描摘要</h3>
             <p>排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。</p>
@@ -145,6 +159,7 @@
         _ => "未知"
     };
     private static string FormatTime(DateTimeOffset value) => value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
+    private static string ReceptionTime(DateTimeOffset? value) => value is { } time ? FormatTime(time) : "尚無資料";
     private static string SchedulerText(SchedulerObservation value) => !value.Available ? "無法取得心跳資料"
         : value.Current + value.Stale + value.Unknown == 0
         ? "目前沒有心跳資料" : $"{StateText(value.State)}（正常 {value.Current}、過期 {value.Stale}、未知 {value.Unknown}）";

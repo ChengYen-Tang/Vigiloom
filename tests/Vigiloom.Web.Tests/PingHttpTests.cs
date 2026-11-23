@@ -189,6 +189,7 @@ public sealed class PingHttpTests
         Assert.Contains("預計有 6 筆操作紀錄", await TextAsync(preview, token));
         Assert.Contains("預計清理 1 筆已恢復告警及 1 筆通知", await TextAsync(preview, token));
         Assert.Contains("預計清理 1 筆已結束的背景工作", await TextAsync(preview, token));
+        Assert.Contains("Hangfire 失敗工作的數量未包含在上述預覽中", await TextAsync(preview, token));
         var confirm = Hidden(await FormAsync(preview, "audit-retention", token));
         confirm["Input.Days"] = "30";
         using var saved = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(confirm), token);

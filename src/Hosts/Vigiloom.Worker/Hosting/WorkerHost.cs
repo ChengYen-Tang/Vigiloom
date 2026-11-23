@@ -71,6 +71,7 @@ public static class WorkerHost
         builder.Services.AddScoped<WorkerDiagnosticsStore>();
         builder.Services.AddScoped<AuditRetentionSettings>();
         builder.Services.AddScoped<AuditRetentionCleanup>();
+        builder.Services.AddScoped<FailedJobRetention>();
         builder.Services.AddScoped<AuditRetentionJob>();
         builder.Services.AddSingleton<WorkerDiagnostics>();
         builder.Services.AddHostedService<WorkerDiagnosticsPublisher>();
