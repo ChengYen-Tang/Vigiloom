@@ -2,10 +2,12 @@ param(
     [ValidateSet(30, 100, 300, 500)][int]$Agents = 30,
     [ValidateRange(1, 86400)][int]$Seconds = 300,
     [string]$SdkVersion = '',
-    [switch]$IncludeServices
+    [switch]$IncludeServices,
+    [switch]$Collector
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Collector -and -not $IncludeServices) { throw 'Collector requires -IncludeServices.' }
 if (-not $env:VIGILOOM_TEST_SQL_CONNECTION -or -not $env:VIGILOOM_TEST_SQL_ALLOW_SOURCE) {
     throw 'Set VIGILOOM_TEST_SQL_CONNECTION and VIGILOOM_TEST_SQL_ALLOW_SOURCE for a dedicated test SQL Server.'
 }
@@ -19,12 +21,14 @@ $oldTemp = $env:TEMP; $oldTmp = $env:TMP; $oldTmpDir = $env:TMPDIR
 $oldSize = $env:VIGILOOM_CAPACITY_SIZE; $oldDuration = $env:VIGILOOM_DURATION_SECONDS
 $oldSender = $env:VIGILOOM_CAPACITY_SENDER
 $oldServices = $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES
+$oldCollector = $env:VIGILOOM_CAPACITY_COLLECTOR
 $copied = $false
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
     $env:TEMP = $scratch; $env:TMP = $scratch; $env:TMPDIR = $scratch
     $env:VIGILOOM_CAPACITY_SIZE = "$Agents"; $env:VIGILOOM_DURATION_SECONDS = "$Seconds"
     $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = if ($IncludeServices) { '1' } else { '0' }
+    $env:VIGILOOM_CAPACITY_COLLECTOR = if ($Collector) { '1' } else { '0' }
     if ($SdkVersion) {
         @{ sdk = @{ version = $SdkVersion; rollForward = 'disable' } } | ConvertTo-Json -Compress | Set-Content -Encoding utf8 (Join-Path $scratch 'global.json')
     }
@@ -50,6 +54,9 @@ try {
             $serviceSummary = @(Select-String -LiteralPath $output -Pattern 'OTLP:')
             if ($serviceSummary.Count -ne 1) { throw 'Capacity test produced no unique OTLP result.' }
             $serviceSummary[0].Line
+            if ($Collector) {
+                @(Select-String -LiteralPath $output -Pattern 'Collector:|Collector drain seconds:') | ForEach-Object { $_.Line }
+            }
         }
     }
     finally { Pop-Location }
@@ -59,6 +66,7 @@ finally {
     $env:VIGILOOM_CAPACITY_SIZE = $oldSize; $env:VIGILOOM_DURATION_SECONDS = $oldDuration
     $env:VIGILOOM_CAPACITY_SENDER = $oldSender
     $env:VIGILOOM_CAPACITY_INCLUDE_SERVICES = $oldServices
+    $env:VIGILOOM_CAPACITY_COLLECTOR = $oldCollector
     if ($copied -and (Test-Path -LiteralPath $fixture)) {
         if ((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -ne $sourceHash) { throw "Fixture changed during the run; retain $fixture for inspection." }
         Remove-Item -LiteralPath $fixture -Force
@@ -70,6 +78,7 @@ finally {
     }
     $manifests = @(Get-ChildItem -LiteralPath (Join-Path $scratch 'VigiloomSqlTests') -Recurse -Filter run.json -ErrorAction SilentlyContinue)
     if ($manifests.Count -gt 0) { throw "SQL test cleanup did not finish; preserve $scratch and recover its run manifest using tests/Vigiloom.Testing.SqlServer." }
+    if (Test-Path -LiteralPath (Join-Path $scratch 'capacity-collector.txt')) { throw "Collector cleanup did not finish; preserve $scratch and inspect capacity-collector.txt." }
     if ((Resolve-Path -LiteralPath $scratch).Path -ne [IO.Path]::GetFullPath($scratch)) { throw 'Unexpected capacity scratch path.' }
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }
