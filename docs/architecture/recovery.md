@@ -120,3 +120,19 @@ restore without fetching it again from GitHub. It does not run an Agent or
 Updater, install the archive, prove cross-machine recovery, test an older server
 upgrade or establish RPO/RTO. Test resources and the downloaded archive were
 removed afterwards.
+
+On 2026-11-23 the release-package exercise was repeated with `-SeparateSql`.
+After the checksum backup, the backup was copied through the test scratch
+directory, the original SQL container was stopped, and the database was
+restored on a newly started SQL Server 2022 container. The restored Migrator,
+Web and Worker used that second SQL instance. The earlier administrator
+session, new Worker heartbeat, Agent assignment, manifest and cached archive
+download were verified again, including archive size and SHA-256. The restored
+Web mapped the GitHub hosts to loopback during the package check.
+
+Moving the backup, stopping the original SQL instance, starting the new SQL
+instance, restoring, migrating and checking the small fixture took 41.01 seconds.
+This excludes the backup itself, the earlier key-ring and package copy, initial
+setup and incident response. Both SQL instances ran on the same computer and
+Docker environment; this is not evidence of recovery across physical machines,
+Agent installation or an installation's RPO/RTO.
