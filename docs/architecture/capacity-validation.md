@@ -270,6 +270,18 @@ drain than the original 500-Agent run, which still had a backlog at 120 seconds,
 but it does not demonstrate error-free operation. The trial change was again
 reverted, pending a reliable solution and repeatable validation.
 
+A different change retained the original admission lock and transaction, but
+combined the SQL reads and writes of the two quota buckets to reduce round
+trips. In a comparable 500-Agent synthetic-queue run, 19,980 metric points
+and 5,986 logs were generated and accepted; SQL counts matched, with no queue
+rejections, remaining batches or HTTP errors. The total time was 116.15 seconds,
+including about 56 seconds after production stopped. This run passed its
+bounded drain check, but the accumulated backlog and short duration do not
+establish sustained capacity. The earlier baseline still had 561 unsent batches
+and 499 unknown in-flight results at its 120-second deadline, so no exact
+completion-time comparison is available. More representative mixed traffic and
+longer measurements remain necessary.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
