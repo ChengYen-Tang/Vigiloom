@@ -127,6 +127,13 @@ fixture data. This is one observation, not a latency percentile, sustained
 load, a network measurement or evidence that the profile above is supported.
 The SQL fixture was cleaned up by the test harness.
 
+On 2026-11-23, `tools/capacity/overview.js` was also exercised against a real
+Kestrel test host and isolated LocalDB, with 30 fixture devices and two readers
+for 10 seconds. A Read only browser session authenticated the k6 requests; all
+four measured checks passed. This was a short integration check of the script
+and authorization, not a sustained load test: there was no Worker or simulated
+Agent/application ingestion. The isolated database was cleaned by the fixture.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
