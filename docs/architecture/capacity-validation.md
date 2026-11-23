@@ -260,6 +260,16 @@ not a production capacity or durability guarantee. The test queue is in
 memory and does not reproduce the Agent's disk queue, batching, retries or
 continuous operation, and the Web host, sender and SQL shared one machine.
 
+With the corrected synthetic queue model, the late-admission transaction trial
+was repeated at 500 Agents. It generated 19,960 metric points and 5,984 logs;
+all metric requests and 5,982 log requests returned 204, with two log requests
+timing out. The in-memory queues drained in 105.18 seconds total, but the
+fixture correctly failed because the two requests have unknown commit status;
+it therefore did not perform the final SQL count comparison. This was a shorter
+drain than the original 500-Agent run, which still had a backlog at 120 seconds,
+but it does not demonstrate error-free operation. The trial change was again
+reverted, pending a reliable solution and repeatable validation.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
