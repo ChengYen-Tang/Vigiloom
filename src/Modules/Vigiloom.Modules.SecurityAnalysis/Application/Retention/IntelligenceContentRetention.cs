@@ -11,13 +11,15 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Retention;
 /// <summary>Removes unused intelligence contents while keeping revision and activation metadata.</summary>
 internal static class IntelligenceContentRetention
 {
+    private static readonly byte[] EmptyArtifact = [];
     private static IQueryable<IntelligenceRevision> Candidates(SecurityAnalysisDbContext db, DateTimeOffset cutoff, Guid[] protectedPrevious) =>
         from revision in db.IntelligenceRevisions
         join source in db.IntelligenceSources on revision.SourceId equals source.Id
         join active in db.IntelligenceActivations on source.Id equals active.SourceId
-        where (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security") &&
+        where (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security" || source.Key == "ubuntu-osv" || source.Key == "msrc-cvrf") &&
             revision.RetrievedAt < cutoff && !revision.Revoked && (revision.Normalized || revision.ContentPurgedAt != null) &&
-            (revision.ContentPurgedAt == null || db.SigmaRules.Any(x => x.RevisionId == revision.Id) || db.SignatureFiles.Any(x => x.RevisionId == revision.Id) || db.KevRecords.Any(x => x.RevisionId == revision.Id) || db.EpssScores.Any(x => x.RevisionId == revision.Id) || db.DebianAdvisories.Any(x => x.RevisionId == revision.Id)) &&
+            ((source.Key == "ubuntu-osv" || source.Key == "msrc-cvrf") ? revision.Normalized && revision.Artifact != EmptyArtifact :
+                revision.ContentPurgedAt == null || db.SigmaRules.Any(x => x.RevisionId == revision.Id) || db.SignatureFiles.Any(x => x.RevisionId == revision.Id) || db.KevRecords.Any(x => x.RevisionId == revision.Id) || db.EpssScores.Any(x => x.RevisionId == revision.Id) || db.DebianAdvisories.Any(x => x.RevisionId == revision.Id)) &&
             revision.Id != active.RevisionId && revision.Id != source.LastObservedRevisionId &&
             !protectedPrevious.Contains(revision.Id) &&
             !db.IntelligenceCaches.Any(x => x.SourceId == source.Id && x.RevisionId == revision.Id) &&
@@ -49,11 +51,18 @@ internal static class IntelligenceContentRetention
         var candidate = await Candidates(db, cutoff, protectedPrevious).OrderBy(x => x.RetrievedAt).ThenBy(x => x.RowId)
             .Select(x => new { x.Id, x.SourceId }).FirstOrDefaultAsync(token);
         if (candidate is null) return 0;
-        await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {candidate.SourceId}")
+        var source = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {candidate.SourceId}")
             .AsNoTracking().SingleAsync(token);
         protectedPrevious = await ProtectedPreviousAsync(db, token);
         var revision = await Candidates(db, cutoff, protectedPrevious).SingleOrDefaultAsync(x => x.Id == candidate.Id, token);
         if (revision is null) return 0;
+        if (source.Key is "ubuntu-osv" or "msrc-cvrf")
+        {
+            // Normalized documents and withdrawal evidence remain available; only the redundant original archive is removed.
+            revision.Artifact = [];
+            await db.SaveChangesAsync(token);
+            return 1;
+        }
         var removed = 0;
         if (revision.ContentPurgedAt is null)
         {
@@ -102,7 +111,7 @@ internal static class IntelligenceContentRetention
     {
         var sources = await (from source in db.IntelligenceSources.AsNoTracking()
             join active in db.IntelligenceActivations.AsNoTracking() on source.Id equals active.SourceId
-            where source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security"
+            where source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security" || source.Key == "ubuntu-osv" || source.Key == "msrc-cvrf"
             select new { Source = source, active.RevisionId }).ToArrayAsync(token);
         var result = new List<Guid>(sources.Length);
         foreach (var source in sources)
@@ -120,6 +129,8 @@ internal static class IntelligenceContentRetention
                     "signature-base" => await IocSourceEligibility.IsEligibleAsync(db, source.Source.Id, revisionId, token),
                     "first-epss" => await EpssUsableAsync(db, source.Source, revisionId, token),
                     "debian-security" => await DebianUsableAsync(db, source.Source, revisionId, token),
+                    "ubuntu-osv" => await UbuntuRevisionEligibility.IsPublishableAsync(db, source.Source.Id, revisionId, DateTimeOffset.UtcNow, token),
+                    "msrc-cvrf" => await MsrcRevisionEligibility.AssociationCountAsync(db, source.Source.Id, revisionId, token) is not null,
                     _ => await KevUsableAsync(db, source.Source, revisionId, token)
                 };
                 if (!usable) continue;
