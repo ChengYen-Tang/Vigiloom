@@ -68,6 +68,15 @@ public sealed class EpssSnapshotSqlTests(TestContext context)
             Assert.IsTrue(await EpssRevisionEligibility.IsPublishableAsync(db, source.Id, first.RevisionId!.Value, DateTimeOffset.UtcNow, 259200, token));
             Assert.IsFalse(await EpssRevisionEligibility.IsPublishableAsync(db, source.Id, first.RevisionId.Value, DateTimeOffset.UtcNow.AddDays(4), 259200, token));
             Assert.AreEqual(EpssStageStatus.Unchanged, (await stage.StageAsync(source.Id, source.Version, new EpssClient(http), EpssRefresh.LicenseEvidence, token)).Status);
+            var retained = await db.IntelligenceRevisions.SingleAsync(x => x.Id == first.RevisionId, token);
+            retained.ContentPurgedAt = DateTimeOffset.UtcNow; retained.Normalized = false; retained.Artifact = [];
+            await db.SaveChangesAsync(token); db.ChangeTracker.Clear();
+            Assert.AreEqual(EpssStageStatus.Conflict, (await stage.StageAsync(source.Id, source.Version, new EpssClient(http), EpssRefresh.LicenseEvidence, token)).Status);
+            await db.EpssScores.Where(x => x.RevisionId == first.RevisionId).ExecuteDeleteAsync(token);
+            var restored = await stage.StageAsync(source.Id, source.Version, new EpssClient(http), EpssRefresh.LicenseEvidence, token);
+            Assert.AreEqual(EpssStageStatus.Staged, restored.Status); Assert.AreEqual(first.RevisionId, restored.RevisionId);
+            Assert.IsNull((await db.IntelligenceRevisions.AsNoTracking().SingleAsync(x => x.Id == first.RevisionId, token)).ContentPurgedAt);
+            Assert.AreEqual(1001, await db.EpssScores.CountAsync(x => x.RevisionId == first.RevisionId, token));
             handler.Body = Compress(content + "CVE-2025-1000,0.1,0.2\n");
             await Assert.ThrowsAsync<SqlException>(() => stage.StageAsync(source.Id, source.Version, new EpssClient(http), "test", token));
             handler.Body = good[..^8];
