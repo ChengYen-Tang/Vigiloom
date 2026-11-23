@@ -59,6 +59,7 @@ internal sealed class DebianRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
             Artifact = content, SchemaVersion = SchemaVersion, MappingVersion = MappingVersion,
             LicenseEvidence = licenseEvidence, RecordCount = count, Normalized = false
         };
+        Guid? restoreId = null;
         await using (var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token))
         {
             var current = await db.IntelligenceSources.FromSqlInterpolated($"SELECT * FROM [security].[IntelligenceSources] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {sourceId}")
@@ -77,13 +78,19 @@ internal sealed class DebianRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
             await db.DebianAdvisories.Where(x => abandoned.Select(r => r.Id).Contains(x.RevisionId)).ExecuteDeleteAsync(token);
             await abandoned.ExecuteDeleteAsync(token);
             var existing = await db.IntelligenceRevisions.Where(x => x.SourceId == sourceId && x.Digest == digest && x.MappingVersion == MappingVersion)
-                .Select(x => new { x.Id, x.Normalized }).SingleOrDefaultAsync(token);
+                .Select(x => new { x.Id, x.Normalized, x.ContentPurgedAt }).SingleOrDefaultAsync(token);
             if (existing is { Normalized: true })
             {
                 await transaction.CommitAsync(token);
                 return new(DebianStageStatus.Unchanged, existing.Id);
             }
-            if (existing is not null) return new(DebianStageStatus.Unavailable);
+            if (existing is { ContentPurgedAt: not null })
+            {
+                if (await db.DebianAdvisories.AnyAsync(x => x.RevisionId == existing.Id, token)) return new(DebianStageStatus.Conflict);
+                restoreId = existing.Id;
+                revision.Digest = RandomNumberGenerator.GetBytes(32);
+            }
+            else if (existing is not null) return new(DebianStageStatus.Unavailable);
             db.IntelligenceRevisions.Add(revision);
             await db.SaveChangesAsync(token);
             await transaction.CommitAsync(token);
@@ -131,6 +138,19 @@ internal sealed class DebianRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
                 return new(DebianStageStatus.Unavailable);
             if (await db.DebianAdvisories.CountAsync(x => x.RevisionId == revision.Id, token) != count)
                 throw new InvalidDataException("Debian tracker staged index is incomplete.");
+            if (restoreId is { } originalId)
+            {
+                var original = await db.IntelligenceRevisions.SingleOrDefaultAsync(x => x.Id == originalId && x.SourceId == sourceId && x.ContentPurgedAt != null && !x.Revoked, token);
+                if (original is null || !original.Digest.AsSpan().SequenceEqual(digest) || await db.DebianAdvisories.AnyAsync(x => x.RevisionId == originalId, token))
+                    return new(DebianStageStatus.Conflict);
+                await db.DebianAdvisories.Where(x => x.RevisionId == candidate.Id).ExecuteUpdateAsync(x => x.SetProperty(a => a.RevisionId, originalId), token);
+                original.Artifact = content; original.RecordCount = count; original.RetrievedAt = clock.GetUtcNow().ToUniversalTime();
+                original.Normalized = true; original.ContentPurgedAt = null;
+                await db.SaveChangesAsync(token);
+                await db.IntelligenceRevisions.Where(x => x.Id == candidate.Id).ExecuteDeleteAsync(token);
+                await transaction.CommitAsync(token);
+                return new(DebianStageStatus.Staged, originalId);
+            }
             await db.IntelligenceRevisions.Where(x => x.Id == candidate.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Normalized, true), token);
             await transaction.CommitAsync(token);
             return new(DebianStageStatus.Staged, revision.Id);

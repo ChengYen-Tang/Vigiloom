@@ -15,9 +15,9 @@ internal static class IntelligenceContentRetention
         from revision in db.IntelligenceRevisions
         join source in db.IntelligenceSources on revision.SourceId equals source.Id
         join active in db.IntelligenceActivations on source.Id equals active.SourceId
-        where (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss") &&
+        where (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security") &&
             revision.RetrievedAt < cutoff && !revision.Revoked && (revision.Normalized || revision.ContentPurgedAt != null) &&
-            (revision.ContentPurgedAt == null || db.SigmaRules.Any(x => x.RevisionId == revision.Id) || db.SignatureFiles.Any(x => x.RevisionId == revision.Id) || db.KevRecords.Any(x => x.RevisionId == revision.Id) || db.EpssScores.Any(x => x.RevisionId == revision.Id)) &&
+            (revision.ContentPurgedAt == null || db.SigmaRules.Any(x => x.RevisionId == revision.Id) || db.SignatureFiles.Any(x => x.RevisionId == revision.Id) || db.KevRecords.Any(x => x.RevisionId == revision.Id) || db.EpssScores.Any(x => x.RevisionId == revision.Id) || db.DebianAdvisories.Any(x => x.RevisionId == revision.Id)) &&
             revision.Id != active.RevisionId && revision.Id != source.LastObservedRevisionId &&
             !protectedPrevious.Contains(revision.Id) &&
             !db.IntelligenceCaches.Any(x => x.SourceId == source.Id && x.RevisionId == revision.Id) &&
@@ -38,6 +38,7 @@ internal static class IntelligenceContentRetention
             await db.SigmaRules.LongCountAsync(x => revisions.Any(r => r.Id == x.RevisionId), token) +
             await db.KevRecords.LongCountAsync(x => revisions.Any(r => r.Id == x.RevisionId), token) +
             await db.EpssScores.LongCountAsync(x => revisions.Any(r => r.Id == x.RevisionId), token) +
+            await db.DebianAdvisories.LongCountAsync(x => revisions.Any(r => r.Id == x.RevisionId), token) +
             await db.SignatureFiles.LongCountAsync(x => revisions.Any(r => r.Id == x.RevisionId), token) +
             await db.IocEntries.LongCountAsync(x => db.SignatureFiles.Any(f => f.RowId == x.SignatureFileRowId && revisions.Any(r => r.Id == f.RevisionId)), token);
     }
@@ -58,7 +59,7 @@ internal static class IntelligenceContentRetention
         {
             revision.ContentPurgedAt = DateTimeOffset.UtcNow;
             revision.Normalized = false;
-            if (await db.IntelligenceSources.AnyAsync(x => x.Id == revision.SourceId && (x.Key == "cisa-kev" || x.Key == "first-epss"), token)) revision.Artifact = [];
+            if (await db.IntelligenceSources.AnyAsync(x => x.Id == revision.SourceId && (x.Key == "cisa-kev" || x.Key == "first-epss" || x.Key == "debian-security"), token)) revision.Artifact = [];
             await db.SaveChangesAsync(token);
             removed++;
         }
@@ -89,6 +90,11 @@ internal static class IntelligenceContentRetention
             var ids = db.EpssScores.Where(x => x.RevisionId == revision.Id).OrderBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
             removed += await db.EpssScores.Where(x => ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
         }
+        if (removed < batchSize)
+        {
+            var ids = db.DebianAdvisories.Where(x => x.RevisionId == revision.Id).OrderBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.DebianAdvisories.Where(x => ids.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
         return removed;
     }
 
@@ -96,7 +102,7 @@ internal static class IntelligenceContentRetention
     {
         var sources = await (from source in db.IntelligenceSources.AsNoTracking()
             join active in db.IntelligenceActivations.AsNoTracking() on source.Id equals active.SourceId
-            where source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss"
+            where source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security"
             select new { Source = source, active.RevisionId }).ToArrayAsync(token);
         var result = new List<Guid>(sources.Length);
         foreach (var source in sources)
@@ -113,6 +119,7 @@ internal static class IntelligenceContentRetention
                     "sigmahq-rules" => await SigmaRevisionEligibility.IncludedCountAsync(db, source.Source.Id, revisionId, token) is not null,
                     "signature-base" => await IocSourceEligibility.IsEligibleAsync(db, source.Source.Id, revisionId, token),
                     "first-epss" => await EpssUsableAsync(db, source.Source, revisionId, token),
+                    "debian-security" => await DebianUsableAsync(db, source.Source, revisionId, token),
                     _ => await KevUsableAsync(db, source.Source, revisionId, token)
                 };
                 if (!usable) continue;
@@ -140,6 +147,16 @@ internal static class IntelligenceContentRetention
             .Select(x => new { x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.ReleasedAt, x.Digest }).SingleAsync(token);
         return revision.SchemaVersion == EpssSnapshotStage.Schema && revision.MappingVersion == EpssSnapshotStage.Mapping &&
             revision.LicenseEvidence == EpssRefresh.LicenseEvidence && revision.RecordCount > 0 && revision.ReleasedAt is not null &&
+            !await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == source.Id && x.Digest == revision.Digest && x.Revoked, token);
+    }
+
+    private static async Task<bool> DebianUsableAsync(SecurityAnalysisDbContext db, IntelligenceSource source, Guid revisionId, CancellationToken token)
+    {
+        // The complete index is committed before Normalized is set, and cleanup clears it first.
+        var revision = await db.IntelligenceRevisions.AsNoTracking().Where(x => x.Id == revisionId)
+            .Select(x => new { x.SchemaVersion, x.MappingVersion, x.LicenseEvidence, x.RecordCount, x.Digest }).SingleAsync(token);
+        return revision.SchemaVersion == DebianRevisionStage.SchemaVersion && revision.MappingVersion == DebianRevisionStage.MappingVersion &&
+            revision.LicenseEvidence == DebianRefresh.LicenseEvidence && revision.RecordCount > 0 &&
             !await db.IntelligenceRevisions.AnyAsync(x => x.SourceId == source.Id && x.Digest == revision.Digest && x.Revoked, token);
     }
 }

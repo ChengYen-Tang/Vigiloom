@@ -19,6 +19,30 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 public sealed class RepositoryContentRetentionTests(TestContext context)
 {
     [TestMethod]
+    public Task Cleanup_KeepsCurrentAndPreviousDebianCatalogs() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = "debian-security", Enabled = true, LastSuccessfulCheckAt = now.AddDays(-30) };
+        IntelligenceRevision Revision(int day, byte value) { var artifact = new[] { value }; return new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), Digest = SHA256.HashData(artifact), Artifact = artifact, SchemaVersion = DebianRevisionStage.SchemaVersion, MappingVersion = DebianRevisionStage.MappingVersion, LicenseEvidence = DebianRefresh.LicenseEvidence, RecordCount = 1, Normalized = true }; }
+        var current = Revision(-1, 1); var previous = Revision(-50, 2); var unused = Revision(-80, 3);
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, previous, unused);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        db.IntelligenceActivationEvents.AddRange(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = previous.Id, OccurredAt = now.AddDays(-40), Scheduled = true }, new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = current.Id, PreviousRevisionId = previous.Id, OccurredAt = now, Scheduled = true });
+        db.DebianAdvisories.AddRange(new DebianAdvisory { RevisionId = previous.Id, SourcePackage = "openssl", AdvisoryId = "CVE-2026-1234", Release = "bookworm" }, new DebianAdvisory { RevisionId = unused.Id, SourcePackage = "openssl", AdvisoryId = "CVE-2026-1234", Release = "bookworm" });
+        await db.SaveChangesAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
+        Assert.AreEqual(2L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
+        Assert.AreEqual(2, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
+        await transaction.CommitAsync(token); db.ChangeTracker.Clear();
+        Assert.IsNull((await db.IntelligenceRevisions.SingleAsync(x => x.Id == previous.Id, token)).ContentPurgedAt);
+        var removed = await db.IntelligenceRevisions.SingleAsync(x => x.Id == unused.Id, token);
+        Assert.IsNotNull(removed.ContentPurgedAt); Assert.IsEmpty(removed.Artifact);
+        Assert.AreEqual(1, await db.DebianAdvisories.CountAsync(token));
+    }, context.CancellationToken);
+
+    [TestMethod]
     public Task Cleanup_KeepsPreviousEpssEvenWhenSourceIsStale() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
     {
         var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
