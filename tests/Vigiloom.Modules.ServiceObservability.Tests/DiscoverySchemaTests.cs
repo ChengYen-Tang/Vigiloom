@@ -28,7 +28,8 @@ public sealed class DiscoverySchemaTests(TestContext context)
             var operations = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
             var factory = new Factory(options);
-            var source = await new SourceCredentials(factory, TimeProvider.System).IssueAsync("source", token);
+            var credentials = new SourceCredentials(factory, TimeProvider.System);
+            var source = await credentials.IssueAsync("source", token);
             var discovery = new CandidateDiscovery(factory);
             foreach (var ns in new[] { "", "A", "A ", "B" })
                 Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, ns));
@@ -41,12 +42,22 @@ public sealed class DiscoverySchemaTests(TestContext context)
             Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
             Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, "A"));
             Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, "api", "prod", "API", token, "B"));
+            var authenticated = await credentials.AuthenticateVersionedAsync(source.Secret, token);
+            Assert.IsNotNull(authenticated);
+            var staleVersion = authenticated.Version.ToArray();
+            staleVersion[0] ^= 0xff;
+            Assert.AreEqual(CandidateObservation.SourceUnavailable, await discovery.ObserveAsync(authenticated with { Version = staleVersion }, "api", "prod", "API", token, "A"));
             await using var dbCheck = new ServiceObservabilityDbContext(options);
             await using var tx = await dbCheck.Database.BeginTransactionAsync(token);
+            Assert.IsTrue(await DiscoveryTransaction.TryLockAsync(dbCheck, tx, token));
+            Assert.AreEqual(CandidateObservation.AlreadyApproved, await discovery.ObserveAsync(authenticated, "api", "prod", "API", token, "A"));
             var accepted = await ServiceReceptionAuthorization.LockAsync(dbCheck.Database.GetDbConnection(), tx.GetDbTransaction(), source.SourceId, "api", "prod", token, "A");
             var rejected = await ServiceReceptionAuthorization.LockAsync(dbCheck.Database.GetDbConnection(), tx.GetDbTransaction(), source.SourceId, "api", "prod", token, "B");
             Assert.AreEqual(approved.ServiceId, accepted!.ServiceId);
             Assert.IsNull(rejected);
+            await tx.RollbackAsync(token);
+            Assert.IsTrue(await new SourceAdministration(factory, new OperationAuditWriter()).RevokeAsync(source.SourceId, Guid.CreateVersion7(), token));
+            Assert.AreEqual(CandidateObservation.SourceUnavailable, await discovery.ObserveAsync(authenticated, "api", "prod", "API", token, "A"));
         }, context.CancellationToken);
 
     [AssemblyCleanup]
