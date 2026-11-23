@@ -1,7 +1,8 @@
-param([string]$SdkVersion = '', [switch]$Recovery, [string]$AgentPackageVersion = '')
+param([string]$SdkVersion = '', [switch]$Recovery, [string]$AgentPackageVersion = '', [switch]$SeparateSql)
 
 $ErrorActionPreference = 'Stop'
 if ($AgentPackageVersion -and -not $Recovery) { throw 'AgentPackageVersion requires -Recovery.' }
+if ($SeparateSql -and -not $Recovery) { throw 'SeparateSql requires -Recovery.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $scratch = Join-Path $root '.codex-deployment-smoke'
 if (Test-Path -LiteralPath $scratch) { throw "Scratch directory already exists: $scratch" }
@@ -15,6 +16,7 @@ $accessNetwork = "vigiloom-web-access-$id"
 $builder = "vigiloom-builder-$id"
 $builderCreated = $false
 $sqlName = "vigiloom-sql-$id"
+$recoverySqlName = "vigiloom-sql-restore-$id"
 $webName = "vigiloom-web-$id"
 $workerName = "vigiloom-worker-$id"
 $sqlImage = 'mcr.microsoft.com/mssql/server:2022-latest'
@@ -170,19 +172,42 @@ try {
             $backup = "BACKUP DATABASE [VigiloomSmoke] TO DISK = N'/var/opt/mssql/data/vigiloom-recovery.bak' WITH COPY_ONLY, CHECKSUM, INIT"
             docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -Q $backup | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Test database backup failed.' }
+            $dataName = (docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -d master -h -1 -W -Q "SET NOCOUNT ON; SELECT TOP (1) name FROM sys.master_files WHERE database_id = DB_ID(N'VigiloomSmoke') AND type = 0 ORDER BY file_id").Trim()
+            if ($LASTEXITCODE -ne 0 -or $dataName -notmatch '^[A-Za-z0-9_]+$') { throw 'Could not obtain test data file name.' }
+            $logName = (docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -d master -h -1 -W -Q "SET NOCOUNT ON; SELECT TOP (1) name FROM sys.master_files WHERE database_id = DB_ID(N'VigiloomSmoke') AND type = 1 ORDER BY file_id").Trim()
+            if ($LASTEXITCODE -ne 0 -or $logName -notmatch '^[A-Za-z0-9_]+$') { throw 'Could not obtain test log file name.' }
             $timer = [Diagnostics.Stopwatch]::StartNew()
+            $restoreSqlName = $sqlName
+            if ($SeparateSql) {
+                $backupCopy = Join-Path $scratch 'vigiloom-recovery.bak'
+                docker cp "${sqlName}:/var/opt/mssql/data/vigiloom-recovery.bak" $backupCopy
+                if ($LASTEXITCODE -ne 0) { throw 'Could not copy test backup from the source SQL instance.' }
+                docker stop -t 10 $sqlName | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Could not stop the source SQL instance.' }
+                docker run -d --name $recoverySqlName --network $network -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$password" $sqlImage | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Recovery SQL instance startup failed.' }
+                $ready = $false
+                for ($attempt = 0; $attempt -lt 90 -and -not $ready; $attempt++) {
+                    docker exec $recoverySqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -Q 'SELECT 1' *> $null
+                    if ($LASTEXITCODE -eq 0) { $ready = $true } else { Start-Sleep -Seconds 2 }
+                }
+                if (-not $ready) { throw 'Recovery SQL instance did not become ready.' }
+                docker cp $backupCopy "${recoverySqlName}:/var/opt/mssql/data/vigiloom-recovery.bak"
+                if ($LASTEXITCODE -ne 0) { throw 'Could not copy backup to the recovery SQL instance.' }
+                $restoreSqlName = $recoverySqlName
+            }
             $restore = @"
-DECLARE @data sysname = (SELECT TOP (1) name FROM sys.master_files WHERE database_id = DB_ID(N'VigiloomSmoke') AND type = 0 ORDER BY file_id);
-DECLARE @log sysname = (SELECT TOP (1) name FROM sys.master_files WHERE database_id = DB_ID(N'VigiloomSmoke') AND type = 1 ORDER BY file_id);
+DECLARE @data sysname = N'$dataName';
+DECLARE @log sysname = N'$logName';
 DECLARE @sql nvarchar(max) = N'RESTORE DATABASE [VigiloomRestored] FROM DISK = N''/var/opt/mssql/data/vigiloom-recovery.bak'' WITH CHECKSUM, MOVE ' + QUOTENAME(@data, '''') + N' TO N''/var/opt/mssql/data/vigiloom-restored.mdf'', MOVE ' + QUOTENAME(@log, '''') + N' TO N''/var/opt/mssql/data/vigiloom-restored.ldf''';
 EXEC sys.sp_executesql @sql;
 "@
-            docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -Q $restore | Out-Null
+            docker exec $restoreSqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -Q $restore | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Test database restore failed.' }
-            $restoredConnection = "Server=$sqlName,1433;Database=VigiloomRestored;User ID=sa;Password=$password;Encrypt=True;TrustServerCertificate=True"
+            $restoredConnection = "Server=$restoreSqlName,1433;Database=VigiloomRestored;User ID=sa;Password=$password;Encrypt=True;TrustServerCertificate=True"
             docker run --rm --network $network -e "VIGILOOM_MIGRATION_SQL_CONNECTION=$restoredConnection" --workdir /app/migrator --entrypoint /app/migrator/Vigiloom.Migrator $tag
             if ($LASTEXITCODE -ne 0) { throw 'Restored database migration failed.' }
-            $marker = (docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CONVERT(varchar(30), SYSUTCDATETIME(), 126)").Trim()
+            $marker = (docker exec $restoreSqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -h -1 -W -Q "SET NOCOUNT ON; SELECT CONVERT(varchar(30), SYSUTCDATETIME(), 126)").Trim()
             if ($LASTEXITCODE -ne 0 -or $marker -notmatch '^\d{4}-\d{2}-\d{2}T') { throw 'Could not obtain SQL recovery timestamp.' }
             docker rm $webName $workerName | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Could not remove stopped test hosts.' }
@@ -205,7 +230,7 @@ EXEC sys.sp_executesql @sql;
                     try { $restoredOverview = Invoke-WebRequest -Uri "$restoredBase/api/v1/workspace/overview" -WebSession $session -SkipCertificateCheck -TimeoutSec 2 } catch { }
                 }
                 if (-not $restoredHeartbeat) {
-                    $count = docker exec $sqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -d VigiloomRestored -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [hangfire].[Server] WHERE [LastHeartbeat] >= CONVERT(datetime2, N'$marker', 126)"
+                    $count = docker exec $restoreSqlName /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $password -C -b -d VigiloomRestored -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM [hangfire].[Server] WHERE [LastHeartbeat] >= CONVERT(datetime2, N'$marker', 126)"
                     $restoredHeartbeat = $LASTEXITCODE -eq 0 -and ($count | Out-String).Trim() -match '^\d+$' -and [int]($count | Out-String).Trim() -gt 0
                 }
                 if ($null -eq $restoredOverview -or -not $restoredHeartbeat) { Start-Sleep -Seconds 1 }
@@ -230,7 +255,7 @@ EXEC sys.sp_executesql @sql;
     $containers = @(docker ps -a --format '{{.Names}}')
     if ($LASTEXITCODE -ne 0) { $cleanupErrors.Add('Could not inspect Docker containers') }
     else {
-        foreach ($name in @($webName, $workerName, $sqlName)) {
+        foreach ($name in @($webName, $workerName, $sqlName, $recoverySqlName)) {
             if ($name -notin $containers) { continue }
             docker rm -fv $name *> $null
             if ($LASTEXITCODE -ne 0) { $cleanupErrors.Add("Could not remove container $name") }
@@ -238,7 +263,7 @@ EXEC sys.sp_executesql @sql;
         $remaining = @(docker ps -a --format '{{.Names}}')
         if ($LASTEXITCODE -ne 0) { $cleanupErrors.Add('Could not verify Docker container cleanup') }
         else {
-            foreach ($name in @($webName, $workerName, $sqlName)) {
+            foreach ($name in @($webName, $workerName, $sqlName, $recoverySqlName)) {
                 if ($name -in $remaining) { $cleanupErrors.Add("Container still exists: $name") }
             }
         }
