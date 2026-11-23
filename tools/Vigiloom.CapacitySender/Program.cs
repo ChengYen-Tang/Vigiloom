@@ -50,6 +50,7 @@ Console.WriteLine(JsonSerializer.Serialize(new { agents = credentials.Length, du
 async Task RunAgentAsync(string credential, int index)
 {
     var sourceId = Guid.CreateVersion7();
+    using var agentGate = new SemaphoreSlim(1, 1);
     await Task.WhenAll(SendPeriodicallyAsync(TimeSpan.FromSeconds(30), index, "metrics", CreateMetrics),
         SendPeriodicallyAsync(TimeSpan.FromSeconds(5), index, "logs", CreateLog));
 
@@ -62,7 +63,13 @@ async Task RunAgentAsync(string credential, int index)
             do
             {
                 if (stop.IsCancellationRequested) break;
-                await SendAsync(createBatch(), credential, kind);
+                await agentGate.WaitAsync(stop.Token);
+                try
+                {
+                    if (stop.IsCancellationRequested) break;
+                    await SendAsync(createBatch(), credential, kind);
+                }
+                finally { agentGate.Release(); }
             }
             while (await timer.WaitForNextTickAsync(stop.Token));
         }

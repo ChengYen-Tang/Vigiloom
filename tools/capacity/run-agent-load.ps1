@@ -34,7 +34,11 @@ try {
         $copied = $true
         $output = Join-Path $scratch 'result.log'
         dotnet test (Join-Path $root 'tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj') -c Release -p:UseSharedCompilation=false --filter 'FullyQualifiedName~ManualAgentCapacityTests' --logger 'console;verbosity=detailed' *> $output
-        if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath $output -Tail 60; throw 'Capacity run failed.' }
+        if ($LASTEXITCODE -ne 0) {
+            Select-String -LiteralPath $output -Pattern 'SqlException|deadlocked|Timeout expired|Error Number|Agent device lock' | Select-Object -First 20 | ForEach-Object { $_.Line }
+            Get-Content -LiteralPath $output -Tail 60
+            throw 'Capacity run failed.'
+        }
         $summary = @(Select-String -LiteralPath $output -Pattern '"agents":')
         $sqlVersion = @(Select-String -LiteralPath $output -Pattern 'SQL:')
         if ($summary.Count -ne 1 -or $sqlVersion.Count -ne 1) { throw 'Capacity test produced no unique result; check test discovery.' }

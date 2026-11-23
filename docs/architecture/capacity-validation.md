@@ -213,6 +213,32 @@ accepted counts match SQL. The cause of those errors requires investigation;
 the earlier shared-lock contention remains an observed issue, not a license to
 weaken the existing transaction guarantees.
 
+On investigation the 500 responses in a repeat of this trial included
+`Agent device lock could not be acquired`. The capacity sender had been
+sending metric and log batches concurrently for the same Agent, whereas the
+actual Agent batch worker sends its queue without overlapping requests. The
+previous measurements therefore do not faithfully model Agent transport. The
+sender was changed to serialize per-Agent requests; repeat the measurements
+before using the earlier results to judge production capacity. This correction
+does not model the actual Agent queue, batching or retry behavior.
+
+After that correction, new 60-second Agent-only runs used SQL Server 2022
+`16.0.4325.4` Developer, compatibility 160, on the same host:
+
+| Agents | Metric points | Logs | Total elapsed | Mean metric/log HTTP |
+| ---: | ---: | ---: | ---: | ---: |
+| 300 | 11,500 | 2,684 | 65.39 s | 3.76 / 5.85 s |
+| 500 | 17,480 | 2,681 | 69.40 s | 7.24 / 9.20 s |
+
+All completed requests in both runs returned 204 and their counts matched the
+database. The sender's nominal 60-second profile calls for 12,000 / 20,000
+metric points and 3,600 / 6,000 logs respectively. Because this closed-loop
+generator waits for a response and does not queue missed samples, the shortfall
+is ungenerated load, not a measured count of lost Agent records. The latency
+includes client connection waiting. Web, SQL and generator shared one machine;
+these short runs do not isolate the bottleneck or establish capacity with
+production Agent batching, durable queues, application telemetry or UI load.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB

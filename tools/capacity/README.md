@@ -79,7 +79,9 @@ statuses; attempted payload bytes include failed requests. It also reports
 average and maximum time for all HTTP attempts by type, including failures and
 time waiting for a connection, through response headers. These are not
 server-only timings. The
-sender waits for each response, so slow responses reduce the actual input rate.
+sender serializes requests per Agent as the real Agent batch worker does and
+waits for each response, so slow responses reduce the actual input rate. This
+does not simulate the real Agent queue or its batching behavior.
 At the configured deadline it stops starting requests and waits up to the HTTP
 timeout for in-flight requests; the output includes actual elapsed time. Use
 observed counts and time, not target intervals, to calculate throughput. A
