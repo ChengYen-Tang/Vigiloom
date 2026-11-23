@@ -1,0 +1,34 @@
+services:
+  web:
+    image: vigiloom-server:local
+    build: .
+    environment:
+      ASPNETCORE_URLS: https://+:7043
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /run/vigiloom/tls.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${VIGILOOM_TLS_CERT_PASSWORD:?Set the TLS certificate password}
+      ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION:?Set the runtime SQL connection}
+      Vigiloom__SetupToken: ${VIGILOOM_SETUP_TOKEN:-}
+      Vigiloom__DataProtection__KeyRingPath: /data/keys
+      Vigiloom__AgentPackages__CachePath: /data/packages
+    ports:
+      - "127.0.0.1:7043:7043"
+    volumes:
+      - ./data/keys:/data/keys
+      - ./data/packages:/data/packages
+      - ${VIGILOOM_TLS_CERT_PATH}:/run/vigiloom/tls.pfx:ro
+  worker:
+    image: vigiloom-server:local
+    entrypoint: ["/app/worker/Vigiloom.Worker"]
+    working_dir: /app/worker
+    environment:
+      ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION:?Set the runtime SQL connection}
+      Vigiloom__DataProtection__KeyRingPath: /data/keys
+    volumes:
+      - ./data/keys:/data/keys
+  migrator:
+    image: vigiloom-server:local
+    profiles: [setup]
+    entrypoint: ["/app/migrator/Vigiloom.Migrator"]
+    working_dir: /app/migrator
+    environment:
+      VIGILOOM_MIGRATION_SQL_CONNECTION: ${VIGILOOM_MIGRATION_SQL_CONNECTION:?Set the deployment SQL connection}
