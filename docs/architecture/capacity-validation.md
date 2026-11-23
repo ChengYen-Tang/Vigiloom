@@ -187,6 +187,32 @@ did not isolate their resource usage or establish the cause of the reduced
 rate. Investigate using measured request latency and SQL/host resource data
 before deciding whether any change is needed.
 
+### Investigation of the 300-Agent run
+
+An additional 300-Agent, 60-second run on the same host and SQL Server build
+recorded 12,000 accepted metric points and 2,732 accepted logs, with no HTTP
+rejections; drain made the elapsed time 66.69 seconds. Mean/max HTTP attempt
+times were 4.85/6.86 seconds for metrics and 6.63/7.05 seconds for logs. These
+include client connection waiting and do not measure server time alone; the
+sender was limited to 100 simultaneous HTTP connections.
+
+During that run, four snapshots of SQL Server's active requests each showed 98
+requests waiting on `LCK_M_X`, with maximum observed waits of 1.95–2.30 seconds.
+Another snapshot identified 97 waits on the application lock
+`Vigiloom.LogAdmission`. This demonstrates contention on the shared log
+admission lock in this test, not that it is the only bottleneck. Any change to
+its transaction boundary must preserve the intended quota, duplicate and
+rollback behavior and be checked against a comparable workload.
+
+A trial moved quota admission to immediately before transaction commit, while
+retaining the same transaction. In a comparable 300-Agent run it reported
+3,502 accepted logs and 11,840 accepted metric points, but also 19 HTTP 500
+responses and 8 timeouts. The trial was reverted. The load fixture was updated
+to fail when any HTTP attempt fails or has an unknown result, even if the
+accepted counts match SQL. The cause of those errors requires investigation;
+the earlier shared-lock contention remains an observed issue, not a license to
+weaken the existing transaction guarantees.
+
 ## Initial recovery check
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
