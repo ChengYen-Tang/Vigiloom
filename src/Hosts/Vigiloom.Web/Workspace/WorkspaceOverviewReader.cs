@@ -50,7 +50,7 @@ internal sealed class WorkspaceOverviewReader(DeviceManagement devices, PingStor
         var pingCount = 0; var pingAttention = 0; var agentCount = 0; var agentAttention = 0;
         for (var page = 1; ; page++)
         {
-            var batch = await devices.ListAsync(null, "name", false, false, page, token);
+            var batch = await devices.ListForOverviewAsync(page, token);
             if (batch.Items.Count == 0) break;
             var snapshots = batch.Items.Where(x => x.Enabled).Select(x => new PingDeviceSnapshot(x.Id,
                 Convert.FromBase64String(x.Version), new[] { x.Address }.Concat(x.AdditionalTargets).ToArray())).ToArray();

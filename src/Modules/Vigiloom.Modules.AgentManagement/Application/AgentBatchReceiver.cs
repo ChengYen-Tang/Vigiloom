@@ -145,18 +145,6 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             return BatchReceiptStatus.CapacityExceeded;
         }
 
-        if (logs is not null)
-        {
-            var newCount = logs.Items.Count(item => !existingLogs.ContainsKey(item.MessageId));
-            if (newCount > 0)
-            {
-                var admission = await LogAdmission.AdmitAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
-                    new(LogSourceKind.Agent, agent.Id), newCount, token);
-                if (admission.Status == LogAdmissionStatus.BatchTooLarge) return BatchReceiptStatus.LogBatchTooLarge;
-                if (admission.Status != LogAdmissionStatus.Accepted) return new(BatchReceiptStatus.RateLimited, admission.RetryAfter);
-            }
-        }
-
         if (inventory is not null)
         {
             var staged = await inventoryWriter!.StageAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
@@ -235,6 +223,19 @@ public sealed class AgentBatchReceiver(IDbContextFactory<AgentManagementDbContex
             else if (!existingLogs.ContainsKey(logs!.Items[ordinal].MessageId)) db.HostLogs.Add(new HostLog(agent.Id, logs, ordinal, receivedAt));
         }
         await db.SaveChangesAsync(token);
+        // Keep admission and the pending data in the same transaction, while avoiding
+        // holding the shared quota lock during the Agent data write.
+        if (logs is not null)
+        {
+            var newCount = logs.Items.Count(item => !existingLogs.ContainsKey(item.MessageId));
+            if (newCount > 0)
+            {
+                var admission = await LogAdmission.AdmitAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                    new(LogSourceKind.Agent, agent.Id), newCount, token);
+                if (admission.Status == LogAdmissionStatus.BatchTooLarge) return BatchReceiptStatus.LogBatchTooLarge;
+                if (admission.Status != LogAdmissionStatus.Accepted) return new(BatchReceiptStatus.RateLimited, admission.RetryAfter);
+            }
+        }
         if (logs is not null && logDispatchWriter is not null)
         {
             var newMessages = logs.Items.Where(x => !existingLogs.ContainsKey(x.MessageId)).Select(x => x.MessageId).ToArray();

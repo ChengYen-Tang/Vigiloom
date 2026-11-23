@@ -1,0 +1,119 @@
+name: Server package release
+
+on:
+  push:
+    branches: [release/server]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Server version (leave blank to use packaging/server/release.json)
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          version="${REQUESTED_VERSION:-$(python3 -c 'import json; print(json.load(open("packaging/server/release.json"))["version"])')}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'Invalid server version' >&2; exit 1; }
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    name: Build Server (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish central platform
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_RID: ${{ matrix.rid }}
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP "vigiloom-server-$env:RELEASE_RID"
+          New-Item -ItemType Directory -Force $package | Out-Null
+          foreach ($name in @('Web', 'Worker', 'Migrator')) {
+            $project = "src/Hosts/Vigiloom.$name/Vigiloom.$name.csproj"
+            $output = Join-Path $package ($name.ToLowerInvariant())
+            dotnet publish $project -c Release -r $env:RELEASE_RID --self-contained true -o $output "-p:Version=$env:RELEASE_VERSION"
+            if ($LASTEXITCODE -ne 0) { throw "Publishing $name failed." }
+          }
+          Copy-Item packaging/server/README.md (Join-Path $package 'README.md')
+          New-Item -ItemType Directory -Force (Join-Path $package 'docs') | Out-Null
+          Copy-Item -Recurse docs/architecture (Join-Path $package 'docs/architecture')
+          Copy-Item docs/getting-started.md (Join-Path $package 'docs/getting-started.md')
+          if (-not $IsWindows) {
+            Copy-Item packaging/server/Dockerfile $package
+            Copy-Item packaging/server/compose.yaml $package
+            Copy-Item packaging/server/container.env.example $package
+            Copy-Item -Recurse packaging/server/systemd (Join-Path $package 'systemd')
+          }
+          $archive = Join-Path $env:RUNNER_TEMP "server-$env:RELEASE_VERSION-$env:RELEASE_RID"
+          if ($IsWindows) {
+            Compress-Archive -Path (Join-Path $package '*') -DestinationPath "$archive.zip"
+            $archive = "$archive.zip"
+          } else {
+            tar -czf "$archive.tar.gz" -C $package .
+            if ($LASTEXITCODE -ne 0) { throw 'Server archive creation failed.' }
+            $archive = "$archive.tar.gz"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($archive))" | Set-Content -Encoding ascii "$archive.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.rid }}
+          path: ${{ runner.temp }}/server-${{ needs.prepare.outputs.version }}-${{ matrix.rid }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: server-*
+          path: packages
+          merge-multiple: true
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          tag="server-v$RELEASE_VERSION"
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null
+          status=$?
+          set -e
+          if [[ "$status" != 2 ]]; then
+            echo 'The release tag already exists or could not be checked.' >&2
+            exit 1
+          fi
+          flags=()
+          [[ "$RELEASE_VERSION" == *-* ]] && flags+=(--prerelease)
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" --title "Server $RELEASE_VERSION" --notes 'Vigiloom central platform packages.' packages/*

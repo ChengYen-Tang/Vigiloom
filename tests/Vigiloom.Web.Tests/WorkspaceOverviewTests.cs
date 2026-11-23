@@ -10,6 +10,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
@@ -134,6 +135,15 @@ public sealed class WorkspaceOverviewTests(TestContext context)
             db.Services.AddRange(new MonitoredService(candidate, now), stopped);
             await db.SaveChangesAsync(token);
         }
+        await using var overviewScope = factory.Services.CreateAsyncScope();
+        var devices = overviewScope.ServiceProvider.GetRequiredService<DeviceManagement>();
+        var normalPage = await devices.ListAsync(null, "name", false, false, 1, token);
+        Assert.AreEqual(50, normalPage.PageSize);
+        Assert.HasCount(50, normalPage.Items);
+        var laterOverviewPage = await devices.ListForOverviewAsync(2, token);
+        Assert.AreEqual(250, laterOverviewPage.PageSize);
+        Assert.HasCount(250, laterOverviewPage.Items);
+        Assert.IsTrue(laterOverviewPage.Items.Any(x => x.Id == critical.Id));
         using var client = PingTestSite.Client(factory);
         using (var anonymous = await client.GetAsync("/api/v1/workspace/overview", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         await PingTestSite.LoginAsync(client, "reader", token);

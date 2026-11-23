@@ -753,6 +753,8 @@ public sealed class AgentIdentitySqlTests
         Assert.IsNotNull(limited.RetryAfter);
         Assert.IsGreaterThan(TimeSpan.Zero, limited.RetryAfter.Value);
         Assert.AreEqual(2, await verify.ReceivedBatches.CountAsync(token));
+        Assert.AreEqual(1, await verify.HostLogs.AsNoTracking().CountAsync(token));
+        Assert.HasCount(1, dispatch.Messages);
         var downgrade = await Assert.ThrowsAsync<SqlException>(() => verify.GetService<IMigrator>().MigrateAsync("20261110080138_AgentMetricLoss", token));
         Assert.AreEqual(51000, downgrade.Number);
         Assert.AreEqual(1, await verify.HostLogs.AsNoTracking().CountAsync(token));
