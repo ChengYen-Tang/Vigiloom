@@ -68,7 +68,13 @@ recorded in [capacity-validation.md](capacity-validation.md). A separate
 `DataProtectionTests` check on 2026-11-23 moved a certificate-protected key ring
 and its PFX to new paths and verified that a new host with the same application
 name could decrypt an earlier value; a different application name could not.
-This was an in-process, same-machine check and did not restore the database,
-package files or login together, or test a previous-version upgrade.
+A second isolated LocalDB exercise on 2026-11-23 backed up a fixture database
+with checksum and restored it under a different test-owned name and file paths.
+After moving its key ring and certificate, a new in-process Web host could
+decrypt the restored disabled LINE test channel secret; its existing device
+was present and both Administrator and Read only test accounts could sign in.
+No notification was sent, and both test databases and the backup were removed.
+This same-machine exercise did not restore Agent packages, start Worker, run the
+Migrator after restore, validate an old-version upgrade or measure RPO/RTO.
 REQ-40-T04 stays open until those checks and the chosen RPO/RTO have been
 measured in a representative deployment.
