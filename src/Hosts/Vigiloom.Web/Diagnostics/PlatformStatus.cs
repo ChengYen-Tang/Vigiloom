@@ -2,6 +2,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Contracts.Services;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 namespace Vigiloom.Web.Diagnostics;
 
@@ -9,12 +11,13 @@ internal enum ObservationState { Unknown, Healthy, Unhealthy }
 internal sealed record SchedulerObservation(ObservationState State, DateTimeOffset? LastHeartbeat, int Current, int Stale, int Unknown, bool Available);
 internal sealed record PlatformStatusSnapshot(
     DateTimeOffset ObservedAt, ObservationState Database, SchedulerObservation Scheduler,
-    WorkerDiagnosticsSnapshot? Workers, DateTimeOffset? LastAgentBatch, bool AgentQueryAvailable);
+    WorkerDiagnosticsSnapshot? Workers, DateTimeOffset? LastAgentBatch, bool AgentQueryAvailable,
+    IReadOnlyList<SourceReceptionSummary>? TelemetrySources);
 
 /// <summary>Combines independent, non-secret observations without equating liveness and health.</summary>
 internal sealed class PlatformStatus(
     HealthCheckService checks, SchedulingHealth scheduling, WorkerDiagnosticsStore workers,
-    AgentReceiverMonitoring receiver, TimeProvider clock, ILogger<PlatformStatus> logger)
+    AgentReceiverMonitoring receiver, ReceptionOverview telemetry, TimeProvider clock, ILogger<PlatformStatus> logger)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SchedulerStaleAfter = TimeSpan.FromMinutes(1);
@@ -41,6 +44,7 @@ internal sealed class PlatformStatus(
         WorkerDiagnosticsSnapshot? snapshots = null;
         DateTimeOffset? lastBatch = null;
         var receiverAvailable = false;
+        IReadOnlyList<SourceReceptionSummary>? telemetrySources = null;
         if (database == ObservationState.Healthy)
         {
             try
@@ -78,7 +82,16 @@ internal sealed class PlatformStatus(
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Exception exception) { logger.LogWarning("Agent receiver observation unavailable: {ExceptionType}", exception.GetType().Name); }
+
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                timeout.CancelAfter(Timeout);
+                telemetrySources = await telemetry.ListAsync(1, timeout.Token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception exception) { logger.LogWarning("Application telemetry observation unavailable: {ExceptionType}", exception.GetType().Name); }
         }
-        return new(now, database, scheduler, snapshots, lastBatch, receiverAvailable);
+        return new(now, database, scheduler, snapshots, lastBatch, receiverAvailable, telemetrySources);
     }
 }
