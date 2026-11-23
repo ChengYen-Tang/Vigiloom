@@ -99,3 +99,24 @@ trust validation, and this was not an older-version upgrade or a cross-machine
 restore. SQL and Worker used an internal Docker network; Web additionally used
 a separate network for a loopback-published HTTPS port. Test containers,
 networks, images, databases and scratch files were removed afterwards.
+
+On 2026-11-23 the same exercise was repeated with
+`-Recovery -AgentPackageVersion 0.1.0-preview.3` and SDK 11.0.100. Before
+backup, the central platform downloaded the existing `agent-linux-x64.zip`
+from the `agent-v0.1.0-preview.3` GitHub Release, registered a test Agent via
+the normal enrollment API and assigned that package. After SQL, key-ring and
+package-directory restoration, the original Agent credential could read the
+same assignment and manifest and download the 77,325,466-byte archive from
+the restored platform. The archive size and SHA-256
+`1a2bb297f4480c68d28b1fcfb65775958d5982b743405bf5256d2e5945e68e3e`
+matched the release. The restored Web mapped `api.github.com` and `github.com`
+to loopback during this check; this does not claim all external networking was
+disabled. The original administrator session and a new Worker heartbeat were
+also verified. Restore, Migrator, host startup and these checks took 15.7
+seconds for the small fixture, excluding backup and file-copy preparation.
+
+This confirms an assigned cached release can be retrieved after the same-host
+restore without fetching it again from GitHub. It does not run an Agent or
+Updater, install the archive, prove cross-machine recovery, test an older server
+upgrade or establish RPO/RTO. Test resources and the downloaded archive were
+removed afterwards.
