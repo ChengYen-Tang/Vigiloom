@@ -32,3 +32,28 @@ This currently measures only the overview API under concurrent reads. It does
 not create the devices, generate Agent or application traffic, measure real UI
 rendering, or establish the system's supported capacity. Run those scenarios
 and record the SQL and host measurements separately before drawing conclusions.
+
+## Agent traffic
+
+`Vigiloom.CapacitySender` uses the product's Agent batch codecs and sends one
+20-point metric batch per Agent every 30 seconds and one 512-character host
+log every five seconds. It requires 30, 100, 300 or 500 **distinct** already
+enrolled test Agent credentials. Put the credentials in a private JSON array
+file outside the repository; use only an isolated environment and revoke the
+credentials and remove the file when finished.
+
+```powershell
+$env:VIGILOOM_URL = 'https://localhost:5001'
+$env:VIGILOOM_AGENT_CREDENTIALS_FILE = '<private path to JSON array>'
+$env:VIGILOOM_DURATION_SECONDS = '300'
+dotnet run --project tools/Vigiloom.CapacitySender --configuration Release
+Remove-Item Env:VIGILOOM_AGENT_CREDENTIALS_FILE
+```
+
+The JSON summary separates accepted metric points and logs from batch HTTP
+statuses; attempted payload bytes include cancelled and failed requests. The
+sender waits for each response, so slow responses reduce the actual input rate.
+Use the observed counts and duration, not the target intervals, to calculate
+throughput. It does not retry or simulate offline replay; 204 confirms batch
+receipt but does not measure processing lag or the resources used by real
+Agents. It does not generate application telemetry. Measure those separately.
