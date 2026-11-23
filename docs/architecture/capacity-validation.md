@@ -114,3 +114,18 @@ Test results, SQL edition and compatibility level, infrastructure and the exact
 scripts will be supplied by REQ-40-T02/T03. Failed or unexecuted scenarios must
 remain visible as such. Backup/restore and upgrade exercises belong to T04;
 cross-feature user journeys and platform combinations belong to T05.
+
+## Initial recovery check
+
+On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
+17.0.4025.3 Express were used for an isolated database check of code based on
+`8effe37`, published with .NET SDK 11.0.100-preview.5. The self-contained
+Windows Migrator performed a fresh installation, a test group was inserted, the
+database was backed up with checksum, restored under a different name, and the
+Migrator was rerun against the restore. The group remained present. Both test
+databases and the backup were removed afterward.
+
+This verifies a database-only restore and rerunning the current migration on a
+small fixture. It does not establish an RPO/RTO, a previous-version upgrade, or
+recovery of Data Protection keys, certificates, package files or a deployed
+service. T04 remains open until those aspects are exercised.
