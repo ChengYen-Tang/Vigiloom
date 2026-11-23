@@ -1341,6 +1341,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(max)");
 
+                    b.Property<DateTimeOffset?>("ContentPurgedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<byte[]>("Digest")
                         .IsRequired()
                         .HasColumnType("binary(32)");

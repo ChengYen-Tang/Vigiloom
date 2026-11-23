@@ -27,7 +27,7 @@ public sealed record AdvisoryCredentialUpdate(string Version, bool Clear, string
 /// <summary>Source and validation metadata for a retained intelligence revision.</summary>
 public sealed record IntelligenceRevisionView(Guid Id, string UpstreamVersion, DateTimeOffset? ReleasedAt, DateTimeOffset RetrievedAt,
     string Sha256, string SchemaVersion, string MappingVersion, string LicenseEvidence, int RecordCount, bool Revoked, bool Normalized, bool Active,
-    DateTimeOffset? LastOfflineImportAt = null);
+    DateTimeOffset? LastOfflineImportAt = null, DateTimeOffset? ContentPurgedAt = null);
 
 /// <summary>Bounded page of retained source revisions.</summary>
 public sealed record IntelligenceRevisionPage(IReadOnlyList<IntelligenceRevisionView> Items, int Page, bool HasMore);

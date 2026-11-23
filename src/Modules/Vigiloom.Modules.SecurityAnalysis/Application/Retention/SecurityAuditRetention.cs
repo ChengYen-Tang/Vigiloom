@@ -20,6 +20,7 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             await db.IntegrityChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await OldEvaluations(db, cutoff).LongCountAsync(token) +
             await OldBaselineObservations(db, cutoff).LongCountAsync(token) +
+            await RepositoryContentRetention.CountAsync(db, cutoff, token) +
             await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
             await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
@@ -50,6 +51,12 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         {
             var rows = OldBaselineObservations(db, cutoff).OrderBy(x => x.ReceivedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
             removed += await OldBaselineObservations(db, cutoff).Where(x => rows.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
+        while (removed < batchSize)
+        {
+            var repositoryRows = await RepositoryContentRetention.DeleteBatchAsync(db, cutoff, batchSize - removed, token);
+            if (repositoryRows == 0) break;
+            removed += repositoryRows;
         }
         if (removed < batchSize)
         {
