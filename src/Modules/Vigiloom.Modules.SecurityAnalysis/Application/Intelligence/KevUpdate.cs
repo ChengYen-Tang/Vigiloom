@@ -81,10 +81,10 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
             return KevUpdateResult.Conflict;
         var existing = download.Digest is null ? null : await db.IntelligenceRevisions.AsNoTracking()
             .Where(x => x.SourceId == sourceId && x.Digest == download.Digest && x.MappingVersion == mappingVersion)
-            .Select(x => new { x.Id, x.Revoked, x.Normalized }).SingleOrDefaultAsync(token);
+            .Select(x => new { x.Id, x.Revoked, x.Normalized, x.ContentPurgedAt }).SingleOrDefaultAsync(token);
         var contentRevoked = download.Digest is not null && await db.IntelligenceRevisions.AsNoTracking()
             .AnyAsync(x => x.SourceId == sourceId && x.Digest == download.Digest && x.Revoked, token);
-        if (contentRevoked || existing is { Normalized: false })
+        if (contentRevoked || existing is { Normalized: false, ContentPurgedAt: null })
         {
             if (offlineActor is not null) return KevUpdateResult.Failed;
             current.LastCheckedAt = clock.GetUtcNow();
@@ -96,6 +96,17 @@ internal sealed class KevUpdate(IDbContextFactory<SecurityAnalysisDbContext> con
         }
         Guid? existingId = existing?.Id;
         var revisionExists = existingId is not null;
+        if (existing is { ContentPurgedAt: not null })
+        {
+            if (download.Content is null || metadata is null || await db.KevRecords.AnyAsync(x => x.RevisionId == existing.Id, token)) return KevUpdateResult.Conflict;
+            var restored = await db.IntelligenceRevisions.SingleAsync(x => x.Id == existing.Id, token);
+            restored.Artifact = download.Content;
+            restored.RetrievedAt = clock.GetUtcNow();
+            restored.RecordCount = metadata.RecordCount;
+            restored.Normalized = true;
+            restored.ContentPurgedAt = null;
+            revisionExists = false;
+        }
         if (download.Content is not null && metadata is not null && existingId is null)
         {
             var revision = new IntelligenceRevision
