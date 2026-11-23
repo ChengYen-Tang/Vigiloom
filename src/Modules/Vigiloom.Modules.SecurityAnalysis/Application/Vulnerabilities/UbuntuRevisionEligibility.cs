@@ -25,7 +25,11 @@ internal static class UbuntuRevisionEligibility
             where member.RevisionId == revisionId && (document.ModifiedAt > latestAllowed || document.WithdrawnAt > latestAllowed)
             select document.RowId).AnyAsync(token)) return false;
 
-        return !await (from member in db.UbuntuRevisionDocuments
+        return await PreservesPublishedWithdrawalsAsync(db, sourceId, revisionId, token);
+    }
+
+    internal static async Task<bool> PreservesPublishedWithdrawalsAsync(SecurityAnalysisDbContext db, Guid sourceId, Guid revisionId, CancellationToken token) =>
+        !await (from member in db.UbuntuRevisionDocuments
             join candidate in db.UbuntuDocuments on new { member.Digest, member.MappingVersion, member.AdvisoryId }
                 equals new { candidate.Digest, candidate.MappingVersion, candidate.AdvisoryId }
             where member.RevisionId == revisionId && candidate.WithdrawnAt == null &&
@@ -37,5 +41,4 @@ internal static class UbuntuRevisionEligibility
                     db.IntelligenceActivationEvents.Any(e => e.SourceId == sourceId && e.RevisionId == previousMember.RevisionId)
                  select previous.RowId).Any()
             select candidate.RowId).AnyAsync(token);
-    }
 }

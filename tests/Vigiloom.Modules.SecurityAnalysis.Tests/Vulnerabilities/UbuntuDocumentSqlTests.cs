@@ -240,6 +240,15 @@ public sealed class UbuntuDocumentSqlTests(TestContext context)
             Assert.AreEqual(1, await db.UbuntuDocuments.CountAsync(token));
             Assert.AreEqual(1, await db.UbuntuRevisionDocuments.CountAsync(token));
             Assert.IsFalse(await db.UbuntuScopes.AnyAsync(x => x.SourcePackage == "orphan", token));
+            await db.IntelligenceRevisions.Where(x => x.Id == staged.RevisionId).ExecuteUpdateAsync(x => x.SetProperty(r => r.Normalized, false).SetProperty(r => r.ContentPurgedAt, DateTimeOffset.UtcNow).SetProperty(r => r.Artifact, Array.Empty<byte>()), token);
+            db.IntelligenceActivationEvents.Add(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = staged.RevisionId!.Value, OccurredAt = DateTimeOffset.UtcNow, Scheduled = true });
+            await db.SaveChangesAsync(token); db.ChangeTracker.Clear();
+            Assert.AreEqual(UbuntuStageStatus.Conflict, (await stage.StageWithLeaseAsync(source.Id, source.Version, valid, lease, token)).Status);
+            await db.UbuntuRevisionDocuments.Where(x => x.RevisionId == staged.RevisionId).ExecuteDeleteAsync(token);
+            var restored = await stage.StageWithLeaseAsync(source.Id, source.Version, valid, lease, token);
+            Assert.AreEqual(UbuntuStageStatus.Staged, restored.Status); Assert.AreEqual(staged.RevisionId, restored.RevisionId);
+            Assert.IsNull((await db.IntelligenceRevisions.AsNoTracking().SingleAsync(token)).ContentPurgedAt);
+            Assert.AreEqual(1, await db.UbuntuRevisionDocuments.CountAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

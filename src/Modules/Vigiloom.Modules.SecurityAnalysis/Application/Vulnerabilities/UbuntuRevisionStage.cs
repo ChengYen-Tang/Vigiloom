@@ -30,6 +30,7 @@ internal sealed class UbuntuRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
             throw new ArgumentException("A source, its version and lease are required.");
         var digest = SHA256.HashData(artifact);
         IntelligenceRevision revision;
+        Guid? restoreId = null;
         int maximumEntries;
         await using (var db = await contexts.CreateDbContextAsync(token))
         await using (var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token))
@@ -74,15 +75,22 @@ internal sealed class UbuntuRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
                 DROP TABLE #UbuntuAbandonedDocuments;
                 """, token);
             var existing = await db.IntelligenceRevisions.Where(x => x.SourceId == sourceId && x.Digest == digest && x.MappingVersion == MappingVersion)
-                .Select(x => new { x.Id, x.Normalized }).SingleOrDefaultAsync(token);
+                .Select(x => new { x.Id, x.Normalized, x.ContentPurgedAt }).SingleOrDefaultAsync(token);
             if (existing is { Normalized: true })
             {
                 await transaction.CommitAsync(token);
                 return new(UbuntuStageStatus.Unchanged, existing.Id);
             }
-            if (existing is not null) return new(UbuntuStageStatus.Unavailable);
+            if (existing is { ContentPurgedAt: not null })
+            {
+                if (await (from member in db.UbuntuRevisionDocuments join document in db.UbuntuDocuments
+                    on new { member.Digest, member.MappingVersion, member.AdvisoryId } equals new { document.Digest, document.MappingVersion, document.AdvisoryId }
+                    where member.RevisionId == existing.Id && document.WithdrawnAt == null select member.RevisionId).AnyAsync(token)) return new(UbuntuStageStatus.Conflict);
+                restoreId = existing.Id;
+            }
+            else if (existing is not null) return new(UbuntuStageStatus.Unavailable);
             revision = new IntelligenceRevision { SourceId = sourceId, UpstreamVersion = Convert.ToHexStringLower(digest),
-                RetrievedAt = clock.GetUtcNow().ToUniversalTime(), Digest = digest, Artifact = artifact, SchemaVersion = SchemaVersion,
+                RetrievedAt = clock.GetUtcNow().ToUniversalTime(), Digest = restoreId is null ? digest : RandomNumberGenerator.GetBytes(32), Artifact = artifact, SchemaVersion = SchemaVersion,
                 MappingVersion = MappingVersion, LicenseEvidence = LicenseEvidence, RecordCount = 0, Normalized = false };
             db.IntelligenceRevisions.Add(revision);
             await db.SaveChangesAsync(token);
@@ -112,6 +120,21 @@ internal sealed class UbuntuRevisionStage(IDbContextFactory<SecurityAnalysisDbCo
                 equals new { document.Digest, document.MappingVersion, document.AdvisoryId }
             where member.RevisionId == revision.Id && (document.ModifiedAt > latestAllowed || document.WithdrawnAt > latestAllowed)
             select document.RowId).AnyAsync(token)) throw new InvalidDataException("Ubuntu archive has timestamps in the future.");
+        if (restoreId is { } originalId)
+        {
+            var original = await final.IntelligenceRevisions.SingleOrDefaultAsync(x => x.Id == originalId && x.SourceId == sourceId && x.ContentPurgedAt != null && !x.Revoked, token);
+            if (original is null || !original.Digest.AsSpan().SequenceEqual(digest) || await (from member in final.UbuntuRevisionDocuments join document in final.UbuntuDocuments
+                on new { member.Digest, member.MappingVersion, member.AdvisoryId } equals new { document.Digest, document.MappingVersion, document.AdvisoryId }
+                where member.RevisionId == originalId && document.WithdrawnAt == null select member.RevisionId).AnyAsync(token)) return new(UbuntuStageStatus.Conflict);
+            await final.UbuntuRevisionDocuments.Where(x => x.RevisionId == originalId).ExecuteDeleteAsync(token);
+            await final.UbuntuRevisionDocuments.Where(x => x.RevisionId == revision.Id).ExecuteUpdateAsync(x => x.SetProperty(m => m.RevisionId, originalId), token);
+            original.Artifact = artifact; original.RecordCount = count; original.RetrievedAt = clock.GetUtcNow().ToUniversalTime();
+            original.Normalized = true; original.ContentPurgedAt = null;
+            await final.SaveChangesAsync(token);
+            await final.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteDeleteAsync(token);
+            await commit.CommitAsync(token);
+            return new(UbuntuStageStatus.Staged, originalId);
+        }
         await final.IntelligenceRevisions.Where(x => x.Id == revision.Id).ExecuteUpdateAsync(x => x
             .SetProperty(r => r.RecordCount, count).SetProperty(r => r.Normalized, true), token);
         await commit.CommitAsync(token);
