@@ -32,8 +32,8 @@ The release acceptance must include all of these requirement groups:
 This is a scope index, not a claim that every release scenario has passed.
 Use the current requirement acceptance and actual test evidence when running
 T05; do not infer end-to-end completion from the list or from a feature being
-merged. REQ-38 diagnostics and REQ-40 release validation remain in progress at
-the time of this profile.
+merged. REQ-40 release validation remains in progress at the time of this
+profile.
 
 Agent distribution targets Windows x64 and x86 and Linux x64 within the .NET 10
 support conditions. Linux x86 and legacy Windows are excluded. The owner has
@@ -119,7 +119,7 @@ cross-feature user journeys and platform combinations belong to T05.
 
 On 2026-11-23, Windows 11 Enterprise x64 build 26300 and SQL Server LocalDB
 17.0.4025.3 Express were used for an isolated database check of code based on
-`8effe37`, published with .NET SDK 11.0.100-preview.5. The self-contained
+`8effe37`, published with .NET SDK 11.0.100. The self-contained
 Windows Migrator performed a fresh installation, a test group was inserted, the
 database was backed up with checksum, restored under a different name, and the
 Migrator was rerun against the restore. The group remained present. Both test
@@ -129,3 +129,20 @@ This verifies a database-only restore and rerunning the current migration on a
 small fixture. It does not establish an RPO/RTO, a previous-version upgrade, or
 recovery of Data Protection keys, certificates, package files or a deployed
 service. T04 remains open until those aspects are exercised.
+
+## Initial container check
+
+On 2026-11-23, Linux x64 self-contained Web, Worker and Migrator outputs were
+packaged into the container example. An isolated SQL Server 2022 container was
+created; Migrator applied a fresh installation, Web served the setup page and
+Blazor assets over HTTPS, and Worker registered a Hangfire server heartbeat.
+The test used a temporary self-signed certificate and SQL administrator account
+for the isolated database. Containers, network, temporary files and the test
+image were removed afterward. This does not validate production TLS, restricted
+SQL permissions, IIS, systemd installation, upgrade or backup recovery.
+
+`tools/server-deployment-smoke.ps1` repeats this check on a Windows development
+host with PowerShell 7, .NET SDK and Docker. It creates its own temporary SQL
+Server, test certificate, network and container names, and removes them when
+finished. Use `-SdkVersion` only when the repository-pinned SDK is unavailable;
+the override is written only to the test's temporary directory.

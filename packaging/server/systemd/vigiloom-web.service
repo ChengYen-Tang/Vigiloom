@@ -1,0 +1,15 @@
+[Unit]
+Description=Vigiloom Web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/vigiloom/web
+ExecStart=/opt/vigiloom/web/Vigiloom.Web
+EnvironmentFile=/etc/vigiloom/vigiloom.env
+User=vigiloom
+Group=vigiloom
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
