@@ -474,14 +474,10 @@ public sealed class ModuleMigrationTests
 
     private static async Task<(int ExitCode, string Output, string Error)> RunMigratorAsync(string connectionString, string? mode, CancellationToken token)
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Vigiloom.slnx"))) directory = directory.Parent;
-        Assert.IsNotNull(directory);
-        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
-        var project = Path.Combine(directory.FullName, "src", "Hosts", "Vigiloom.Migrator", "Vigiloom.Migrator.csproj");
+        var migrator = Path.Combine(AppContext.BaseDirectory, "Vigiloom.Migrator.dll");
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (var argument in new[] { "run", "--no-build", "--configuration", configuration, "--project", project }) start.ArgumentList.Add(argument);
-        if (mode is not null) { start.ArgumentList.Add("--"); start.ArgumentList.Add(mode); }
+        start.ArgumentList.Add(migrator);
+        if (mode is not null) start.ArgumentList.Add(mode);
         start.Environment["VIGILOOM_MIGRATION_SQL_CONNECTION"] = connectionString;
         using var process = Process.Start(start)!;
         Exception? failure = null;

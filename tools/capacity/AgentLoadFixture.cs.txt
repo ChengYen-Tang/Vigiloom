@@ -1,0 +1,471 @@
+using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Net.Security;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using Google.Protobuf;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Contracts.Workspace;
+using OpenTelemetry.Proto.Collector.Logs.V1;
+using OpenTelemetry.Proto.Collector.Metrics.V1;
+using OpenTelemetry.Proto.Collector.Trace.V1;
+using OpenTelemetry.Proto.Common.V1;
+using OpenTelemetry.Proto.Logs.V1;
+using OpenTelemetry.Proto.Metrics.V1;
+using OpenTelemetry.Proto.Resource.V1;
+using OpenTelemetry.Proto.Trace.V1;
+
+namespace Vigiloom.Web.Tests;
+
+[TestClass]
+public sealed class ManualAgentCapacityTests(TestContext context)
+{
+    [TestMethod]
+    public Task Ingestion() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var count = int.Parse(Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_SIZE")!);
+        var seconds = int.Parse(Environment.GetEnvironmentVariable("VIGILOOM_DURATION_SECONDS")!);
+        var useCollector = Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_COLLECTOR") == "1";
+        var collectorName = useCollector ? "vigiloom-capacity-collector-" + Guid.CreateVersion7().ToString("N") : null;
+        using var rootKey = RSA.Create(2048);
+        var request = new CertificateRequest("CN=isolated capacity root", rootKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        using var root = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        using var serverKey = RSA.Create(2048);
+        var serverRequest = new CertificateRequest("CN=localhost", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var san = new SubjectAlternativeNameBuilder(); san.AddDnsName("localhost"); san.AddDnsName("host.docker.internal");
+        serverRequest.CertificateExtensions.Add(san.Build());
+        serverRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        serverRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
+        using var unsigned = serverRequest.Create(root, DateTimeOffset.UtcNow.AddMinutes(-4), DateTimeOffset.UtcNow.AddHours(1), RandomNumberGenerator.GetBytes(16));
+        using var serverCertificate = unsigned.CopyWithPrivateKey(serverKey);
+        var pfx = serverCertificate.Export(X509ContentType.Pfx);
+        using var tls = X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.UserKeySet);
+        CryptographicOperations.ZeroMemory(pfx);
+        var rootPath = Path.Combine(Path.GetTempPath(), "capacity-root.cer");
+        var credentialPath = Path.Combine(Path.GetTempPath(), "capacity-credentials.json");
+        var collectorMarker = Path.Combine(Path.GetTempPath(), "capacity-collector.txt");
+        var queryClients = new List<HttpClient>();
+        try
+        {
+            await File.WriteAllBytesAsync(rootPath, root.Export(X509ContentType.Cert), token);
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Development");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                    ["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Warning"
+                }));
+                builder.ConfigureKestrel(options => options.Listen(useCollector ? IPAddress.Any : IPAddress.Loopback, 0, listen => listen.UseHttps(tls)));
+            });
+            factory.UseKestrel(0); factory.StartServer();
+            await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            var address = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single(x => x.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+            var url = new UriBuilder(address) { Host = "localhost" }.Uri;
+            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+            var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
+            var credentials = new List<string>(count);
+            for (var i = 0; i < count; i++)
+            {
+                var device = new Device($"Capacity Agent {i}", $"agent{i}.example", true, DateTimeOffset.UtcNow);
+                await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+                await using var scope = factory.Services.CreateAsyncScope();
+                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
+                Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
+                var secret = RandomNumberGenerator.GetBytes(32);
+                var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
+                Assert.AreEqual(AgentIdentityStatus.Success, registered.Status);
+                credentials.Add($"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
+            }
+            await File.WriteAllTextAsync(credentialPath, JsonSerializer.Serialize(credentials), token);
+            var services = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            string? sourceSecret = null;
+            string? collectorIngress = null;
+            Uri? collectorUrl = null;
+            if (Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_INCLUDE_SERVICES") == "1")
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                var source = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("capacity source", token);
+                sourceSecret = source.Secret;
+                var discovery = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+                var approval = scope.ServiceProvider.GetRequiredService<ServiceApproval>();
+                for (var i = 0; i < count / 10; i++)
+                {
+                    var name = $"capacity-service-{i}";
+                    Assert.AreEqual(CandidateObservation.Recorded, await discovery.ObserveAsync(source.SourceId, name, "prod", name, token));
+                    await using var db = await services.CreateDbContextAsync(token);
+                    var id = await db.Candidates.Where(x => x.SourceId == source.SourceId && x.ServiceKey == name).Select(x => x.Id).SingleAsync(token);
+                    Assert.AreEqual(ApprovalStatus.Approved, (await approval.ApproveAsync(id, Guid.CreateVersion7(), token)).Status);
+                }
+                if (useCollector)
+                {
+                    var quota = scope.ServiceProvider.GetRequiredService<PolicyAdministration>();
+                    var current = await quota.GetAsync(token);
+                    var adjusted = await quota.UpdateAsync(new LogQuotaValues(100, 100, 1000, 2000), current.Version,
+                        Guid.CreateVersion7(), (_, _, _, _) => Task.CompletedTask, token);
+                    Assert.IsNotNull(adjusted);
+                    var second = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("capacity source B", token);
+                    var monitor = await scope.ServiceProvider.GetRequiredService<SourceCredentials>().IssueAsync("capacity collector monitor", token);
+                    collectorIngress = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+                    var ingressB = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+                    var certDirectory = Path.Combine(Path.GetTempPath(), "collector-tls");
+                    Directory.CreateDirectory(certDirectory);
+                    await File.WriteAllTextAsync(Path.Combine(certDirectory, "collector.crt"), serverCertificate.ExportCertificatePem(), token);
+                    await File.WriteAllTextAsync(Path.Combine(certDirectory, "collector.key"), serverKey.ExportPkcs8PrivateKeyPem(), token);
+                    await File.WriteAllTextAsync(Path.Combine(certDirectory, "platform-ca.crt"), root.ExportCertificatePem(), token);
+                    var config = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../deploy/collector/isolated-sources.example.yaml"));
+                    var dockerArgs = new List<string> { "run", "-d", "--rm", "--name", collectorName!,
+                        "--mount", $"type=bind,src={certDirectory},dst=/etc/vigiloom/tls,readonly",
+                        "--mount", $"type=bind,src={config},dst=/etc/collector.yaml,readonly",
+                        "-p", "127.0.0.1::4318", "-e", $"VIGILOOM_INGRESS_A_TOKEN={collectorIngress}",
+                        "-e", $"VIGILOOM_INGRESS_B_TOKEN={ingressB}", "-e", $"VIGILOOM_SOURCE_A_TOKEN={sourceSecret}",
+                        "-e", $"VIGILOOM_SOURCE_B_TOKEN={second.Secret}", "-e", $"VIGILOOM_COLLECTOR_MONITOR_TOKEN={monitor.Secret}",
+                        "-e", $"VIGILOOM_COLLECTOR_METRICS_ENDPOINT=https://host.docker.internal:{url.Port}/api/v1/otlp/v1/metrics",
+                        "-e", $"VIGILOOM_OTLP_ENDPOINT=https://host.docker.internal:{url.Port}/api/v1/otlp" };
+                    if (OperatingSystem.IsLinux()) dockerArgs.AddRange(["--add-host", "host.docker.internal:host-gateway"]);
+                    dockerArgs.AddRange(["otel/opentelemetry-collector-contrib:0.164.0", "--config=/etc/collector.yaml"]);
+                    await File.WriteAllTextAsync(collectorMarker, collectorName!, token);
+                    await DockerAsync(token, dockerArgs.ToArray());
+                    var portText = await DockerAsync(token, "port", collectorName!, "4318/tcp");
+                    var port = int.Parse(portText.Trim().Split(':').Last(), System.Globalization.CultureInfo.InvariantCulture);
+                    collectorUrl = new Uri($"https://localhost:{port}");
+                    await WaitForCollectorAsync(collectorUrl, tls, token);
+                    context.WriteLine("Collector: Contrib 0.164.0; source log quota 100/s burst 100; batch 50 max 100 timeout 1s.");
+                }
+            }
+            if (Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_QUERIES") == "1")
+            {
+                var readers = count switch { 30 => 2, 100 => 5, 300 => 10, 500 => 15, _ => throw new InvalidOperationException("Unsupported capacity size.") };
+                for (var i = 0; i < readers; i++)
+                {
+                    var handler = new HttpClientHandler { AllowAutoRedirect = false, ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+                        errors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors && cert is not null && cert.GetCertHashString() == tls.GetCertHashString() };
+                    var reader = new HttpClient(handler) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(30) };
+                    queryClients.Add(reader);
+                    await PingTestSite.LoginAsync(reader, "reader", token);
+                }
+            }
+            var storageBefore = Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_STORAGE") == "1"
+                ? await ReadStorageAsync(agents, token) : null;
+            var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            start.ArgumentList.Add(Environment.GetEnvironmentVariable("VIGILOOM_CAPACITY_SENDER")!);
+            start.Environment["VIGILOOM_URL"] = url.ToString();
+            start.Environment["VIGILOOM_TEST_CA"] = rootPath;
+            start.Environment["VIGILOOM_AGENT_CREDENTIALS_FILE"] = credentialPath;
+            start.Environment["VIGILOOM_DURATION_SECONDS"] = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            using var process = Process.Start(start)!;
+            using var telemetryStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var telemetry = sourceSecret is null ? Task.CompletedTask :
+                RunTelemetryAsync(collectorUrl ?? url, root, collectorIngress ?? sourceSecret, count / 10, seconds, services, useCollector, telemetryStop.Token);
+            var queries = queryClients.Count == 0 ? Task.CompletedTask : RunQueriesAsync(queryClients, count + 1, seconds, telemetryStop.Token);
+            var stdout = process.StandardOutput.ReadToEndAsync(token);
+            var stderr = process.StandardError.ReadToEndAsync(token);
+            var completed = false;
+            try
+            {
+                await process.WaitForExitAsync(token);
+                context.WriteLine(await stdout);
+                context.WriteLine(await stderr);
+                await Task.WhenAll(telemetry, queries);
+                completed = true;
+            }
+            finally
+            {
+                telemetryStop.Cancel();
+                if (!completed)
+                {
+                    try { await Task.WhenAll(telemetry, queries); } catch { /* Preserve the original error during cleanup. */ }
+                }
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await process.WaitForExitAsync(deadline.Token);
+                }
+            }
+            var result = await stdout;
+            Assert.AreEqual(0, process.ExitCode);
+            using var json = JsonDocument.Parse(result);
+            var points = json.RootElement.GetProperty("acceptedMetricPoints").GetInt32();
+            var logs = json.RootElement.GetProperty("acceptedLogs").GetInt32();
+            Assert.IsGreaterThan(0, points); Assert.IsGreaterThan(0, logs);
+            Assert.AreEqual(0, json.RootElement.GetProperty("rejectedBatches").GetInt32(), "The generator queue filled.");
+            Assert.AreEqual(0, json.RootElement.GetProperty("remainingBatches").GetInt32(), "The generator did not drain.");
+            Assert.AreEqual(json.RootElement.GetProperty("generatedMetricPoints").GetInt32(), points);
+            Assert.AreEqual(json.RootElement.GetProperty("generatedLogs").GetInt32(), logs);
+            Assert.IsTrue(json.RootElement.GetProperty("statusCounts").EnumerateObject()
+                .All(entry => entry.Name.EndsWith("/204", StringComparison.Ordinal)),
+                "The sender reported failed or unknown HTTP results; inspect the summary.");
+            await using var verify = await agents.CreateDbContextAsync(token);
+            Assert.AreEqual(points, await verify.HostMetrics.CountAsync(token));
+            Assert.AreEqual(logs, await verify.HostLogs.CountAsync(token));
+            if (storageBefore is not null)
+            {
+                var after = await ReadStorageAsync(agents, token);
+                var changes = after.Select(entry => new { table = entry.Key, approximateRows = entry.Value.Rows - storageBefore[entry.Key].Rows,
+                    heapClusteredReservedBytes = (entry.Value.DataPages - storageBefore[entry.Key].DataPages) * 8192,
+                    nonclusteredReservedBytes = (entry.Value.IndexPages - storageBefore[entry.Key].IndexPages) * 8192 }).ToArray();
+                context.WriteLine($"STORAGE: {JsonSerializer.Serialize(changes)}");
+            }
+            var connection = verify.Database.GetDbConnection();
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT CONCAT(CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)), '|', CAST(SERVERPROPERTY('Edition') AS nvarchar(128)), '|', compatibility_level) FROM sys.databases WHERE name = DB_NAME()";
+            context.WriteLine($"SQL: {await command.ExecuteScalarAsync(token)}");
+        }
+        finally
+        {
+            try
+            {
+                if (collectorName is not null)
+                {
+                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    await DockerAsync(cleanup.Token, "rm", "-f", collectorName);
+                    if (File.Exists(collectorMarker)) File.Delete(collectorMarker);
+                }
+            }
+            finally
+            {
+                foreach (var client in queryClients) client.Dispose();
+                if (File.Exists(credentialPath)) File.Delete(credentialPath);
+                if (File.Exists(rootPath)) File.Delete(rootPath);
+            }
+        }
+    }, context.CancellationToken);
+
+    private sealed record Storage(long Rows, long DataPages, long IndexPages);
+
+    private static async Task<Dictionary<string, Storage>> ReadStorageAsync(IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var connection = db.Database.GetDbConnection();
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT SCHEMA_NAME(t.schema_id) + N'.' + t.name,
+                SUM(CASE WHEN p.index_id IN (0, 1) THEN CONVERT(bigint, p.row_count) ELSE 0 END),
+                SUM(CASE WHEN p.index_id IN (0, 1) THEN CONVERT(bigint, p.reserved_page_count) ELSE 0 END),
+                SUM(CASE WHEN p.index_id > 1 THEN CONVERT(bigint, p.reserved_page_count) ELSE 0 END)
+            FROM sys.tables t JOIN sys.dm_db_partition_stats p ON p.object_id = t.object_id
+            WHERE (SCHEMA_NAME(t.schema_id) = N'agent' AND t.name IN (N'HostMetrics', N'HostLogs', N'ReceivedBatches'))
+               OR (SCHEMA_NAME(t.schema_id) = N'service' AND t.name IN (N'LogContexts', N'LogRecords', N'MetricContexts', N'MetricPoints', N'TraceSpans'))
+            GROUP BY t.schema_id, t.name ORDER BY SCHEMA_NAME(t.schema_id), t.name
+            """;
+        var result = new Dictionary<string, Storage>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token)) result.Add(reader.GetString(0), new(reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3)));
+        if (result.Count != 8) throw new InvalidOperationException("Expected storage tables are missing.");
+        return result;
+    }
+
+    private async Task RunQueriesAsync(List<HttpClient> clients, int expectedDevices, int seconds, CancellationToken token)
+    {
+        var samples = new ConcurrentBag<double>();
+        var errors = new ConcurrentDictionary<string, int>();
+        var watch = Stopwatch.StartNew();
+        await Task.WhenAll(clients.Select(ReadAsync));
+        var ordered = samples.Order().ToArray();
+        double Percentile(double fraction) => ordered.Length == 0 ? 0 : ordered[(int)Math.Ceiling(ordered.Length * fraction) - 1];
+        context.WriteLine($"QUERIES: {JsonSerializer.Serialize(new { readers = clients.Count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, count = ordered.Length, p50Milliseconds = Percentile(0.5), p95Milliseconds = Percentile(0.95), maxMilliseconds = ordered.LastOrDefault(), errors })}");
+        Assert.IsNotEmpty(ordered, "No overview requests completed.");
+        Assert.IsEmpty(errors, "Overview requests failed or returned unavailable data.");
+
+        async Task ReadAsync(HttpClient client)
+        {
+            while (watch.Elapsed < TimeSpan.FromSeconds(seconds))
+            {
+                var started = Stopwatch.GetTimestamp();
+                try
+                {
+                    using var response = await client.GetAsync("/api/v1/workspace/overview", token);
+                    if (!response.IsSuccessStatusCode) errors.AddOrUpdate($"http-{(int)response.StatusCode}", 1, (_, n) => n + 1);
+                    else
+                    {
+                        var overview = await response.Content.ReadFromJsonAsync<WorkspaceOverview>(cancellationToken: token);
+                        if (overview is null || overview.Ping.Unavailable || overview.Agents.Unavailable || overview.Services.Unavailable || overview.GroupsUnavailable || overview.Ping.Total != expectedDevices)
+                            errors.AddOrUpdate("unavailable-or-count", 1, (_, n) => n + 1);
+                    }
+                }
+                catch (HttpRequestException) { errors.AddOrUpdate("transport", 1, (_, n) => n + 1); }
+                catch (TaskCanceledException) when (!token.IsCancellationRequested) { errors.AddOrUpdate("timeout", 1, (_, n) => n + 1); }
+                finally { samples.Add(Stopwatch.GetElapsedTime(started).TotalMilliseconds); }
+                var remaining = TimeSpan.FromSeconds(seconds) - watch.Elapsed;
+                if (remaining <= TimeSpan.FromSeconds(5))
+                {
+                    if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
+                    break;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), token);
+            }
+        }
+    }
+
+    private async Task RunTelemetryAsync(Uri url, X509Certificate2 root, string secret, int count, int seconds,
+        IDbContextFactory<ServiceObservabilityDbContext> databases, bool viaCollector, CancellationToken token)
+    {
+        using var handler = new SocketsHttpHandler { MaxConnectionsPerServer = count, AllowAutoRedirect = false };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
+        {
+            if (certificate is null || (errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
+            using var chain = new X509Chain();
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.CustomTrustStore.Add(root);
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+            chain.ChainPolicy.ApplicationPolicy.Add(new Oid("1.3.6.1.5.5.7.3.1"));
+            using var leaf = X509CertificateLoader.LoadCertificate(certificate.GetRawCertData());
+            return chain.Build(leaf);
+        };
+        using var client = new HttpClient(handler) { BaseAddress = url, Timeout = TimeSpan.FromSeconds(30) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secret);
+        long logs = 0, points = 0, spans = 0;
+        var failures = new ConcurrentDictionary<string, int>();
+        var watch = Stopwatch.StartNew();
+        try { await Task.WhenAll(Enumerable.Range(0, count).Select(SendServiceAsync)); }
+        finally
+        {
+            var result = new { services = count, durationSeconds = seconds, elapsedSeconds = watch.Elapsed.TotalSeconds, logs, points, spans, failures };
+            context.WriteLine($"OTLP: {JsonSerializer.Serialize(result)}");
+        }
+        await using var db = await databases.CreateDbContextAsync(token);
+        if (viaCollector)
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(90) &&
+                (await db.LogRecords.LongCountAsync(token) < logs || await db.MetricPoints.LongCountAsync(token) < points || await db.TraceSpans.LongCountAsync(token) < spans))
+                await Task.Delay(1000, token);
+            context.WriteLine($"Collector drain seconds: {deadline.Elapsed.TotalSeconds:F2}");
+        }
+        Assert.AreEqual(logs, await db.LogRecords.LongCountAsync(token));
+        Assert.AreEqual(points, await db.MetricPoints.LongCountAsync(token));
+        Assert.AreEqual(spans, await db.TraceSpans.LongCountAsync(token));
+        Assert.AreEqual((long)count * seconds, logs, "The closed-loop sender did not complete the planned log count.");
+
+        async Task SendServiceAsync(int index)
+        {
+            var resource = new Resource { Attributes = {
+                new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = $"capacity-service-{index}" } },
+                new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } },
+                new KeyValue { Key = "service.instance.id", Value = new AnyValue { StringValue = $"instance-{index}" } }
+            } };
+            await Task.Delay(TimeSpan.FromSeconds((double)index / count), token);
+            for (var tick = 0; tick < seconds; tick++)
+            {
+                var due = TimeSpan.FromSeconds(tick + (double)index / count) - watch.Elapsed;
+                if (due > TimeSpan.Zero) await Task.Delay(due, token);
+                var nanos = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+                var log = new ExportLogsServiceRequest { ResourceLogs = { new ResourceLogs { Resource = resource,
+                    ScopeLogs = { new ScopeLogs { LogRecords = { new LogRecord { TimeUnixNano = nanos, Body = new AnyValue { StringValue = new string('x', 512) } } } } } } } };
+                var reply = await SendAsync("logs", log.ToByteArray());
+                var logReply = ExportLogsServiceResponse.Parser.ParseFrom(reply);
+                if (logReply.PartialSuccess?.RejectedLogRecords > 0) throw new InvalidOperationException("OTLP logs were partially rejected.");
+                Interlocked.Increment(ref logs);
+                if (tick % 60 == 0)
+                {
+                    var scope = new ScopeMetrics();
+                    for (var metric = 0; metric < 10; metric++) scope.Metrics.Add(new Metric { Name = $"capacity.metric.{metric}", Gauge = new Gauge { DataPoints = { new NumberDataPoint { TimeUnixNano = nanos, AsDouble = 1.5 } } } });
+                    var request = new ExportMetricsServiceRequest { ResourceMetrics = { new ResourceMetrics { Resource = resource, ScopeMetrics = { scope } } } };
+                    var response = ExportMetricsServiceResponse.Parser.ParseFrom(await SendAsync("metrics", request.ToByteArray()));
+                    if (response.PartialSuccess?.RejectedDataPoints > 0) throw new InvalidOperationException("OTLP metrics were partially rejected.");
+                    Interlocked.Add(ref points, 10);
+                }
+                if (tick % 10 == 0)
+                {
+                    var span = new OpenTelemetry.Proto.Trace.V1.Span { Name = "request", TraceId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(16)), SpanId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(8)), StartTimeUnixNano = nanos, EndTimeUnixNano = nanos };
+                    var request = new ExportTraceServiceRequest { ResourceSpans = { new ResourceSpans { Resource = resource, ScopeSpans = { new ScopeSpans { Spans = { span } } } } } };
+                    var response = ExportTraceServiceResponse.Parser.ParseFrom(await SendAsync("traces", request.ToByteArray()));
+                    if (response.PartialSuccess?.RejectedSpans > 0) throw new InvalidOperationException("OTLP traces were partially rejected.");
+                    Interlocked.Increment(ref spans);
+                }
+            }
+        }
+        async Task<byte[]> SendAsync(string signal, byte[] body)
+        {
+            using var content = new ByteArrayContent(body);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+            using var response = await client.PostAsync(viaCollector ? $"/v1/{signal}" : $"/api/v1/otlp/v1/{signal}", content, token);
+            if (!response.IsSuccessStatusCode)
+            {
+                var reason = "other";
+                var data = await response.Content.ReadAsByteArrayAsync(token);
+                try
+                {
+                    reason = Google.Rpc.Status.Parser.ParseFrom(data).Message switch
+                    {
+                        "Receiver capacity is busy; retry later." => "receiver-busy",
+                        "Receiver deadline exceeded; retry later." => "receiver-deadline",
+                        "Telemetry storage is unavailable; retry later." => "storage-unavailable",
+                        "Telemetry storage timed out; retry later." => "storage-timeout",
+                        "Telemetry is temporarily unavailable; retry later." => "export-retry",
+                        _ => "other"
+                    };
+                }
+                catch (InvalidProtocolBufferException) { }
+                failures.AddOrUpdate($"{signal}/{(int)response.StatusCode}/{reason}", 1, (_, previous) => previous + 1);
+            }
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsByteArrayAsync(token);
+        }
+    }
+
+    private static async Task<string> DockerAsync(CancellationToken token, params string[] args)
+    {
+        var start = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Unable to start Docker.");
+        var stdout = process.StandardOutput.ReadToEndAsync(token);
+        var stderr = process.StandardError.ReadToEndAsync(token);
+        try { await process.WaitForExitAsync(token); }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await process.WaitForExitAsync(cleanup.Token);
+            }
+        }
+        var result = await stdout;
+        var error = await stderr;
+        if (process.ExitCode != 0 && !(args[0] == "rm" && error.Contains("No such container", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Docker {args[0]} failed (exit {process.ExitCode}).");
+        return result;
+    }
+
+    private static async Task WaitForCollectorAsync(Uri url, X509Certificate2 certificate, CancellationToken token)
+    {
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+            errors is SslPolicyErrors.None or SslPolicyErrors.RemoteCertificateChainErrors && cert is not null && cert.GetCertHashString() == certificate.GetCertHashString() };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(2) };
+        for (var i = 0; i < 30; i++)
+        {
+            try { using var response = await client.GetAsync(url, token); return; }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) when (!token.IsCancellationRequested) { }
+            await Task.Delay(1000, token);
+        }
+        throw new TimeoutException("Collector did not become ready.");
+    }
+}

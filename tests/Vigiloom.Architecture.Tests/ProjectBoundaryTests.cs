@@ -141,6 +141,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Worker" => [.. modules, "Vigiloom.Infrastructure"],
         "Vigiloom.Migrator" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess", "Vigiloom.Modules.Resources", "Vigiloom.Modules.NetworkMonitoring", "Vigiloom.Modules.AgentManagement", "Vigiloom.Modules.ServiceObservability", "Vigiloom.Modules.SecurityAnalysis", "Vigiloom.Modules.Publishing", "Vigiloom.Modules.AlertingOperations"],
         "Vigiloom.SpeedLab" => ["Vigiloom.Modules.NetworkMonitoring"],
+        "Vigiloom.CapacitySender" => ["Vigiloom.Contracts"],
         "Vigiloom.Agent.Core" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Updater.Core" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.UpdateSecurity"],
         "Vigiloom.Agent.Platforms.Windows" or "Vigiloom.Agent.Platforms.Linux" => ["Vigiloom.Agent.Core"],
