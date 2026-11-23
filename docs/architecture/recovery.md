@@ -78,3 +78,24 @@ This same-machine exercise did not restore Agent packages, start Worker, run the
 Migrator after restore, validate an old-version upgrade or measure RPO/RTO.
 REQ-40-T04 stays open until those checks and the chosen RPO/RTO have been
 measured in a representative deployment.
+
+On 2026-11-23, `tools/server-deployment-smoke.ps1 -Recovery` performed an
+additional same-machine Linux x64 container exercise using self-contained
+current Web, Worker and Migrator builds published with SDK 11.0.100, and an
+isolated SQL Server 2022 test database. It created an administrator through
+the setup page, signed in, stopped both hosts, backed up SQL with checksum,
+copied the Data Protection
+key ring and HTTPS certificate to new paths, restored SQL under a new database
+name and files, and ran the current Migrator. The restored Web accepted the
+pre-backup authenticated session and the restored Worker registered a new
+Hangfire heartbeat. A test file in the package directory survived a copy and
+hash comparison; no real Agent package was restored or deployed.
+
+The elapsed time from starting SQL restore to the authenticated overview and
+new Worker heartbeat was 11.48 seconds for this small fixture. It excludes the
+backup, file-copy preparation and incident response; it does not establish
+the installation's RPO or complete RTO. TLS used a test certificate without
+trust validation, and this was not an older-version upgrade or a cross-machine
+restore. SQL and Worker used an internal Docker network; Web additionally used
+a separate network for a loopback-published HTTPS port. Test containers,
+networks, images, databases and scratch files were removed afterwards.
