@@ -313,6 +313,18 @@ unknown; it is not a measured loss count. Neither run passed the full mixed
 check or demonstrates a sustained target rate. The reader results are API
 measurements with small samples, not browser rendering or a universal SLA.
 
+A further run kept the same 500-Agent / 50-service / 15-reader fixture and
+quota, but set `Max Pool Size=200` in the isolated SQL connection string rather
+than using SqlClient's default of 100. The 60 overview attempts included 15
+timeouts (p50 5.61 s, p95 30.01 s); the Agent sender reported one log timeout.
+OTLP reported 3,000 logs, 500 points and 300 spans in 108.56 seconds. Because
+the combined check failed, these counts were not all independently verified
+against SQL and timed-out writes have unknown outcomes. Twelve SQL snapshots
+during the run observed up to 149 user sessions and 127 requests waiting on
+`Vigiloom.LogAdmission`. The samples do not directly measure client pool wait.
+This single comparison does not establish a general regression, but it does
+not support raising the product's default connection pool as a solution.
+
 Further Agent-only 60-second runs used the same SQL Server 2022 container
 version and host as above. Each run used a fresh isolated database. Accepted
 counts matched the database; none of these runs included application telemetry,
