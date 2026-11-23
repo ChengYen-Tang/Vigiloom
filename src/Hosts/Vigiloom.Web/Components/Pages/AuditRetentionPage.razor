@@ -11,7 +11,7 @@
 <main class="device-page device-form-page">
     <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理操作紀錄、告警、通知與安全變更歷史的保存期限。</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。已完成或放棄的 GitHub Advisory 匯入，其未被情報版本引用的暫存內容也依匯入開始時間清理；匯入摘要與已發布情報版本會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
+        <p>此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
         <p>SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。</p>
         <p>Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。</p>
         @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
@@ -25,7 +25,7 @@
                 <InputNumber id="audit-retention-days" @bind-Value="Input.Days" min="1" max="3650" required />
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆操作紀錄、變更歷史或已放棄的匯入暫存符合清理條件；實際數量可能變動。</p>
+                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。</p>
                     <p>預計清理 @impact.AlertEpisodes 筆已恢復告警及 @impact.Notifications 筆通知。</p>
                     <p>預計清理 @impact.BackgroundJobs 筆已結束的背景工作及其派送紀錄。</p>
                     <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>

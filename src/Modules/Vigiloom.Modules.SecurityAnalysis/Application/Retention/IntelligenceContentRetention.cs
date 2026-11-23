@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -116,7 +117,7 @@ internal static class IntelligenceContentRetention
     {
         var sources = await (from source in db.IntelligenceSources.AsNoTracking()
             join active in db.IntelligenceActivations.AsNoTracking() on source.Id equals active.SourceId
-            where (sourceId == null || source.Id == sourceId) && (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security" || source.Key == "ubuntu-osv" || source.Key == "msrc-cvrf")
+            where (sourceId == null || source.Id == sourceId) && (source.Key == "sigmahq-rules" || source.Key == "signature-base" || source.Key == "cisa-kev" || source.Key == "first-epss" || source.Key == "debian-security" || source.Key == "ubuntu-osv" || source.Key == "msrc-cvrf" || source.Key == "github-reviewed")
             select new { Source = source, active.RevisionId }).ToArrayAsync(token);
         var result = new List<Guid>(sources.Length);
         foreach (var source in sources)
@@ -136,6 +137,7 @@ internal static class IntelligenceContentRetention
                     "debian-security" => await DebianUsableAsync(db, source.Source, revisionId, token),
                     "ubuntu-osv" => await VendorUsableAsync(db, source.Source, revisionId, token) && await UbuntuRevisionEligibility.PreservesPublishedWithdrawalsAsync(db, source.Source.Id, revisionId, token),
                     "msrc-cvrf" => await VendorUsableAsync(db, source.Source, revisionId, token),
+                    "github-reviewed" => await AdvisoryRevisionEligibility.IsPublishableAsync(db, source.Source.Id, revisionId, token),
                     _ => await KevUsableAsync(db, source.Source, revisionId, token)
                 };
                 if (!usable) continue;
