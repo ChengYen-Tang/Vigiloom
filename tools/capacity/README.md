@@ -35,6 +35,24 @@ and record the SQL and host measurements separately before drawing conclusions.
 
 ## Agent traffic
 
+To provision test identities and run the sender automatically against a
+dedicated SQL Server, set `VIGILOOM_TEST_SQL_CONNECTION` to its `master`
+connection and `VIGILOOM_TEST_SQL_ALLOW_SOURCE` to the exact data source, as
+described in `tests/Vigiloom.Testing.SqlServer/README.md`. Then run:
+
+```powershell
+./tools/capacity/run-agent-load.ps1 -Agents 30 -Seconds 300
+```
+
+The optional `-SdkVersion` overrides the pinned SDK only inside the temporary
+working directory. The script uses a run-owned temporary database and real
+Kestrel HTTPS, creates test Agent credentials, checks accepted counts against
+database rows and prints the sender summary and SQL version. It is not part of
+the regular CI tests. It removes its temporary fixture, credentials, certificate
+and database. If database cleanup cannot complete, the script preserves the
+scratch directory and directs the operator to the fixture's recovery procedure.
+Use an isolated server: this run creates and deletes a test database.
+
 `Vigiloom.CapacitySender` uses the product's Agent batch codecs and sends one
 20-point metric batch per Agent every 30 seconds and one 512-character host
 log every five seconds. It requires 30, 100, 300 or 500 **distinct** already
