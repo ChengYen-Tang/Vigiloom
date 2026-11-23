@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Applies local exact-value exclusions only to positively matched, decoded events.</summary>
-internal static class SigmaExceptions
+public static class SigmaExceptions
 {
     internal const int MaximumCount = 20;
 
@@ -12,7 +12,7 @@ internal static class SigmaExceptions
         items.Count <= MaximumCount && items.All(x => x is not null && !string.IsNullOrWhiteSpace(x.Field) &&
             x.Field.Length <= 128 && !string.IsNullOrWhiteSpace(x.Value) && x.Value.Length <= 1024);
 
-    internal static bool TryRead(string evidence, out IReadOnlyList<SigmaRuleException> exceptions)
+    public static bool TryRead(string evidence, out IReadOnlyList<SigmaRuleException> exceptions)
     {
         exceptions = [];
         try

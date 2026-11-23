@@ -53,13 +53,14 @@ public sealed class NotificationHttpTests(TestContext context)
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
             var device = await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
             var now = DateTimeOffset.UtcNow;
+            var agentId = Guid.CreateVersion7(); var messageId = Guid.CreateVersion7(); var ruleTestId = Guid.CreateVersion7();
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
             {
                 db.Set<Notification>().AddRange(
                     new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", OccurredAt = now,
                         Title = "Ping 無法連線", Detail = "<script>alert(1)</script>", ResourceId = device.Id },
                     new Notification { MessageId = Guid.CreateVersion7(), Source = "sigma", OccurredAt = now,
-                        Title = "行為規則命中", Detail = "需要調查", ResourceId = device.Id });
+                        Title = "行為規則命中", Detail = "需要調查", ResourceId = device.Id, EvidenceOwnerId = agentId, EvidenceId = messageId, RuleTestId = ruleTestId });
                 db.Set<PingAlert>().Add(new PingAlert { DeviceId = device.Id, Target = "192.0.2.1", OpenedAt = now });
                 await db.SaveChangesAsync(token);
             }
@@ -80,6 +81,10 @@ public sealed class NotificationHttpTests(TestContext context)
             Assert.Contains("不重複建立 Ping 不可達通知", document.Body.TextContent);
             Assert.IsNull(document.QuerySelector(".notifications-table script"));
             Assert.IsNotNull(document.QuerySelector($"a[href='/devices/{device.Id:D}']"));
+            using var sigmaPage = await reader.GetAsync("/notifications?source=sigma", token);
+            var sigmaDocument = await new HtmlParser().ParseDocumentAsync(await sigmaPage.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(sigmaDocument.QuerySelector($"a[href='/devices/{device.Id:D}/host-logs/{agentId:D}/{messageId:D}']"));
+            Assert.IsNotNull(sigmaDocument.QuerySelector($"a[href='/events/rules/{ruleTestId:D}']"));
             using var invalid = await reader.GetAsync("/notifications?from=2026-11-03&to=2026-11-01", token);
             Assert.Contains("開始日期不能晚於結束日期", (await new HtmlParser().ParseDocumentAsync(await invalid.Content.ReadAsStringAsync(token), token)).Body!.TextContent);
             using var empty = await reader.GetAsync("/notifications?source=vulnerability", token);

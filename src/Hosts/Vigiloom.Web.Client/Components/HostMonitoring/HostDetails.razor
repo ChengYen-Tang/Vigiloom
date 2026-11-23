@@ -18,7 +18,7 @@
     </nav>
     @if (tab == "vulnerabilities")
     {
-        <VulnerabilityPanel DeviceId="DeviceId" />
+        <VulnerabilityPanel DeviceId="DeviceId" InitialSearch="@InitialSearch" />
     }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
@@ -81,6 +81,12 @@
             @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
         </select></div>
         <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。</p>
+        @if (metricIssues.Count > 0)
+        {
+            <div role="status"><p>近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）：</p><ul>
+                @foreach (var issue in metricIssues) { <li>@issue.Dimension：@MetricIssueName(issue.Source) · @DisplayTime(issue.OccurredAt)（UTC） · Agent @issue.AgentId</li> }
+            </ul></div>
+        }
         @if (metricPage is { } retentionPeriod) { <p>原始樣本保存 @retentionPeriod.RawRetentionDays 天，五分鐘彙總保存 @retentionPeriod.RollupRetentionDays 天。</p> }
         @if (metricPage?.Items.Count > 0)
         {
@@ -145,6 +151,24 @@
         }
         else { <p>這段時間沒有偵測紀錄。</p> }
         @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
+        <h3>IOC 比對線索</h3>
+        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">查看 YARA 掃描</a></p>
+        <p>僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。@if (iocDetections is not null) { <text>線索依 Log 政策保存 @iocDetections.RetentionDays 天。</text> }</p>
+        @if (iocDetections?.Items.Count > 0)
+        {
+            <div class="host-table" tabindex="0" role="region" aria-label="IOC 比對線索，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>指標</th><th>來源與證據</th></tr></thead><tbody>
+            @foreach (var item in iocDetections.Items)
+            {
+                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · 事件 @item.MessageId<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">查看來源</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">授權</a></td></tr>
+            }
+            </tbody></table></div>
+        }
+        else { <p>這段時間沒有 IOC 命中紀錄。</p> }
+        @if (iocDetections is not null && (iocDetections.Page > 1 || iocDetections.HasMore))
+        {
+            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">較新線索</button>
+            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">較早線索</button>
+        }
         <h3>資料缺口</h3>
         @if (detectionGaps?.Items.Count > 0)
         {

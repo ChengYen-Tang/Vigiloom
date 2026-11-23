@@ -55,6 +55,9 @@ public sealed class IdentityVault(string directory)
     /// <summary>Allow one baseline producer for an Agent state directory.</summary>
     public IAsyncDisposable AcquireBaselineOwnership() => AcquireWorkerOwnership("baseline.lock");
 
+    /// <summary>Allow one YARA scan worker for an Agent state directory.</summary>
+    public IAsyncDisposable AcquireYaraOwnership() => AcquireWorkerOwnership("yara.lock");
+
     /// <summary>Allow one metric producer for an Agent state directory.</summary>
     public MetricOwnership AcquireMetricOwnership() => new(this, AcquireWorkerOwnership("metrics.lock"));
 

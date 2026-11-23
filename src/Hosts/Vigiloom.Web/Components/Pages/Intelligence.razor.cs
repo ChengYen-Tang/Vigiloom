@@ -52,6 +52,7 @@ public partial class Intelligence
         if (selected is null) return;
         if (RevocationInput.SourceId == Guid.Empty) RevocationInput.SourceId = selected.Id;
         if (!submittedPolicy) PolicyInput = new() { SourceId = selected.Id, Version = selected.Version, Enabled = selected.Enabled,
+            IocDetectionEnabled = selected.IocDetectionEnabled,
             Interval = selected.UpdateIntervalSeconds, Stale = selected.StaleAfterSeconds, MiB = selected.MaximumBytes / 1048576m, Records = selected.MaximumRecords };
         if (!submittedActivation) ActivationInput = new() { SourceId = selected.Id, ExpectedActiveId = selected.ActiveRevisionId, ExpectedVersion = selected.ActivationVersion };
         if (!submittedCredential) CredentialInput = new() { SourceId = selected.Id, Version = selected.Version };
@@ -115,7 +116,13 @@ public partial class Intelligence
             !ValidMiB("PolicyInput.MiB", out var bytes) || !ValidInteger("PolicyInput.Records"))
         { message = "設定格式無效，請確認輸入後再試。"; return; }
         PolicyInput.Enabled = enabled;
-        var input = new IntelligencePolicyUpdate(PolicyInput.Enabled, PolicyInput.Interval, PolicyInput.Stale, bytes, PolicyInput.Records, PolicyInput.Version ?? "");
+        bool? iocEnabled = null;
+        if (selected?.Key == "signature-base")
+        {
+            if (!ReadBoolean("PolicyInput.IocDetectionEnabled", out var enabledIoc)) { message = "設定格式無效，請確認輸入後再試。"; return; }
+            iocEnabled = enabledIoc;
+        }
+        var input = new IntelligencePolicyUpdate(PolicyInput.Enabled, PolicyInput.Interval, PolicyInput.Stale, bytes, PolicyInput.Records, PolicyInput.Version ?? "", iocEnabled);
         if (!IntelligencePolicy.Valid(input)) { message = "設定超出允許範圍，請檢查數值。"; return; }
         try
         {
@@ -201,6 +208,7 @@ public partial class Intelligence
     {
         if (selected is null) return;
         PolicyInput = new() { SourceId = selected.Id, Version = selected.Version, Enabled = selected.Enabled,
+            IocDetectionEnabled = selected.IocDetectionEnabled,
             Interval = selected.UpdateIntervalSeconds, Stale = selected.StaleAfterSeconds, MiB = selected.MaximumBytes / 1048576m, Records = selected.MaximumRecords };
         ActivationInput = new() { SourceId = selected.Id, ExpectedActiveId = selected.ActiveRevisionId, ExpectedVersion = selected.ActivationVersion };
         CredentialInput = new() { SourceId = selected.Id, Version = selected.Version };
@@ -267,7 +275,7 @@ public partial class Intelligence
     private static string SourceState(IntelligenceSourceView source) => !source.Enabled ? "已停用" : source.ActiveUnavailable ? "目前版本不可使用" : source.ActiveVersionOutdated ? "選用的版本不是最新確認資料" : source.IsStale ? "資料已過期或尚未更新" : source.LastError is not null ? "更新失敗" : source.Key is "signature-base" or "sigmahq-rules" && source.ActiveRevisionId is null ? "已匯入供檢視" : source.ActiveRevisionId is null ? "尚未啟用版本" : "已選用來源版本";
     private static string ProgressState(string state) => state switch { "disabled" => "已停用", "not-started" => "尚未開始", "importing" => "匯入中", "reconciling" => "驗證中", "inconsistent" => "資料不一致", "failed" => "失敗", "rate-limited" => "等待來源額度", "awaiting-activation" => "等待啟用", "active" => "已啟用", "active-unavailable" or "candidate-unavailable" => "版本不可使用", "candidate-stale" => "候選版本已過期", _ => "已停止" };
 
-    private sealed class PolicyForm { public Guid SourceId { get; set; } public string? Version { get; set; } public bool Enabled { get; set; } public int Interval { get; set; } public int Stale { get; set; } public decimal MiB { get; set; } public int Records { get; set; } }
+    private sealed class PolicyForm { public Guid SourceId { get; set; } public string? Version { get; set; } public bool Enabled { get; set; } public bool IocDetectionEnabled { get; set; } public int Interval { get; set; } public int Stale { get; set; } public decimal MiB { get; set; } public int Records { get; set; } }
     private sealed class ActivationForm { public Guid SourceId { get; set; } public Guid? RevisionId { get; set; } public Guid? ExpectedActiveId { get; set; } public string? ExpectedVersion { get; set; } public bool ConfirmReduction { get; set; } public bool ConfirmOffline { get; set; } }
     private sealed class CredentialForm { public Guid SourceId { get; set; } public string? Version { get; set; } public bool Clear { get; set; } public string? Value { get; set; } }
     private sealed class RecoveryForm { public Guid SourceId { get; set; } public Guid ImportId { get; set; } public string? Version { get; set; } }

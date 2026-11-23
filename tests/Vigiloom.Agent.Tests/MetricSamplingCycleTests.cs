@@ -14,6 +14,57 @@ namespace Vigiloom.Agent.Tests;
 public sealed class MetricSamplingCycleTests(TestContext context)
 {
     [TestMethod]
+    public async Task KnownCollectionFailures_ArePreservedInCompatibleMetricBatch()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomMetricFailureTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = context.CancellationToken;
+            var vault = new IdentityVault(root);
+            var id = Guid.CreateVersion7();
+            var owner = new AgentSettingsOwner(id, "https://example.test/", vault.StateDirectory);
+            await using (var lease = vault.Acquire())
+                await lease.WriteAsync(new IdentityState { Server = owner.Server, AgentId = id, MachineSecret = "test" }, token);
+            var queue = new DurableBatchQueue(vault, id, 1024 * 1024, 10);
+            using var cycle = new MetricSamplingCycle(owner, queue, TimeProvider.System, new FailedCollector());
+            Assert.AreEqual(EnqueueResult.Queued, (await cycle.RunAsync(AgentMetricSettings.Default, token)).Status);
+            var batch = await queue.PeekAsync(token);
+            Assert.IsNotNull(batch);
+            Assert.IsTrue(AgentMetricBatchCodec.TryRead(batch.Payload, out var decoded));
+            Assert.IsNotNull(decoded);
+            Assert.IsTrue(decoded.Items.Any(x => x.Dimension == "memory" && x.Source == AgentMetricUnavailableSource.PermissionDenied));
+            Assert.IsTrue(decoded.Items.Any(x => x.Dimension == "network" && x.Source == AgentMetricUnavailableSource.Unsupported));
+            Assert.IsTrue(decoded.Items.Any(x => x.Dimension == "disk_io" && x.Source == AgentMetricUnavailableSource.Error));
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+                Assert.IsTrue(decoded.Items.Any(x => x.Dimension == "native" && x.Source == AgentMetricUnavailableSource.PermissionDenied));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class FailedCollector : IHostMetricCollector
+    {
+        public Task<HostMetricCollection> CollectAsync(TimeSpan maximumInterval, CancellationToken token, bool includeProcesses = true)
+        {
+            var sources = new List<string>(); var failures = new Dictionary<string, string>();
+            HostMetricCollector.MarkFailure(sources, failures, "memory", new UnauthorizedAccessException());
+            HostMetricCollector.MarkFailure(sources, failures, "network", new PlatformNotSupportedException());
+            HostMetricCollector.MarkFailure(sources, failures, "disk_io", new IOException());
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+                HostMetricCollector.MarkFailure(sources, failures, "native", new System.ComponentModel.Win32Exception(OperatingSystem.IsWindows() ? 5 : 1));
+            return Task.FromResult(new HostMetricCollection([], sources, failures));
+        }
+        public HostMetricCollection CollectProcesses(TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null) => new([], []);
+        public void Dispose() { }
+    }
+
+    [TestMethod]
     [Timeout(20000, CooperativeCancellation = true)]
     public async Task ShutdownFlush_WaitsForSenderToFreeQueueSpace()
     {

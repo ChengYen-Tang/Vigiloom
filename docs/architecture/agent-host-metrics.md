@@ -26,7 +26,7 @@ The aggregate endpoint requires one device, one of its Agent identities, and an 
 
 ## Windows CPU
 
-`windows.pdh.processor-information` reports processor-group and logical-processor instances as `group,index`; these are logical CPUs, not physical cores. It uses language-neutral PDH counter paths and requires two observations. An invalid, missing or stale counter produces no value. Changes in active processor counts reset the query and require warmup again. One query is owned by one collector and is closed when that collector is disposed. This has been tested on the current Windows host; other CPU topologies, processor-group configurations and x86 execution need separate validation.
+`windows.pdh.processor-information` reports processor-group and logical-processor instances as `group,index`; these are logical CPUs, not physical cores. It uses language-neutral PDH counter paths and requires two observations. An invalid, missing or stale counter produces no value. Changes in active processor counts reset the query and require warmup again. One query is owned by one collector and is closed when that collector is disposed. This has been tested on the current Windows host; other CPU topologies and processor-group configurations are not established by that check. Windows x86 acceptance follows the corresponding x64 result under the owner's policy; it is not a separate native test.
 
 ## Linux block I/O
 
@@ -76,7 +76,7 @@ The worker also observes process I/O around sampling cycles and delays later col
 
 The sender uses the configured batch interval, bounded payload size, retry backoff and server Retry-After. It imposes no network upload quota or bandwidth cap.
 
-When a sampling source is unavailable or incomplete, the cycle emits a `CollectionUnavailable` point with the source name as its dimension and value `1`. This point follows the same bounded queue and delivery rules as other points; it becomes durable only after its batch is queued. An absent marker alone does not establish that a source was sampled or healthy. Markers do not count samples lost before durable enqueue or establish why a source was unavailable.
+When a sampling source is unavailable or incomplete, the cycle emits a `CollectionUnavailable` point with the source name as its dimension and value `1`. Its source is `agent.collector.permission-denied`, `agent.collector.unsupported` or `agent.collector.error` when the exception establishes that reason; the original `agent.collector` source means the reason is unknown. These source strings use the existing metric schema and are accepted by older receivers. The device page shows recent markers as historical observations, not current status. A point becomes durable only after its batch is queued; absence of a marker does not establish that a source was sampled or healthy, and markers do not count samples lost before durable enqueue.
 
 ## Illustrative capacity measurement
 

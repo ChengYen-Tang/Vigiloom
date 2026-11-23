@@ -19,7 +19,8 @@ using WindowsDiskReader = Vigiloom.Agent.Platforms.Windows.Metrics.DiskReader;
 namespace Vigiloom.Agent.Hosting.Metrics;
 
 /// <summary>One collection result. Failed or unsupported sources never manufacture zero readings.</summary>
-internal sealed record HostMetricCollection(IReadOnlyList<AgentMetricPoint> Points, IReadOnlyList<string> UnavailableSources);
+internal sealed record HostMetricCollection(IReadOnlyList<AgentMetricPoint> Points, IReadOnlyList<string> UnavailableSources,
+    IReadOnlyDictionary<string, string>? FailureSources = null);
 
 internal interface IHostMetricCollector : IDisposable
 {
@@ -47,6 +48,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumInterval, TimeSpan.Zero);
         var points = new List<AgentMetricPoint>();
         var unavailable = new List<string>();
+        var failureSources = new Dictionary<string, string>(StringComparer.Ordinal);
         if (OperatingSystem.IsLinux())
         {
             token.ThrowIfCancellationRequested();
@@ -77,7 +79,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 previousCpu = null;
-                unavailable.Add("cpu");
+                MarkFailure(unavailable, failureSources, "cpu", ex);
             }
             try
             {
@@ -92,7 +94,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                 }
                 else unavailable.Add("memory");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { unavailable.Add("memory"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MarkFailure(unavailable, failureSources, "memory", ex); }
             token.ThrowIfCancellationRequested();
             try
             {
@@ -106,7 +108,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                 }
                 else unavailable.Add("load");
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { unavailable.Add("load"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MarkFailure(unavailable, failureSources, "load", ex); }
             token.ThrowIfCancellationRequested();
             try
             {
@@ -147,7 +149,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 previousDisks = null;
-                unavailable.Add("disk_io");
+                MarkFailure(unavailable, failureSources, "disk_io", ex);
             }
         }
         else if (OperatingSystem.IsWindows())
@@ -163,11 +165,11 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                 if (coreSample.Total is { } total)
                     Add(points, coreTime, AgentMetricKind.CpuTotalPercent, "windows.pdh.processor-information", null, total);
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException ex)
             {
                 if (OperatingSystem.IsWindows()) windowsCores?.Dispose();
                 windowsCores = null;
-                unavailable.Add("cpu_cores");
+                MarkFailure(unavailable, failureSources, "cpu_cores", ex);
             }
             try
             {
@@ -189,7 +191,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                 Add(points, now, AgentMetricKind.MemoryTotalBytes, "windows.memory", null, memory.TotalBytes);
                 Add(points, now, AgentMetricKind.MemoryAvailableBytes, "windows.memory", null, memory.AvailableBytes);
             }
-            catch (Win32Exception) { unavailable.Add("memory"); }
+            catch (Win32Exception ex) { MarkFailure(unavailable, failureSources, "memory", ex); }
             try
             {
                 var pageFile = WindowsPageFileReader.Read();
@@ -197,7 +199,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                 Add(points, now, AgentMetricKind.PageFileTotalBytes, "windows.pagefile", null, pageFile.TotalBytes);
                 Add(points, now, AgentMetricKind.PageFileUsedBytes, "windows.pagefile", null, pageFile.UsedBytes);
             }
-            catch (Exception ex) when (ex is Win32Exception or InvalidDataException) { unavailable.Add("pagefile"); }
+            catch (Exception ex) when (ex is Win32Exception or InvalidDataException) { MarkFailure(unavailable, failureSources, "pagefile", ex); }
             try
             {
                 windowsDisks ??= new WindowsDiskReader(clock);
@@ -212,14 +214,14 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
                     if (disk.WriteLatencyMilliseconds is { } writeLatency) Add(points, now, AgentMetricKind.DiskWriteLatencyMilliseconds, "windows.pdh.physicaldisk", disk.Instance, writeLatency);
                 }
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException ex)
             {
                 windowsDisks?.Dispose();
                 windowsDisks = null;
-                unavailable.Add("disk_io");
+                MarkFailure(unavailable, failureSources, "disk_io", ex);
             }
         }
-        else { unavailable.Add("cpu"); unavailable.Add("memory"); }
+        else { unavailable.Add("cpu"); unavailable.Add("memory"); failureSources["cpu"] = failureSources["memory"] = AgentMetricUnavailableSource.Unsupported; }
 
         if (!points.Any(x => x.Kind == AgentMetricKind.CpuTotalPercent) && !unavailable.Contains("cpu")) unavailable.Add("cpu");
 
@@ -245,7 +247,7 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
         catch (Exception ex) when (ex is NetworkInformationException or PlatformNotSupportedException or IOException or UnauthorizedAccessException)
         {
             network.Reset();
-            unavailable.Add("network");
+            MarkFailure(unavailable, failureSources, "network", ex);
         }
         if (!points.Any(x => x.Kind is AgentMetricKind.NetworkReceivedBytesPerSecond or AgentMetricKind.NetworkSentBytesPerSecond) &&
             !unavailable.Contains("network")) unavailable.Add("network");
@@ -263,14 +265,14 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
         {
-            unavailable.Add("volume");
+            MarkFailure(unavailable, failureSources, "volume", ex);
         }
 
-        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsWindows()) unavailable.Add("disk_io");
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsWindows()) { unavailable.Add("disk_io"); failureSources["disk_io"] = AgentMetricUnavailableSource.Unsupported; }
         if (includeProcesses)
-            CollectProcesses(points, unavailable, maximumInterval, token);
+            CollectProcesses(points, unavailable, failureSources, maximumInterval, token);
         token.ThrowIfCancellationRequested();
-        return new(points, unavailable);
+        return new(points, unavailable, failureSources);
     }
 
     public HostMetricCollection CollectProcesses(TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null)
@@ -279,11 +281,12 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumInterval, TimeSpan.Zero);
         var points = new List<AgentMetricPoint>();
         var unavailable = new List<string>();
-        CollectProcesses(points, unavailable, maximumInterval, token, collectionBudget);
-        return new(points, unavailable);
+        var failureSources = new Dictionary<string, string>(StringComparer.Ordinal);
+        CollectProcesses(points, unavailable, failureSources, maximumInterval, token, collectionBudget);
+        return new(points, unavailable, failureSources);
     }
 
-    private void CollectProcesses(List<AgentMetricPoint> points, List<string> unavailable, TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null)
+    private void CollectProcesses(List<AgentMetricPoint> points, List<string> unavailable, Dictionary<string, string> failureSources, TimeSpan maximumInterval, CancellationToken token, TimeSpan? collectionBudget = null)
     {
         try
         {
@@ -302,8 +305,21 @@ internal sealed class HostMetricCollector(TimeProvider clock) : IHostMetricColle
         catch (Exception ex) when (ex is Win32Exception or PlatformNotSupportedException or IOException or UnauthorizedAccessException)
         {
             processes.Reset();
-            unavailable.Add("process");
+            MarkFailure(unavailable, failureSources, "process", ex);
         }
+    }
+
+    internal static void MarkFailure(List<string> unavailable, Dictionary<string, string> failures, string source, Exception error)
+    {
+        unavailable.Add(source);
+        failures[source] = error switch
+        {
+            UnauthorizedAccessException => AgentMetricUnavailableSource.PermissionDenied,
+            Win32Exception { NativeErrorCode: 5 } when OperatingSystem.IsWindows() => AgentMetricUnavailableSource.PermissionDenied,
+            Win32Exception { NativeErrorCode: 1 or 13 } when OperatingSystem.IsLinux() => AgentMetricUnavailableSource.PermissionDenied,
+            PlatformNotSupportedException => AgentMetricUnavailableSource.Unsupported,
+            _ => AgentMetricUnavailableSource.Error
+        };
     }
 
     private static void AddOptional(List<AgentMetricPoint> points, DateTimeOffset at, AgentMetricKind kind, string dimension, double? value)

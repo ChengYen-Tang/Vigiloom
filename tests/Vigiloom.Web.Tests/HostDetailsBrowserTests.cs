@@ -83,6 +83,8 @@ public sealed class HostDetailsBrowserTests
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "test.cpu", null, 42), now));
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
+                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CollectionUnavailable, AgentMetricUnavailableSource.PermissionDenied, "memory", 1), now));
+            db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddMinutes(-20), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 20), now));
             db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
                 new AgentMetricPoint(Guid.CreateVersion7(), now.AddDays(-2), AgentMetricKind.CpuTotalPercent, "test.cpu", null, 67), now));
@@ -96,7 +98,7 @@ public sealed class HostDetailsBrowserTests
             await db.SaveChangesAsync(token);
         }
         var agentContexts = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-        Assert.AreEqual(5, await new HostMetricRollupBackfill(agentContexts).RunBatchAsync(token));
+        Assert.AreEqual(6, await new HostMetricRollupBackfill(agentContexts).RunBatchAsync(token));
         await using (var db = await agentContexts.CreateDbContextAsync(token))
             await db.HostMetrics.Where(x => x.AgentId == agent.Id && x.OccurredAt < now.AddDays(-100)).ExecuteDeleteAsync(token);
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -142,6 +144,7 @@ public sealed class HostDetailsBrowserTests
             await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "device-details.png") });
         }
         await page.GetByRole(AriaRole.Button, new() { Name = "效能", Exact = true }).ClickAsync();
+        await page.GetByText("memory：權限不足", new() { Exact = false }).WaitForAsync();
         await page.GetByText("已達閾值", new() { Exact = true }).WaitForAsync();
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -199,6 +202,19 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("這段時間沒有此指標。", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await using (var adminContext = await browser.NewContextAsync())
+        {
+            var admin = await adminContext.NewPageAsync();
+            await admin.GotoAsync($"{url}/account/login");
+            await admin.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
+            await admin.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+            await admin.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+            var auditUrl = $"/api/v1/operations/audit/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            var json = await admin.EvaluateAsync<string>("async url => { const response = await fetch(url); if (!response.ok) throw new Error(`Audit request failed: ${response.status}`); return await response.text(); }", auditUrl);
+            var audits = System.Text.Json.JsonSerializer.Deserialize<Vigiloom.Contracts.Operations.OperationAuditPage>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            Assert.IsNotNull(audits);
+            Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log-list" } e && e.DeviceId == device.Id));
+        }
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
             await db.HostLogs.Where(x => x.AgentId == agent.Id && x.Ordinal == 0).ExecuteDeleteAsync(token);
         await page.GetByRole(AriaRole.Button, new() { Name = "較早紀錄", Exact = true }).ClickAsync();
@@ -234,6 +250,9 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("event-25", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "檔案完整性", Exact = true }).ClickAsync();
         await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/devices/{device.Id:D}?tab=vulnerabilities&search=CVE-2025-1234");
+        await page.Locator(".host-tabs button.active").GetByText("漏洞", new() { Exact = true }).WaitForAsync();
+        await page.GetByText("尚無評估結果", new() { Exact = false }).First.WaitForAsync();
         var thresholdUrl = $"{url}/devices/{device.Id:D}/metric-threshold?agentId={agent.Id:D}&kind=1&source=test.cpu";
         await page.GotoAsync(thresholdUrl);
         Assert.AreNotEqual(thresholdUrl, page.Url);

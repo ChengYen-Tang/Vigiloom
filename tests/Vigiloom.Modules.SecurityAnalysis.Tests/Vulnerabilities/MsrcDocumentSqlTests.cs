@@ -662,6 +662,14 @@ public sealed class MsrcDocumentSqlTests(TestContext context)
             Assert.IsTrue(await MsrcRevisionEligibility.IsPublishableAsync(db, source.Id, first.RevisionId!.Value, token));
             Assert.AreEqual(1, await db.MsrcDocuments.CountAsync(token));
             Assert.AreEqual(1, await db.IntelligenceRevisions.CountAsync(token));
+            await db.IntelligenceRevisions.Where(x => x.Id == first.RevisionId).ExecuteUpdateAsync(x => x.SetProperty(r => r.Normalized, false).SetProperty(r => r.ContentPurgedAt, DateTimeOffset.UtcNow).SetProperty(r => r.Artifact, Array.Empty<byte>()), token);
+            db.IntelligenceActivationEvents.Add(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = first.RevisionId!.Value, OccurredAt = DateTimeOffset.UtcNow, Scheduled = true });
+            await db.SaveChangesAsync(token); db.ChangeTracker.Clear();
+            Assert.AreEqual(MsrcStageStatus.Conflict, (await stage.StageAsync(source.Id, source.Version, new MsrcDocumentClient(http), MsrcRefresh.LicenseEvidence, token)).Status);
+            await db.MsrcDocuments.Where(x => x.RevisionId == first.RevisionId).ExecuteDeleteAsync(token);
+            var restored = await stage.StageAsync(source.Id, source.Version, new MsrcDocumentClient(http), MsrcRefresh.LicenseEvidence, token);
+            Assert.AreEqual(MsrcStageStatus.Staged, restored.Status); Assert.AreEqual(first.RevisionId, restored.RevisionId);
+            Assert.IsTrue(await MsrcRevisionEligibility.IsPublishableAsync(db, source.Id, first.RevisionId.Value, token));
             await db.MsrcProductIndexes.ExecuteDeleteAsync(token);
             await Assert.ThrowsExactlyAsync<InvalidDataException>(() => stage.StageAsync(source.Id, source.Version, new MsrcDocumentClient(http), MsrcRefresh.LicenseEvidence, token));
             await db.MsrcArtifacts.ExecuteUpdateAsync(x => x.SetProperty(a => a.IndexedProductCount, -1), token);

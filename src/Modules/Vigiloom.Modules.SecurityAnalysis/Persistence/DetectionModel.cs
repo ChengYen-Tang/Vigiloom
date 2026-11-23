@@ -8,6 +8,18 @@ internal static class DetectionModel
 {
     internal static void Configure(ModelBuilder model)
     {
+        var ioc = model.Entity<IocDetection>();
+        ioc.ToTable("IocDetections");
+        ioc.HasKey(x => x.RowId).IsClustered();
+        ioc.Property(x => x.RowId).UseIdentityColumn();
+        ioc.Property(x => x.Kind).HasMaxLength(16).IsUnicode(false).IsRequired();
+        ioc.Property(x => x.Value).HasMaxLength(253).IsUnicode(false).IsRequired();
+        ioc.Property(x => x.Field).HasMaxLength(64).IsUnicode(false).IsRequired();
+        ioc.HasIndex(x => new { x.DeviceId, x.ReceivedAt, x.RowId });
+        ioc.HasIndex(x => new { x.AgentId, x.MessageId, x.RevisionId, x.Kind, x.SourceLine, x.Field }).IsUnique();
+        ioc.HasOne<IntelligenceRevision>().WithMany().HasForeignKey(x => new { x.SourceId, x.RevisionId })
+            .HasPrincipalKey(x => new { x.SourceId, x.Id }).OnDelete(DeleteBehavior.NoAction);
+
         var test = model.Entity<SigmaRuleTest>();
         test.ToTable("SigmaRuleTests");
         test.HasKey(x => x.Id).IsClustered(false);

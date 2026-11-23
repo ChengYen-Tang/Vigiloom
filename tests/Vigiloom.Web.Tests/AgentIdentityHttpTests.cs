@@ -563,7 +563,7 @@ public sealed class AgentIdentityHttpTests
             }
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
-            var item = new AgentLogRecord(Guid.CreateVersion7(), now, "event", null, null, null, null, null);
+            var item = new AgentLogRecord(Guid.CreateVersion7(), now, "event" + new string(' ', 600), null, null, null, null, null);
             var batch = new AgentLogBatch(3, Guid.CreateVersion7(), now, Guid.CreateVersion7(), AgentLogSourceKind.Journal, "system", 1, [item]);
             var bytes = AgentLogBatchCodec.Serialize(batch);
             using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(bytes), token))
@@ -594,11 +594,190 @@ public sealed class AgentIdentityHttpTests
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(reader, "reader", token);
             using var response = await reader.GetAsync(historyUrl, token);
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync(token));
             Assert.IsTrue(response.Headers.CacheControl?.NoStore);
             var history = await response.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
             Assert.IsNotNull(history); Assert.HasCount(1, history.Items);
-            Assert.AreEqual("event", history.Items[0].Content);
+            Assert.AreEqual(item.Content, history.Items[0].Content);
+            var oldScanId = Guid.CreateVersion7();
+            await using (var scanDb = await agents.CreateDbContextAsync(token))
+            {
+                scanDb.YaraScans.Add(new YaraScan { Id = oldScanId, AgentId = history.Items[0].AgentId, DeviceId = device.Id, RequestedBy = Guid.CreateVersion7(), FilePath = "/tmp/historical", Rules = "rule old { condition: true }", MaximumBytes = 1024, TimeoutSeconds = 10, RequestedAt = now.AddDays(-1), CompletedAt = now, Outcome = 1, EngineVersion = "4.6.0" });
+                await scanDb.SaveChangesAsync(token);
+            }
+            var evidenceUrl = $"/devices/{device.Id:D}/host-logs/{history.Items[0].AgentId:D}/{item.MessageId:D}";
+            using (var evidence = await reader.GetAsync(evidenceUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, evidence.StatusCode);
+                Assert.Contains("event", await evidence.Content.ReadAsStringAsync(token));
+            }
+            using (var wrongDevice = await reader.GetAsync($"/devices/{Guid.CreateVersion7():D}/host-logs/{history.Items[0].AgentId:D}/{item.MessageId:D}", token))
+                Assert.Contains("找不到此事件", WebUtility.HtmlDecode(await wrongDevice.Content.ReadAsStringAsync(token)));
+            await using (var serviceDb = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            {
+                var serviceSource = new Vigiloom.Modules.ServiceObservability.Domain.ServiceSource("events", new byte[32], now);
+                var candidate = new Vigiloom.Modules.ServiceObservability.Domain.ServiceCandidate(serviceSource.Id, "events", "test", "Events", now);
+                var service = new Vigiloom.Modules.ServiceObservability.Domain.MonitoredService(candidate, now);
+                serviceDb.Sources.Add(serviceSource); serviceDb.Services.Add(service);
+                var shared = new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogContext { ServiceId = service.Id, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                var log = new OpenTelemetry.Proto.Logs.V1.LogRecord { Body = new OpenTelemetry.Proto.Common.V1.AnyValue { StringValue = "unique service event" } };
+                serviceDb.LogRecords.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.LogRecord { ServiceId = service.Id, Context = shared, OccurredAt = now, ReceivedAt = now, RecordPayload = Google.Protobuf.MessageExtensions.ToByteArray(log) });
+                var traceContext = new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext { ServiceId = service.Id, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                serviceDb.TraceSpans.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [] });
+                var target = new Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget(service.Id, null, "https://example.test/health", 30, 5, 1, 1, now);
+                serviceDb.HealthTargets.Add(target);
+                await serviceDb.SaveChangesAsync(token);
+                var rowVersion = new byte[8];
+                await serviceDb.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO service.HealthObservations (TargetId, LeaseGeneration, NetworkGeneration, SourceVersion, ServiceVersion, TargetVersion, NetworkVersion, Kind, ObservedAt, ReceivedAt) VALUES ({target.Id}, {1}, {1}, {rowVersion}, {rowVersion}, {rowVersion}, {rowVersion}, {3}, {now}, {now})", token);
+            }
+            var sigmaTestId = Guid.CreateVersion7();
+            await using (var securityDb = await security.CreateDbContextAsync(token))
+            {
+                var source = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource { Key = "event-test" };
+                var revision = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "1", RetrievedAt = now, Digest = new byte[32], Artifact = [1], SchemaVersion = "1", MappingVersion = "1", LicenseEvidence = "test", RecordCount = 1 };
+                var finding = new Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityFinding { DeviceId = device.Id, SourceId = source.Id, PackageKey = "test", AdvisoryId = "CVE-2025-1234", IdentityHash = new byte[32], FirstEvaluatedAt = now, LastEvaluatedAt = now, LastRevisionId = revision.Id };
+                var evaluation = new Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities.VulnerabilityEvaluation { RunId = Guid.CreateVersion7(), FindingId = finding.Id, SourceId = source.Id, RevisionId = revision.Id, AgentId = Guid.CreateVersion7(), HostSnapshotId = Guid.CreateVersion7(), PackageSnapshotId = Guid.CreateVersion7(), EvaluatedAt = now, MatcherVersion = "1", SourcePackage = "test", SourceVersion = "1", BinaryVersion = "1", Ecosystem = "Ubuntu:24.04:LTS", Architecture = "amd64" };
+                securityDb.IntelligenceSources.Add(source); securityDb.IntelligenceRevisions.Add(revision);
+                securityDb.VulnerabilityFindings.Add(finding); securityDb.VulnerabilityEvaluations.Add(evaluation);
+                var ruleContent = System.Text.Encoding.UTF8.GetBytes("detection: test-condition");
+                var digest = SHA256.HashData(ruleContent);
+                var baseContent = System.Text.Encoding.UTF8.GetBytes("selection: base-condition");
+                var baseDigest = SHA256.HashData(baseContent);
+                securityDb.SigmaRules.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule { RevisionId = revision.Id, Path = "rules/test.yml", Title = "test", Digest = digest, Content = ruleContent });
+                securityDb.SigmaRules.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.SigmaRule { RevisionId = revision.Id, Path = "rules/base.yml", Title = "base", Digest = baseDigest, Content = baseContent });
+                securityDb.SigmaRuleTests.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleTest { Id = sigmaTestId, SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml", Digest = Convert.ToHexStringLower(digest), ActivationVersion = "1", MatcherVersion = "1", SamplesJson = $$"""{"BasePath":"rules/base.yml","BaseSha256":"{{Convert.ToHexStringLower(baseDigest)}}","Exceptions":[{"Field":"User","Value":"ignored-user"}]}""", Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = now });
+                await securityDb.SaveChangesAsync(token);
+                var activationId = Guid.CreateVersion7();
+                securityDb.SigmaRuleActivations.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaRuleActivation { Id = activationId, SourceId = source.Id, Path = "rules/test.yml", TestId = sigmaTestId, Enabled = true, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now });
+                await securityDb.SaveChangesAsync(token);
+                securityDb.SigmaDetectionResults.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Detection.SigmaDetectionResult { AgentId = history.Items[0].AgentId, DeviceId = device.Id, DeviceGeneration = 1, MessageId = item.MessageId, ActivationId = activationId, TestId = sigmaTestId, ActivationVersion = new byte[8], Result = 1, ReceivedAt = now, EvaluatedAt = now });
+                securityDb.IocDetections.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Detection.IocDetection { AgentId = history.Items[0].AgentId, DeviceId = device.Id, MessageId = item.MessageId, SourceId = source.Id, RevisionId = revision.Id, Kind = "ip", Value = "192.0.2.1", Field = "DestinationIp", SourceLine = 1, ReceivedAt = now, EvaluatedAt = now });
+                securityDb.BaselineObservations.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Baseline.BaselineObservation { AgentId = history.Items[0].AgentId, DeviceId = device.Id, DeviceGeneration = 1, BatchId = Guid.CreateVersion7(), SourceId = source.Id, RevisionId = revision.Id, ActivationVersion = "1", CheckId = "test-check", ObservedAt = now, ReceivedAt = now, OperatingSystem = "Linux", Outcome = Vigiloom.Contracts.Agent.Baseline.BaselineOutcome.Fail });
+                securityDb.IntegrityChanges.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Integrity.IntegrityChangeRecord { AgentId = history.Items[0].AgentId, DeviceId = device.Id, ScopeId = Guid.CreateVersion7(), ScopeRevision = 1, Generation = 1, ObservedAt = now, RecordedAt = now, Kind = 1, Key = "test-file", AfterJson = "{}" });
+                await securityDb.SaveChangesAsync(token);
+                await securityDb.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.InventoryChanges (AgentId, DeviceId, Source, Generation, ObservedAt, RecordedAt, Kind, [Key], AfterJson) VALUES ({history.Items[0].AgentId}, {device.Id}, {1}, {1}, {now}, {now}, {1}, {"test-package"}, {"{}"})", token);
+            }
+            var eventUrl = $"/api/v1/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using (var denied = await client.GetAsync(eventUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var timelineResponse = await reader.GetAsync(eventUrl, token);
+            Assert.AreEqual(HttpStatusCode.OK, timelineResponse.StatusCode);
+            Assert.IsTrue(timelineResponse.Headers.CacheControl?.NoStore);
+            var timeline = await timelineResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
+            Assert.IsNotNull(timeline);
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "host-log" && x.ResourceId == device.Id &&
+                x.Evidence.Contains("原文：event", StringComparison.Ordinal) && x.Evidence.Contains("解析版本 1", StringComparison.Ordinal) && x.Evidence.EndsWith('…')));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-log" && x.Summary.Contains("unique service event", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-trace" && x.Evidence.Contains("0202020202020202", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "service-health" && x.Summary.Contains("Unhealthy", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "vulnerability" && x.Link == $"/devices/{device.Id:D}?tab=vulnerabilities&search=CVE-2025-1234"));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "sigma" && x.RuleLink == $"/events/rules/{sigmaTestId:D}"));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "yara" && x.Link == $"/devices/{device.Id:D}/yara-scans?scan={oldScanId:D}"));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "ioc" && x.Evidence.Contains("版本", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "baseline" && x.Summary.Contains("test-check", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "integrity" && x.Summary.Contains("test-file", StringComparison.Ordinal)));
+            Assert.IsTrue(timeline.Items.Any(x => x.Source == "inventory" && x.Summary.Contains("test-package", StringComparison.Ordinal)));
+            using (var oldScan = await reader.GetAsync($"/devices/{device.Id:D}/yara-scans?scan={oldScanId:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, oldScan.StatusCode);
+                var text = await oldScan.Content.ReadAsStringAsync(token);
+                Assert.Contains("/tmp/historical", text);
+                Assert.Contains("4.6.0", text);
+            }
+            using (var ruleEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, ruleEvidence.StatusCode);
+                var text = await ruleEvidence.Content.ReadAsStringAsync(token);
+                Assert.Contains("test-condition", text);
+                Assert.Contains("base-condition", text);
+                Assert.Contains("ignored-user", text);
+            }
+            Guid apiId;
+            using (var apiClient = PingTestSite.Client(factory))
+            {
+                var secret = RandomNumberGenerator.GetBytes(32);
+                await using (var identityScope = factory.Services.CreateAsyncScope())
+                {
+                    var users = identityScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                    var administrator = await users.FindByNameAsync("admin");
+                    Assert.IsNotNull(administrator);
+                    var apiKey = new ApiCredential("event reader", SHA256.HashData(secret), false, DateTimeOffset.UtcNow.AddDays(1), administrator.Id);
+                    var identityDb = identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>();
+                    identityDb.ApiCredentials.Add(apiKey); await identityDb.SaveChangesAsync(token);
+                    apiId = apiKey.Id;
+                }
+                apiClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{apiId:D}.{WebEncoders.Base64UrlEncode(secret)}");
+                using var apiEvents = await apiClient.GetAsync(eventUrl, token);
+                Assert.AreEqual(HttpStatusCode.OK, apiEvents.StatusCode);
+                using var apiScans = await apiClient.GetAsync($"/api/v1/devices/{device.Id:D}/yara-scans", token);
+                Assert.AreEqual(HttpStatusCode.OK, apiScans.StatusCode);
+            }
+            using (var export = await reader.GetAsync(eventUrl.Replace("/api/v1/events?", "/api/v1/events/export?", StringComparison.Ordinal), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, export.StatusCode);
+                Assert.IsTrue(export.Headers.CacheControl?.NoStore);
+                Assert.Contains("unique service event", await export.Content.ReadAsStringAsync(token));
+            }
+            using var filteredResponse = await reader.GetAsync(eventUrl + $"&groupId={Guid.CreateVersion7():D}&source=host-log", token);
+            Assert.AreEqual(HttpStatusCode.OK, filteredResponse.StatusCode);
+            var filtered = await filteredResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
+            Assert.IsNotNull(filtered);
+            Assert.IsEmpty(filtered.Items);
+            using var eventPage = await reader.GetAsync("/events", token);
+            Assert.AreEqual(HttpStatusCode.OK, eventPage.StatusCode);
+            var eventPageHtml = await eventPage.Content.ReadAsStringAsync(token);
+            Assert.Contains(item.MessageId.ToString("D"), eventPageHtml);
+            Assert.Contains("/api/v1/events/export", eventPageHtml);
+            await using var serviceScope = factory.Services.CreateAsyncScope();
+            var scans = serviceScope.ServiceProvider.GetRequiredService<YaraScans>();
+            var scan = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule example { condition: true }", 1024, 60), Guid.CreateVersion7(), token);
+            Assert.IsNotNull(scan);
+            var scanPage = $"/devices/{device.Id:D}/yara-scans";
+            using var readerPage = await reader.GetAsync(scanPage, token);
+            Assert.DoesNotContain($"yara-scan-cancel-{scan.Id:D}", await readerPage.Content.ReadAsStringAsync(token));
+            using var admin = PingTestSite.Client(factory);
+            await PingTestSite.LoginAsync(admin, "admin", token);
+            var auditUrl = $"/api/v1/operations/audit/events?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
+            using (var readerAudit = await reader.GetAsync(auditUrl, token)) Assert.AreNotEqual(HttpStatusCode.OK, readerAudit.StatusCode);
+            using (var auditResponse = await admin.GetAsync(auditUrl, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, auditResponse.StatusCode);
+                var audits = await auditResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Operations.OperationAuditPage>(cancellationToken: token);
+                Assert.IsNotNull(audits);
+                Assert.IsTrue(audits.Items.Any(x => x.EventTimeline is { Exported: true }));
+                Assert.IsTrue(audits.Items.Any(x => x.EventTimeline is { Exported: false }));
+                Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventTimeline is { Exported: false }));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log" } e && e.EvidenceId == item.MessageId && e.DeviceId == device.Id));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log-list" } e && e.DeviceId == device.Id));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "sigma-rule" } e && e.EvidenceId == sigmaTestId));
+                Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "yara-scan" } e && e.EvidenceId == oldScanId));
+                Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventEvidence is { Kind: "yara-list" } e && e.DeviceId == device.Id));
+                var auditJson = System.Text.Json.JsonSerializer.Serialize(audits);
+                Assert.DoesNotContain("ignored-user", auditJson);
+                Assert.DoesNotContain("test-condition", auditJson);
+            }
+            using (var auditPage = await admin.GetAsync($"/settings/audit?source=events&from={now:yyyy-MM-dd}&to={now:yyyy-MM-dd}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
+                var auditDocument = await new HtmlParser().ParseDocumentAsync(await auditPage.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("查詢事件", auditDocument.Body!.TextContent);
+                Assert.Contains("匯出事件", auditDocument.Body.TextContent);
+                Assert.Contains("查看事件證據", auditDocument.Body.TextContent);
+            }
+            using (var forbiddenScript = await reader.GetAsync("/settings/agent-tools/grant-sysmon-read", token))
+                Assert.AreNotEqual(HttpStatusCode.OK, forbiddenScript.StatusCode);
+            using (var script = await admin.GetAsync("/settings/agent-tools/grant-sysmon-read", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, script.StatusCode);
+                Assert.IsTrue(script.Headers.CacheControl?.NoStore);
+                Assert.Contains("Microsoft-Windows-Sysmon/Operational", await script.Content.ReadAsStringAsync(token));
+            }
+            using var adminPage = await admin.GetAsync(scanPage, token);
+            var document = await new HtmlParser().ParseDocumentAsync(await adminPage.Content.ReadAsStringAsync(token), token);
+            var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == $"yara-scan-cancel-{scan.Id:D}");
+            var fields = form.QuerySelectorAll("input[name]").ToDictionary(x => x.GetAttribute("name")!, x => x.GetAttribute("value") ?? "");
+            using var cancelled = await admin.PostAsync(scanPage, new FormUrlEncodedContent(fields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, cancelled.StatusCode);
+            Assert.AreEqual(Vigiloom.Contracts.Agent.Security.YaraScanOutcome.Cancelled, (await scans.ListAsync(device.Id, token)).Single(x => x.Id == scan.Id).Result?.Outcome);
         }, TestContext.CancellationToken);
 
     [TestMethod]

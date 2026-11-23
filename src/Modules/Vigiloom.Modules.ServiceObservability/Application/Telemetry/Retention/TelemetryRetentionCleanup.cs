@@ -6,7 +6,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 /// <summary>Removes expired application logs and spans and their unreferenced shared contexts.</summary>
-public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabilityDbContext> contexts, IHostLogRetention? hostLogs = null)
+public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabilityDbContext> contexts, IHostLogRetention? hostLogs = null, ISecurityDetectionRetention? securityDetections = null)
 {
     private const int BatchSize = 500;
 
@@ -23,8 +23,18 @@ public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabi
             await using var tx = await db.Database.BeginTransactionAsync(token);
             var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
             var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
-            var removed = await hostLogs.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, policy.LogDays, BatchSize, token);
+            var removed = securityDetections is null ? 0 : await securityDetections.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, policy.LogDays, BatchSize, token);
             await tx.CommitAsync(token);
+            // Host-log cleanup reads Outbox; use a separate transaction from the security source lock.
+            if (removed < BatchSize)
+            {
+                await using var hostDb = await contexts.CreateDbContextAsync(token);
+                await using var hostTx = await hostDb.Database.BeginTransactionAsync(token);
+                var hostPolicy = await hostDb.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+                var hostNow = await hostDb.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+                removed += await hostLogs.DeleteBatchAsync(hostDb.Database.GetDbConnection(), hostTx.GetDbTransaction(), hostNow, hostPolicy.LogDays, BatchSize - removed, token);
+                await hostTx.CommitAsync(token);
+            }
             total += removed;
             if (removed < BatchSize) return total;
         }

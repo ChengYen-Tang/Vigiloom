@@ -300,6 +300,54 @@ public sealed class AgentHeartbeatClientTests
     }
 
     [TestMethod]
+    public async Task Heartbeat_OlderServerKeepsLogAndRuntimeWhenPermissionReasonIsUnsupported()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId, MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var source = new AgentLogSourceObservation(Guid.CreateVersion7(), Guid.CreateVersion7(), AgentLogSourceState.Unavailable,
+                DateTimeOffset.UtcNow, 0, PermissionDenied: true);
+            var log = new AgentLogStatusObservation(owner, new(AgentLogSettingsSnapshot.Create([]).Revision, false, [source]));
+            var handler = new OldPermissionReasonHandler();
+            using var http = new HttpClient(handler);
+            var runtime = new AgentRuntimeReport("1.2.3", "win-x64");
+            var result = await new AgentHeartbeatClient(http).SendAsync(vault, new Uri(owner.Server), null, null, null, log, null, null, null, token, runtime);
+            Assert.AreEqual(HeartbeatResult.Accepted, result);
+            Assert.HasCount(2, handler.Reports);
+            Assert.IsTrue(handler.Reports[0].LogStatus!.Sources[0].PermissionDenied);
+            Assert.IsFalse(handler.Reports[1].LogStatus!.Sources[0].PermissionDenied);
+            Assert.AreEqual(runtime, handler.Reports[1].Runtime);
+            Assert.AreEqual(handler.Reports[0].Sequence, handler.Reports[1].Sequence);
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class OldPermissionReasonHandler : HttpMessageHandler
+    {
+        public List<AgentHeartbeatReport> Reports { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/agent/queue-session")
+                return request.Method == HttpMethod.Get ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new AgentQueueSession(null)) } : new HttpResponseMessage(HttpStatusCode.NoContent);
+            var report = (await request.Content!.ReadFromJsonAsync<AgentHeartbeatReport>(cancellationToken: token))!;
+            Reports.Add(report);
+            return new HttpResponseMessage(report.LogStatus!.Sources.Any(x => x.PermissionDenied) ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
+        }
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     [Timeout(15000, CooperativeCancellation = true)]

@@ -1,0 +1,13 @@
+.events-page { max-width: 1200px; margin: 36px auto; padding: 0 24px 48px; color: #142344; }
+header { margin-bottom: 24px; } h1 { margin: 0 0 8px; font-size: 1.8rem; } h2 { margin: 0 0 12px; font-size: 1.2rem; }
+header p, .panel p { color: #586b87; } .panel { background: white; border: 1px solid #e3eaf3; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; } label { display: grid; gap: 5px; }
+input, select { min-height: 44px; max-width: 100%; border: 1px solid #9aabc3; border-radius: 6px; padding: 8px; }
+button { min-height: 44px; color: white; background: #075ff0; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; } a { color: #075ff0; }
+.error { color: #a32d20 !important; font-weight: 600; } .scroll-hint { font-weight: 600; } .table-wrap { overflow-x: auto; }
+table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; } th, td { padding: 12px; border-bottom: 1px solid #e3eaf3; vertical-align: top; overflow-wrap: anywhere; }
+th { background: #eaf2ff; color: #304e73; } td:first-child { white-space: nowrap; } .badge { padding: 3px 8px; border-radius: 5px; background: #e7f0ff; color: #154c9e; white-space: nowrap; }
+.pages { display: flex; justify-content: flex-end; align-items: center; gap: 16px; margin-top: 20px; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, .table-wrap:focus-visible { outline: 3px solid #075ff0; outline-offset: 3px; }
+@media (max-width: 700px) { .events-page { padding: 0 16px 36px; margin-top: 24px; } }
+@media (min-width: 1100px) { .scroll-hint { display: none; } }

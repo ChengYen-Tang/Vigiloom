@@ -244,7 +244,9 @@ public sealed class DurableBatchQueueTests
     }
 
     [TestMethod]
-    public async Task LogCycle_UnavailableSourceDoesNotBlockOtherSourcesOrAdvanceItsCursor()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task LogCycle_UnavailableSourceDoesNotBlockOtherSourcesOrAdvanceItsCursor(bool permissionDenied)
     {
         var root = NewRoot();
         try
@@ -262,9 +264,9 @@ public sealed class DurableBatchQueueTests
             var saved = await new AgentLogSettingsStore(vault, new Uri(owner.Server), id).SaveAsync(snapshot, null, DateTimeOffset.UtcNow, token);
             var unavailable = snapshot.Sources[0].SourceId;
             var cycle = new LogCollectionCycle(owner, queue, TimeProvider.System,
-                setting => setting.SourceId == unavailable ? new UnavailableLogReader() : new RepeatingLogReader());
+                setting => setting.SourceId == unavailable ? new UnavailableLogReader(permissionDenied) : new RepeatingLogReader());
             var results = await cycle.RunAsync(snapshot, saved.SaveToken, () => true, token);
-            Assert.AreEqual(LogSourceCycleStatus.Unavailable, results[0].Status);
+            Assert.AreEqual(permissionDenied ? LogSourceCycleStatus.PermissionDenied : LogSourceCycleStatus.Unavailable, results[0].Status);
             Assert.AreEqual(100, results[1].QueuedCount);
             Assert.IsNull((await queue.ReadLogCursorAsync(owner, unavailable, token))!.Position);
             var queued = await queue.PeekAsync(token);
@@ -275,9 +277,10 @@ public sealed class DurableBatchQueueTests
         finally { Cleanup(root); }
     }
 
-    private sealed class UnavailableLogReader : ILogSourceReader
+    private sealed class UnavailableLogReader(bool permissionDenied) : ILogSourceReader
     {
-        public ValueTask<LogReadResult> ReadAsync(string? cursor, CancellationToken token) => throw new IOException("Unavailable");
+        public ValueTask<LogReadResult> ReadAsync(string? cursor, CancellationToken token) =>
+            throw (permissionDenied ? (Exception)new UnauthorizedAccessException("Denied") : new IOException("Unavailable"));
     }
 
     private sealed class RepeatingLogReader : ILogSourceReader

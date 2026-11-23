@@ -19,4 +19,6 @@ public sealed class IntelligenceRevision
     public int RecordCount { get; set; }
     public bool Revoked { get; set; }
     public bool Normalized { get; set; }
+    /// <summary>When source content was removed by retention; metadata remains for history.</summary>
+    public DateTimeOffset? ContentPurgedAt { get; set; }
 }

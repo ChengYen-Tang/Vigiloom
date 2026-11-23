@@ -125,6 +125,16 @@ public sealed class DebianAdvisorySqlTests(TestContext context)
             Assert.IsTrue(await db.IntelligenceRevisions.AnyAsync(x => x.Id == result.RevisionId && x.Normalized && x.RecordCount == 1, token));
             Assert.AreEqual(1, await db.DebianAdvisories.CountAsync(x => x.RevisionId == result.RevisionId, token));
             Assert.AreEqual(DebianStageStatus.Unchanged, (await stage.StageAsync(source.Id, version, good, "test evidence", token)).Status);
+            var retained = await db.IntelligenceRevisions.SingleAsync(x => x.Id == result.RevisionId, token);
+            retained.ContentPurgedAt = DateTimeOffset.UtcNow; retained.Normalized = false; retained.Artifact = [];
+            db.IntelligenceActivationEvents.Add(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = retained.Id, OccurredAt = DateTimeOffset.UtcNow, Scheduled = true });
+            await db.SaveChangesAsync(token); db.ChangeTracker.Clear();
+            Assert.AreEqual(DebianStageStatus.Conflict, (await stage.StageAsync(source.Id, version, good, "test evidence", token)).Status);
+            await db.DebianAdvisories.Where(x => x.RevisionId == result.RevisionId).ExecuteDeleteAsync(token);
+            var restored = await stage.StageAsync(source.Id, version, good, "test evidence", token);
+            Assert.AreEqual(DebianStageStatus.Staged, restored.Status); Assert.AreEqual(result.RevisionId, restored.RevisionId);
+            Assert.IsNull((await db.IntelligenceRevisions.AsNoTracking().SingleAsync(x => x.Id == result.RevisionId, token)).ContentPurgedAt);
+            Assert.AreEqual(1, await db.DebianAdvisories.CountAsync(x => x.RevisionId == result.RevisionId, token));
             Assert.AreEqual(DebianStageStatus.Conflict, (await stage.StageAsync(source.Id, new byte[8], good, "test evidence", token)).Status);
             var entries = Enumerable.Range(0, 256).Select(i => $"\"CVE-{i:D3}\":{{\"releases\":{{\"bookworm\":{{\"status\":\"open\"}}}}}}");
             var bad = Encoding.UTF8.GetBytes("{\"openssl\":{" + string.Join(",", entries) + ",\"CVE-000 \":{\"releases\":{\"bookworm\":{\"status\":\"open\"}}}}}");

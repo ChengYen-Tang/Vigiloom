@@ -10,6 +10,8 @@ namespace Vigiloom.Web.Client.Components.HostMonitoring;
 public partial class HostDetails
 {
     [Parameter] public Guid DeviceId { get; set; }
+    [Parameter] public string? InitialTab { get; set; }
+    [Parameter] public string? InitialSearch { get; set; }
     private static readonly (string Key, string Label)[] Tabs = [("inventory", "資產盤點"), ("metrics", "效能"), ("process", "程序與服務"), ("logs", "主機日誌"), ("detections", "行為偵測"), ("vulnerabilities", "漏洞"), ("integrity", "檔案完整性")];
     private static readonly (AgentMetricKind Kind, string Label)[] MetricKinds = Enum.GetValues<AgentMetricKind>()
         .Where(kind => kind != AgentMetricKind.CollectionUnavailable).Select(kind => (kind, HostMetricUnits.Name(kind))).ToArray();
@@ -36,11 +38,13 @@ public partial class HostDetails
     private int seriesIndex;
     private IReadOnlyList<TimeSeriesPoint> points = [];
     private bool metricIncomplete;
+    private IReadOnlyList<HostMetricValue> metricIssues = [];
     private HostLogPage? logs;
     private readonly Stack<string?> logCursors = new();
     private string? logCursor;
     private SigmaDetectionEventPage? detectionPage;
     private SigmaDetectionGapPage? detectionGaps;
+    private IocDetectionPage? iocDetections;
     private readonly Stack<string?> detectionCursors = new();
     private readonly Stack<string?> gapCursors = new();
     private string? detectionCursor, gapCursor;
@@ -59,7 +63,7 @@ public partial class HostDetails
         if (!RendererInfo.IsInteractive) { loading = true; return; }
         if (loadedDevice == DeviceId) return;
         loadedDevice = DeviceId;
-        tab = "inventory";
+        tab = Tabs.Any(x => x.Key == InitialTab) ? InitialTab! : "inventory";
         await ReloadAsync();
     }
 
@@ -90,8 +94,10 @@ public partial class HostDetails
                     token.ThrowIfCancellationRequested();
                     var firstGaps = await Monitoring.GetDetectionGapsAsync(DeviceId, from, until, null, token) ?? throw new InvalidOperationException("Device missing");
                     token.ThrowIfCancellationRequested();
+                    var firstIoc = await Monitoring.GetIocDetectionsAsync(DeviceId, from, until, 1, token) ?? throw new InvalidOperationException("Device missing");
+                    token.ThrowIfCancellationRequested();
                     detectionCursor = gapCursor = null; detectionCursors.Clear(); gapCursors.Clear();
-                    detectionPage = firstDetections; detectionGaps = firstGaps;
+                    detectionPage = firstDetections; detectionGaps = firstGaps; iocDetections = firstIoc;
                     break;
                 case "integrity":
                     baseline = null; baselineScopeId = baselineSnapshotId = null;
@@ -110,6 +116,11 @@ public partial class HostDetails
         { rangeHours = value; await ReloadAsync(); }
     }
     private Task NextDetectionsAsync() => detectionPage?.NextCursor is { } cursor ? NavigateDetectionsAsync(cursor, true) : Task.CompletedTask;
+    private Task NavigateIocAsync(int page) => RunAsync(async token =>
+    {
+        var result = await Monitoring.GetIocDetectionsAsync(DeviceId, from, until, page, token) ?? throw new InvalidOperationException("Device missing");
+        token.ThrowIfCancellationRequested(); iocDetections = result;
+    });
     private Task PreviousDetectionsAsync() => detectionCursors.TryPeek(out var cursor) ? NavigateDetectionsAsync(cursor, false) : Task.CompletedTask;
     private Task NavigateDetectionsAsync(string? cursor, bool forward) => RunAsync(async token =>
     {
@@ -160,7 +171,23 @@ public partial class HostDetails
     {
         if (int.TryParse(args.Value?.ToString(), out var value)) { metricKind = (AgentMetricKind)value; await RunAsync(LoadMetricsAsync); }
     }
-    private Task LoadMetricsAsync(CancellationToken token) => LoadMetricPageAsync(0, token);
+    private async Task LoadMetricsAsync(CancellationToken token)
+    {
+        var issueFrom = from > until.AddDays(-30) ? from : until.AddDays(-30);
+        var issuePage = await Monitoring.GetMetricsAsync(DeviceId, issueFrom, until, null, AgentMetricKind.CollectionUnavailable, token);
+        token.ThrowIfCancellationRequested();
+        metricIssues = (issuePage ?? throw new InvalidOperationException("Device missing")).Items
+            .DistinctBy(x => (x.AgentId, x.Dimension)).Take(10).ToArray();
+        await LoadMetricPageAsync(0, token);
+    }
+
+    private static string MetricIssueName(string source) => source switch
+    {
+        AgentMetricUnavailableSource.PermissionDenied => "權限不足",
+        AgentMetricUnavailableSource.Unsupported => "平台不支援",
+        AgentMetricUnavailableSource.Error => "採集錯誤",
+        _ => "資料未能取得，原因未知"
+    };
     private async Task LoadMetricPageAsync(int pageNumber, CancellationToken token)
     {
         var page = await Monitoring.GetMetricSeriesAsync(DeviceId, from, until, metricKind, pageNumber, token);

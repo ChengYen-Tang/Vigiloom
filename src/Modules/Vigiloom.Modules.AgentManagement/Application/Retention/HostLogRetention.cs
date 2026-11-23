@@ -13,7 +13,7 @@ public sealed class HostLogRetention : IHostLogRetention
         h.ReceivedAt < @cutoff AND NOT EXISTS
         (
             SELECT 1 FROM scheduling.Outbox AS o
-            WHERE o.MessageType = @type AND o.State IN (0, 1)
+            WHERE o.MessageType IN (@type, @iocType) AND o.State IN (0, 1)
               AND TRY_CONVERT(uniqueidentifier, JSON_VALUE(CASE WHEN ISJSON(o.Payload) = 1 THEN o.Payload ELSE N'{}' END, '$.AgentId')) = h.AgentId
               AND EXISTS (SELECT 1 FROM OPENJSON(CASE WHEN ISJSON(o.Payload) = 1 THEN o.Payload ELSE N'{}' END, '$.MessageIds') AS ids
                           WHERE TRY_CONVERT(uniqueidentifier, ids.value) = h.MessageId)
@@ -50,6 +50,7 @@ public sealed class HostLogRetention : IHostLogRetention
         var retention = TimeSpan.FromDays(days);
         Add(command, "@cutoff", DbType.DateTimeOffset, now - (retention > SigmaCorrelationLimits.RequiredRetention ? retention : SigmaCorrelationLimits.RequiredRetention));
         Add(command, "@type", DbType.String, HostLogDispatch.MessageType);
+        Add(command, "@iocType", DbType.String, HostLogDispatch.IocMessageType);
         return command;
     }
 

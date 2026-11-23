@@ -41,11 +41,12 @@ internal sealed class AgentLogStatusRuntime(TimeProvider clock)
                     LogSourceCycleStatus.Full => AgentLogSourceState.Full,
                     LogSourceCycleStatus.Unsupported => AgentLogSourceState.Unsupported,
                     LogSourceCycleStatus.Unavailable => AgentLogSourceState.Unavailable,
+                    LogSourceCycleStatus.PermissionDenied => AgentLogSourceState.Unavailable,
                     LogSourceCycleStatus.Conflict => AgentLogSourceState.Conflict,
                     _ => (AgentLogSourceState?)null
                 };
                 if (state is { } value) sources[result.SourceId] = new(new(result.SourceId, source.Generation, value,
-                    (result.ObservedAt ?? observedAt).ToUniversalTime(), 0), result.Timestamp ?? clock.GetTimestamp());
+                    (result.ObservedAt ?? observedAt).ToUniversalTime(), 0, result.Status == LogSourceCycleStatus.PermissionDenied), result.Timestamp ?? clock.GetTimestamp());
             }
         }
     }

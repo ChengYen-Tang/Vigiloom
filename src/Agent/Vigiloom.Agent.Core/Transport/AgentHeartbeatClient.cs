@@ -168,7 +168,9 @@ public sealed class AgentHeartbeatClient(HttpClient http)
                 if (response.StatusCode != HttpStatusCode.BadRequest || candidate is null)
                     return await HandleResponseAsync(response, expected, credential, candidate, token);
                 // Each retry removes exactly one optional group while preserving the same snapshot and sequence.
-                if (candidate.Runtime is not null) candidate = candidate with { Runtime = null };
+                if (candidate.LogStatus is { } log && log.Sources.Any(source => source.PermissionDenied))
+                    candidate = candidate with { LogStatus = log with { Sources = log.Sources.Select(source => source with { PermissionDenied = false }).ToArray() } };
+                else if (candidate.Runtime is not null) candidate = candidate with { Runtime = null };
                 else if (candidate.BaselineConfiguration is not null) candidate = candidate with { BaselineConfiguration = null };
                 else if (candidate.IntegrityConfiguration is not null) candidate = candidate with { IntegrityConfiguration = null };
                 else if (candidate.InventoryConfiguration is not null) candidate = candidate with { InventoryConfiguration = null };

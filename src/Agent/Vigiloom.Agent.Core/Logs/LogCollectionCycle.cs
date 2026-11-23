@@ -6,7 +6,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Logs;
 
-public enum LogSourceCycleStatus { End, Queued, Full, Unsupported, Unavailable, Conflict, SettingsChanged }
+public enum LogSourceCycleStatus { End, Queued, Full, Unsupported, Unavailable, Conflict, SettingsChanged, PermissionDenied }
 public sealed record LogSourceCycleResult(Guid SourceId, LogSourceCycleStatus Status, int QueuedCount, bool MayHaveMore = false,
     DateTimeOffset? ObservedAt = null, long? Timestamp = null);
 
@@ -62,8 +62,9 @@ public sealed class LogCollectionCycle(AgentSettingsOwner owner, DurableBatchQue
                 if (status is LogSourceCycleStatus.Full or LogSourceCycleStatus.SettingsChanged || totalQueued >= MaximumPerCycle) break;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (UnauthorizedAccessException) { results.Add(Observed(setting.SourceId, LogSourceCycleStatus.PermissionDenied, queued)); }
             catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or
-                UnauthorizedAccessException or Win32Exception or CryptographicException or System.Data.Common.DbException or PlatformNotSupportedException)
+                Win32Exception or CryptographicException or System.Data.Common.DbException or PlatformNotSupportedException)
             {
                 results.Add(Observed(setting.SourceId, LogSourceCycleStatus.Unavailable, queued));
             }
