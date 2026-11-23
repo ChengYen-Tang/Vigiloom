@@ -21,6 +21,7 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             await OldEvaluations(db, cutoff).LongCountAsync(token) +
             await OldBaselineObservations(db, cutoff).LongCountAsync(token) +
             await IntelligenceContentRetention.CountAsync(db, cutoff, token) +
+            await VendorContentRetention.CountAsync(db, cutoff, token) +
             await db.AdvisoryImportEntries.LongCountAsync(entry => db.AdvisoryImports.Any(import => import.Id == entry.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
                 !db.AdvisoryRevisionEntries.Any(reference => reference.EntryRowId == entry.RowId), token) +
             await db.AdvisoryImportPages.LongCountAsync(page => db.AdvisoryImports.Any(import => import.Id == page.ImportId && (import.Phase == 4 || import.Phase == 5) && import.StartedAt < cutoff) &&
@@ -57,6 +58,12 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
             var repositoryRows = await IntelligenceContentRetention.DeleteBatchAsync(db, cutoff, batchSize - removed, token);
             if (repositoryRows == 0) break;
             removed += repositoryRows;
+        }
+        while (removed < batchSize)
+        {
+            var vendorRows = await VendorContentRetention.DeleteBatchAsync(db, cutoff, batchSize - removed, token);
+            if (vendorRows == 0) break;
+            removed += vendorRows;
         }
         if (removed < batchSize)
         {

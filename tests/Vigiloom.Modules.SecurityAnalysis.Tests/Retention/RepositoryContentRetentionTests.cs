@@ -19,6 +19,73 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests.Retention;
 public sealed class RepositoryContentRetentionTests(TestContext context)
 {
     [TestMethod]
+    public Task Cleanup_WaitsForUbuntuRefreshBeforeRemovingSharedDocuments() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options); var factory = new ContextFactory(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = "ubuntu-osv", Enabled = true };
+        IntelligenceRevision Revision(int day, byte value) => new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), Digest = Enumerable.Repeat(value, 32).ToArray(), Artifact = [value], SchemaVersion = UbuntuRevisionStage.SchemaVersion, MappingVersion = UbuntuRevisionStage.MappingVersion, LicenseEvidence = UbuntuRevisionStage.LicenseEvidence, RecordCount = 1, Normalized = true };
+        var current = Revision(-1, 1); var old = Revision(-80, 2); var digest = Enumerable.Repeat((byte)7, 32).ToArray();
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, old);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        db.UbuntuDocuments.Add(new UbuntuDocument { Digest = digest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1234", Compressed = [1], OriginalLength = 1, ModifiedAt = now.AddDays(-60) });
+        db.UbuntuScopes.AddRange(Enumerable.Range(0, 600).Select(i => new UbuntuScope { Digest = digest, MappingVersion = UbuntuRevisionStage.MappingVersion, Ecosystem = "Ubuntu:24.04:LTS", SourcePackage = $"package-{i}" }));
+        db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = old.Id, Digest = digest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1234" });
+        await db.SaveChangesAsync(token);
+        await using (var lease = await IntelligenceRefreshLease.TryAcquireAsync(factory, source.Id, token))
+        {
+            Assert.IsNotNull(lease);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var retention = new SecurityAuditRetention();
+            Assert.AreEqual(1, await retention.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-30), 10, token));
+            await tx.CommitAsync(token);
+            Assert.AreEqual(1, await db.UbuntuRevisionDocuments.CountAsync(token));
+        }
+        await using (var tx = await db.Database.BeginTransactionAsync(token))
+        {
+            var retention = new SecurityAuditRetention();
+            Assert.AreEqual(603L, await retention.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-30), token));
+            Assert.AreEqual(603, await retention.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-30), 10, token));
+            await tx.CommitAsync(token);
+        }
+        Assert.AreEqual(0, await db.UbuntuRevisionDocuments.CountAsync(token));
+        Assert.AreEqual(0, await db.UbuntuDocuments.CountAsync(token));
+        Assert.AreEqual(0, await db.UbuntuScopes.CountAsync(token));
+    }, context.CancellationToken);
+
+    private sealed class ContextFactory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
+    {
+        public SecurityAnalysisDbContext CreateDbContext() => new(options);
+    }
+
+    [TestMethod]
+    public Task Cleanup_UbuntuPreservesPublishedWithdrawalsAndSharedDocuments() => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new SecurityAnalysisDbContext(options);
+        var now = DateTimeOffset.UtcNow; var source = new IntelligenceSource { Key = "ubuntu-osv", Enabled = true };
+        IntelligenceRevision Revision(int day, byte value, int count) => new() { SourceId = source.Id, UpstreamVersion = value.ToString(), RetrievedAt = now.AddDays(day), Digest = Enumerable.Repeat(value, 32).ToArray(), Artifact = [value], SchemaVersion = UbuntuRevisionStage.SchemaVersion, MappingVersion = UbuntuRevisionStage.MappingVersion, LicenseEvidence = UbuntuRevisionStage.LicenseEvidence, RecordCount = count, Normalized = true };
+        var current = Revision(-1, 1, 1); var previous = Revision(-40, 2, 1); var old = Revision(-80, 3, 2);
+        var sharedDigest = Enumerable.Repeat((byte)7, 32).ToArray(); var withdrawnDigest = Enumerable.Repeat((byte)8, 32).ToArray();
+        db.IntelligenceSources.Add(source); db.IntelligenceRevisions.AddRange(current, previous, old);
+        db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = source.Id, RevisionId = current.Id, ActivatedAt = now });
+        db.IntelligenceActivationEvents.AddRange(new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = old.Id, OccurredAt = now.AddDays(-70), Scheduled = true }, new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = previous.Id, OccurredAt = now.AddDays(-30), Scheduled = true }, new IntelligenceActivationEvent { SourceId = source.Id, RevisionId = current.Id, PreviousRevisionId = previous.Id, OccurredAt = now, Scheduled = true });
+        db.UbuntuDocuments.AddRange(new UbuntuDocument { Digest = sharedDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1000", Compressed = [1], OriginalLength = 1, ModifiedAt = now.AddDays(-70) }, new UbuntuDocument { Digest = withdrawnDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-2000", Compressed = [1], OriginalLength = 1, ModifiedAt = now.AddDays(-70), WithdrawnAt = now.AddDays(-60) });
+        foreach (var id in new[] { current.Id, previous.Id, old.Id }) db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = id, Digest = sharedDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-1000" });
+        db.UbuntuRevisionDocuments.Add(new UbuntuRevisionDocument { RevisionId = old.Id, Digest = withdrawnDigest, MappingVersion = UbuntuRevisionStage.MappingVersion, AdvisoryId = "CVE-2026-2000" });
+        await db.SaveChangesAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
+        Assert.AreEqual(3L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-20), token));
+        Assert.AreEqual(3, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-20), 10, token));
+        await transaction.CommitAsync(token); db.ChangeTracker.Clear();
+        Assert.IsNotNull((await db.IntelligenceRevisions.SingleAsync(x => x.Id == old.Id, token)).ContentPurgedAt);
+        Assert.AreEqual("CVE-2026-2000", (await db.UbuntuRevisionDocuments.SingleAsync(x => x.RevisionId == old.Id, token)).AdvisoryId);
+        Assert.AreEqual(2, await db.UbuntuDocuments.CountAsync(token));
+        Assert.IsTrue(await UbuntuRevisionEligibility.IsPublishableAsync(db, source.Id, previous.Id, now, token));
+    }, context.CancellationToken);
+
+    [TestMethod]
     [DataRow("ubuntu-osv")]
     [DataRow("msrc-cvrf")]
     public Task Cleanup_RemovesOldArchiveButKeepsSharedDocuments(string sourceKey) => ReusableSecurityDatabase.ExecuteAsync(async (database, token) =>
@@ -39,24 +106,28 @@ public sealed class RepositoryContentRetentionTests(TestContext context)
         {
             db.MsrcArtifacts.Add(new MsrcArtifact { Digest = documentDigest, Content = [1], IndexedCveCount = 0 });
             db.MsrcDocuments.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcDocument { RevisionId = old.Id, Digest = documentDigest, DocumentId = "2026-Jan", ModifiedAt = now.AddDays(-60) });
+            db.MsrcDocuments.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.MsrcDocument { RevisionId = current.Id, Digest = documentDigest, DocumentId = "2026-Jan", ModifiedAt = now.AddDays(-60) });
         }
         await db.SaveChangesAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var retention = new SecurityAuditRetention(); var connection = db.Database.GetDbConnection(); var sqlTransaction = transaction.GetDbTransaction();
-        Assert.AreEqual(1L, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
-        Assert.AreEqual(1, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
+        var expected = sourceKey == "ubuntu-osv" ? 1 : 3;
+        Assert.AreEqual((long)expected, await retention.CountAsync(connection, sqlTransaction, now.AddDays(-30), token));
+        Assert.AreEqual(expected, await retention.DeleteBatchAsync(connection, sqlTransaction, now.AddDays(-30), 10, token));
         await transaction.CommitAsync(token); db.ChangeTracker.Clear();
         var retained = await db.IntelligenceRevisions.SingleAsync(x => x.Id == old.Id, token);
-        Assert.IsEmpty(retained.Artifact); Assert.IsTrue(retained.Normalized); Assert.IsNull(retained.ContentPurgedAt);
+        Assert.IsEmpty(retained.Artifact);
         if (sourceKey == "ubuntu-osv")
         {
+            Assert.IsTrue(retained.Normalized); Assert.IsNull(retained.ContentPurgedAt);
             Assert.IsTrue(await UbuntuRevisionEligibility.IsPublishableAsync(db, source.Id, old.Id, now, token));
             Assert.IsNotNull((await db.UbuntuDocuments.SingleAsync(token)).WithdrawnAt);
             Assert.AreEqual(1, await db.UbuntuRevisionDocuments.CountAsync(token));
         }
         else
         {
-            Assert.IsTrue(await MsrcRevisionEligibility.IsPublishableAsync(db, source.Id, old.Id, token));
+            Assert.IsFalse(retained.Normalized); Assert.IsNotNull(retained.ContentPurgedAt);
+            Assert.IsTrue(await MsrcRevisionEligibility.IsPublishableAsync(db, source.Id, current.Id, token));
             Assert.AreEqual(1, await db.MsrcArtifacts.CountAsync(token));
             Assert.AreEqual(1, await db.MsrcDocuments.CountAsync(token));
         }
