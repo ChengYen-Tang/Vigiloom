@@ -64,7 +64,11 @@ retention policy cannot recover data already deleted before the backup.
 ## Evidence and remaining work
 
 The initial database-only LocalDB backup, restore and current-Migrator rerun is
-recorded in [capacity-validation.md](capacity-validation.md). It did not test
-key material, package files, restored login or a previous-version upgrade.
+recorded in [capacity-validation.md](capacity-validation.md). A separate
+`DataProtectionTests` check on 2026-11-23 moved a certificate-protected key ring
+and its PFX to new paths and verified that a new host with the same application
+name could decrypt an earlier value; a different application name could not.
+This was an in-process, same-machine check and did not restore the database,
+package files or login together, or test a previous-version upgrade.
 REQ-40-T04 stays open until those checks and the chosen RPO/RTO have been
 measured in a representative deployment.
