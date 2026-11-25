@@ -160,6 +160,25 @@ public sealed class OperationsMigrationTests(TestContext context)
                 await db.SaveChangesAsync(token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO service.HealthObservations (TargetId, LeaseGeneration, NetworkGeneration, SourceVersion, ServiceVersion, TargetVersion, NetworkVersion, Kind, ObservedAt, ReceivedAt) VALUES ({healthTarget.Id}, 1, 1, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 2, {now}, {now})", token);
             }
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+            {
+                db.Set<TimelineRecord>().Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = "yara", Time = now,
+                    ResourceId = device.Id, ResourceKind = "device", Summary = "existing", Evidence = "existing", Link = "/" });
+                await db.SaveChangesAsync(token);
+            }
+            await Assert.ThrowsAsync<InvalidOperationException>(() => OperationsDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token));
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await db.HostLogs.CountAsync(token));
+                Assert.AreEqual(0, await db.LogRecords.CountAsync(token));
+            }
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await db.Set<Notification>().CountAsync(token));
+                await db.Set<TimelineRecord>().ExecuteDeleteAsync(token);
+            }
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
             await OperationsDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
             await using var logs = await targetProvider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.IsTrue(await logs.HostLogs.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == record.MessageId && x.Content == "host event", token));
