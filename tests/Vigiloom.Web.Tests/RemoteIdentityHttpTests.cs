@@ -137,6 +137,14 @@ public sealed class RemoteIdentityHttpTests
             Assert.AreEqual(7, sessionRequests);
 
             Assert.IsTrue((await users.ResetAuthenticatorKeyAsync(user)).Succeeded);
+            var authenticatorKey = await users.GetAuthenticatorKeyAsync(user);
+            Assert.IsFalse(string.IsNullOrEmpty(authenticatorKey));
+            await using (var identityScope = identity.Services.CreateAsyncScope())
+            {
+                var identityUsers = identityScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var identityUser = await identityUsers.FindByIdAsync(user.Id.ToString("D"));
+                Assert.AreEqual(authenticatorKey, await identityUsers.GetAuthenticatorKeyAsync(identityUser!));
+            }
             Assert.IsTrue((await users.SetTwoFactorEnabledAsync(user, true)).Succeeded);
             using var twoFactorBrowser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
             using var twoFactorLoginPage = await twoFactorBrowser.GetAsync("/account/login", token);

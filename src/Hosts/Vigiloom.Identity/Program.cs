@@ -3,9 +3,10 @@ using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Identity;
 using Vigiloom.Contracts.Identity;
+using Vigiloom.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDataProtection();
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(
     _ => builder.Configuration.GetConnectionString("VigiloomIdentity")
