@@ -1,3 +1,5 @@
+using Hangfire;
+using Hangfire.SqlServer;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
@@ -5,9 +7,11 @@ using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Line;
+using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using Vigiloom.Operations.HostLogs;
@@ -40,6 +44,25 @@ builder.Services.AddScoped<IOutboxHandler, LineDeliveryHandler>();
 builder.Services.AddScoped<LineDeliveryQueue>();
 builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped<LineDeliveryStatus>();
+builder.Services.AddScoped<NotificationReader>();
+builder.Services.AddScoped<AuditRetentionSettings>();
+builder.Services.AddScoped<AuditRetentionCleanup>();
+if (builder.Configuration.GetValue("Hangfire:Enabled", true))
+{
+    builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
+            ?? services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
+            ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."),
+            SchedulingRegistration.StorageOptions(prepareSchema: false)));
+    builder.Services.AddScoped<OperationsRetentionJob>();
+    builder.Services.AddHostedService<OperationsRetentionSchedule>();
+    builder.Services.AddHangfireServer(options =>
+    {
+        options.Queues = ["operations"];
+        options.IsLightweightServer = true;
+    });
+}
 builder.Services.AddScoped(provider => new OutboxDispatcher(
     provider.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."),
@@ -50,6 +73,7 @@ builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
 app.MapLineEndpoints();
+app.MapHistoryEndpoints();
 
 // The deployment exposes this endpoint only to the trusted service network.
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>

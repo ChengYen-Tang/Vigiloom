@@ -140,15 +140,11 @@ public sealed class OperationsMigrationTests(TestContext context)
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Operations"] = target.ConnectionString,
-                    ["Temporal:EnableNotificationWorker"] = "false",
                     ["Temporal:Address"] = "127.0.0.1:1"
                 }));
                 web.ConfigureTestServices(services =>
                 {
-                    var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
-                    if (dispatcher is not null) services.Remove(dispatcher);
-                    var aggregator = services.SingleOrDefault(item => item.ImplementationType?.Name == "LineAggregationWorker");
-                    if (aggregator is not null) services.Remove(aggregator);
+                    HostWorkers.RemoveBackgroundWork(services);
                     services.RemoveAll<IDataProtectionProvider>();
                     services.AddSingleton<IDataProtectionProvider>(protection);
                     services.RemoveAll<LinePushClient>();
