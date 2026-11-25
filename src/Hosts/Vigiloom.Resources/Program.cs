@@ -12,6 +12,7 @@ using Vigiloom.Infrastructure.Security;
 using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Modules.Resources.Application.AgentPackages;
 using Vigiloom.Resources.AgentPackages;
+using Vigiloom.Contracts.Agent;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -38,6 +39,8 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.Discovery.DisableConventionalDiscovery();
     options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
     options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+    options.PublishReliablyTo<AgentAssignmentChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+    options.PublishReliablyTo<AgentVersionAssignmentAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
@@ -58,6 +61,7 @@ builder.Services.AddScoped<ApplicationDiscovery>();
 builder.Services.AddScoped<ApplicationApproval>();
 builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddScoped<PackageCatalog>();
+builder.Services.AddScoped<AgentAssignments>();
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
