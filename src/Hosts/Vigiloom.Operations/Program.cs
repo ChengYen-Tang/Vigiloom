@@ -39,7 +39,10 @@ builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Addre
 builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<OperationAuditWriter>();
 if (builder.Configuration.GetValue("Temporal:EnableOperationsWorker", true))
+{
     builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(builder.Configuration["Work:OperationsQueue"] ?? Vigiloom.Contracts.Operations.OperationsWork.Queue);
+    builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(builder.Configuration["Work:AuditQueue"] ?? "vigiloom.operations.audit");
+}
 builder.Services.AddHttpClient<LinePushClient>();
 builder.Services.AddScoped<IOutboxHandler, LineDeliveryHandler>();
 builder.Services.AddScoped<LineDeliveryQueue>();

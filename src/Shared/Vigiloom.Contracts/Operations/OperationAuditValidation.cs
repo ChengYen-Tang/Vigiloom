@@ -32,6 +32,8 @@ public static class OperationAuditValidation
             AgentPackageSourceChanged change when IsValid(change) => (AuditKinds.AgentPackageSourceChangedV1, JsonSerializer.Serialize(change)),
             AgentPackageCatalogueRefreshed change when IsValid(change) => (AuditKinds.AgentPackageCatalogueRefreshedV1, JsonSerializer.Serialize(change)),
             AgentPackageTrustInitialized change when IsValid(change) => (AuditKinds.AgentPackageTrustInitializedV1, JsonSerializer.Serialize(change)),
+            AgentRegistrationRecorded change when IsValid(change) => (AuditKinds.AgentRegistrationRecordedV1, JsonSerializer.Serialize(change)),
+            AgentVersionAssigned change when IsValid(change) => (AuditKinds.AgentVersionAssignedV1, JsonSerializer.Serialize(change)),
             IntelligenceRevisionActivated change when IsValid(change) => (AuditKinds.IntelligenceRevisionActivatedV1, JsonSerializer.Serialize(change)),
             IntelligenceRevisionRevoked change when change.RevisionId.Version == 7 => (AuditKinds.IntelligenceRevisionRevokedV1, JsonSerializer.Serialize(change)),
             SigmaRuleStateChanged change when change.TestId.Version == 7 => (AuditKinds.SigmaRuleStateChangedV1, JsonSerializer.Serialize(change)),
@@ -92,6 +94,14 @@ public static class OperationAuditValidation
     public static bool IsValid(AgentPackageCatalogueRefreshed change) => change.PackageCount is >= 0 and <= 2000 && IsVersion(change.SourceVersion);
     public static bool IsValid(AgentPackageTrustInitialized change) => change.RootVersion > 0 && change.Sha256 is { Length: 64 } &&
         change.Sha256.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    public static bool IsValid(AgentRegistrationRecorded change) =>
+        change.Action is >= AgentRegistrationAction.EnrollmentIssued and <= AgentRegistrationAction.AgentRevoked &&
+        (change.AgentId is null || change.AgentId.Value.Version == 7) && (!change.AgentActor || change.AgentId is not null);
+
+    public static bool IsValid(AgentVersionAssigned change) => change.AgentId.Version == 7 &&
+        (change.PreviousPackageId is null || change.PreviousPackageId.Value.Version == 7) &&
+        (change.PackageId is null || change.PackageId.Value.Version == 7);
 
     public static bool IsValid(IntelligenceRevisionActivated change) => change.RevisionId.Version == 7 &&
         (change.PreviousRevisionId is null || change.PreviousRevisionId.Value.Version == 7) && change.PreviousRevisionId != change.RevisionId;
