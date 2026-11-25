@@ -51,6 +51,7 @@ public sealed class ProbeContext(DbContextOptions<ProbeContext> options) : DbCon
 public sealed class ProbeHandler
 {
     [Deduplicated]
+    [Transactional]
     public static async Task Handle(ProbeMessage message, ProbeContext context)
     {
         context.Receipts.Add(new ProbeReceipt { Id = message.Id });

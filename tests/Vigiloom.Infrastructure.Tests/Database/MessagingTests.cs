@@ -23,6 +23,48 @@ public sealed class MessagingTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task BestEffortUpdate_IsDeliveredWithoutDurableInbox()
+    {
+        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
+        if (string.IsNullOrWhiteSpace(broker))
+            Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ to run the isolated RabbitMQ integration test.");
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var id = Guid.CreateVersion7();
+        Exception? failure = null;
+        try
+        {
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+            {
+                var builder = Host.CreateApplicationBuilder();
+                var capture = new BestEffortCapture();
+                builder.Services.AddSingleton(capture);
+                builder.UseWolverine(options =>
+                {
+                    options.UseVigiloomMessaging(database.ConnectionString, broker!);
+                    options.Discovery.DisableConventionalDiscovery();
+                    options.Discovery.IncludeType<BestEffortHandler>();
+                    options.PublishBestEffortTo<BestEffortMessage>(queue);
+                    options.ListenBestEffortOn(queue);
+                });
+                using var host = builder.Build();
+                await host.StartAsync(token);
+                try
+                {
+                    await host.Services.GetRequiredService<IMessageBus>().PublishAsync(new BestEffortMessage(id));
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    Assert.AreEqual(id, await capture.Received.Task.WaitAsync(timeout.Token));
+                    Assert.AreEqual(0, await CountAllIncomingAsync(database.ConnectionString, timeout.Token));
+                }
+                finally { await host.StopAsync(CancellationToken.None); }
+            }, TestContext.CancellationToken);
+        }
+        catch (Exception exception) { failure = exception; }
+        await DeleteQueueAsync(broker!, queue, failure);
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    [TestMethod]
     public async Task SeparateProcess_ReceivesCommittedMessage()
     {
         var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
@@ -108,6 +150,7 @@ public sealed class MessagingTests
         var messageId = Guid.CreateVersion7();
         var rolledBackId = Guid.CreateVersion7();
         var retriedId = Guid.CreateVersion7();
+        var failedId = Guid.CreateVersion7();
         var server = TestDatabaseServer.FromEnvironment();
         Exception? failure = null;
         try
@@ -147,7 +190,7 @@ public sealed class MessagingTests
                 try
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(innerToken);
-                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    timeout.CancelAfter(TimeSpan.FromSeconds(75));
                     while (true)
                     {
                         await using var read = CreateContext(receiverDb.ConnectionString);
@@ -177,6 +220,12 @@ public sealed class MessagingTests
                         await Task.Delay(250, timeout.Token);
                     }
                     Assert.AreEqual(2, MessagingTestHandler.Attempts[retriedId]);
+                    await sender.Services.GetRequiredService<IMessageBus>().PublishAsync(
+                        new MessagingTestMessage(failedId, FailAlways: true),
+                        new DeliveryOptions { DeduplicationId = failedId.ToString("N") });
+                    while (await CountDeadLettersAsync(receiverDb.ConnectionString, timeout.Token) < 1)
+                        await Task.Delay(250, timeout.Token);
+                    Assert.IsGreaterThan(1, MessagingTestHandler.Attempts[failedId]);
                 }
                 finally
                 {
@@ -218,6 +267,24 @@ public sealed class MessagingTests
         return (int)(await command.ExecuteScalarAsync(token))!;
     }
 
+    private static async Task<int> CountDeadLettersAsync(string database, CancellationToken token)
+    {
+        await using var connection = new SqlConnection(database);
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM wolverine.wolverine_dead_letters";
+        return (int)(await command.ExecuteScalarAsync(token))!;
+    }
+
+    private static async Task<int> CountAllIncomingAsync(string database, CancellationToken token)
+    {
+        await using var connection = new SqlConnection(database);
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM wolverine.wolverine_incoming_envelopes";
+        return (int)(await command.ExecuteScalarAsync(token))!;
+    }
+
     private static IHost BuildHost(string database, string broker, string queue, bool receiver)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -240,7 +307,16 @@ public sealed class MessagingTests
         new(new DbContextOptionsBuilder<MessagingTestContext>().UseSqlServer(connection).Options);
 }
 
-public sealed record MessagingTestMessage(Guid Id, bool FailOnce = false);
+public sealed record MessagingTestMessage(Guid Id, bool FailOnce = false, bool FailAlways = false);
+public sealed record BestEffortMessage(Guid Id);
+public sealed class BestEffortCapture
+{
+    public TaskCompletionSource<Guid> Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
+public sealed class BestEffortHandler
+{
+    public static void Handle(BestEffortMessage message, BestEffortCapture capture) => capture.Received.TrySetResult(message.Id);
+}
 public sealed class MessageReceipt { public Guid Id { get; set; } public string Marker { get; set; } = ""; }
 
 public sealed class MessagingTestContext(DbContextOptions<MessagingTestContext> options) : DbContext(options)
@@ -255,10 +331,11 @@ public sealed class MessagingTestHandler
     public static ConcurrentDictionary<Guid, int> Attempts { get; } = new();
 
     [Deduplicated]
+    [Transactional]
     public static async Task Handle(MessagingTestMessage message, MessagingTestContext context)
     {
         var attempts = Attempts.AddOrUpdate(message.Id, 1, (_, value) => value + 1);
-        if (message.FailOnce && attempts == 1) throw new InvalidOperationException("Simulated transient failure");
+        if (message.FailAlways || (message.FailOnce && attempts == 1)) throw new InvalidOperationException("Simulated failure");
         context.Receipts.Add(new MessageReceipt { Id = message.Id, Marker = message.Id.ToString("N") });
         await context.SaveChangesAsync();
     }

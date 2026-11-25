@@ -22,7 +22,7 @@ public static class MessagingConfiguration
         options.UseEntityFrameworkCoreTransactions();
         options.Durability.MessageDeduplicationMode = MessageDeduplicationMode.CompareByHash;
         options.Durability.DeduplicationWindow = TimeSpan.FromDays(7);
-        options.UseRabbitMq(brokerConnectionString).AutoProvision();
+        options.UseRabbitMq(brokerConnectionString).AutoProvision().DisableDeadLetterQueueing();
         options.OnException<Exception>().RetryWithCooldown(
             TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
     }
@@ -41,5 +41,21 @@ public static class MessagingConfiguration
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
         options.ListenToRabbitQueue(queueName).UseDurableInbox();
+    }
+
+    /// <summary>Routes replaceable updates without persisting the sender's outbox.</summary>
+    public static void PublishBestEffortTo<TMessage>(this WolverineOptions options, string queueName)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
+        options.PublishMessage<TMessage>().ToRabbitQueue(queueName).BufferedInMemory();
+    }
+
+    /// <summary>Receives replaceable updates without persisting the receiver's inbox.</summary>
+    public static void ListenBestEffortOn(this WolverineOptions options, string queueName)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
+        options.ListenToRabbitQueue(queueName).BufferedInMemory();
     }
 }
