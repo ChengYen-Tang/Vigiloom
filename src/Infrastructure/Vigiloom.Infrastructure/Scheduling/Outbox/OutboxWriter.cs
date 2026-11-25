@@ -1,6 +1,8 @@
 using System.Data;
 using System.Text.Json;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Vigiloom.Infrastructure.Scheduling.Outbox;
 
@@ -8,6 +10,17 @@ namespace Vigiloom.Infrastructure.Scheduling.Outbox;
 public sealed class OutboxWriter(IEnumerable<IOutboxHandler> handlers)
 {
     private readonly HashSet<string> messageTypes = handlers.Select(handler => handler.MessageType).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Writes within the caller's active EF Core SQL Server transaction; the caller commits both changes.</summary>
+    public Task WriteAsync(OutboxMessage message, DbContext db, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var transaction = db.Database.CurrentTransaction?.GetDbTransaction() as SqlTransaction
+            ?? throw new InvalidOperationException("An active SQL Server transaction is required.");
+        if (db.Database.GetDbConnection() is not SqlConnection connection)
+            throw new InvalidOperationException("A SQL Server connection is required.");
+        return WriteAsync(message, connection, transaction, cancellationToken);
+    }
 
     public async Task WriteAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken = default)
     {

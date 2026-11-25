@@ -3,14 +3,14 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.UpdateSecurity.AgentPackages;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
+
+using Vigiloom.Modules.Resources.Application;
 
 namespace Vigiloom.Modules.Resources.Application.AgentPackages;
 
 /// <summary>Owns desired Agent versions and publishes changes for delivery to the Agent.</summary>
 public sealed class AgentAssignments(IDbContextFactory<ResourcesDbContext> contexts, IPackageLibraryTransport files,
-    IDbContextOutbox outbox, TimeProvider clock, IHostAgentVersion? host = null)
+    ResourceWork outbox, TimeProvider clock, IHostAgentVersion? host = null)
 {
     public async Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token)
     {
@@ -97,13 +97,11 @@ public sealed class AgentAssignments(IDbContextFactory<ResourcesDbContext> conte
         try
         {
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new AgentAssignmentChanged(agentId, assignment.UpdateId),
-                new DeliveryOptions { DeduplicationId = Guid.CreateVersion7().ToString("N") });
-            await outbox.PublishAsync(new AgentVersionAssignmentAudit(device.Id, agentId, request.ActorId,
-                previousPackageId, assignment.PackageId, assignment.AssignedAt),
-                new DeliveryOptions { DeduplicationId = Guid.CreateVersion7().ToString("N") });
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new AgentAssignmentChanged(agentId, assignment.UpdateId), token);
+            await outbox.PublishAsync(db, new AgentVersionAssignmentAudit(device.Id, agentId, request.ActorId,
+                previousPackageId, assignment.PackageId, assignment.AssignedAt), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
             return VersionAssignmentResult.Saved;
         }
         catch (DbUpdateConcurrencyException) { return VersionAssignmentResult.Conflict; }

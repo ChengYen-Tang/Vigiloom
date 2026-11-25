@@ -6,6 +6,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Work;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.BuildingBlocks.Retention;
@@ -47,8 +48,6 @@ using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
-using Vigiloom.Infrastructure.Messaging;
-using Wolverine;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -61,19 +60,13 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.ConfigureServices((context, services) =>
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 {
-    if (string.IsNullOrWhiteSpace(context.Configuration["Services:Resources:Url"])) return;
-    var database = context.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required.");
-    var broker = context.Configuration.GetConnectionString("Messaging") ?? throw new InvalidOperationException("ConnectionStrings:Messaging is required when using the resource service.");
-    services.AddWolverine(options =>
-    {
-        options.UseVigiloomMessaging(database, broker);
-        options.Discovery.DisableConventionalDiscovery();
-        options.Discovery.IncludeType<Vigiloom.Web.Services.ApplicationEventHandler>();
-        options.ListenReliablyOn(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
-    });
-});
+    builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
+        builder.Configuration["Temporal:Namespace"] ?? "default");
+    builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
+        builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+}
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);

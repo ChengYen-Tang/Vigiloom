@@ -1,14 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
 
 namespace Vigiloom.Modules.Resources.Application;
 
 /// <summary>Owns application lifecycle and reliably announces changes to observation.</summary>
 public sealed class ApplicationLifecycle(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources,
-    IDbContextOutbox outbox)
+    ResourceWork outbox)
 {
     public async Task<ApplicationStateChangeStatus> ChangeAsync(Guid id, ApplicationStateChange change, CancellationToken token)
     {
@@ -39,10 +37,10 @@ public sealed class ApplicationLifecycle(IDbContextFactory<ResourcesDbContext> c
             case "restore": service.Restore(now); break;
         }
         await db.SaveChangesAsync(token);
-        outbox.Enroll(db);
-        await outbox.PublishAsync(new ApplicationStateChanged(id, service.RevokedAt, service.ArchivedAt, service.Version));
-        await outbox.PublishAsync(new ApplicationStateAudit(change.ActorId, id, change.Action, now));
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new ApplicationStateChanged(id, service.RevokedAt, service.ArchivedAt, service.Version), token);
+        await outbox.PublishAsync(db, new ApplicationStateAudit(change.ActorId, id, change.Action, now), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         return ApplicationStateChangeStatus.Updated;
     }
 }

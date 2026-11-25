@@ -15,7 +15,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Identity;
@@ -25,6 +24,7 @@ using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.UpdateSecurity.AgentPackages;
 
 namespace Vigiloom.Modules.Resources.Tests;
@@ -39,14 +39,14 @@ public sealed class InternalApiTests
     [TestMethod]
     public async Task ReturnsEnabledTargetsAndCurrentAgentEligibility()
     {
-        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
-        if (string.IsNullOrWhiteSpace(broker)) Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ for the RabbitMQ integration test.");
+        var temporal = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(temporal)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL for the Temporal integration test.");
         var suffix = Guid.CreateVersion7().ToString("N");
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
         var observabilityQueue = "vigiloom-test-observation-" + suffix;
-        var packagePath = Path.Combine(Path.GetTempPath(), "vigiloom-resource-flow-" + suffix);
+        var packagePath = Path.Combine(AppContext.BaseDirectory, "vigiloom-resource-flow-" + suffix);
         var packageBytes = Encoding.UTF8.GetBytes("agent package");
         var archiveHash = Convert.ToHexStringLower(SHA256.HashData(packageBytes));
         using var github = new HttpClient(new ReleaseHandler(packageBytes, archiveHash)) { BaseAddress = new Uri("https://api.github.com/") };
@@ -59,14 +59,16 @@ public sealed class InternalApiTests
             {
                 builder.UseEnvironment("Development");
                 builder.UseSetting("ConnectionStrings:Resources", database.ConnectionString);
-                builder.UseSetting("ConnectionStrings:Messaging", broker);
-                builder.UseSetting("Messaging:NetworkQueue", networkQueue);
-                builder.UseSetting("Messaging:AgentQueue", agentQueue);
-                builder.UseSetting("Messaging:AuditQueue", auditQueue);
-                builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
+                builder.UseSetting("Temporal:Address", temporal);
+                builder.UseSetting("Work:NetworkQueue", networkQueue);
+                builder.UseSetting("Work:AgentQueue", agentQueue);
+                builder.UseSetting("Work:AuditQueue", auditQueue);
+                builder.UseSetting("Work:ObservabilityQueue", observabilityQueue);
                 builder.UseSetting("Vigiloom:AgentPackages:CachePath", packagePath);
                 builder.ConfigureTestServices(services =>
                 {
+                    var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
+                    if (dispatcher is not null) services.Remove(dispatcher);
                     services.RemoveAll<GitHubAgentReleases>();
                     services.AddSingleton(new GitHubAgentReleases(github));
                     services.RemoveAll<IApiCredentialValidation>();
@@ -74,9 +76,12 @@ public sealed class InternalApiTests
                     services.AddHttpClient(nameof(IdentityCookieValidator)).ConfigurePrimaryHttpMessageHandler(() => identityHandler);
                 });
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
-                    new Dictionary<string, string?> { ["ConnectionStrings:Resources"] = database.ConnectionString, ["ConnectionStrings:Messaging"] = broker,
-                        ["Messaging:NetworkQueue"] = networkQueue, ["Messaging:AgentQueue"] = agentQueue }));
+                    new Dictionary<string, string?> { ["ConnectionStrings:Resources"] = database.ConnectionString, ["Temporal:Address"] = temporal,
+                        ["Work:NetworkQueue"] = networkQueue, ["Work:AgentQueue"] = agentQueue }));
             });
+            var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
             var contexts = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             var now = DateTimeOffset.UtcNow;
             var active = new Device("Active", "active.example", true, now);
@@ -203,13 +208,6 @@ public sealed class InternalApiTests
         }
         finally
         {
-            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
-            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
             if (Directory.Exists(packagePath)) Directory.Delete(packagePath, recursive: true);
         }
     }

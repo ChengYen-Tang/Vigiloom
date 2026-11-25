@@ -3,13 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
 
 namespace Vigiloom.Modules.Resources.Application;
 
 /// <summary>Registers known platform services through the trusted internal endpoint.</summary>
-public sealed class SelfServiceRegistration(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources, IDbContextOutbox outbox)
+public sealed class SelfServiceRegistration(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources, ResourceWork outbox)
 {
     private static readonly HashSet<string> KnownServices = new(StringComparer.Ordinal)
     {
@@ -52,11 +50,10 @@ public sealed class SelfServiceRegistration(IDbContextFactory<ResourcesDbContext
         await db.SaveChangesAsync(token);
         if (created)
         {
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new ApplicationApproved(service!.Id, service.SourceId, service.ServiceKey, service.Environment,
-                service.DisplayName, service.ServiceNamespace, service.ApprovedAt, service.Version),
-                new DeliveryOptions { DeduplicationId = Guid.CreateVersion7().ToString("N") });
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new ApplicationApproved(service!.Id, service.SourceId, service.ServiceKey, service.Environment,
+                service.DisplayName, service.ServiceNamespace, service.ApprovedAt, service.Version), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
         }
         else await transaction.CommitAsync(token);
         return service!.Id;

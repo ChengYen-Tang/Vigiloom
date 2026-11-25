@@ -230,26 +230,19 @@ jobs:
           echo "SQLCMDPASSWORD=$password" >> "$GITHUB_ENV"
           echo 'VIGILOOM_TEST_SQL_ALLOW_SOURCE=localhost,1433' >> "$GITHUB_ENV"
           printf 'VIGILOOM_TEST_SQL_CONNECTION=Server=localhost,1433;Database=master;User ID=sa;Password=%s;Encrypt=true;TrustServerCertificate=true\n' "$password" >> "$GITHUB_ENV"
-      - name: Start isolated RabbitMQ
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Start isolated Temporal
         shell: bash
         run: |
-          set -euo pipefail
-          docker run -d --name vigiloom-test-rabbit -p 127.0.0.1:5678:5672 rabbitmq:4.1-alpine > /dev/null
-          for attempt in $(seq 1 45); do
-            if docker exec --user rabbitmq vigiloom-test-rabbit rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
-              echo 'VIGILOOM_TEST_RABBITMQ=amqp://guest:guest@localhost:5678' >> "$GITHUB_ENV"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo 'The isolated RabbitMQ did not become ready.' >&2
-          docker logs vigiloom-test-rabbit >&2 || true
-          exit 1
+          docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci up -d --wait
+          echo 'VIGILOOM_TEST_TEMPORAL=127.0.0.1:7233' >> "$GITHUB_ENV"
       - name: Test current services and Agent
         shell: pwsh
         run: ./tools/ci/test-current.ps1
       - name: Test migrated service integration
-        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests'
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests|FullyQualifiedName~TemporalPublicationTests'
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |
@@ -273,9 +266,9 @@ jobs:
       - name: Remove isolated SQL Server
         if: always()
         run: docker rm -f vigiloom-test-sql > /dev/null 2>&1 || true
-      - name: Remove isolated RabbitMQ
+      - name: Remove isolated Temporal
         if: always()
-        run: docker rm -f vigiloom-test-rabbit > /dev/null 2>&1 || true
+        run: docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci down -v
 
   ubuntu_required:
     name: Ubuntu build and test

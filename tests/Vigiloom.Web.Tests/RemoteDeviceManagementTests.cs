@@ -12,7 +12,6 @@ using System.Net;
 using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
@@ -26,6 +25,10 @@ using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Microsoft.Data.SqlClient;
+using Temporalio.Client;
+using Temporalio.Exceptions;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
 using Vigiloom.Web.Publishing;
@@ -44,14 +47,13 @@ public sealed class RemoteDeviceManagementTests
     [TestMethod]
     public async Task WebUsesIndependentResourceServiceForDeviceChanges()
     {
-        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
-        if (string.IsNullOrWhiteSpace(broker)) Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ for the RabbitMQ integration test.");
+        var temporal = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(temporal)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL for the Temporal integration test.");
         var suffix = Guid.CreateVersion7().ToString("N");
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
         var observabilityQueue = "vigiloom-test-observation-" + suffix;
-        try
         {
             await ReusableWebDatabase.ExecuteAsync(async (webDb, outerToken) =>
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (resourceDb, token) =>
@@ -59,6 +61,9 @@ public sealed class RemoteDeviceManagementTests
                 var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(resourceDb.ConnectionString,
                     sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
                 await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
+                var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(resourceDb.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
                 var existingSource = new ServiceSource("Orders source", new byte[32], DateTimeOffset.UtcNow);
                 var candidate = new ApplicationCandidate(existingSource.Id, "orders", "production", "Orders", "", DateTimeOffset.UtcNow);
                 var application = new ApplicationService(candidate, DateTimeOffset.UtcNow);
@@ -76,11 +81,11 @@ public sealed class RemoteDeviceManagementTests
                 {
                     builder.UseEnvironment("Development");
                     builder.UseSetting("ConnectionStrings:Resources", resourceDb.ConnectionString);
-                    builder.UseSetting("ConnectionStrings:Messaging", broker);
-                    builder.UseSetting("Messaging:NetworkQueue", networkQueue);
-                    builder.UseSetting("Messaging:AgentQueue", agentQueue);
-                    builder.UseSetting("Messaging:AuditQueue", auditQueue);
-                    builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
+                    builder.UseSetting("Temporal:Address", temporal);
+                    builder.UseSetting("Work:NetworkQueue", networkQueue);
+                    builder.UseSetting("Work:AgentQueue", agentQueue);
+                    builder.UseSetting("Work:AuditQueue", auditQueue);
+                    builder.UseSetting("Work:ObservabilityQueue", observabilityQueue);
                     builder.ConfigureTestServices(services => services.AddHttpClient("ObservationSourceVerifier")
                         .ConfigurePrimaryHttpMessageHandler(() => web!.Server.CreateHandler()));
                 });
@@ -88,14 +93,14 @@ public sealed class RemoteDeviceManagementTests
                 {
                     builder.UseSetting("Services:Resources:Url", "http://resources");
                     builder.UseSetting("ConnectionStrings:Vigiloom", webDb.ConnectionString);
-                    builder.UseSetting("ConnectionStrings:Messaging", broker);
-                    builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
+                    builder.UseSetting("Temporal:Address", temporal);
+                    builder.UseSetting("Work:ObservabilityQueue", observabilityQueue);
                     builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
                         ["ConnectionStrings:Vigiloom"] = webDb.ConnectionString,
-                        ["ConnectionStrings:Messaging"] = broker,
+                        ["Temporal:Address"] = temporal,
                         ["Services:Resources:Url"] = "http://resources",
-                        ["Messaging:ObservabilityQueue"] = observabilityQueue
+                        ["Work:ObservabilityQueue"] = observabilityQueue
                     }));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteDeviceManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
@@ -114,6 +119,8 @@ public sealed class RemoteDeviceManagementTests
                     builder.ConfigureTestServices(services => services.AddScoped<AuthenticationStateProvider>(_ => new TestCircuitAuthentication(() => circuitPrincipal)));
                 });
                 web = webHost;
+                try
+                {
                 await PingTestSite.InitializeAsync(webHost, token, schemaInitialized: true);
                 await using var scope = webHost.Services.CreateAsyncScope();
                 var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
@@ -299,17 +306,43 @@ public sealed class RemoteDeviceManagementTests
                 await using (var db = new ResourcesDbContext(options)) Assert.IsTrue(await db.Devices.AnyAsync(x => x.Id == id, token));
                 var webOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(webDb.ConnectionString).Options;
                 await using (var db = new ResourcesDbContext(webOptions)) Assert.IsFalse(await db.Devices.AnyAsync(x => x.Id == id, token));
+                }
+                finally
+                {
+                    webHost.Dispose();
+                    resources.Dispose();
+                    await CleanupWorkAsync(resourceDb.ConnectionString, temporal!);
+                }
             }, outerToken), TestContext.CancellationToken);
         }
-        finally
+
+    }
+
+    private static async Task CleanupWorkAsync(string connectionString, string address)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var ids = new List<Guid>();
+        await using (var connection = new SqlConnection(connectionString))
         {
-            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
-            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
+            await connection.OpenAsync(timeout.Token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT MessageId FROM scheduling.Outbox WHERE MessageType = @type";
+            command.Parameters.AddWithValue("@type", "temporal.service-work");
+            await using var reader = await command.ExecuteReaderAsync(timeout.Token);
+            while (await reader.ReadAsync(timeout.Token)) ids.Add(reader.GetGuid(0));
+        }
+        var client = await TemporalClient.ConnectAsync(new TemporalClientConnectOptions(address));
+        foreach (var id in ids)
+        {
+            try
+            {
+                await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                {
+                    Namespace = "default",
+                    WorkflowExecution = new() { WorkflowId = id.ToString("D") }
+                }, new RpcOptions { CancellationToken = timeout.Token });
+            }
+            catch (RpcException error) when (error.Code == RpcException.StatusCode.NotFound) { }
         }
     }
 

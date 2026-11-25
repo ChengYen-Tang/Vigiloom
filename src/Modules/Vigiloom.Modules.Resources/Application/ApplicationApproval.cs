@@ -2,12 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
 
 namespace Vigiloom.Modules.Resources.Application;
 
-public sealed class ApplicationApproval(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources, IDbContextOutbox outbox)
+public sealed class ApplicationApproval(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources, ResourceWork outbox)
 {
     public async Task<ApplicationApprovalResult> ApproveAsync(Guid candidateId, Guid actorId, CancellationToken token)
     {
@@ -27,12 +25,11 @@ public sealed class ApplicationApproval(IDbContextFactory<ResourcesDbContext> co
         db.ApplicationServices.Add(service);
         db.ApplicationCandidates.Remove(candidate);
         await db.SaveChangesAsync(token);
-        outbox.Enroll(db);
-        var messageId = Guid.CreateVersion7().ToString("N");
-        await outbox.PublishAsync(new ApplicationApproved(service.Id, service.SourceId, service.ServiceKey, service.Environment,
-            service.DisplayName, service.ServiceNamespace, service.ApprovedAt, service.Version), new DeliveryOptions { DeduplicationId = messageId });
-        await outbox.PublishAsync(new ApplicationApprovalAudit(actorId, service.Id, service.SourceId, now), new DeliveryOptions { DeduplicationId = messageId });
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new ApplicationApproved(service.Id, service.SourceId, service.ServiceKey, service.Environment,
+            service.DisplayName, service.ServiceNamespace, service.ApprovedAt, service.Version), token);
+        await outbox.PublishAsync(db, new ApplicationApprovalAudit(actorId, service.Id, service.SourceId, now), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         return new(ApplicationApprovalStatus.Approved, service.Id);
     }
 }

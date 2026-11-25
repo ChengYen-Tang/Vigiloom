@@ -9,5 +9,6 @@ public sealed record OutboxMessage(Guid MessageId, string MessageType, string Pa
 public interface IOutboxHandler
 {
     string MessageType { get; }
+    bool KeepRetrying => false;
     Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken);
 }

@@ -1,10 +1,10 @@
 using Vigiloom.Infrastructure.Persistence;
-using Vigiloom.Infrastructure.Messaging;
+using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Resources;
-using Wolverine;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
@@ -32,29 +32,14 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
-builder.Host.ConfigureServices((context, services) => services.AddWolverine(options =>
-{
-    var database = context.Configuration.GetConnectionString("Resources")
-        ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.");
-    var broker = context.Configuration.GetConnectionString("Messaging")
-        ?? throw new InvalidOperationException("ConnectionStrings:Messaging is required.");
-    options.UseVigiloomMessaging(database, broker);
-    options.Discovery.DisableConventionalDiscovery();
-    options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
-    options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
-    options.PublishReliablyTo<AgentAssignmentChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
-    options.PublishReliablyTo<AgentRegistrationChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
-    options.PublishReliablyTo<AgentRegistrationAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<AgentVersionAssignmentAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<PublicTemplateAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<PublicationSettingAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<ApplicationPublicationChanged>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
-    options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-    options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
-    options.PublishReliablyTo<ApplicationStateChanged>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
-    options.PublishReliablyTo<ApplicationStateAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
-}));
+var resourceDatabase = builder.Configuration.GetConnectionString("Resources")
+    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.");
+builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
+    builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddScoped<ResourceWork>();
+builder.Services.AddScoped(provider => new OutboxDispatcher(resourceDatabase, provider.GetServices<IOutboxHandler>(),
+    provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
+builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
         ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), "resources", pooled: true);
