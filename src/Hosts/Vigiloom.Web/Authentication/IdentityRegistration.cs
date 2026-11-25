@@ -14,15 +14,9 @@ internal static class IdentityRegistration
 {
     public static IServiceCollection AddVigiloomIdentity(this IServiceCollection services)
     {
-        services.AddScoped<InitialAdministrator>();
-        services.AddScoped<AccountAdministration>();
-        services.AddScoped<AccountPasswordReset>();
-        services.AddScoped<SelfPasswordChange>();
-        services.AddScoped<TwoFactorManagement>();
+        services.AddIdentityAccessOperations();
         services.AddScoped<TwoFactorChallenge>();
         services.AddScoped<AccountLogout>();
-        services.AddScoped<ApiCredentials>();
-        services.AddScoped<ApiCredentialVerifier>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
@@ -62,17 +56,7 @@ internal static class IdentityRegistration
                 .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
                     context.User.HasClaim("scope", "monitoring.write")));
         });
-        services.AddIdentityCore<Account>(options =>
-        {
-            options.Password.RequiredLength = 12;
-            options.Lockout.AllowedForNewUsers = true;
-            options.Lockout.MaxFailedAccessAttempts = 5;
-            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
-        }).AddRoles<Role>()
-          .AddEntityFrameworkStores<IdentityAccessDbContext>()
-          .AddSignInManager<BoundSignInManager>()
-          .AddDefaultTokenProviders();
-        services.AddScoped<IUserStore<Account>, ProtectedUserStore>();
+        services.AddIdentityCore<Account>().AddSignInManager<BoundSignInManager>();
         services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
         {
             options.Cookie.HttpOnly = true;
@@ -118,7 +102,6 @@ internal static class IdentityRegistration
                 return Task.CompletedTask;
             };
         });
-        services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(15));
         services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.Zero);
         return services;
     }
