@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.Work;
@@ -41,6 +42,12 @@ public sealed class OperationsWorkHandler(IConfiguration configuration, Notifica
                 var delivery = JsonSerializer.Deserialize<PingTransitionDelivery>(item.Payload)
                     ?? throw new InvalidOperationException("Ping transition is empty.");
                 await new PingTransitionReceiver().ApplyAsync(delivery, db, transaction, token);
+            }
+            else if (item.Kind == HealthTransitionDelivery.Kind)
+            {
+                var delivery = JsonSerializer.Deserialize<HealthTransitionDelivery>(item.Payload)
+                    ?? throw new InvalidOperationException("Health transition is empty.");
+                await new HealthTransitionReceiver().ApplyAsync(delivery, db, transaction, token);
             }
             else await audits.AppendAsync(db, transaction, ResourceAudit.Convert(item), token);
             return null;

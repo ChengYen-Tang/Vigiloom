@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
@@ -27,6 +28,37 @@ namespace Vigiloom.Operations.Tests;
 [TestCategory("Database")]
 public sealed class NotificationWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task HealthTransitionsRetryInOrderAndPreserveAlertHistory() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var services = new ServiceCollection();
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
+            services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
+            using var provider = services.BuildServiceProvider();
+            var factory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            await using (var db = await factory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
+            var target = Guid.CreateVersion7(); var service = Guid.CreateVersion7(); var now = DateTimeOffset.UtcNow;
+            var down = new HealthTransition(target, service, null, 5, ServiceHealthState.Unhealthy, now, "Orders", "production");
+            var up = down with { Generation = 7, ObservedAt = now.AddSeconds(10), State = ServiceHealthState.Healthy };
+            var groups = new[] { new ResourceGroupSnapshot(Guid.CreateVersion7(), "Backend") };
+            var downWork = new ServiceWork(HealthTransitionDelivery.Kind, JsonSerializer.Serialize(new HealthTransitionDelivery(down, 0, groups)), Guid.CreateVersion7().ToString("D"));
+            var upWork = new ServiceWork(HealthTransitionDelivery.Kind, JsonSerializer.Serialize(new HealthTransitionDelivery(up, 5, groups)), Guid.CreateVersion7().ToString("D"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => handler.ExecuteAsync(upWork, token));
+            await handler.ExecuteAsync(downWork, token);
+            await handler.ExecuteAsync(upWork, token);
+            await handler.ExecuteAsync(downWork, token);
+            await using var result = await factory.CreateDbContextAsync(token);
+            Assert.IsNotNull((await result.Set<ServiceHealthAlert>().SingleAsync(token)).RecoveredAt);
+            Assert.AreEqual(2, await result.Set<Notification>().CountAsync(token));
+            Assert.IsTrue((await result.Set<Notification>().ToListAsync(token)).All(x => x.Detail.Contains("Backend")));
+            Assert.AreEqual(7L, (await result.Set<HealthTransitionCursor>().SingleAsync(token)).Generation);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task PingTransitionsRetryInOrderAndPreserveAlertHistory() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

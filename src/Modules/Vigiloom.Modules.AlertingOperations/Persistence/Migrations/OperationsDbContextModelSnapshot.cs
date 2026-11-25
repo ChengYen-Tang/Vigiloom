@@ -70,6 +70,30 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.HealthTransitionCursor", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TargetId")
+                        .IsUnique();
+
+                    b.ToTable("HealthTransitionCursors", "operations");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.LineDelivery", b =>
                 {
                     b.Property<Guid>("Id")
