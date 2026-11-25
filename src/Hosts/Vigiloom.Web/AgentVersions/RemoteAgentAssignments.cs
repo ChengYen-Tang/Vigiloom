@@ -5,8 +5,20 @@ using Vigiloom.Modules.AgentManagement.Application;
 
 namespace Vigiloom.Web.AgentVersions;
 
-internal sealed class RemoteAgentAssignments(HttpClient client) : IAgentAssignments
+internal sealed class RemoteAgentAssignments(HttpClient client, IMachineAgentIdentity identity) : IAgentAssignments, IAgentVersionDelivery
 {
+    public async Task<AgentVersionAssignments.AgentRead> GetForAgentAsync(string? credential, CancellationToken token)
+    {
+        var agent = await identity.AuthenticateAsync(credential, token);
+        if (agent is null) return new(false, null);
+        using var response = await client.GetAsync($"internal/v1/agents/{agent.AgentId:D}/target", token);
+        if (response.StatusCode == HttpStatusCode.NoContent) return new(true, null);
+        response.EnsureSuccessStatusCode();
+        var target = await response.Content.ReadFromJsonAsync<AgentVersionTarget>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Resource service returned an empty target.");
+        return new(true, target);
+    }
+
     public async Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token)
     {
         using var response = await client.GetAsync($"internal/v1/agents/{agentId:D}/assignment", token);

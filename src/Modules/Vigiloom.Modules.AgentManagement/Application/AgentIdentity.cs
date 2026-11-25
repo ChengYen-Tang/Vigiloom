@@ -18,7 +18,7 @@ public sealed record EnrollmentSummary(Guid Id, long DeviceGeneration, DateTimeO
 public sealed record DeviceAgents(IReadOnlyList<AgentSummary> Agents, IReadOnlyList<EnrollmentSummary> Enrollments, long? CurrentGeneration);
 
 /// <summary>Coordinates device-bound enrollment and machine credentials. Callers authorize administrative operations.</summary>
-public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock) : IAgentRegistration, IMachineAgentIdentity
 {
     private static readonly TimeSpan EnrollmentLifetime = TimeSpan.FromMinutes(15);
 

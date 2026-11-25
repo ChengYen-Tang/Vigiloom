@@ -8,7 +8,7 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Serves only the package currently assigned to an authenticated Agent.</summary>
 public sealed class AgentPackageAccess(AgentVersionAssignments assignments, IPackageLibraryTransport transport,
-    IDbContextFactory<AgentManagementDbContext> contexts)
+    IDbContextFactory<AgentManagementDbContext> contexts) : IAgentUpdateAccess
 {
     public async Task<byte[]?> ReadManifestAsync(string? credential, string name, CancellationToken token)
     {
