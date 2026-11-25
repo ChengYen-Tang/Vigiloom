@@ -11,15 +11,15 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Timeline;
 public sealed class TimelineWriter
 {
     /// <summary>Stores summaries for locally committed log records in the same transaction.</summary>
-    public async Task AppendLocalAsync(IEnumerable<EventTimelineEntry> entries, DbConnection connection, DbTransaction transaction, CancellationToken token)
+    public async Task AppendLocalAsync(IEnumerable<(EventTimelineEntry Entry, long LogRowId)> entries, DbConnection connection, DbTransaction transaction, CancellationToken token)
     {
         var options = Options(connection);
         await using var db = new OperationsDbContext(options);
         await db.Database.UseTransactionAsync(transaction, token);
         foreach (var batch in entries.Chunk(500))
         {
-            foreach (var entry in batch)
-                db.TimelineRecords.Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = entry.Source,
+            foreach (var (entry, logRowId) in batch)
+                db.TimelineRecords.Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), LocalLogRowId = logRowId, Source = entry.Source,
                     Time = entry.Time.ToUniversalTime(), ResourceId = entry.ResourceId, ResourceKind = entry.ResourceKind,
                     Summary = entry.Summary, Evidence = entry.Evidence, Link = entry.Link, RuleLink = entry.RuleLink });
             await db.SaveChangesAsync(token);

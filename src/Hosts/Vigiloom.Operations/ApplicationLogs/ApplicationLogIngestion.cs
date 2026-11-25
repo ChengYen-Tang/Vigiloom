@@ -37,13 +37,18 @@ public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbConte
             ResourceSchemaUrl = submission.ResourceSchemaUrl, ScopeSchemaUrl = submission.ScopeSchemaUrl
         };
         var received = DateTimeOffset.UtcNow;
+        var logs = new List<LogRecord>(submission.Items.Count);
         foreach (var item in submission.Items)
-            db.LogRecords.Add(new LogRecord
+        {
+            var log = new LogRecord
             {
                 ServiceId = submission.ServiceId, InstanceId = submission.InstanceId, Context = context,
                 OccurredAt = item.OccurredAt, ReceivedAt = received, UsedReceivedTime = item.UsedReceivedTime,
                 UsedObservedTime = item.UsedObservedTime, TraceId = item.TraceId, SpanId = item.SpanId, RecordPayload = item.RecordPayload
-            });
+            };
+            logs.Add(log);
+            db.LogRecords.Add(log);
+        }
         await db.SaveChangesAsync(token);
         var admission = await Admission.AdmitAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new(LogSourceKind.Application, submission.SourceId), submission.Items.Count, token);
@@ -54,9 +59,9 @@ public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbConte
                 LogAdmissionStatus.BatchTooLarge => LogReceiptStatus.BatchTooLarge,
                 _ => LogReceiptStatus.Busy
             }, admission.RetryAfter);
-        var entries = submission.Items.Select(item => new EventTimelineEntry("service-log", item.OccurredAt, submission.ServiceId, "service",
+        var entries = logs.Select(item => (new EventTimelineEntry("service-log", item.OccurredAt, submission.ServiceId, "service",
             "應用程式日誌", item.TraceId is { Length: > 0 } ? $"Trace {Convert.ToHexStringLower(item.TraceId)}" :
-                $"服務實例 {submission.InstanceId?.ToString("D") ?? "未指定"}", $"/services/{submission.ServiceId:D}"));
+                $"服務實例 {submission.InstanceId?.ToString("D") ?? "未指定"}", $"/services/{submission.ServiceId:D}"), item.RowId));
         await timeline.AppendLocalAsync(entries, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
         await transaction.CommitAsync(token);
         return new(LogReceiptStatus.Accepted);

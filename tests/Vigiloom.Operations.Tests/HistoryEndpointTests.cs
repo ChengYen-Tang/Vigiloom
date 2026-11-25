@@ -32,10 +32,12 @@ public sealed class HistoryEndpointTests(TestContext context)
             var services = new ServiceCollection();
             services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
             services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
+            services.AddModuleSqlServer<CentralLogsDbContext>(database.ConnectionString, "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
             using var provider = services.BuildServiceProvider();
             var factory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
             await using (var db = await factory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
             var old = DateTimeOffset.UtcNow.AddDays(-400);
             var open = new PingAlert { DeviceId = Guid.CreateVersion7(), Target = "open.example", OpenedAt = old };

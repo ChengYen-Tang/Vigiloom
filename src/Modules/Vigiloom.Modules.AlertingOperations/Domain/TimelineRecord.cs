@@ -5,6 +5,7 @@ public sealed class TimelineRecord
 {
     public long RowId { get; set; }
     public Guid MessageId { get; set; }
+    public long? LocalLogRowId { get; set; }
     public required string Source { get; set; }
     public DateTimeOffset Time { get; set; }
     public Guid ResourceId { get; set; }

@@ -2,16 +2,16 @@ using System.Globalization;
 using System.Text;
 using OpenTelemetry.Proto.Common.V1;
 
-namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+namespace Vigiloom.Otlp;
 
 /// <summary>Formats OTLP values without materializing unbounded JSON or binary data.</summary>
-internal static class LogBodyFormatter
+public static class LogBodyFormatter
 {
     private const int MaximumCharacters = 2000;
     private const int MaximumItems = 64;
     private const int MaximumDepth = 8;
 
-    internal static (string Text, bool Truncated) Format(AnyValue? value)
+    public static (string Text, bool Truncated) Format(AnyValue? value)
     {
         var builder = new StringBuilder();
         var truncated = false;
