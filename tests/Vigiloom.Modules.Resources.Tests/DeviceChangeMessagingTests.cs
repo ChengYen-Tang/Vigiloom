@@ -156,6 +156,6 @@ public sealed class DeviceChangeMessagingTests
     private sealed class TestSources : IApplicationSourceVerifier
     {
         public bool Active { get; set; } = true;
-        public Task<bool> IsActiveAsync(Guid sourceId, CancellationToken token) => Task.FromResult(Active);
+        public Task<ApplicationSourceStatus> GetAsync(Guid sourceId, CancellationToken token) => Task.FromResult(new ApplicationSourceStatus(Active, "Source"));
     }
 }

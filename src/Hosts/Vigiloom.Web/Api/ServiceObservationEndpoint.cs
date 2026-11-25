@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Telemetry;
+using Vigiloom.Web.Services;
 
 namespace Vigiloom.Web.Api;
 
@@ -21,7 +22,7 @@ internal static class ServiceObservationEndpoint
         MaxDepth = 4
     };
 
-    public static async Task<IResult> ReceiveAsync(HttpContext context, CandidateDiscovery candidates, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null)
+    public static async Task<IResult> ReceiveAsync(HttpContext context, ICandidateAdministration candidates, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null)
     {
         if (context.Request.Headers.ContainsKey("Content-Encoding") || !context.Request.HasJsonContentType())
             return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);

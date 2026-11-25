@@ -50,6 +50,6 @@ public sealed class ApplicationDiscoveryTests
 
     private sealed class ActiveSources : IApplicationSourceVerifier
     {
-        public Task<bool> IsActiveAsync(Guid sourceId, CancellationToken token) => Task.FromResult(true);
+        public Task<ApplicationSourceStatus> GetAsync(Guid sourceId, CancellationToken token) => Task.FromResult(new ApplicationSourceStatus(true, "Source"));
     }
 }

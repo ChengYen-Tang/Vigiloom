@@ -20,7 +20,7 @@ public sealed class ApplicationApproval(IDbContextFactory<ResourcesDbContext> co
             return existing.RevokedAt is null ? new(ApplicationApprovalStatus.AlreadyApproved, existing.Id) : new(ApplicationApprovalStatus.SourceUnavailable);
         var candidate = await db.ApplicationCandidates.SingleOrDefaultAsync(x => x.Id == candidateId, token);
         if (candidate is null) return new(ApplicationApprovalStatus.NotFound);
-        if (!await sources.IsActiveAsync(candidate.SourceId, token)) return new(ApplicationApprovalStatus.SourceUnavailable);
+        if (!(await sources.GetAsync(candidate.SourceId, token)).Active) return new(ApplicationApprovalStatus.SourceUnavailable);
         var now = await ApplicationDiscovery.DatabaseTimeAsync(db, token);
         if (candidate.LastSeen > now || candidate.LastSeen < now.AddMinutes(-3)) return new(ApplicationApprovalStatus.Expired);
         var service = new ApplicationService(candidate, now);

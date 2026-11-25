@@ -4,8 +4,9 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application
-@inject CandidateDiscovery Discovery
-@inject ServiceApproval Approval
+@using Vigiloom.Web.Services
+@inject ICandidateAdministration Discovery
+@inject ICandidateAdministration Approval
 @inject SourceAdministration Sources
 @inject ILogger<ServiceDiscovery> Logger
 
