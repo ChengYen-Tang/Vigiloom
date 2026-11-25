@@ -35,7 +35,8 @@ internal static class OperationsDatabaseCommand
         await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
         await HangfireSchemaInstaller.InstallAsync(target, token);
-        if (source is not null) await OperationsDataMigration.CopyAsync(source, target, token);
+        if (source is not null) await OperationsDataMigration.CopyAsync(source, target, token,
+            Environment.GetEnvironmentVariable("Work__SecurityLogQueue") ?? "vigiloom.security.logs");
         Console.WriteLine(copyExisting ? "Operations data copied successfully." : "Operations schema initialized successfully.");
     }
 }
