@@ -30,9 +30,14 @@ public sealed class MessagingTests
             Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ to run the isolated RabbitMQ integration test.");
         var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
         var id = Guid.CreateVersion7();
+        var otherQueue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
         Exception? failure = null;
         try
         {
+            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
+            await using (var connection = await factory.CreateConnectionAsync(TestContext.CancellationToken))
+            await using (var channel = await connection.CreateChannelAsync(cancellationToken: TestContext.CancellationToken))
+                await channel.QueueDeclareAsync(otherQueue, durable: true, exclusive: false, autoDelete: false, cancellationToken: TestContext.CancellationToken);
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
             {
                 var builder = Host.CreateApplicationBuilder();
@@ -55,12 +60,16 @@ public sealed class MessagingTests
                     timeout.CancelAfter(TimeSpan.FromSeconds(30));
                     Assert.AreEqual(id, await capture.Received.Task.WaitAsync(timeout.Token));
                     Assert.AreEqual(0, await CountAllIncomingAsync(database.ConnectionString, timeout.Token));
+                    await using var verifyConnection = await factory.CreateConnectionAsync(timeout.Token);
+                    await using var verifyChannel = await verifyConnection.CreateChannelAsync(cancellationToken: timeout.Token);
+                    var other = await verifyChannel.QueueDeclarePassiveAsync(otherQueue, timeout.Token);
+                    Assert.AreEqual(0U, other.MessageCount);
                 }
                 finally { await host.StopAsync(CancellationToken.None); }
             }, TestContext.CancellationToken);
         }
         catch (Exception exception) { failure = exception; }
-        await DeleteQueueAsync(broker!, queue, failure);
+        await DeleteQueuesAsync(broker!, [queue, otherQueue], failure);
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
@@ -243,19 +252,24 @@ public sealed class MessagingTests
     }
 
     private static async Task DeleteQueueAsync(string broker, string queue, Exception? failure)
+        => await DeleteQueuesAsync(broker, [queue], failure);
+
+    private static async Task DeleteQueuesAsync(string broker, string[] queues, Exception? failure)
     {
-        try
+        var failures = new List<Exception>();
+        if (failure is not null) failures.Add(failure);
+        foreach (var queue in queues)
         {
-            var factory = new ConnectionFactory { Uri = new Uri(broker) };
-            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
+            try
+            {
+                var factory = new ConnectionFactory { Uri = new Uri(broker) };
+                await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
+                await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
+                await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
+            }
+            catch (Exception cleanupFailure) { failures.Add(new InvalidOperationException($"Failed to delete test queue {queue}.", cleanupFailure)); }
         }
-        catch (Exception cleanupFailure)
-        {
-            throw new AggregateException($"Failed to delete test queue {queue}.",
-                failure is null ? [cleanupFailure] : [failure, cleanupFailure]);
-        }
+        if (failures.Count > (failure is null ? 0 : 1)) throw new AggregateException("Test queue cleanup failed.", failures);
     }
 
     private static async Task<int> CountIncomingAsync(string database, CancellationToken token)
