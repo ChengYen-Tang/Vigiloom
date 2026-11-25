@@ -24,7 +24,7 @@ internal static class IdentitySessionEndpoints
                 new Claim(options.Value.ClaimsIdentity.UserIdClaimType, request.AccountId.ToString("D")),
                 new Claim(options.Value.ClaimsIdentity.SecurityStampClaimType, request.SecurityStamp)
             ]);
-            var account = await CurrentAccount.FindValidAsync(db, users, new ClaimsPrincipal(claims), options);
+            var account = await CurrentAccount.FindValidAsync(db, users, new ClaimsPrincipal(claims), options, request.AllowLockedOut);
             if (account is null) return Results.Unauthorized();
             var roles = await users.GetRolesAsync(account);
             return Results.Ok(new ValidatedSessionResponse(account.Id, account.UserName ?? "", roles.ToArray()));

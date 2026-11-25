@@ -7,6 +7,7 @@ using System.Security.Claims;
 using System.Globalization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
@@ -87,12 +88,19 @@ public sealed class RemoteIdentityHttpTests
                 new Claim(SessionLifetime.ExpirationClaim, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
             ], "test"));
             var workspace = scope.ServiceProvider.GetRequiredService<WorkspaceIdentityService>();
+            var revalidation = (IdentityRevalidatingAuthenticationStateProvider)scope.ServiceProvider.GetRequiredService<AuthenticationStateProvider>();
             var validSession = await workspace.GetAsync(principal, token);
             Assert.AreEqual("remote-reader", validSession!.UserName);
             Assert.Contains(BuiltInRoles.ReadOnly, validSession.Roles);
+            Assert.IsTrue(await revalidation.RevalidateAsync(principal, token));
+            Assert.IsTrue((await users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded);
+            Assert.IsNull(await workspace.GetAsync(principal, token));
+            Assert.IsTrue(await revalidation.RevalidateAsync(principal, token));
+            Assert.IsTrue((await users.SetLockoutEndDateAsync(user, null)).Succeeded);
             Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
             Assert.IsNull(await workspace.GetAsync(principal, token));
-            Assert.AreEqual(2, sessionRequests);
+            Assert.IsFalse(await revalidation.RevalidateAsync(principal, token));
+            Assert.AreEqual(6, sessionRequests);
         }, TestContext.CancellationToken);
 
     private sealed class CountingHandler(HttpMessageHandler inner, Action count) : DelegatingHandler(inner)
