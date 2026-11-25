@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -200,6 +201,15 @@ public sealed class OperationsMigrationTests(TestContext context)
                     services.AddSingleton(new LinePushClient(http));
                 });
             });
+            using (var client = host.CreateClient())
+            {
+                var from = Uri.EscapeDataString(now.AddMinutes(-1).ToString("O"));
+                var until = Uri.EscapeDataString(now.AddMinutes(1).ToString("O"));
+                var history = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{device.Id:D}?from={from}&until={until}", token);
+                Assert.HasCount(1, history!.Items);
+                Assert.AreEqual(record.MessageId, history.Items[0].MessageId);
+                Assert.AreEqual("host event", history.Items[0].Content);
+            }
             await using (var scope = host.Services.CreateAsyncScope())
                 await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchAsync(token);
             Assert.AreEqual(1, push.Count);
