@@ -158,11 +158,14 @@ public sealed class DeviceChangeMessagingTests
                     Assert.Contains(ownId.Value.ToString("D"), System.Text.Encoding.UTF8.GetString(ownMessage.Body.Span));
                     var agentId = Guid.CreateVersion7();
                     var packageId = Guid.CreateVersion7();
+                    var olderPackageId = Guid.CreateVersion7();
                     await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                     {
                         db.Agents.Add(new RegisteredAgent { Id = agentId, DeviceId = id, Verifier = new byte[32], CreatedAt = DateTimeOffset.UtcNow });
                         db.AgentPackages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64",
                             Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 123 });
+                        db.AgentPackages.Add(new AgentPackage { Id = olderPackageId, Version = "1.1.0", RuntimeIdentifier = "win-x64",
+                            Sha256 = new string('c', 64), ManifestSha256 = new string('d', 64), Size = 123 });
                         await db.SaveChangesAsync(token);
                     }
                     await using (var scope = host.Services.CreateAsyncScope())
@@ -187,6 +190,21 @@ public sealed class DeviceChangeMessagingTests
                             await Task.Delay(100, notificationTimeout.Token);
                         Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentAudit.Body.Span));
                     }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var assignments = scope.ServiceProvider.GetRequiredService<AgentAssignments>();
+                        var current = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(current);
+                        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId,
+                            new AgentVersionAssignmentCommand(olderPackageId, current.Revision, Guid.CreateVersion7()), token));
+                        var rollback = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(rollback);
+                        Assert.AreEqual(olderPackageId, rollback.PackageId);
+                        Assert.AreEqual("1.1.0", rollback.PackageVersion);
+                        Assert.AreNotEqual(current.UpdateId, rollback.UpdateId);
+                    }
+                    Assert.IsNotNull(await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: token));
+                    Assert.IsNotNull(await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: token));
                     var actor = Guid.CreateVersion7();
                     PublicationTemplateItem template;
                     await using (var scope = host.Services.CreateAsyncScope())
