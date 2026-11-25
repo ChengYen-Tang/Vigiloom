@@ -6,6 +6,13 @@ namespace Vigiloom.Contracts.Notifications;
 public sealed record NotificationRequest(Guid MessageId, string Source, DateTimeOffset OccurredAt, string Title, string Detail,
     Guid? ResourceId = null, Guid? EvidenceOwnerId = null, Guid? EvidenceId = null, Guid? RuleTestId = null);
 
+/// <summary>Work type and default queue used to deliver a logical notification to Operations.</summary>
+public static class NotificationWork
+{
+    public const string Kind = "notification.create.v1";
+    public const string Queue = "vigiloom.operations.notifications";
+}
+
 /// <summary>Records a notification request with its originating event in the same database transaction.</summary>
 public interface INotificationWriter
 {

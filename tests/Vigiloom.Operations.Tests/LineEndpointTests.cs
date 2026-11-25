@@ -44,7 +44,7 @@ public sealed class LineEndpointTests(TestContext context)
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Operations"] = database.ConnectionString }));
+                { ["ConnectionStrings:Operations"] = database.ConnectionString, ["Temporal:EnableNotificationWorker"] = "false" }));
                 web.ConfigureTestServices(s =>
                 {
                     foreach (var name in new[] { "WorkDispatcher", "LineAggregationWorker" })

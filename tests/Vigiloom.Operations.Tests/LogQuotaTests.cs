@@ -41,7 +41,7 @@ public sealed class LogQuotaTests(TestContext context)
             }
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Operations"] = database.ConnectionString })));
+                { ["ConnectionStrings:Operations"] = database.ConnectionString, ["Temporal:EnableNotificationWorker"] = "false" })));
             using var client = host.CreateClient();
             var initial = await client.GetFromJsonAsync<LogQuotaSettings>("/internal/v1/log-quota", token);
             Assert.IsNotNull(initial);

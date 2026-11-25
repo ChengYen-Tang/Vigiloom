@@ -12,6 +12,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using Vigiloom.Operations.HostLogs;
 using Vigiloom.Operations.ApplicationLogs;
+using Vigiloom.Operations.Notifications;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +32,9 @@ builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAudit
 builder.Services.AddScoped<SharedLogQuota>();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddScoped<NotificationWriter>();
+if (builder.Configuration.GetValue("Temporal:EnableNotificationWorker", true))
+    builder.Services.AddVigiloomTemporalWorker<NotificationWorkHandler>(builder.Configuration["Work:NotificationQueue"] ?? Vigiloom.Contracts.Notifications.NotificationWork.Queue);
 builder.Services.AddHttpClient<LinePushClient>();
 builder.Services.AddScoped<IOutboxHandler, LineDeliveryHandler>();
 builder.Services.AddScoped<LineDeliveryQueue>();
