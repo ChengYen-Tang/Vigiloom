@@ -45,6 +45,7 @@ public sealed class RemoteIdentityHttpTests
             var credentialManagementRequests = 0;
             var accountManagementRequests = 0;
             var passwordOperationRequests = 0;
+            var twoFactorSettingRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -80,6 +81,8 @@ public sealed class RemoteIdentityHttpTests
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref accountManagementRequests))));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteAccountPasswordOperations))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref passwordOperationRequests))));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteTwoFactorSettings))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref twoFactorSettingRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -227,6 +230,33 @@ public sealed class RemoteIdentityHttpTests
                 Assert.IsNotNull(issueDocument.QuerySelector("textarea[aria-label='一次性 API 憑證']"));
             }
             Assert.IsGreaterThan(4, credentialManagementRequests);
+            using var settingsPage = await adminBrowser.GetAsync("/account/two-factor-settings", token);
+            Assert.AreEqual(HttpStatusCode.OK, settingsPage.StatusCode);
+            var settingsDocument = await new HtmlParser().ParseDocumentAsync(await settingsPage.Content.ReadAsStringAsync(token), token);
+            var beginForm = settingsDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "begin-two-factor");
+            var beginFields = beginForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            beginFields["BeginInput.Password"] = "Admin-Password-123";
+            using var beginResponse = await adminBrowser.PostAsync("/account/two-factor-settings", new FormUrlEncodedContent(beginFields), token);
+            Assert.AreEqual(HttpStatusCode.OK, beginResponse.StatusCode);
+            var beginDocument = await new HtmlParser().ParseDocumentAsync(await beginResponse.Content.ReadAsStringAsync(token), token);
+            var settingsKey = beginDocument.QuerySelector(".account-qr code")?.TextContent;
+            Assert.IsFalse(string.IsNullOrEmpty(settingsKey));
+            var enableForm = beginDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "enable-two-factor");
+            var enableFields = enableForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            enableFields["ConfirmInput.Code"] = new OtpNet.Totp(OtpNet.Base32Encoding.ToBytes(settingsKey!)).ComputeTotp();
+            using var enableResponse = await adminBrowser.PostAsync("/account/two-factor-settings", new FormUrlEncodedContent(enableFields), token);
+            Assert.AreEqual(HttpStatusCode.OK, enableResponse.StatusCode);
+            var enabledDocument = await new HtmlParser().ParseDocumentAsync(await enableResponse.Content.ReadAsStringAsync(token), token);
+            Assert.IsNotNull(enabledDocument.QuerySelector("textarea[aria-label='雙重驗證復原碼']"));
+            var disableForm = enabledDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "disable-two-factor");
+            var disableFields = disableForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            disableFields["DisableInput.Password"] = "Admin-Password-123";
+            disableFields["DisableInput.Code"] = new OtpNet.Totp(OtpNet.Base32Encoding.ToBytes(settingsKey!)).ComputeTotp();
+            using var disableResponse = await adminBrowser.PostAsync("/account/two-factor-settings", new FormUrlEncodedContent(disableFields), token);
+            Assert.AreEqual(HttpStatusCode.OK, disableResponse.StatusCode);
+            var disabledDocument = await new HtmlParser().ParseDocumentAsync(await disableResponse.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("雙重驗證已停用", disabledDocument.QuerySelector(".account-success")?.TextContent ?? "");
+            Assert.IsGreaterThan(3, twoFactorSettingRequests);
             var workspace = scope.ServiceProvider.GetRequiredService<WorkspaceIdentityService>();
             var revalidation = (IdentityRevalidatingAuthenticationStateProvider)scope.ServiceProvider.GetRequiredService<AuthenticationStateProvider>();
             var validSession = await workspace.GetAsync(principal, token);

@@ -106,6 +106,7 @@ builder.Services.AddScoped<AccountLogin>();
 builder.Services.AddScoped<CredentialManagement>();
 builder.Services.AddScoped<AccountManagement>();
 builder.Services.AddScoped<AccountPasswordOperations>();
+builder.Services.AddScoped<TwoFactorSettings>();
 builder.Services.AddScoped<LocalApiCredentialValidation>();
 builder.Services.AddHttpClient<RemoteApiCredentialValidation>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
@@ -126,6 +127,9 @@ builder.Services.AddHttpClient<RemoteAccountManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<RemoteAccountPasswordOperations>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteTwoFactorSettings>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IApiCredentialValidation>(services =>

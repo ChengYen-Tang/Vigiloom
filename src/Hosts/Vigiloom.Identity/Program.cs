@@ -25,6 +25,7 @@ app.MapIdentitySessionEndpoints();
 app.MapCredentialManagementEndpoints();
 app.MapAccountManagementEndpoints();
 app.MapAccountPasswordEndpoints();
+app.MapTwoFactorSettingsEndpoints();
 
 // This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
 app.MapPost("/internal/identity/api-credentials/validate", async (

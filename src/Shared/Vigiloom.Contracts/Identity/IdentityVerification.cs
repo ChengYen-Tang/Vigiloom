@@ -17,3 +17,6 @@ public sealed record AccountManagementRequest(IdentityActor Actor, Guid Id = def
 public sealed record InitialAdministratorRequest(string? SetupToken, string UserName, string Password);
 public sealed record RedeemPasswordRequest(string UserName, string Code, string Password);
 public sealed record ChangePasswordRequest(IdentityActor Actor, string CurrentPassword, string NewPassword);
+public sealed record TwoFactorSettingsRequest(IdentityActor Actor, string? Password = null, string? Code = null);
+public sealed record TwoFactorSettingsState(bool Enabled, bool Pending);
+public sealed record TwoFactorSettingsResponse(int Status, string? Key, string[] RecoveryCodes, IdentityClaim[]? Claims);

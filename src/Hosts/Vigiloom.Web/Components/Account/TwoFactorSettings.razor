@@ -9,9 +9,7 @@
 @using QRCoder
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Authentication
-@inject TwoFactorManagement Management
-@inject UserManager<Account> Users
-@inject SignInManager<Account> SignIn
+@inject Vigiloom.Web.Authentication.TwoFactorSettings Management
 
 <PageTitle>雙重驗證設定 - Vigiloom</PageTitle>
 <section class="account-card" aria-labelledby="settings-title">
@@ -71,14 +69,14 @@
     {
         BeginInput ??= new(); ConfirmInput ??= new(); DisableInput ??= new();
         HttpContext.Response.Headers.CacheControl = "no-store";
-        var user = await Users.GetUserAsync(HttpContext.User);
-        enabled = user is not null && await Users.GetTwoFactorEnabledAsync(user);
-        pending = user is not null && !enabled && await Users.GetAuthenticatorKeyAsync(user) is not null;
+        var state = await Management.StateAsync(HttpContext.User, HttpContext.RequestAborted);
+        enabled = state.Enabled;
+        pending = state.Pending;
     }
     private async Task BeginAsync()
     {
         var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
-        var result = await Management.BeginAsync(HttpContext.User, BeginInput.Password);
+        var result = await Management.BeginAsync(HttpContext.User, BeginInput.Password, HttpContext.RequestAborted);
         BeginInput.Password = "";
         if (result.Status != TwoFactorStatus.Success || result.Key is null) { Fail(); return; }
         await RenewCookieAsync(persistent);
@@ -94,7 +92,7 @@
     private async Task EnableAsync()
     {
         var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
-        var result = await Management.EnableAsync(HttpContext.User, ConfirmInput.Code.Replace(" ", "", StringComparison.Ordinal));
+        var result = await Management.EnableAsync(HttpContext.User, ConfirmInput.Code.Replace(" ", "", StringComparison.Ordinal), HttpContext.RequestAborted);
         ConfirmInput.Code = "";
         if (result.Status != TwoFactorStatus.Success) { Fail(); return; }
         await RenewCookieAsync(persistent);
@@ -105,7 +103,7 @@
     private async Task DisableAsync()
     {
         var persistent = (await HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Properties?.IsPersistent ?? false;
-        var result = await Management.DisableAsync(HttpContext.User, DisableInput.Password, DisableInput.Code.Trim());
+        var result = await Management.DisableAsync(HttpContext.User, DisableInput.Password, DisableInput.Code.Trim(), HttpContext.RequestAborted);
         DisableInput.Password = DisableInput.Code = "";
         if (result.Status != TwoFactorStatus.Success) { Fail(); return; }
         await RenewCookieAsync(persistent);
@@ -114,9 +112,7 @@
     }
     private async Task RenewCookieAsync(bool persistent)
     {
-        var user = await Users.FindByIdAsync(Users.GetUserId(HttpContext.User) ?? "")
-            ?? throw new InvalidOperationException("The current account no longer exists.");
-        await SignIn.SignInAsync(user, persistent);
+        await Management.RenewCookieAsync(HttpContext, persistent);
     }
     private void Fail() { isError = true; message = "無法完成操作，請確認密碼或驗證碼。"; }
     private sealed class PasswordModel { [Required, StringLength(1024)] public string Password { get; set; } = ""; }
