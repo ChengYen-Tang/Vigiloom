@@ -5,6 +5,7 @@ using Vigiloom.Testing.SqlServer;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.Publishing.Persistence;
 
 namespace Vigiloom.Modules.Resources.Tests;
 
@@ -41,6 +42,16 @@ public sealed class ResourcesDataMigrationTests
                 await db.SaveChangesAsync(token);
             }
             var now = DateTimeOffset.UtcNow;
+            var publishingOptions = new DbContextOptionsBuilder<PublishingDbContext>().UseSqlServer(source.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "publishing")).Options;
+            var template = new Vigiloom.Modules.Publishing.Domain.PublicationTemplate("Default", true, true, now);
+            template.SetDefault(true, now);
+            await using (var db = new PublishingDbContext(publishingOptions))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Templates.Add(template);
+                await db.SaveChangesAsync(token);
+            }
             var telemetrySource = new ServiceSource("Source", new byte[32], now);
             var candidate = new ServiceCandidate(telemetrySource.Id, "new-api", "Production", "New API", now);
             var approved = new MonitoredService(new ServiceCandidate(telemetrySource.Id, "order-api", "Production", "Orders", now), now);
@@ -52,6 +63,7 @@ public sealed class ResourcesDataMigrationTests
                 await db.SaveChangesAsync(token);
             }
             var device = new Device("Server", "server.example", true, DateTimeOffset.UtcNow);
+            device.SetTemplatePublication("Public server", template.Id, false, now);
             var group = new Group("Servers", DateTimeOffset.UtcNow);
             var serviceId = Guid.CreateVersion7();
             await using (var db = new ResourcesDbContext(sourceOptions))
@@ -83,6 +95,8 @@ public sealed class ResourcesDataMigrationTests
             {
                 Assert.IsTrue(await db.Devices.AnyAsync(x => x.Id == device.Id && x.Address == "server.example", token));
                 Assert.IsTrue(await db.DeviceTargets.AnyAsync(x => x.DeviceId == device.Id && x.Address == "extra.example", token));
+                Assert.IsTrue(await db.PublicTemplates.AnyAsync(x => x.Id == template.Id && x.IsDefault && x.ShowLatency, token));
+                Assert.IsTrue(await db.Devices.AnyAsync(x => x.Id == device.Id && x.PublicTemplateId == template.Id, token));
                 Assert.IsTrue(await db.DeviceGroups.AnyAsync(x => x.DeviceId == device.Id && x.GroupId == group.Id, token));
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == serviceId && x.GroupId == group.Id, token));
                 Assert.IsTrue(await db.ApplicationCandidates.AnyAsync(x => x.Id == candidate.Id && x.SourceId == telemetrySource.Id, token));

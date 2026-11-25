@@ -621,6 +621,78 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.PublicTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("HistoryDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("HistorySince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRetired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_CI_AS_SC");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<bool>("ShowLatency")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowObservedAt")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasFilter("[IsRetired] = 0");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("PublicTemplates", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_PublicTemplates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0");
+
+                            t.HasCheckConstraint("CK_PublicTemplates_HistoryPeriod", "([HistoryDays] = 0 AND [HistorySince] IS NULL) OR ([HistoryDays] BETWEEN 1 AND 7 AND [HistorySince] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.RegisteredAgent", b =>
                 {
                     b.Property<Guid>("Id")

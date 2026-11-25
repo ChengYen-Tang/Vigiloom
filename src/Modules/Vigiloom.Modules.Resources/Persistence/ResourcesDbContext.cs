@@ -18,10 +18,25 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     public DbSet<AgentEnrollment> AgentEnrollments => Set<AgentEnrollment>();
     public DbSet<AgentVersionAssignment> AgentVersionAssignments => Set<AgentVersionAssignment>();
     public DbSet<AgentUpdateTarget> AgentUpdateTargets => Set<AgentUpdateTarget>();
+    public DbSet<PublicTemplate> PublicTemplates => Set<PublicTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("resources");
+        var template = modelBuilder.Entity<PublicTemplate>();
+        template.ToTable("PublicTemplates", table =>
+        {
+            table.HasCheckConstraint("CK_PublicTemplates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0");
+            table.HasCheckConstraint("CK_PublicTemplates_HistoryPeriod", "([HistoryDays] = 0 AND [HistorySince] IS NULL) OR ([HistoryDays] BETWEEN 1 AND 7 AND [HistorySince] IS NOT NULL)");
+        });
+        template.HasKey(x => x.Id).IsClustered(false);
+        template.Property(x => x.Id).ValueGeneratedNever();
+        template.Property(x => x.RowId).UseIdentityColumn();
+        template.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        template.Property(x => x.Name).HasMaxLength(256).UseCollation("Latin1_General_100_CI_AS_SC").IsRequired();
+        template.HasIndex(x => x.Name).IsUnique().HasFilter("[IsRetired] = 0");
+        template.HasIndex(x => x.IsDefault).IsUnique().HasFilter("[IsDefault] = 1");
+        template.Property(x => x.Version).IsRowVersion();
         var package = modelBuilder.Entity<AgentPackage>();
         package.ToTable("AgentPackages", table =>
         {
