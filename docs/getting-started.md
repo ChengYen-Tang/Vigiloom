@@ -2,7 +2,7 @@
 
 目前提供的是開發環境啟動方式，尚未提供完整的一鍵安裝流程。以下範例使用 Windows LocalDB；其他 SQL Server 環境請參考[資料庫 Migration 說明](architecture/sql-server-migrations.md)。
 
-1. 安裝 [global.json](../global.json) 指定的 .NET SDK、SQL Server LocalDB，以及用來建立資料庫的 `sqlcmd`。資料庫相容層級須為 150 以上。
+1. 安裝 .NET 10 或更新版本的 SDK、SQL Server LocalDB，以及用來建立資料庫的 `sqlcmd`。資料庫相容層級須為 150 以上。
 2. 建立獨立的開發資料庫，並執行 Migration：
 
    ```powershell

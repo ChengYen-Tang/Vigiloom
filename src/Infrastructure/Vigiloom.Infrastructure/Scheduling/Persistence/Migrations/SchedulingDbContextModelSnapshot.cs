@@ -169,6 +169,39 @@ namespace Vigiloom.Infrastructure.Scheduling.Persistence.Migrations
 
                     b.ToTable("ScheduleSettings", "scheduling");
                 });
+
+            modelBuilder.Entity("Vigiloom.Infrastructure.Scheduling.Persistence.WorkReceipt", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("binary(32)")
+                        .IsFixedLength();
+
+                    b.Property<string>("Result")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("MessageId")
+                        .IsUnique();
+
+                    b.ToTable("WorkReceipts", "scheduling");
+                });
 #pragma warning restore 612, 618
         }
     }

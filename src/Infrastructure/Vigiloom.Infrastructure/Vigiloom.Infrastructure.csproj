@@ -14,10 +14,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Temporalio" />
+    <PackageReference Include="Temporalio.Extensions.Hosting" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
-    <PackageReference Include="WolverineFx.EntityFrameworkCore" />
-    <PackageReference Include="WolverineFx.RabbitMQ" />
-    <PackageReference Include="WolverineFx.RuntimeCompilation" />
-    <PackageReference Include="WolverineFx.SqlServer" />
   </ItemGroup>
 </Project>

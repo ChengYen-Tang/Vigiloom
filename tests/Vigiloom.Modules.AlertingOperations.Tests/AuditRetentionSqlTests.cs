@@ -133,6 +133,7 @@ public sealed class AuditRetentionSqlTests(TestContext context)
             var now = DateTimeOffset.UtcNow; var old = now.AddDays(-40);
             var queued = Guid.CreateVersion7(); var leased = Guid.CreateVersion7(); var completed = Guid.CreateVersion7();
             var failed = Guid.CreateVersion7(); var recentFailed = Guid.CreateVersion7();
+            var temporalCompleted = Guid.CreateVersion7(); var temporalPending = Guid.CreateVersion7();
             await using (var db = await factory.CreateDbContextAsync(token))
             {
                 foreach (var (id, state, at) in new[] { (queued, 0, old), (leased, 1, old), (completed, 2, old), (failed, 3, old), (recentFailed, 3, now) })
@@ -141,14 +142,22 @@ public sealed class AuditRetentionSqlTests(TestContext context)
                     await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts, LastAttemptAt, CompletedAt) VALUES ({id}, {"line.push.v1"}, {"{}"}, {old}, {old}, {state}, {1}, {at}, {finished})", token);
                     await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO operations.LineDeliveries (Id, GroupId, Recipient, Text, CreatedAt, CompletedAt) VALUES ({id}, {Guid.CreateVersion7()}, {"group"}, {"message"}, {old}, {finished})", token);
                 }
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts, LastAttemptAt, CompletedAt) VALUES ({temporalCompleted}, {"temporal.service-work"}, {"{}"}, {old}, {old}, {2}, {1}, {old}, {old}), ({temporalPending}, {"temporal.service-work"}, {"{}"}, {old}, {old}, {0}, {1}, {old}, {null})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.WorkReceipts (MessageId, PayloadHash, Result, CompletedAt) VALUES ({temporalCompleted}, {new byte[32]}, {"ok"}, {old})", token);
             }
             var status = new LineDeliveryStatus(factory);
             Assert.AreEqual("failed", (await status.GetAsync(failed, token))?.Status);
             var actor = Guid.CreateVersion7();
             var preview = await settings.PreviewAsync(new(30, policy.Version), actor, token);
-            Assert.IsNotNull(preview); Assert.AreEqual(2L, preview.BackgroundJobs);
+            Assert.IsNotNull(preview); Assert.AreEqual(3L, preview.BackgroundJobs);
             Assert.IsNotNull(await settings.UpdateAsync(new(30, policy.Version, preview.ConfirmationToken), actor, token));
-            Assert.AreEqual(2L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+            Assert.AreEqual(3L, await new AuditRetentionCleanup(factory, settings, sources).RunAsync(token));
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {temporalCompleted}").SingleAsync(token));
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {temporalPending}").SingleAsync(token));
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.WorkReceipts WHERE MessageId = {temporalCompleted}").SingleAsync(token));
+            }
             Assert.IsNull(await status.GetAsync(completed, token)); Assert.IsNull(await status.GetAsync(failed, token));
             Assert.AreEqual("pending", (await status.GetAsync(queued, token))?.Status);
             Assert.AreEqual("pending", (await status.GetAsync(leased, token))?.Status);
