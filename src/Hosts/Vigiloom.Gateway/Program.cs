@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Gateway.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -14,7 +15,13 @@ builder.Services.AddAuthentication(options =>
     options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
     options.DefaultForbidScheme = IdentityConstants.ApplicationScheme;
 }).AddIdentityCookies();
-builder.Services.AddAuthentication().AddVigiloomApiCredentials();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials()
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentAuthentication>(AgentAuthentication.SchemeName, _ => { });
+builder.Services.AddHttpClient(AgentAuthentication.SchemeName, (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Vigiloom:Gateway:AgentIdentityAddress"] ?? "http://vigiloom-agent";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
 {
     options.LoginPath = "/account/login";
@@ -31,6 +38,7 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
 builder.Services.AddAuthorization(options =>
 {
     options.AddVigiloomAccessPolicies();
+    options.AddPolicy("GatewayAgent", policy => policy.AddAuthenticationSchemes(AgentAuthentication.SchemeName).RequireAuthenticatedUser());
     options.AddPolicy("GatewayAdministrator", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme)
         .RequireAuthenticatedUser().RequireRole(WorkspaceAccess.Administrator));
     options.AddPolicy("DenyUnmappedDeviceMethod", policy => policy.RequireAssertion(_ => false));

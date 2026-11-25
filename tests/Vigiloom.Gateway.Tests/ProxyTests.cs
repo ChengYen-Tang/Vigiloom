@@ -81,7 +81,10 @@ public sealed class ProxyTests
             })));
         using var client = factory.CreateClient();
         Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
-        Assert.AreEqual("agent", await client.GetStringAsync("/api/v1/agent/identity", TestContext.CancellationToken));
+        using var agentDenied = await client.GetAsync("/api/v1/agent/identity", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, agentDenied.StatusCode);
+        using var enrollment = await client.PostAsync("/api/v1/agent/enroll", null, TestContext.CancellationToken);
+        Assert.AreEqual("agent", await enrollment.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual("otlp", await client.GetStringAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken));
         using var denied = await client.GetAsync("/api/v1/agent-management/devices", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
@@ -204,6 +207,65 @@ public sealed class ProxyTests
         var cookie = options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
         client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={cookie}");
         Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task AgentRequestsRequireValidatedCredentialExceptEnrollmentAndRecovery()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var agent = builder.Build();
+        var sawSecureForward = false;
+        agent.MapGet("/api/v1/agent/identity", (HttpContext context) =>
+        {
+            sawSecureForward = context.Request.Headers["X-Forwarded-Proto"] == "https";
+            if (context.Request.Headers.Authorization == "Bearer limited-agent")
+            {
+                context.Response.Headers.RetryAfter = "25";
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+            return context.Request.Headers.Authorization == "Bearer valid-agent"
+                ? Results.Json(new { AgentId = Guid.CreateVersion7(), DeviceId = Guid.CreateVersion7() })
+                : Results.Unauthorized();
+        });
+        agent.MapPost("/api/v1/agent/heartbeat", () => Results.NoContent());
+        agent.MapPost("/api/v1/agent/enroll", () => Results.Ok());
+        agent.MapPost("/api/v1/agent/recover", () => Results.Ok());
+        agent.MapPost("/api/v1/agent/rotation/start", () => Results.NoContent());
+        agent.MapPost("/api/v1/agent/rotation/finish", (HttpContext context) =>
+            context.Request.Headers.Authorization == "Bearer pending-agent" ? Results.NoContent() : Results.Unauthorized());
+        await agent.StartAsync(TestContext.CancellationToken);
+        var address = agent.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+                ["Vigiloom:Gateway:AgentIdentityAddress"] = address
+            })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        using var missing = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, missing.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-agent");
+        using var invalid = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "limited-agent");
+        using var limited = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.AreEqual("25", limited.Headers.RetryAfter?.ToString());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        using var valid = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, valid.StatusCode);
+        Assert.IsTrue(sawSecureForward);
+        client.DefaultRequestHeaders.Authorization = null;
+        using var enrollment = await client.PostAsync("/api/v1/agent/enroll", null, TestContext.CancellationToken);
+        using var recovery = await client.PostAsync("/api/v1/agent/recover", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, enrollment.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, recovery.StatusCode);
+        using var rotationStart = await client.PostAsync("/api/v1/agent/rotation/start", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, rotationStart.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "pending-agent");
+        using var rotationFinish = await client.PostAsync("/api/v1/agent/rotation/finish", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, rotationFinish.StatusCode);
     }
 
     private static async Task<WebApplication> StartUpstreamAsync(string name, CancellationToken token)
