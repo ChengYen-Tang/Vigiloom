@@ -63,6 +63,21 @@ public sealed class ResourcesDataMigrationTests
                 db.DeviceTargets.Add(new DeviceTarget(device.Id, "extra.example"));
                 await db.SaveChangesAsync(token);
             }
+            var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 0, new byte[32], now);
+            var enrollment = new Vigiloom.Modules.AgentManagement.Domain.Enrollment(device.Id, 0, new byte[32], now, now.AddMinutes(15));
+            enrollment.Consume(agent.Id);
+            var updateId = Guid.CreateVersion7();
+            await using (var db = new AgentManagementDbContext(agentOptions))
+            {
+                db.Agents.Add(agent);
+                db.Enrollments.Add(enrollment);
+                db.VersionAssignments.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment
+                    { AgentId = agent.Id, PackageId = package.Id, UpdateId = updateId, AssignedBy = Guid.CreateVersion7(), AssignedAt = now });
+                db.UpdateTargets.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget
+                    { Id = updateId, AgentId = agent.Id, PackageId = package.Id, Version = package.Version,
+                        RuntimeIdentifier = package.RuntimeIdentifier, ManifestSha256 = package.ManifestSha256, AssignedAt = now });
+                await db.SaveChangesAsync(token);
+            }
             await ResourcesDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
             await using (var db = new ResourcesDbContext(targetOptions))
             {
@@ -73,6 +88,10 @@ public sealed class ResourcesDataMigrationTests
                 Assert.IsTrue(await db.ApplicationCandidates.AnyAsync(x => x.Id == candidate.Id && x.SourceId == telemetrySource.Id, token));
                 Assert.IsTrue(await db.ApplicationServices.AnyAsync(x => x.Id == approved.Id && x.DisplayName == "Orders", token));
                 Assert.IsTrue(await db.AgentPackages.AnyAsync(x => x.Id == package.Id && x.Version == package.Version && x.Sha256 == package.Sha256, token));
+                Assert.IsTrue(await db.Agents.AnyAsync(x => x.Id == agent.Id && x.DeviceId == device.Id, token));
+                Assert.IsTrue(await db.AgentEnrollments.AnyAsync(x => x.Id == enrollment.Id && x.AgentId == agent.Id, token));
+                Assert.IsTrue(await db.AgentVersionAssignments.AnyAsync(x => x.AgentId == agent.Id && x.PackageId == package.Id && x.UpdateId == updateId, token));
+                Assert.IsTrue(await db.AgentUpdateTargets.AnyAsync(x => x.Id == updateId && x.AgentId == agent.Id && x.PackageId == package.Id, token));
             }
             await Assert.ThrowsAsync<InvalidOperationException>(() => ResourcesDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token));
         }, outerToken), TestContext.CancellationToken);

@@ -1,4 +1,5 @@
 using AgentPackage = Vigiloom.Modules.AgentManagement.Domain.AgentPackage;
+using AgentVersionAssignment = Vigiloom.Modules.AgentManagement.Domain.AgentVersionAssignment;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;

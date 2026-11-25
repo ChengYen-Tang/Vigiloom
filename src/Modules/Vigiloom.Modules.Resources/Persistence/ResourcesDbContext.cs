@@ -14,6 +14,10 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     public DbSet<ApplicationService> ApplicationServices => Set<ApplicationService>();
     public DbSet<ApplicationCandidate> ApplicationCandidates => Set<ApplicationCandidate>();
     public DbSet<AgentPackage> AgentPackages => Set<AgentPackage>();
+    public DbSet<RegisteredAgent> Agents => Set<RegisteredAgent>();
+    public DbSet<AgentEnrollment> AgentEnrollments => Set<AgentEnrollment>();
+    public DbSet<AgentVersionAssignment> AgentVersionAssignments => Set<AgentVersionAssignment>();
+    public DbSet<AgentUpdateTarget> AgentUpdateTargets => Set<AgentUpdateTarget>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +37,49 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
         package.Property(x => x.Sha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
         package.HasIndex(x => new { x.Version, x.RuntimeIdentifier }).IsUnique();
+
+        var agent = modelBuilder.Entity<RegisteredAgent>();
+        agent.ToTable("Agents", table => table.HasCheckConstraint("CK_ResourceAgents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        agent.HasKey(x => x.Id).IsClustered(false);
+        agent.Property(x => x.Id).ValueGeneratedNever();
+        agent.Property(x => x.RowId).UseIdentityColumn();
+        agent.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        agent.HasIndex(x => x.DeviceId).IsUnique().HasFilter("[RevokedAt] IS NULL");
+        agent.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
+        agent.Property(x => x.PendingVerifier).HasColumnType("binary(32)");
+        agent.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.NoAction);
+
+        var enrollment = modelBuilder.Entity<AgentEnrollment>();
+        enrollment.ToTable("AgentEnrollments", table => table.HasCheckConstraint("CK_ResourceEnrollments_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        enrollment.HasKey(x => x.Id).IsClustered(false);
+        enrollment.Property(x => x.Id).ValueGeneratedNever();
+        enrollment.Property(x => x.RowId).UseIdentityColumn();
+        enrollment.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        enrollment.HasIndex(x => x.DeviceId);
+        enrollment.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
+        enrollment.HasOne<RegisteredAgent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        enrollment.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.NoAction);
+
+        var assignment = modelBuilder.Entity<AgentVersionAssignment>();
+        assignment.ToTable("AgentVersionAssignments", table => table.HasCheckConstraint("CK_ResourceVersionAssignments_Target",
+            "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')"));
+        assignment.HasKey(x => x.AgentId).IsClustered();
+        assignment.Property(x => x.Version).IsRowVersion();
+        assignment.HasOne<RegisteredAgent>().WithOne().HasForeignKey<AgentVersionAssignment>(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        assignment.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
+
+        var updateTarget = modelBuilder.Entity<AgentUpdateTarget>();
+        updateTarget.ToTable("AgentUpdateTargets", table => table.HasCheckConstraint("CK_ResourceUpdateTargets_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'"));
+        updateTarget.HasKey(x => x.Id).IsClustered(false);
+        updateTarget.Property(x => x.Id).ValueGeneratedNever();
+        updateTarget.Property(x => x.RowId).UseIdentityColumn();
+        updateTarget.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        updateTarget.HasIndex(x => new { x.AgentId, x.AssignedAt });
+        updateTarget.Property(x => x.Version).HasMaxLength(128).IsRequired();
+        updateTarget.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false).IsRequired();
+        updateTarget.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        updateTarget.HasOne<RegisteredAgent>().WithMany().HasForeignKey(x => x.AgentId).OnDelete(DeleteBehavior.NoAction);
+        updateTarget.HasOne<AgentPackage>().WithMany().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.NoAction);
         var candidate = modelBuilder.Entity<ApplicationCandidate>();
         candidate.ToTable("ApplicationCandidates");
         candidate.HasKey(x => x.Id).IsClustered(false);
