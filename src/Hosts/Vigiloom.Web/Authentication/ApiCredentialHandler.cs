@@ -2,12 +2,11 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
-using Vigiloom.Modules.IdentityAccess.Application;
 
 namespace Vigiloom.Web.Authentication;
 
 internal sealed class ApiCredentialHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger,
-    UrlEncoder encoder, ApiCredentialVerifier verifier) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    UrlEncoder encoder, IApiCredentialValidation verifier) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "VigiloomApiCredential";
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
