@@ -11,6 +11,7 @@ using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Operations;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Application.Retention;
@@ -80,7 +81,13 @@ builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
 builder.Services.AddScoped<TraceQuotaSettings>();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<IdentityAuditRetention>();
-builder.Services.AddScoped<IAuditRetentionSource>(provider => provider.GetRequiredService<IdentityAuditRetention>());
+builder.Services.AddScoped<IAuditRetentionSource>(provider =>
+    string.IsNullOrWhiteSpace(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
+        ? provider.GetRequiredService<IdentityAuditRetention>()
+        : provider.GetRequiredService<RemoteIdentityAuditRetention>());
+builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();

@@ -21,3 +21,9 @@ the copy. The copy requires empty Identity tables and commits all copied tables
 together; keep the original database and key ring until the migrated service is
 verified. This command prepares the data; deployment must also point the Identity
 service and its remaining audit integrations at the appropriate databases.
+
+When Identity runs separately, the platform holds its retention policy lock while
+the Identity service counts or deletes its own audit records in a local transaction.
+The two databases do not share a transaction: if the remote response is lost,
+the scheduled job retries and an already-deleted batch is harmless. The permanent
+initial-administrator marker remains excluded from cleanup.

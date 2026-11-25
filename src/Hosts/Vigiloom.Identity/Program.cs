@@ -4,6 +4,8 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Identity;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Operations;
+using Vigiloom.Modules.IdentityAccess.Application.Retention;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Modules.IdentityAccess.Domain;
 
@@ -17,6 +19,8 @@ builder.Services.AddIdentityAccessOperations();
 builder.Services.AddScoped<AdministratorActorValidator>();
 builder.Services.AddScoped<AccountActorValidator>();
 builder.Services.AddScoped<IdentityAuditFeed>();
+builder.Services.AddScoped<IdentityAuditRetention>();
+builder.Services.AddScoped<IndependentIdentityAuditRetention>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication().AddIdentityCookies();
 builder.Services.AddIdentityCore<Account>().AddSignInManager();
@@ -28,6 +32,10 @@ app.MapAccountManagementEndpoints();
 app.MapAccountPasswordEndpoints();
 app.MapTwoFactorSettingsEndpoints();
 app.MapIdentityAuditEndpoints();
+app.MapPost("/internal/identity/audit/retention/count", async (IdentityAuditRetentionRequest request, IndependentIdentityAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request.Cutoff, token)));
+app.MapPost("/internal/identity/audit/retention/delete", async (IdentityAuditRetentionRequest request, IndependentIdentityAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteBatchAsync(request.Cutoff, request.BatchSize, token)));
 
 // This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
 app.MapPost("/internal/identity/api-credentials/validate", async (
