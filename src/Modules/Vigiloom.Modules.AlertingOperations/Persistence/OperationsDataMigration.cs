@@ -27,5 +27,5 @@ public static class OperationsDataMigration
     ];
 
     public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default) =>
-        SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token);
+        SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token, TimelineDataMigration.CopyLogsAsync);
 }
