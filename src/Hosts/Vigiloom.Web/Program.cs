@@ -1,3 +1,4 @@
+using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
@@ -5,6 +6,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Work;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.BuildingBlocks.Retention;
@@ -44,6 +46,7 @@ using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
+using Vigiloom.Web.Gateway;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -57,6 +60,14 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
+
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
+{
+    builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
+        builder.Configuration["Temporal:Namespace"] ?? "default");
+    builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
+        builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+}
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
@@ -88,7 +99,8 @@ builder.Services.AddScoped<IAuditRetentionSource>(provider =>
         : provider.GetRequiredService<RemoteIdentityAuditRetention>());
 builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
@@ -121,28 +133,36 @@ builder.Services.AddVigiloomIdentityCredentialClient();
 builder.Services.AddVigiloomIdentityCookieClient();
 builder.Services.AddHttpClient<RemoteWorkspaceIdentity>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteCookieValidator>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemotePasswordLogin>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteCredentialManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteAccountManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteAccountPasswordOperations>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteTwoFactorSettings>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddHttpClient<RemoteIdentityAuditReader>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 builder.Services.AddScoped<IApiCredentialValidation>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
         ? services.GetRequiredService<LocalApiCredentialValidation>()
@@ -150,14 +170,46 @@ builder.Services.AddScoped<IApiCredentialValidation>(services =>
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Devices.RemoteDeviceManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IDeviceManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<DeviceManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Devices.RemoteDeviceManagement>());
 builder.Services.AddScoped<GroupManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Groups.RemoteGroupManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IGroupManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<GroupManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Groups.RemoteGroupManagement>());
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();
+builder.Services.AddHttpClient<RemoteServiceMembership>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IServiceMembership>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<ServiceMembership>()
+        : services.GetRequiredService<RemoteServiceMembership>());
 builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentRegistration>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentIdentity>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
+builder.Services.AddScoped<IMachineAgentIdentity>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentIdentity>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
 builder.Services.AddScoped<CandidateDiscovery>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
@@ -177,6 +229,14 @@ builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
 builder.Services.AddScoped<ServiceApproval>();
+builder.Services.AddScoped<Vigiloom.Web.Services.LocalCandidateAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteCandidateAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Vigiloom.Web.Services.ICandidateAdministration>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<Vigiloom.Web.Services.LocalCandidateAdministration>()
+        : services.GetRequiredService<Vigiloom.Web.Services.RemoteCandidateAdministration>());
 builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
@@ -185,6 +245,15 @@ builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Hea
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthHistoryReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
+builder.Services.AddScoped<ApplicationStateProjection>();
+builder.Services.AddScoped<Vigiloom.Web.Services.LocalApplicationManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteApplicationManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Vigiloom.Web.Services.IApplicationManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<Vigiloom.Web.Services.LocalApplicationManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Services.RemoteApplicationManagement>());
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
 builder.Services.AddScoped<AgentMonitoring>();
@@ -196,12 +265,44 @@ builder.Services.AddScoped<AgentQueueCapacityConfiguration>();
 builder.Services.AddScoped<AgentMetricConfiguration>();
 builder.Services.AddScoped<HostLogConfiguration>();
 builder.Services.AddScoped<AgentPackageQuery>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentPackageQuery>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentPackageQuery>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>());
 builder.Services.AddScoped<AgentVersionAssignments>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentAssignments>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentVersionAssignments>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
+builder.Services.AddScoped<IAgentVersionDelivery>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentVersionAssignments>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentPackageAccess>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentUpdateAccess>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentPackageAccess>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>());
 builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<PackageLibrary>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentPackageLibrary>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<PackageLibrary>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>());
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
@@ -294,6 +395,12 @@ builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateAdministration>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateUpdateWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateRetirementWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicationManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicDeviceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
@@ -372,6 +479,9 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
+
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 
 // Anonymous status HTML may contain published information and must not survive revocation in caches.
 app.Use(async (context, next) =>
@@ -458,6 +568,12 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 {
     Predicate = _ => false
 }).AllowAnonymous();
+// This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
+app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(new { SourceId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value });
+}).RequireAuthorization("ServiceSource");
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapPublicationEndpoints();
@@ -492,6 +608,31 @@ app.MapAgentBatchEndpoints();
 app.MapServiceDiscoveryEndpoints();
 app.MapLineWebhookEndpoints();
 app.MapLineSettingsEndpoints();
+app.MapGet("/internal/v1/observation-sources/{id:guid}/active", async (Guid id, IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    var source = await db.Sources.AsNoTracking().Where(source => source.Id == id)
+        .Select(source => new Vigiloom.Contracts.Resources.ApplicationSourceStatus(source.RevokedAt == null, source.Name)).SingleOrDefaultAsync(token);
+    return Results.Ok(source ?? new Vigiloom.Contracts.Resources.ApplicationSourceStatus(false, null));
+});
+app.MapPost("/internal/v1/agent-package-usage", async (Vigiloom.Contracts.Agent.AgentPackageUsageRequest request,
+    IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    var inUse = await db.Agents.AsNoTracking().AnyAsync(a => a.RevokedAt == null && a.RuntimeVersion == request.Version &&
+        a.RuntimeIdentifier == request.RuntimeIdentifier, token);
+    return Results.Ok(new Vigiloom.Contracts.Agent.AgentPackageUsageResponse(inUse));
+});
+app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id,
+    IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    var agent = await db.Agents.AsNoTracking().Where(a => a.Id == id && a.RevokedAt == null)
+        .Select(a => new { a.RuntimeVersion, a.RuntimeIdentifier, a.RuntimeReportedAt }).SingleOrDefaultAsync(token);
+    if (agent is null) return Results.NotFound();
+    var latest = await AgentVersionObservations.LatestAsync(db, id, token);
+    return Results.Ok(new Vigiloom.Contracts.Agent.AgentVersionObservation(agent.RuntimeVersion, agent.RuntimeIdentifier, agent.RuntimeReportedAt, latest));
+});
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapTelemetryRetentionEndpoints();

@@ -6,7 +6,7 @@
 @using Vigiloom.Modules.ServiceObservability.Application
 @inject InstancePolicyAdministration Policies
 @inject ServiceInstanceAdministration Instances
-@inject ServiceCollectionAdministration Collections
+@inject Vigiloom.Web.Services.IApplicationManagement Collections
 @inject ILogger<ServiceInstances> Logger
 
 <PageTitle>服務執行個體 - Vigiloom</PageTitle>
@@ -135,7 +135,7 @@
             var isPolicyPost = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType &&
                 (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] == "instance-policy";
             if (!isPolicyPost) PolicyForm = new() { PerService = policy.PerService, Total = policy.Total, Version = policy.Version };
-            services = await Instances.ListServicesAsync(servicePage, HttpContext.RequestAborted);
+            services = await Collections.ListServicesAsync(servicePage, HttpContext.RequestAborted);
             if (SelectedService is { } id && id.Version == 7) instances = await Instances.ListAsync(id, instancePage, HttpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

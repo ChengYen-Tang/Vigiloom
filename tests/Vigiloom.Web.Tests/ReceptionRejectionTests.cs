@@ -32,6 +32,33 @@ namespace Vigiloom.Web.Tests;
 public sealed class ReceptionRejectionTests(TestContext context)
 {
     [TestMethod]
+    public Task InternalSourceChecksPreserveOtlpRejectionDiagnostics() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            var contexts = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            using var scope = factory.Services.CreateScope();
+            var credentials = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
+            var source = await credentials.IssueAsync("collector", token);
+            var diagnostics = scope.ServiceProvider.GetRequiredService<ReceptionRejectionDiagnostics>();
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            client.DefaultRequestHeaders.Add("X-Vigiloom-Telemetry-Ingress", "otlp");
+            client.DefaultRequestHeaders.Add("X-Vigiloom-Telemetry-Secure", "true");
+            using (var missing = await client.GetAsync("/internal/telemetry/source/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, missing.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", source.Secret);
+            client.DefaultRequestHeaders.Remove("X-Vigiloom-Telemetry-Secure");
+            client.DefaultRequestHeaders.Add("X-Vigiloom-Telemetry-Secure", "false");
+            using (var insecure = await client.GetAsync("/internal/telemetry/source/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, insecure.StatusCode);
+            await diagnostics.FlushAsync(token);
+            var summary = (await scope.ServiceProvider.GetRequiredService<ReceptionRejectionReader>().ListAsync(token))
+                .Single(item => item.Kind == (byte)ReceptionRejectionKind.CredentialRejected);
+            Assert.AreEqual(2L, summary.Count);
+            Assert.AreEqual((byte)ReceptionIngress.Otlp, summary.ExampleIngress);
+        }, context.CancellationToken);
+
+    [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task ConcurrentNodes_AddDeltasWithoutOverwritingAndMissingRowsAreVisible() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -169,7 +196,7 @@ public sealed class ReceptionRejectionTests(TestContext context)
             metadata.Request.ContentType = "application/json";
             metadata.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"serviceKey\":\"orders\",\"environment\":\"prod\",\"displayName\":\"Orders\"}"));
             metadata.Response.Body = new MemoryStream();
-            var result = await ServiceObservationEndpoint.ReceiveAsync(metadata, scope.ServiceProvider.GetRequiredService<CandidateDiscovery>(), token, diagnostics);
+            var result = await ServiceObservationEndpoint.ReceiveAsync(metadata, scope.ServiceProvider.GetRequiredService<Vigiloom.Web.Services.ICandidateAdministration>(), token, diagnostics);
             await result.ExecuteAsync(metadata);
             Assert.AreEqual(StatusCodes.Status401Unauthorized, metadata.Response.StatusCode);
 

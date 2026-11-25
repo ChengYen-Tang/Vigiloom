@@ -43,6 +43,28 @@ namespace Vigiloom.Web.Tests;
 public sealed class OtlpHttpIntegrationTests(TestContext context)
 {
     [TestMethod]
+    public Task InternalSourceIdentityUsesExistingCredentialAndRevocation() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+            await PingTestSite.InitializeAsync(factory, token);
+            var contexts = factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using var scope = factory.Services.CreateAsyncScope();
+            var credentials = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
+            var issued = await credentials.IssueAsync("collector", token);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Secret);
+            using var accepted = await client.GetAsync("/internal/telemetry/source/identity", token);
+            Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+            var identity = await accepted.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
+            Assert.AreEqual(issued.SourceId.ToString("D"), identity.GetProperty("sourceId").GetString());
+            Assert.IsTrue(await credentials.RevokeAsync(issued.SourceId, token));
+            using var revoked = await client.GetAsync("/internal/telemetry/source/identity", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        }, context.CancellationToken);
+
+    [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task InFlightPrincipal_IsRejectedAfterRotationAtBothIngresses() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -65,7 +87,7 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             metadata.Request.ContentType = "application/json";
             metadata.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"serviceKey\":\"orders\",\"environment\":\"prod\",\"displayName\":\"Orders\"}"));
             metadata.Response.Body = new MemoryStream();
-            var candidates = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+            var candidates = scope.ServiceProvider.GetRequiredService<Vigiloom.Web.Services.ICandidateAdministration>();
             await (await ServiceObservationEndpoint.ReceiveAsync(metadata, candidates, token)).ExecuteAsync(metadata);
             Assert.AreEqual(StatusCodes.Status401Unauthorized, metadata.Response.StatusCode);
             var resource = new Resource();

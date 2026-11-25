@@ -18,11 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-test-setup
-      - name: Install Chromium
-        shell: pwsh
-        run: ./tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install chromium
-      - name: Test Web project
-        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore -m:1
+      - name: Test migrated service integration
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore -m:1 --filter "FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests"
 
   windows_remaining:
     name: Windows remaining tests
@@ -31,9 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-test-setup
-      - name: Test remaining solution
+      - name: Test current services and Agent
         shell: pwsh
-        run: ./tools/ci/test-without-web.ps1
+        run: ./tools/ci/test-current.ps1
 
   windows:
     name: Windows build and test
@@ -200,23 +197,6 @@ jobs:
         run: dotnet restore Vigiloom.slnx
       - name: Build solution
         run: dotnet build Vigiloom.slnx --configuration Release --no-restore
-      - name: Install Chromium and dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! sudo apt-get -o APT::Update::Error-Mode=any update; then
-            # Retry with an alternate Ubuntu mirror while preserving signing settings.
-            for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
-              if [[ -f "$source" ]]; then
-                sudo sed -i -E \
-                  -e 's#(^|[[:space:]])mirror\+file:/etc/apt/apt-mirrors\.txt([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\2#g' \
-                  -e 's#(^|[[:space:]])https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu/?([[:space:]]|$)#\1https://mirrors.kernel.org/ubuntu/\3#g' \
-                  "$source"
-              fi
-            done
-            sudo apt-get -o APT::Update::Error-Mode=any update
-          fi
-          pwsh tests/Vigiloom.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Start isolated SQL Server
         id: sql
         shell: bash
@@ -258,8 +238,11 @@ jobs:
         run: |
           docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci up -d --wait
           echo 'VIGILOOM_TEST_TEMPORAL=127.0.0.1:7233' >> "$GITHUB_ENV"
-      - name: Test solution
-        run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
+      - name: Test current services and Agent
+        shell: pwsh
+        run: ./tools/ci/test-current.ps1
+      - name: Test migrated service integration
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests|FullyQualifiedName~TemporalPublicationTests|FullyQualifiedName~GatewayAgentIntegrationTests|FullyQualifiedName~GatewaySourceIntegrationTests|FullyQualifiedName~TrustedProxyForwardingTests'
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |

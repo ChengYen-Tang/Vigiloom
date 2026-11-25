@@ -1,0 +1,474 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Groups;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Publishing;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
+using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Application.AgentPackages;
+using Vigiloom.Modules.Resources.Application.Publishing;
+using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Testing.SqlServer;
+using Vigiloom.UpdateSecurity.AgentPackages;
+
+namespace Vigiloom.Modules.Resources.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+public sealed class DeviceChangeMessagingTests
+{
+    public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task CommittedDeviceCreatesWorkForNetworkAndAgentServices()
+    {
+        var suffix = Guid.CreateVersion7().ToString("N");
+        var networkQueue = "vigiloom-test-network-" + suffix;
+        var agentQueue = "vigiloom-test-agent-" + suffix;
+        var auditQueue = "vigiloom-test-audit-" + suffix;
+        var observabilityQueue = "vigiloom-test-observation-" + suffix;
+        var sources = new TestSources();
+        {
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+            {
+                var builder = Host.CreateApplicationBuilder();
+                builder.Services.AddModuleSqlServer<ResourcesDbContext>(database.ConnectionString, "resources");
+                builder.Services.AddSingleton(TimeProvider.System);
+                builder.Services.AddScoped<DeviceManagement>();
+                builder.Services.AddScoped<DeviceChangeOutbox>();
+                builder.Services.AddScoped<GroupManagement>();
+                builder.Services.AddScoped<GroupAuditOutbox>();
+                builder.Services.AddSingleton<IApplicationSourceVerifier>(sources);
+                builder.Services.AddScoped<ApplicationDiscovery>();
+                builder.Services.AddScoped<ApplicationApproval>();
+                builder.Services.AddScoped<SelfServiceRegistration>();
+                builder.Services.AddScoped<ApplicationLifecycle>();
+                builder.Services.AddScoped<ApplicationCatalog>();
+                builder.Services.AddScoped<AgentAssignments>();
+                builder.Services.AddScoped<PublicTemplates>();
+                builder.Services.AddScoped<TemplateChanges>();
+                builder.Services.AddScoped<PublishedPolicies>();
+                builder.Services.AddScoped<PublicationSettingsManager>();
+                builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+                builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Work:NetworkQueue"] = networkQueue, ["Work:AgentQueue"] = agentQueue,
+                    ["Work:AuditQueue"] = auditQueue, ["Work:ObservabilityQueue"] = observabilityQueue
+                });
+                builder.Services.AddScoped<IOutboxHandler, TestTemporalOutboxHandler>();
+                builder.Services.AddScoped<OutboxWriter>();
+                builder.Services.AddScoped<TemporalWorkWriter>();
+                builder.Services.AddScoped<ResourceWork>();
+                using var host = builder.Build();
+                await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    await db.Database.MigrateAsync(token);
+                var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
+                await host.StartAsync(token);
+                try
+                {
+                    Guid id;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var result = await scope.ServiceProvider.GetRequiredService<DeviceManagement>()
+                            .CreateAsync(new DeviceInput("Host", "host.example", [], true), Guid.CreateVersion7(), token);
+                        Assert.AreEqual(DeviceResultStatus.Success, result.Status);
+                        id = result.Device!.Id;
+                    }
+                    var channel = new TestWorkQueue(database.ConnectionString);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                    foreach (var queue in new[] { networkQueue, agentQueue })
+                    {
+                        TestWorkMessage? message;
+                        while ((message = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                            await Task.Delay(100, timeout.Token);
+                        Assert.Contains(id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
+                    }
+                    Guid groupId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var groups = scope.ServiceProvider.GetRequiredService<GroupManagement>();
+                        var created = await groups.CreateAsync(new GroupInput("Servers", null), Guid.CreateVersion7(), token);
+                        Assert.AreEqual(GroupResultStatus.Success, created.Status);
+                        groupId = created.Group!.Id;
+                    }
+                    TestWorkMessage? groupMessage;
+                    while ((groupMessage = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                        await Task.Delay(100, timeout.Token);
+                    Assert.Contains(groupId.ToString("D"), System.Text.Encoding.UTF8.GetString(groupMessage.Body.Span));
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                        Assert.IsTrue(await db.Groups.AnyAsync(x => x.Id == groupId, token));
+                    Guid candidateId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var discovery = scope.ServiceProvider.GetRequiredService<ApplicationDiscovery>();
+                        var observation = new ApplicationObservation(Guid.CreateVersion7(), "orders", "production", "Orders", "");
+                        await discovery.ObserveAsync(observation, token);
+                        candidateId = (await discovery.ListAsync(1, token)).Single().Id;
+                        sources.Active = false;
+                        var denied = await scope.ServiceProvider.GetRequiredService<ApplicationApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
+                        Assert.AreEqual(ApplicationApprovalStatus.SourceUnavailable, denied.Status);
+                    }
+                    sources.Active = true;
+                    Guid serviceId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var approval = await scope.ServiceProvider.GetRequiredService<ApplicationApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
+                        Assert.AreEqual(ApplicationApprovalStatus.Approved, approval.Status);
+                        serviceId = approval.ServiceId!.Value;
+                    }
+                    foreach (var queue in new[] { auditQueue, observabilityQueue })
+                    {
+                        TestWorkMessage? message;
+                        while ((message = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                            await Task.Delay(100, timeout.Token);
+                        Assert.Contains(serviceId.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
+                    }
+                    var ownService = new ApplicationObservation(Guid.CreateVersion7(), "Vigiloom.Resources", "production", "Resources", "");
+                    Guid? ownId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        ownId = await scope.ServiceProvider.GetRequiredService<SelfServiceRegistration>().RegisterAsync(ownService, token);
+                    Assert.IsNotNull(ownId);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(ownId, await scope.ServiceProvider.GetRequiredService<SelfServiceRegistration>().RegisterAsync(ownService, token));
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var self = await db.Groups.SingleAsync(g => g.Name == "Self", token);
+                        Assert.AreEqual(1, await db.ServiceGroups.CountAsync(m => m.GroupId == self.Id && m.ServiceId == ownId, token));
+                        Assert.AreEqual(1, await db.ApplicationServices.CountAsync(s => s.Id == ownId, token));
+                    }
+                    TestWorkMessage? ownMessage;
+                    while ((ownMessage = await channel.BasicGetAsync(observabilityQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                        await Task.Delay(100, timeout.Token);
+                    Assert.Contains(ownId.Value.ToString("D"), System.Text.Encoding.UTF8.GetString(ownMessage.Body.Span));
+                    var agentId = Guid.CreateVersion7();
+                    var packageId = Guid.CreateVersion7();
+                    var olderPackageId = Guid.CreateVersion7();
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.Agents.Add(new RegisteredAgent { Id = agentId, DeviceId = id, Verifier = new byte[32], CreatedAt = DateTimeOffset.UtcNow });
+                        db.AgentPackages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64",
+                            Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 123 });
+                        db.AgentPackages.Add(new AgentPackage { Id = olderPackageId, Version = "1.1.0", RuntimeIdentifier = "win-x64",
+                            Sha256 = new string('c', 64), ManifestSha256 = new string('d', 64), Size = 123 });
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var assignments = scope.ServiceProvider.GetRequiredService<AgentAssignments>();
+                        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId,
+                            new AgentVersionAssignmentCommand(packageId, "", Guid.CreateVersion7()), token));
+                        var target = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(target);
+                        Assert.AreEqual(packageId, target.PackageId);
+                        Assert.AreEqual("1.2.3", target.PackageVersion);
+                    }
+                    using (var notificationTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                    {
+                        notificationTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+                        TestWorkMessage? assignmentMessage;
+                        while ((assignmentMessage = await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
+                            await Task.Delay(100, notificationTimeout.Token);
+                        Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentMessage.Body.Span));
+                        TestWorkMessage? assignmentAudit;
+                        while ((assignmentAudit = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
+                            await Task.Delay(100, notificationTimeout.Token);
+                        Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentAudit.Body.Span));
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var assignments = scope.ServiceProvider.GetRequiredService<AgentAssignments>();
+                        var current = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(current);
+                        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId,
+                            new AgentVersionAssignmentCommand(olderPackageId, current.Revision, Guid.CreateVersion7()), token));
+                        var rollback = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(rollback);
+                        Assert.AreEqual(olderPackageId, rollback.PackageId);
+                        Assert.AreEqual("1.1.0", rollback.PackageVersion);
+                        Assert.AreNotEqual(current.UpdateId, rollback.UpdateId);
+                    }
+                    Assert.IsNotNull(await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: token));
+                    Assert.IsNotNull(await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: token));
+                    var actor = Guid.CreateVersion7();
+                    PublicationTemplateItem template;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var created = await scope.ServiceProvider.GetRequiredService<PublicTemplates>().CreateAsync(new CreatePublicationTemplate("Default", true, false, 3), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, created.Status);
+                        Assert.IsNotNull(created.Value);
+                        template = created.Value;
+                        Assert.IsTrue(template.HistoryReady);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var templates = scope.ServiceProvider.GetRequiredService<PublicTemplates>();
+                        var result = await templates.SetDefaultAsync(template.Id, new SetDefaultPublicationTemplate(template.Version), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, result.Status);
+                        Assert.IsNotNull(result.Value);
+                        template = result.Value;
+                        Assert.IsTrue((await templates.GetAsync(null, true, token))?.IsDefault);
+                    }
+                    using (var auditTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                    {
+                        auditTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+                        for (var i = 0; i < 2; i++)
+                        {
+                            TestWorkMessage? message;
+                            while ((message = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: auditTimeout.Token)) is null)
+                                await Task.Delay(100, auditTimeout.Token);
+                            Assert.Contains(template.Id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
+                        }
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Device, id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Device, id,
+                            new PublicationChange(true, "Public host", PublicationPolicy.TemplateVersion, current.Version, template.Id, template.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var publicDevice = await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token);
+                        Assert.AreEqual("Public host", publicDevice?.Name);
+                        Assert.AreEqual("host.example", publicDevice?.Target);
+                        Assert.IsTrue(publicDevice?.Enabled);
+                        Assert.IsTrue(publicDevice?.ShowLatency);
+                        Assert.IsFalse(publicDevice?.ShowObservedAt);
+                        Assert.IsNotNull(publicDevice?.PublicSince);
+                        var publishedDevices = await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DevicesAsync("Public", 1, null, token);
+                        Assert.AreEqual(id, publishedDevices.Items.Single().Id);
+                        Assert.IsEmpty((await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DevicesAsync("missing", 1, null, token)).Items);
+                    }
+                    PublicationTemplateUpdatePreview updatePreview;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var preview = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .PreviewUpdateAsync(template.Id, new PublicationTemplateUpdate("Updated", true, true, 3), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, preview.Status);
+                        Assert.IsNotNull(preview.Value);
+                        updatePreview = preview.Value;
+                        Assert.AreEqual(1, updatePreview.Impact.Count);
+                    }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var device = await db.Devices.SingleAsync(d => d.Id == id, token);
+                        device.Rename("Updated host", DateTimeOffset.UtcNow);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var changes = scope.ServiceProvider.GetRequiredService<TemplateChanges>();
+                        var stale = await changes.ConfirmUpdateAsync(template.Id, new ConfirmPublicationTemplateUpdate(updatePreview.Confirmation), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Conflict, stale.Status);
+                        var refreshed = await changes.PreviewUpdateAsync(template.Id, new PublicationTemplateUpdate("Updated", true, true, 3), actor, token);
+                        Assert.IsNotNull(refreshed.Value);
+                        updatePreview = refreshed.Value;
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var updated = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .ConfirmUpdateAsync(template.Id, new ConfirmPublicationTemplateUpdate(updatePreview.Confirmation), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, updated.Status);
+                        Assert.AreEqual("Updated", updated.Value?.Name);
+                    }
+                    PublicationTemplateRetirementPreview retirePreview;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var preview = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .PreviewRetireAsync(template.Id, new PublicationTemplateRetirement(null, null), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, preview.Status);
+                        Assert.IsNotNull(preview.Value);
+                        retirePreview = preview.Value;
+                        Assert.AreEqual(1, retirePreview.Impact.PublicCount);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var changes = scope.ServiceProvider.GetRequiredService<TemplateChanges>();
+                        Assert.AreEqual(TemplateOperationStatus.Success,
+                            await changes.ConfirmRetireAsync(template.Id, new ConfirmPublicationTemplateRetirement(retirePreview.Confirmation), actor, token));
+                        Assert.AreEqual(TemplateOperationStatus.NotFound, (await changes.ImpactAsync(template.Id, 1, token)).Status);
+                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token));
+                    }
+                    var publicGroup = new Group("Internal group", DateTimeOffset.UtcNow);
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.Groups.Add(publicGroup);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.IsNull(await policies.GroupAsync(publicGroup.Id, token));
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Group, publicGroup.Id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Group, publicGroup.Id,
+                            new PublicationChange(true, "Public group", PublicationPolicy.BaselineVersion, current.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                        var published = await policies.GroupAsync(publicGroup.Id, token);
+                        Assert.AreEqual("Public group", published?.Name);
+                        Assert.IsFalse(string.IsNullOrEmpty(published?.Version));
+                        Assert.AreEqual(PublicationSaveStatus.Updated,
+                            (await settings.SetAsync(PublicationResourceKind.Group, publicGroup.Id,
+                                new PublicationChange(false, null, null, result.Settings!.Version), actor, token)).Status);
+                        Assert.IsNull(await policies.GroupAsync(publicGroup.Id, token));
+                    }
+                    var candidateService = new ApplicationCandidate(Guid.CreateVersion7(), "billing", "production", "Billing", "", DateTimeOffset.UtcNow);
+                    var applicationService = new ApplicationService(candidateService, DateTimeOffset.UtcNow);
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.ApplicationServices.Add(applicationService);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                            new PublicationChange(true, "Billing status", PublicationPolicy.BaselineVersion, current.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                    }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var group = await db.Groups.SingleAsync(g => g.Id == publicGroup.Id, token);
+                        group.SetPublication(true, "Billing group", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+                        db.ServiceGroups.Add(new ServiceGroup(group.Id, applicationService.Id));
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.AreEqual("Billing status", (await policies.ServiceAsync(applicationService.Id, token))?.Name);
+                        Assert.AreEqual(applicationService.Id, (await policies.ServicesAsync("Billing", 1, null, token)).Items.Single().Id);
+                        Assert.AreEqual(applicationService.Id, (await policies.ServicesAsync(null, 1, publicGroup.Id, token)).Items.Single().Id);
+                        var group = (await policies.GroupsAsync("Billing", 1, token)).Items.Single();
+                        Assert.AreEqual(publicGroup.Id, group.Id);
+                        Assert.AreEqual(0, group.DeviceCount);
+                        Assert.AreEqual(1, group.ServiceCount);
+                        Assert.AreEqual(group, await policies.GroupSummaryAsync(publicGroup.Id, token));
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(current);
+                        Assert.AreEqual(PublicationSaveStatus.Updated,
+                            (await settings.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                                new PublicationChange(false, null, null, current.Version), actor, token)).Status);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.IsNull(await policies.ServiceAsync(applicationService.Id, token));
+                        Assert.IsEmpty((await policies.GroupsAsync("Billing", 1, token)).Items);
+                        Assert.IsNull(await policies.GroupSummaryAsync(publicGroup.Id, token));
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var lifecycle = scope.ServiceProvider.GetRequiredService<ApplicationLifecycle>();
+                        var catalog = scope.ServiceProvider.GetRequiredService<ApplicationCatalog>();
+                        Assert.IsTrue((await catalog.ListAsync(1, token)).Any(s => s.Id == applicationService.Id));
+                        var contexts = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                        async Task<string> VersionAsync()
+                        {
+                            await using var db = await contexts.CreateDbContextAsync(token);
+                            return Convert.ToBase64String((await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).Version);
+                        }
+                        var publication = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var settings = await publication.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(settings);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, (await publication.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                            new PublicationChange(true, "Billing status", PublicationPolicy.BaselineVersion, settings.Version), actor, token)).Status);
+                        Assert.IsNotNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "stop", actor), token));
+                        DateTimeOffset? stoppedAt;
+                        await using (var db = await contexts.CreateDbContextAsync(token))
+                            stoppedAt = (await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).RevokedAt;
+                        var oldVersion = await VersionAsync();
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(oldVersion, "archive", actor), token));
+                        Assert.IsNotNull((await catalog.GetAsync(applicationService.Id, token))?.ArchivedAt);
+                        await using (var db = await contexts.CreateDbContextAsync(token))
+                            Assert.AreEqual(stoppedAt, (await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).RevokedAt);
+                        Assert.AreEqual(ApplicationStateChangeStatus.Conflict, await lifecycle.ChangeAsync(applicationService.Id, new(oldVersion, "restore", actor), token));
+                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "restore", actor), token));
+                        sources.Active = false;
+                        Assert.AreEqual(ApplicationStateChangeStatus.SourceUnavailable, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "resume", actor), token));
+                        sources.Active = true;
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "resume", actor), token));
+                    }
+                    var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    await using (var tx = await db.Database.BeginTransactionAsync(token))
+                    {
+                        db.Devices.Add(rolledBack);
+                        await db.SaveChangesAsync(token);
+                        db.DeviceGroups.Add(new DeviceGroup(Guid.CreateVersion7(), rolledBack.Id));
+                        await Assert.ThrowsAsync<DbUpdateException>(() => scope.ServiceProvider.GetRequiredService<DeviceChangeOutbox>().CommitAsync(db, rolledBack, token));
+                    }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                        Assert.IsFalse(await db.Devices.AnyAsync(x => x.Id == rolledBack.Id, token));
+                    Assert.IsNull(await channel.BasicGetAsync(networkQueue, autoAck: true, cancellationToken: token));
+                    Assert.IsNull(await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: token));
+                }
+                finally { await host.StopAsync(CancellationToken.None); }
+            }, TestContext.CancellationToken);
+        }
+
+    }
+
+    private sealed record TestWorkMessage(ReadOnlyMemory<byte> Body);
+
+    private sealed class TestWorkQueue(string connectionString)
+    {
+        private readonly Dictionary<string, long> offsets = new(StringComparer.Ordinal);
+        public async Task<TestWorkMessage?> BasicGetAsync(string queue, bool autoAck, CancellationToken cancellationToken)
+        {
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT TOP (1) RowId, Payload FROM scheduling.Outbox WHERE RowId > @offset AND JSON_VALUE(Payload, '$.TaskQueue') = @queue ORDER BY RowId";
+            command.Parameters.AddWithValue("@offset", offsets.GetValueOrDefault(queue));
+            command.Parameters.AddWithValue("@queue", queue);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return null;
+            if (autoAck) offsets[queue] = reader.GetInt64(0);
+            return new TestWorkMessage(System.Text.Encoding.UTF8.GetBytes(reader.GetString(1)));
+        }
+    }
+
+    private sealed class TestSources : IApplicationSourceVerifier
+    {
+        public bool Active { get; set; } = true;
+        public Task<ApplicationSourceStatus> GetAsync(Guid sourceId, CancellationToken token) => Task.FromResult(new ApplicationSourceStatus(Active, "Source"));
+    }
+
+    private sealed class CachedPackages : IPackageLibraryTransport
+    {
+        public bool IsCached(string archiveHash, string manifestHash) => true;
+        public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] manifest, GitHubAgentReleases github, CancellationToken token) => throw new NotSupportedException();
+        public Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token) => throw new NotSupportedException();
+        public Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token) => throw new NotSupportedException();
+        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token) => throw new NotSupportedException();
+    }
+}

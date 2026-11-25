@@ -7,11 +7,23 @@ using Vigiloom.Modules.Resources.Persistence;
 namespace Vigiloom.Web.Publishing;
 
 /// <summary>Administrator preview of elapsed central Ping buckets after the current publication began.</summary>
-internal sealed class DeviceHistoryPreviewReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<NetworkDbContext> network)
+internal sealed class DeviceHistoryPreviewReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<NetworkDbContext> network,
+    IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
     public async Task<PublicDeviceHistory?> ReadAsync(Guid id, CancellationToken token)
     {
         if (id.Version != 7) return null;
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]))
+        {
+            var remote = provider!.GetRequiredService<RemotePublicReader>();
+            var policy = await remote.DevicePolicyAsync(id, token);
+            if (policy?.PublicSince is not { } since) return null;
+            await using var context = await resources.CreateDbContextAsync(token);
+            var currentTime = await context.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var first = since > currentTime.AddDays(-7) ? since : currentTime.AddDays(-7);
+            var preview = await DeviceHistoryBuckets.ReadAsync(network, id, policy.Target, first, currentTime, token);
+            return policy == await remote.DevicePolicyAsync(id, token) ? preview : null;
+        }
         await using var db = await resources.CreateDbContextAsync(token);
         var before = await SnapshotAsync(db, id, token);
         if (before is null || before.Since == Device.PendingPublicSince || !PublicationPolicy.TryValidateName(before.Name, out _)) return null;

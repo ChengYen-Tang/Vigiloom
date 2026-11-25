@@ -10,7 +10,7 @@ internal static class AgentUpdateDownloadEndpoints
     {
         var endpoints = app.MapGroup("/api/v1/agent/update").RequireAuthorization("Agent")
             .RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance);
-        endpoints.MapGet("/targets/{name}", async (string name, HttpContext context, AgentPackageAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
+        endpoints.MapGet("/targets/{name}", async (string name, HttpContext context, IAgentUpdateAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             try
@@ -25,7 +25,7 @@ internal static class AgentUpdateDownloadEndpoints
             }
         }).Produces(200, contentType: "application/json").ProducesProblem(401).ProducesProblem(404).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Retrieve the assigned Agent manifest");
-        endpoints.MapGet("/packages/{name}", async (string name, HttpContext context, AgentPackageAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
+        endpoints.MapGet("/packages/{name}", async (string name, HttpContext context, IAgentUpdateAccess access, ILogger<AgentPackageAccess> logger, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             try

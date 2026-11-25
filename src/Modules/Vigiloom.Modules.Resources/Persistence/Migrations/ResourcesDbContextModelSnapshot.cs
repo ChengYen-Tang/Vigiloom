@@ -23,6 +23,388 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentEnrollment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Verifier")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("AgentId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("AgentEnrollments", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceEnrollments_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ManifestSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("RuntimeIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("Version", "RuntimeIdentifier")
+                        .IsUnique();
+
+                    b.ToTable("AgentPackages", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_AgentPackages_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_AgentPackages_Size", "[Size] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentUpdateTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ManifestSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("RuntimeIdentifier")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("PackageId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("AgentId", "AssignedAt");
+
+                    b.ToTable("AgentUpdateTargets", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceUpdateTargets_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentVersionAssignment", b =>
+                {
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("AssignedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("AgentId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("AgentId"));
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("AgentVersionAssignments", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceVersionAssignments_Target", "([PackageId] IS NULL AND [UpdateId] IS NULL) OR ([PackageId] IS NOT NULL AND [UpdateId] IS NOT NULL AND [UpdateId] <> '00000000-0000-0000-0000-000000000000')");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.ApplicationCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTimeOffset>("FirstSeen")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("LastSeen")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("ServiceKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ServiceNamespace")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("ServiceNamespaceBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", true);
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("LastSeen");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
+                        .IsUnique();
+
+                    b.ToTable("ApplicationCandidates", "resources");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.ApplicationService", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ApprovedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CandidateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PublicDisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PublicPolicyVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTimeOffset?>("PublicSince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("ServiceKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("ServiceNamespace")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("ServiceNamespaceBytes")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("varbinary(256)")
+                        .HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", true);
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("CandidateId")
+                        .IsUnique()
+                        .HasFilter("[CandidateId] IS NOT NULL");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.HasIndex("IsPublic", "PublicDisplayName", "RowId");
+
+                    b.HasIndex("SourceId", "ServiceNamespaceBytes", "ServiceKey", "Environment")
+                        .IsUnique();
+
+                    b.ToTable("ApplicationServices", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_ApplicationServices_Archived", "[ArchivedAt] IS NULL OR ([IsPublic] = 0 AND [RevokedAt] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_ApplicationServices_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.Device", b =>
                 {
                     b.Property<Guid>("Id")
@@ -239,6 +621,130 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.PublicTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("HistoryDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("HistorySince")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRetired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)")
+                        .UseCollation("Latin1_General_100_CI_AS_SC");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<bool>("ShowLatency")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowObservedAt")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasFilter("[IsRetired] = 0");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("PublicTemplates", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_PublicTemplates_DefaultActive", "[IsDefault] = 0 OR [IsRetired] = 0");
+
+                            t.HasCheckConstraint("CK_PublicTemplates_HistoryPeriod", "([HistoryDays] = 0 AND [HistorySince] IS NULL) OR ([HistoryDays] BETWEEN 1 AND 7 AND [HistorySince] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.RegisteredAgent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("PendingUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("PendingVerifier")
+                        .HasColumnType("binary(32)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<byte[]>("Verifier")
+                        .IsRequired()
+                        .HasColumnType("binary(32)");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique()
+                        .HasFilter("[RevokedAt] IS NULL");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("Agents", "resources", t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceAgents_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.ServiceGroup", b =>
                 {
                     b.Property<Guid>("GroupId")
@@ -254,6 +760,49 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                     b.HasIndex("ServiceId", "GroupId");
 
                     b.ToTable("ServiceGroups", "resources");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentEnrollment", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.RegisteredAgent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentUpdateTarget", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.RegisteredAgent", null)
+                        .WithMany()
+                        .HasForeignKey("AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.AgentVersionAssignment", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.RegisteredAgent", null)
+                        .WithOne()
+                        .HasForeignKey("Vigiloom.Modules.Resources.Domain.AgentVersionAssignment", "AgentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.AgentPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.NoAction);
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.DeviceAudit", b =>
@@ -281,6 +830,15 @@ namespace Vigiloom.Modules.Resources.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.DeviceTarget", b =>
+                {
+                    b.HasOne("Vigiloom.Modules.Resources.Domain.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.Resources.Domain.RegisteredAgent", b =>
                 {
                     b.HasOne("Vigiloom.Modules.Resources.Domain.Device", null)
                         .WithMany()

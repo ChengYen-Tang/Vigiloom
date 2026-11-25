@@ -7,7 +7,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 namespace Vigiloom.Web.Authentication;
 
 internal sealed class AgentCredentialHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger,
-    UrlEncoder encoder, AgentIdentity agents) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    UrlEncoder encoder, IMachineAgentIdentity agents) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "VigiloomAgentCredential";
 
