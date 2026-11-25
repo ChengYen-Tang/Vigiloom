@@ -9,11 +9,13 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 namespace Vigiloom.Web.Publishing;
 
 internal sealed class PublicationPreviewReader(IDeviceManagement devices, PingStore ping, HealthStatusReader health,
-    PublicationAdministration settings)
+    PublicationAdministration settings, IConfiguration configuration, IServiceProvider provider)
 {
     public async Task<PublicationPreview?> ReadAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
     {
-        if (await settings.ReadAsync(kind, id, token) is null) return null;
+        var remote = string.IsNullOrWhiteSpace(configuration["Services:Resources:Url"]) ? null : provider.GetRequiredService<RemotePublicationManagement>();
+        var name = kind switch { PublicationResourceKind.Device => "devices", PublicationResourceKind.Service => "services", PublicationResourceKind.Group => "groups", _ => "" };
+        if (remote is null ? await settings.ReadAsync(kind, id, token) is null : await remote.GetAsync(name, id, token) is null) return null;
         if (kind == PublicationResourceKind.Device)
         {
             var device = await devices.GetAsync(id, token);

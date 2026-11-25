@@ -324,6 +324,9 @@ builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateAdministration>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateUpdateWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateRetirementWorkflow>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicationManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicReader>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });

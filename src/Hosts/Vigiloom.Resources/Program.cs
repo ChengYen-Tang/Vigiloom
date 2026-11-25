@@ -122,6 +122,7 @@ internalApi.MapGet("/publications/devices/{id:guid}", async (Guid id, PublishedP
 internalApi.MapGet("/publications/services/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
     await policies.ServiceAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapInternalDeviceManagement();
+internalApi.MapInternalPublicationManagement();
 internalApi.MapInternalGroupManagement();
 internalApi.MapInternalPackages();
 internalApi.MapInternalAgentRegistration();
