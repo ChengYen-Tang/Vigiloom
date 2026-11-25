@@ -26,7 +26,7 @@ namespace Vigiloom.Operations.Tests;
 public sealed class HostLogTests(TestContext context)
 {
     [TestMethod]
-    public Task ReplayedHostLogDoesNotConsumeQuotaOrDuplicateSecurityWork() =>
+    public Task HostAndApplicationLogsShareQuotaAndHostReplayIsDeduplicated() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             var services = new ServiceCollection();
@@ -61,8 +61,19 @@ public sealed class HostLogTests(TestContext context)
             Assert.AreEqual(remaining, await quota.Database.SqlQuery<long>($"SELECT Microtokens AS [Value] FROM logquota.Buckets WHERE Kind = 0").SingleAsync(token));
             using (var conflicting = await client.PostAsJsonAsync("/internal/v1/host-logs", input with { Batch = batch with { Items = [item with { Content = "changed" }] } }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, conflicting.StatusCode);
+            var appLog = new ApplicationLogSubmission(Guid.CreateVersion7(), Guid.CreateVersion7(), null,
+                [1], [], "", "", [new ApplicationLogItem(DateTimeOffset.UtcNow, false, false, null, null, [2])]);
+            using (var application = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
+                Assert.AreEqual(HttpStatusCode.OK, application.StatusCode);
+            using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
+                Assert.AreEqual(HttpStatusCode.OK, duplicateApplication.StatusCode);
+            Assert.AreEqual(1, await quota.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM logquota.Buckets WHERE Kind = 2 AND SourceId = {appLog.SourceId}").SingleAsync(token));
+            await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 0, LastRefill = DATEADD(second, 30, SYSDATETIMEOFFSET()) WHERE Kind = 0", token);
+            using (var limited = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
+            Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
             await using var scheduling = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await scheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
         }, context.CancellationToken);
