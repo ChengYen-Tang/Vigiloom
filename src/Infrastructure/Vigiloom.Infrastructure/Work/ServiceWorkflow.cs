@@ -10,7 +10,12 @@ public sealed class ServiceWorkflow
     [WorkflowRun]
     public Task<string?> RunAsync(ServiceWork work) => Workflow.ExecuteActivityAsync(
         (ServiceActivities activity) => activity.ExecuteAsync(work),
-        new() { StartToCloseTimeout = TimeSpan.FromMinutes(5), HeartbeatTimeout = TimeSpan.FromSeconds(30) });
+        new()
+        {
+            StartToCloseTimeout = TimeSpan.FromMinutes(5),
+            HeartbeatTimeout = TimeSpan.FromSeconds(30),
+            CancellationType = ActivityCancellationType.WaitCancellationCompleted
+        });
 }
 
 /// <summary>Delegates work to the destination service without storing its dependencies in the workflow.</summary>
