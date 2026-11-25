@@ -6,7 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Modules.Resources.Application.AgentPackages;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Modules.Resources.Tests;
 
@@ -32,7 +34,8 @@ public sealed class PackageCatalogTests
                 var contents = Encoding.UTF8.GetBytes("agent package");
                 var sha = Convert.ToHexStringLower(SHA256.HashData(contents));
                 using var client = new HttpClient(new ReleaseHandler(contents, sha)) { BaseAddress = new Uri("https://api.github.com/") };
-                var catalog = new PackageCatalog(contexts, new GitHubAgentReleases(client), new PackageLibraryTransport(path));
+                var usage = new PackageUsage { InUse = true };
+                var catalog = new PackageCatalog(contexts, new GitHubAgentReleases(client), new PackageLibraryTransport(path), usage);
                 Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
                 Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
                 var item = (await catalog.ListAsync(1, token)).Items.Single();
@@ -40,6 +43,26 @@ public sealed class PackageCatalogTests
                 Assert.AreEqual(sha, item.Sha256);
                 Assert.IsTrue(item.Cached);
                 Assert.AreEqual(7, item.Id.Version);
+                Assert.AreEqual(AgentPackageRemovalResult.InUse, await catalog.RemoveAsync(item.Id, token));
+                usage.InUse = false;
+                var device = new Device("Server", "server.example", true, DateTimeOffset.UtcNow);
+                var agent = new RegisteredAgent { Id = Guid.CreateVersion7(), DeviceId = device.Id, Verifier = new byte[32], CreatedAt = DateTimeOffset.UtcNow };
+                await using (var db = await contexts.CreateDbContextAsync(token))
+                {
+                    db.Devices.Add(device);
+                    db.Agents.Add(agent);
+                    db.AgentVersionAssignments.Add(new AgentVersionAssignment { AgentId = agent.Id, PackageId = item.Id,
+                        UpdateId = Guid.CreateVersion7(), AssignedBy = Guid.CreateVersion7(), AssignedAt = DateTimeOffset.UtcNow });
+                    await db.SaveChangesAsync(token);
+                }
+                Assert.AreEqual(AgentPackageRemovalResult.InUse, await catalog.RemoveAsync(item.Id, token));
+                await using (var db = await contexts.CreateDbContextAsync(token))
+                {
+                    db.AgentVersionAssignments.Remove(await db.AgentVersionAssignments.SingleAsync(a => a.AgentId == agent.Id, token));
+                    await db.SaveChangesAsync(token);
+                }
+                Assert.AreEqual(AgentPackageRemovalResult.Removed, await catalog.RemoveAsync(item.Id, token));
+                Assert.IsFalse((await catalog.ListAsync(1, token)).Items.Single().Cached);
             }
             finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
         }, TestContext.CancellationToken);
@@ -55,5 +78,11 @@ public sealed class PackageCatalogTests
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(contents) });
         }
+    }
+
+    private sealed class PackageUsage : IPackageRuntimeUsage
+    {
+        public bool InUse { get; set; }
+        public Task<bool> IsInstalledAsync(string version, string runtimeIdentifier, CancellationToken token) => Task.FromResult(InUse);
     }
 }

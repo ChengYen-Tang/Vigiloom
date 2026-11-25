@@ -529,6 +529,14 @@ app.MapGet("/internal/v1/observation-sources/{id:guid}/active", async (Guid id, 
         .Select(source => new Vigiloom.Contracts.Resources.ApplicationSourceStatus(source.RevokedAt == null, source.Name)).SingleOrDefaultAsync(token);
     return Results.Ok(source ?? new Vigiloom.Contracts.Resources.ApplicationSourceStatus(false, null));
 });
+app.MapPost("/internal/v1/agent-package-usage", async (Vigiloom.Contracts.Agent.AgentPackageUsageRequest request,
+    IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    var inUse = await db.Agents.AsNoTracking().AnyAsync(a => a.RevokedAt == null && a.RuntimeVersion == request.Version &&
+        a.RuntimeIdentifier == request.RuntimeIdentifier, token);
+    return Results.Ok(new Vigiloom.Contracts.Agent.AgentPackageUsageResponse(inUse));
+});
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapTelemetryRetentionEndpoints();
