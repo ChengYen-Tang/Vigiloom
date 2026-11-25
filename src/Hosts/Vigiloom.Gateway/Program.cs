@@ -8,7 +8,11 @@ builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentityCredentialClient();
 builder.Services.AddVigiloomIdentityCookieClient();
 builder.Services.AddOptions<IdentityOptions>();
-builder.Services.AddAuthentication(options => options.DefaultScheme = IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+    options.DefaultForbidScheme = IdentityConstants.ApplicationScheme;
+}).AddIdentityCookies();
 builder.Services.AddAuthentication().AddVigiloomApiCredentials();
 builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
 {
