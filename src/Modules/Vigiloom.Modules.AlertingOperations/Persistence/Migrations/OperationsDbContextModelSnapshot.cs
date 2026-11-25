@@ -172,6 +172,15 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("AggregationSeconds")
+                        .HasSentinel(-1)
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(10);
+
+                    b.Property<DateTimeOffset?>("AggregationStartedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("bit");
 

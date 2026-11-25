@@ -42,6 +42,7 @@ builder.Services.AddScoped(provider => new OutboxDispatcher(
 builder.Services.AddScoped<HostLogIngestion>();
 builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddHostedService<WorkDispatcher>();
+builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
 
 // The deployment exposes this endpoint only to the trusted service network.

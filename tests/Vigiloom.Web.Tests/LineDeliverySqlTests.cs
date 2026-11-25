@@ -20,6 +20,43 @@ namespace Vigiloom.Web.Tests;
 public sealed class LineDeliverySqlTests(TestContext context)
 {
     [TestMethod]
+    public Task NotificationsAreGroupedAfterConfiguredWindow() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var channel = scope.ServiceProvider.GetRequiredService<LineChannel>();
+        var actor = Guid.CreateVersion7();
+        Assert.IsTrue(await channel.SaveAsync(new(false, "test-token", "test-secret", 10), actor, token));
+        await channel.RecordCandidatesAsync(["Cgroup"], token);
+        var group = (await channel.GetAsync(token)).Groups.Single();
+        Assert.IsTrue(await channel.SetGroupAsync(group.Id, "Ops", true, actor, token));
+        Assert.IsTrue(await channel.SaveAsync(new(true, null, null), actor, token));
+        var contexts = factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+        await using (var db = await contexts.CreateDbContextAsync(token))
+        {
+            db.Set<Notification>().AddRange(
+                new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", OccurredAt = DateTimeOffset.UtcNow, Title = "First", Detail = "Host A" },
+                new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", OccurredAt = DateTimeOffset.UtcNow, Title = "Second", Detail = "Host B" });
+            await db.SaveChangesAsync(token);
+        }
+        var clock = new MutableClock();
+        var queue = new LineDeliveryQueue(contexts, scope.ServiceProvider.GetRequiredService<OutboxWriter>(), clock);
+        await queue.EnqueueNewAsync(token);
+        clock.Now = clock.Now.AddSeconds(9);
+        await queue.EnqueueNewAsync(token);
+        await using (var db = await contexts.CreateDbContextAsync(token))
+            Assert.AreEqual(0, await db.Set<LineDelivery>().CountAsync(token));
+        clock.Now = clock.Now.AddSeconds(1);
+        await new LineDeliveryQueue(contexts, scope.ServiceProvider.GetRequiredService<OutboxWriter>(), clock).EnqueueNewAsync(token);
+        await queue.EnqueueNewAsync(token);
+        await using var result = await contexts.CreateDbContextAsync(token);
+        var delivery = await result.Set<LineDelivery>().SingleAsync(token);
+        Assert.Contains("First\nHost A", delivery.Text);
+        Assert.Contains("Second\nHost B", delivery.Text);
+    }, context.CancellationToken);
+
+    [TestMethod]
     public Task DeliveryRetryUsesSameLineRequestAfterTransactionRollback() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
@@ -27,7 +64,7 @@ public sealed class LineDeliverySqlTests(TestContext context)
         await using var scope = factory.Services.CreateAsyncScope();
         var channel = scope.ServiceProvider.GetRequiredService<LineChannel>();
         var actor = Guid.CreateVersion7();
-        Assert.IsTrue(await channel.SaveAsync(new(false, "test-token", "test-secret"), actor, token));
+        Assert.IsTrue(await channel.SaveAsync(new(false, "test-token", "test-secret", 0), actor, token));
         await channel.RecordCandidatesAsync(["Cgroup"], token);
         var group = (await channel.GetAsync(token)).Groups.Single();
         Assert.IsTrue(await channel.SetGroupAsync(group.Id, "Ops", true, actor, token));
@@ -103,6 +140,12 @@ public sealed class LineDeliverySqlTests(TestContext context)
         command.Parameters.AddWithValue("@id", testId.Value);
         Assert.AreEqual(2, Convert.ToInt32(await command.ExecuteScalarAsync(token)));
     }, context.CancellationToken);
+
+    private sealed class MutableClock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
 
     private sealed class AcceptedThenConflict : HttpMessageHandler
     {
