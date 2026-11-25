@@ -44,7 +44,7 @@ Vigiloom 是一個開源的集中監控平台。從網路設備、伺服器到�
 
 ## 建置專案
 
-安裝 [global.json](global.json) 指定的 .NET SDK 後，在專案目錄執行：
+安裝 .NET 10 或更新版本的 SDK 後，在專案目錄執行：
 
 ```sh
 dotnet build Vigiloom.slnx --configuration Release
