@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
 namespace Vigiloom.Web.Authentication;
@@ -21,6 +22,7 @@ internal static class IdentityRegistration
         services.AddScoped<TwoFactorChallenge>();
         services.AddScoped<AccountLogout>();
         services.AddScoped<ApiCredentials>();
+        services.AddScoped<ApiCredentialVerifier>();
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
         services.AddAuthentication(options =>
