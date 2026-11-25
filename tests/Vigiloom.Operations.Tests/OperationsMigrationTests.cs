@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.Persistence;
@@ -19,6 +21,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Application.Line;
+using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
@@ -170,6 +173,19 @@ public sealed class OperationsMigrationTests(TestContext context)
                 await db.SaveChangesAsync(token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO service.HealthObservations (TargetId, LeaseGeneration, NetworkGeneration, SourceVersion, ServiceVersion, TargetVersion, NetworkVersion, Kind, ObservedAt, ReceivedAt) VALUES ({healthTarget.Id}, 1, 1, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 2, {now}, {now})", token);
             }
+            var auditActor = Guid.CreateVersion7(); var auditGroup = Guid.CreateVersion7();
+            var pingAlert = new PingAlert { DeviceId = device.Id, Target = "server.example", OpenedAt = now.AddMinutes(-1), RecoveredAt = now };
+            var pingEvent = new PingAlertEvent { AlertId = pingAlert.Id, Generation = 42, OccurredAt = now, IsRecovery = true, DeviceName = "Server", GroupsJson = "[]" };
+            var serviceAlert = new ServiceHealthAlert { TargetId = healthTarget.Id, ServiceId = application.Id, State = 2, OpenedAt = now.AddMinutes(-2) };
+            await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(token);
+                db.Set<PingAlert>().Add(pingAlert); db.Set<PingAlertEvent>().Add(pingEvent); db.Set<ServiceHealthAlert>().Add(serviceAlert);
+                await db.SaveChangesAsync(token);
+                await new OperationAuditWriter().AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                    new OperationAudit(auditActor, auditGroup, now, new GroupChanged(GroupAction.DevicesChanged, 2, 1)), token);
+                await transaction.CommitAsync(token);
+            }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
             {
                 db.Set<TimelineRecord>().Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = "yara", Time = now,
@@ -185,6 +201,10 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
             {
                 Assert.AreEqual(0, await db.Set<Notification>().CountAsync(token));
+                Assert.AreEqual(0, await db.Set<PingAlert>().CountAsync(token));
+                Assert.AreEqual(0, await db.Set<PingAlertEvent>().CountAsync(token));
+                Assert.AreEqual(0, await db.Set<ServiceHealthAlert>().CountAsync(token));
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token));
                 Assert.AreEqual(0, await db.Set<PingTransitionCursor>().CountAsync(token));
                 Assert.AreEqual(0, await db.Set<HealthTransitionCursor>().CountAsync(token));
                 await db.Set<TimelineRecord>().ExecuteDeleteAsync(token);
@@ -205,6 +225,15 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<Notification>().AnyAsync(x => x.Id == notification.Id && x.Title == "Alert", token));
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
+                var copiedPing = await db.Set<PingAlert>().SingleAsync(token);
+                Assert.AreEqual(pingAlert.Id, copiedPing.Id);
+                Assert.AreEqual(pingAlert.RecoveredAt, copiedPing.RecoveredAt);
+                var copiedPingEvent = await db.Set<PingAlertEvent>().SingleAsync(token);
+                Assert.AreEqual(pingAlert.Id, copiedPingEvent.AlertId);
+                Assert.AreEqual(pingEvent.MessageId, copiedPingEvent.MessageId);
+                var copiedServiceAlert = await db.Set<ServiceHealthAlert>().SingleAsync(token);
+                Assert.AreEqual(serviceAlert.Id, copiedServiceAlert.Id);
+                Assert.AreEqual(application.Id, copiedServiceAlert.ServiceId);
                 Assert.AreEqual(42L, (await db.Set<PingTransitionCursor>().SingleAsync(token)).Generation);
                 Assert.AreEqual(0L, (await db.Set<HealthTransitionCursor>().SingleAsync(token)).Generation);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
@@ -221,6 +250,12 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(timeline.Any(x => x.Source == "sigma" && x.Summary == "行為規則命中：rules/test" && x.RuleLink == $"/events/rules/{ruleTest:D}"));
                 Assert.IsTrue(timeline.Any(x => x.Source == "vulnerability" && x.Summary == "漏洞評估：CVE-2026-1"));
             }
+            var audits = await new OperationAuditQueryService(targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>())
+                .QueryGroupsAsync(new OperationAuditQuery(now.AddMinutes(-1), now.AddMinutes(1)), token);
+            var copiedAudit = audits.Items.Single();
+            Assert.AreEqual(auditActor, copiedAudit.ActorId);
+            Assert.AreEqual(auditGroup, copiedAudit.ResourceId);
+            Assert.AreEqual(2, copiedAudit.Group!.Added);
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
                 Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {delivery.Id} AND MessageType = 'line.push.v1'").SingleAsync(token));
