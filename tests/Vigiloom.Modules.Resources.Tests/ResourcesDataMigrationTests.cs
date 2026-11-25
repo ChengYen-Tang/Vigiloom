@@ -4,6 +4,7 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.Resources.Tests;
 
@@ -26,6 +27,19 @@ public sealed class ResourcesDataMigrationTests
             var telemetryOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(source.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             await using (var db = new ServiceObservabilityDbContext(telemetryOptions)) await db.Database.MigrateAsync(token);
+            var agentOptions = new DbContextOptionsBuilder<AgentManagementDbContext>().UseSqlServer(source.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options;
+            await using (var db = new AgentManagementDbContext(agentOptions)) await db.Database.MigrateAsync(token);
+            var package = new Vigiloom.Modules.AgentManagement.Domain.AgentPackage
+            {
+                Id = Guid.CreateVersion7(), Version = "1.2.3", RuntimeIdentifier = "win-x64",
+                Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 1024
+            };
+            await using (var db = new AgentManagementDbContext(agentOptions))
+            {
+                db.Packages.Add(package);
+                await db.SaveChangesAsync(token);
+            }
             var now = DateTimeOffset.UtcNow;
             var telemetrySource = new ServiceSource("Source", new byte[32], now);
             var candidate = new ServiceCandidate(telemetrySource.Id, "new-api", "Production", "New API", now);
@@ -58,6 +72,7 @@ public sealed class ResourcesDataMigrationTests
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == serviceId && x.GroupId == group.Id, token));
                 Assert.IsTrue(await db.ApplicationCandidates.AnyAsync(x => x.Id == candidate.Id && x.SourceId == telemetrySource.Id, token));
                 Assert.IsTrue(await db.ApplicationServices.AnyAsync(x => x.Id == approved.Id && x.DisplayName == "Orders", token));
+                Assert.IsTrue(await db.AgentPackages.AnyAsync(x => x.Id == package.Id && x.Version == package.Version && x.Sha256 == package.Sha256, token));
             }
             await Assert.ThrowsAsync<InvalidOperationException>(() => ResourcesDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token));
         }, outerToken), TestContext.CancellationToken);

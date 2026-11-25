@@ -1,7 +1,7 @@
 # Resource database migration
 
-Create the target SQL Server database before running the migrator. Set `VIGILOOM_RESOURCES_SQL_CONNECTION` to that database. Run `Vigiloom.Migrator initialize-resources` for an empty resource database, or set `VIGILOOM_MIGRATION_SQL_CONNECTION` to the existing platform database and run `Vigiloom.Migrator migrate-resources` to copy devices, groups, device targets, device audit records, group memberships, application service identities and discovery candidates.
+Create the target SQL Server database before running the migrator. Set `VIGILOOM_RESOURCES_SQL_CONNECTION` to that database. Run `Vigiloom.Migrator initialize-resources` for an empty resource database, or set `VIGILOOM_MIGRATION_SQL_CONNECTION` to the existing platform database and run `Vigiloom.Migrator migrate-resources` to copy devices, groups, device targets, device audit records, group memberships, application service identities, discovery candidates and Agent package records.
 
 The migrator applies the existing EF Core resource migrations and then copies the listed data in a single target transaction. The target tables must be empty. Stop writes to the source during migration. Resource IDs and relationships are preserved; SQL Server assigns new rowversion values, so clients must refresh any previously loaded edit forms.
 
-This command covers the data listed above. Publication templates, Agent data, and deployment links require the remaining REQ-45 migration work. The application observation service still needs to be switched to the resource-owned catalogue before the migration is complete.
+This command covers the data listed above. Publication templates, other Agent data, and deployment links require the remaining REQ-45 migration work. Agent package management and the application observation service still need to be switched to the resource-owned catalogues before the migration is complete.
