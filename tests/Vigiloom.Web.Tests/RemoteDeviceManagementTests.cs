@@ -5,12 +5,14 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
+using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
@@ -20,6 +22,7 @@ using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
+using Vigiloom.Web.Publishing;
 using Vigiloom.Web.Services;
 using Vigiloom.Web.Tests.Fixtures;
 
@@ -81,6 +84,8 @@ public sealed class RemoteDeviceManagementTests
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCandidateAdministration))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicReader))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
                 web = webHost;
                 await using var scope = webHost.Services.CreateAsyncScope();
@@ -103,10 +108,31 @@ public sealed class RemoteDeviceManagementTests
                 Assert.AreEqual(GroupResultStatus.Success, membership.Status);
                 Assert.HasCount(1, (await groups.ListForDeviceAsync(id, 1, token)).Items);
                 Assert.HasCount(1, (await groups.ListDevicesAsync(group.Group.Id, false, true, null, 1, token)).Items);
+                await using (var db = new ResourcesDbContext(options))
+                {
+                    (await db.Devices.SingleAsync(x => x.Id == id, token)).SetPublication(true, "Public router", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+                    (await db.Groups.SingleAsync(x => x.Id == group.Group.Id, token)).SetPublication(true, "Public group", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+                    await db.SaveChangesAsync(token);
+                }
+                using var anonymous = webHost.CreateClient();
+                var publicDevices = await anonymous.GetFromJsonAsync<PublicPage<PublicDevice>>("/api/v1/public/devices", token);
+                Assert.AreEqual("Public router", publicDevices?.Items.Single().Name);
+                var publicGroups = await anonymous.GetFromJsonAsync<PublicPage<PublicGroup>>("/api/v1/public/groups", token);
+                Assert.AreEqual(1, publicGroups?.Items.Single().DeviceCount);
+                var body = await anonymous.GetStringAsync($"/api/v1/public/devices/{id:D}", token);
+                Assert.DoesNotContain("changed.example", body);
+                await using (var db = new ResourcesDbContext(options))
+                {
+                    (await db.Devices.SingleAsync(x => x.Id == id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
+                    await db.SaveChangesAsync(token);
+                }
+                using var revoked = await anonymous.GetAsync($"/api/v1/public/devices/{id:D}", token);
+                Assert.AreEqual(HttpStatusCode.NotFound, revoked.StatusCode);
+                Assert.IsEmpty((await anonymous.GetFromJsonAsync<PublicPage<PublicGroup>>("/api/v1/public/groups", token))!.Items);
                 var services = scope.ServiceProvider.GetRequiredService<IServiceMembership>();
                 Assert.IsInstanceOfType<RemoteServiceMembership>(services);
                 var serviceMembership = await services.ChangeAsync(group.Group.Id,
-                    new GroupMembershipChange(membership.Group!.Version, [application.Id], []), Guid.CreateVersion7(), token);
+                    new GroupMembershipChange((await groups.GetAsync(group.Group.Id, token))!.Version, [application.Id], []), Guid.CreateVersion7(), token);
                 Assert.AreEqual(GroupResultStatus.Success, serviceMembership.Status);
                 Assert.HasCount(1, (await services.ListAsync(group.Group.Id, false, true, null, 1, token)).Items);
                 Assert.HasCount(1, (await services.ListGroupsAsync(application.Id, 1, token)).Items);
@@ -134,7 +160,7 @@ public sealed class RemoteDeviceManagementTests
                 }
                 Assert.IsEmpty(await candidatesApi.ListAsync(1, token));
                 Assert.AreEqual(ApprovalStatus.SourceUnavailable, (await candidatesApi.ApproveAsync(other.Id, Guid.CreateVersion7(), token)).Status);
-                var archived = await devices.SetArchivedAsync(id, true, updated.Device!.Version, Guid.CreateVersion7(), token);
+                var archived = await devices.SetArchivedAsync(id, true, (await devices.GetAsync(id, token))!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);
                 await using (var db = new ResourcesDbContext(options)) Assert.IsTrue(await db.Devices.AnyAsync(x => x.Id == id, token));
