@@ -12,10 +12,10 @@ public sealed class ApplicationCandidate
         ArgumentOutOfRangeException.ThrowIfEqual(sourceId, Guid.Empty);
         Id = ResourceIds.Create();
         SourceId = sourceId;
-        ServiceKey = serviceKey;
-        ServiceNamespace = serviceNamespace;
-        Environment = environment;
-        DisplayName = displayName;
+        ServiceKey = ValidText(serviceKey, 128, nameof(serviceKey));
+        ServiceNamespace = ValidNamespace(serviceNamespace);
+        Environment = ValidText(environment, 64, nameof(environment));
+        DisplayName = ValidText(displayName, 128, nameof(displayName));
         FirstSeen = LastSeen = CreatedAt = UpdatedAt = now.ToUniversalTime();
     }
 
@@ -31,4 +31,28 @@ public sealed class ApplicationCandidate
     public DateTimeOffset LastSeen { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public void Observe(string displayName, DateTimeOffset now)
+    {
+        DisplayName = ValidText(displayName, 128, nameof(displayName));
+        now = now.ToUniversalTime();
+        if (LastSeen > now || LastSeen < now.AddMinutes(-3)) FirstSeen = now;
+        LastSeen = UpdatedAt = now;
+    }
+
+    private static string ValidText(string value, int limit, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > limit) throw new ArgumentException("A bounded non-empty value is required.", name);
+        return value.Trim();
+    }
+
+    private static string ValidNamespace(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Length > 128) throw new ArgumentException("Namespace exceeds 128 characters.", nameof(value));
+        for (var i = 0; i < value.Length; i++)
+            if (char.IsSurrogate(value[i]) && (!char.IsHighSurrogate(value[i]) || i + 1 >= value.Length || !char.IsLowSurrogate(value[++i])))
+                throw new ArgumentException("Namespace must be valid Unicode.", nameof(value));
+        return value;
+    }
 }

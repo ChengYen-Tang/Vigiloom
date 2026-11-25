@@ -49,6 +49,7 @@ builder.Services.AddScoped<DeviceChangeOutbox>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<GroupAuditOutbox>();
 builder.Services.AddScoped<ServiceGroupManagement>();
+builder.Services.AddScoped<ApplicationDiscovery>();
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
@@ -59,6 +60,10 @@ internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersRead
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
 internalApi.MapInternalDeviceManagement();
 internalApi.MapInternalGroupManagement();
+internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
+    Results.Ok(await discovery.ObserveAsync(request, token)));
+internalApi.MapGet("/application-candidates", async (int? page, ApplicationDiscovery discovery, CancellationToken token) =>
+    page is < 1 ? Results.BadRequest() : Results.Ok(await discovery.ListAsync(page ?? 1, token)));
 app.MapDeviceManagement();
 app.Run();
 
