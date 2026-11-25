@@ -93,6 +93,54 @@ public sealed class ServiceWorkTests
         }, TestContext.CancellationToken), TestContext.CancellationToken);
     }
 
+    [TestMethod]
+    public async Task CancelRunningWorkReachesTheActivityHandler()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
+        var client = await TemporalClient.ConnectAsync(new(address));
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var id = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var handler = new CancelHandler();
+        using var worker = ServiceWorkWorker.Create(client, queue, handler);
+        try
+        {
+            await worker.ExecuteAsync(async () =>
+            {
+                var workflow = await new ServiceWorkClient(client).StartAsync(id, queue, new("test", ""), TestContext.CancellationToken);
+                await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+                await workflow.CancelAsync();
+                await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+            }, TestContext.CancellationToken);
+        }
+        finally
+        {
+            await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+            {
+                Namespace = "default",
+                WorkflowExecution = new() { WorkflowId = id }
+            });
+        }
+    }
+
+    private sealed class CancelHandler : IServiceWorkHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+            return null;
+        }
+    }
+
     public sealed class TestHandler : IServiceWorkHandler
     {
         public int Executions { get; private set; }
