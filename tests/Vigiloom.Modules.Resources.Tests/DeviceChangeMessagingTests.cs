@@ -47,6 +47,7 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddSingleton<IApplicationSourceVerifier>(sources);
                 builder.Services.AddScoped<ApplicationDiscovery>();
                 builder.Services.AddScoped<ApplicationApproval>();
+                builder.Services.AddScoped<SelfServiceRegistration>();
                 builder.UseWolverine(options =>
                 {
                     options.UseVigiloomMessaging(database.ConnectionString, broker!);
@@ -123,6 +124,23 @@ public sealed class DeviceChangeMessagingTests
                             await Task.Delay(100, timeout.Token);
                         Assert.Contains(serviceId.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
                     }
+                    var ownService = new ApplicationObservation(Guid.CreateVersion7(), "Vigiloom.Resources", "production", "Resources", "");
+                    Guid? ownId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        ownId = await scope.ServiceProvider.GetRequiredService<SelfServiceRegistration>().RegisterAsync(ownService, token);
+                    Assert.IsNotNull(ownId);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(ownId, await scope.ServiceProvider.GetRequiredService<SelfServiceRegistration>().RegisterAsync(ownService, token));
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var self = await db.Groups.SingleAsync(g => g.Name == "Self", token);
+                        Assert.AreEqual(1, await db.ServiceGroups.CountAsync(m => m.GroupId == self.Id && m.ServiceId == ownId, token));
+                        Assert.AreEqual(1, await db.ApplicationServices.CountAsync(s => s.Id == ownId, token));
+                    }
+                    BasicGetResult? ownMessage;
+                    while ((ownMessage = await channel.BasicGetAsync(observabilityQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                        await Task.Delay(100, timeout.Token);
+                    Assert.Contains(ownId.Value.ToString("D"), System.Text.Encoding.UTF8.GetString(ownMessage.Body.Span));
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
                     await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))

@@ -53,6 +53,7 @@ builder.Services.AddScoped<GroupAuditOutbox>();
 builder.Services.AddScoped<ServiceGroupManagement>();
 builder.Services.AddScoped<ApplicationDiscovery>();
 builder.Services.AddScoped<ApplicationApproval>();
+builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Observability:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -69,6 +70,8 @@ internalApi.MapInternalDeviceManagement();
 internalApi.MapInternalGroupManagement();
 internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
     Results.Ok(await discovery.ObserveAsync(request, token)));
+internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>
+    await registration.RegisterAsync(request, token) is { } id ? Results.Ok(id) : Results.BadRequest());
 internalApi.MapGet("/application-candidates", async (int? page, ApplicationDiscovery discovery, CancellationToken token) =>
     page is < 1 ? Results.BadRequest() : Results.Ok(await discovery.ListAsync(page ?? 1, token)));
 internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id, ApplicationApprovalRequest request, ApplicationApproval approval, CancellationToken token) =>
