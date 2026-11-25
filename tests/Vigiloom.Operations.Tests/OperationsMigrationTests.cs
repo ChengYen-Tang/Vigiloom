@@ -77,6 +77,18 @@ public sealed class OperationsMigrationTests(TestContext context)
                 db.Set<LineSettings>().Add(new LineSettings { Enabled = true,
                     ProtectedAccessToken = protection.CreateProtector("Vigiloom.Line.Channel.v1").Protect("token") });
                 await db.SaveChangesAsync(token);
+                // The monolith being migrated predates the aggregation columns.
+                await db.Database.ExecuteSqlRawAsync("""
+                    DECLARE @name sysname = (SELECT d.name FROM sys.default_constraints d
+                        JOIN sys.columns c ON c.object_id = d.parent_object_id AND c.column_id = d.parent_column_id
+                        WHERE d.parent_object_id = OBJECT_ID('operations.LineSettings') AND c.name = 'AggregationSeconds');
+                    IF @name IS NOT NULL
+                    BEGIN
+                        DECLARE @sql nvarchar(max) = N'ALTER TABLE operations.LineSettings DROP CONSTRAINT ' + QUOTENAME(@name);
+                        EXEC sp_executesql @sql;
+                    END;
+                    ALTER TABLE operations.LineSettings DROP COLUMN AggregationSeconds, AggregationStartedAt;
+                    """, token);
             }
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
@@ -114,6 +126,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             {
                 Assert.IsTrue(await db.Set<Notification>().AnyAsync(x => x.Id == notification.Id && x.Title == "Alert", token));
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
+                Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
@@ -133,6 +146,8 @@ public sealed class OperationsMigrationTests(TestContext context)
                 {
                     var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
                     if (dispatcher is not null) services.Remove(dispatcher);
+                    var aggregator = services.SingleOrDefault(item => item.ImplementationType?.Name == "LineAggregationWorker");
+                    if (aggregator is not null) services.Remove(aggregator);
                     services.RemoveAll<IDataProtectionProvider>();
                     services.AddSingleton<IDataProtectionProvider>(protection);
                     services.RemoveAll<LinePushClient>();

@@ -102,6 +102,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         lineSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
         lineSettings.HasIndex(x => x.Slot).IsUnique();
         lineSettings.Property(x => x.Slot).ValueGeneratedNever();
+        lineSettings.Property(x => x.AggregationSeconds).HasDefaultValue(10).HasSentinel(-1);
 
         var lineGroup = modelBuilder.Entity<LineGroup>();
         lineGroup.ToTable("LineGroups");

@@ -25,7 +25,7 @@ public static class SqlTableDataMigration
     }
 
     public sealed record TableMapping(string SourceSchema, string SourceTable, string TargetSchema, string TargetTable,
-        string? FilterColumn = null, string? FilterValue = null);
+        string? FilterColumn = null, string? FilterValue = null, IReadOnlyList<string>? OptionalSourceColumns = null);
 
     public static Task CopyAsync(string sourceConnection, string targetConnection, string schema, IReadOnlyList<string> tables, CancellationToken token = default) =>
         CopyAsync(sourceConnection, targetConnection, tables.Select(table => new TableMapping(schema, table, schema, table)).ToArray(), token);
@@ -61,6 +61,21 @@ public static class SqlTableDataMigration
             await using (var reader = await metadata.ExecuteReaderAsync(token))
                 while (await reader.ReadAsync(token)) columns.Add(reader.GetString(0));
             if (columns.Count == 0) throw new InvalidOperationException($"Target table {table.TargetSchema}.{table.TargetTable} is missing.");
+            if (table.OptionalSourceColumns is { Count: > 0 } optional)
+            {
+                await using var sourceMetadata = new SqlCommand("""
+                    SELECT c.name FROM sys.columns c
+                    INNER JOIN sys.tables t ON t.object_id = c.object_id
+                    INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+                    WHERE s.name = @schema AND t.name = @table
+                    """, source);
+                sourceMetadata.Parameters.AddWithValue("@schema", table.SourceSchema);
+                sourceMetadata.Parameters.AddWithValue("@table", table.SourceTable);
+                var available = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                await using (var reader = await sourceMetadata.ExecuteReaderAsync(token))
+                    while (await reader.ReadAsync(token)) available.Add(reader.GetString(0));
+                columns.RemoveAll(column => optional.Contains(column, StringComparer.OrdinalIgnoreCase) && !available.Contains(column));
+            }
             var sourceTable = quote.QuoteIdentifier(table.SourceSchema) + "." + quote.QuoteIdentifier(table.SourceTable);
             var targetTable = quote.QuoteIdentifier(table.TargetSchema) + "." + quote.QuoteIdentifier(table.TargetTable);
             var projection = string.Join(", ", columns.Select(quote.QuoteIdentifier));

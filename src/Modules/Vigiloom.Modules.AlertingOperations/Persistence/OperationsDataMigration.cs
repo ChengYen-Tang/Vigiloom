@@ -13,7 +13,7 @@ public static class OperationsDataMigration
         new("operations", "PingAlertEvents", "operations", "PingAlertEvents"),
         new("operations", "Notifications", "operations", "Notifications"),
         new("operations", "ServiceHealthAlerts", "operations", "ServiceHealthAlerts"),
-        new("operations", "LineSettings", "operations", "LineSettings"),
+        new("operations", "LineSettings", "operations", "LineSettings", OptionalSourceColumns: ["AggregationSeconds", "AggregationStartedAt"]),
         new("operations", "LineGroups", "operations", "LineGroups"),
         new("operations", "LineDeliveries", "operations", "LineDeliveries"),
         new("logquota", "Policies", "logquota", "Policies"),
