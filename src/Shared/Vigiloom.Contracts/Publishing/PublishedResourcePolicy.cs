@@ -1,7 +1,7 @@
 namespace Vigiloom.Contracts.Publishing;
 
-/// <summary>Currently authorized public device fields and history boundary.</summary>
-public sealed record PublishedDevicePolicy(Guid Id, string Name, bool ShowLatency, bool ShowObservedAt,
+/// <summary>Internal policy and target needed to build public device status; never return directly to anonymous clients.</summary>
+public sealed record PublishedDevicePolicy(Guid Id, string Name, string Target, bool Enabled, bool ShowLatency, bool ShowObservedAt,
     DateTimeOffset? PublicSince, int HistoryDays, DateTimeOffset? HistorySince, string Version, string? TemplateVersion);
 
 /// <summary>Currently authorized public application fields and history boundary.</summary>
