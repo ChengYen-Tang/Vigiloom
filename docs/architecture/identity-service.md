@@ -11,3 +11,13 @@ The Identity service and its `/internal/identity` endpoints are for the
 restricted internal network and must not be exposed by the public gateway.
 For initial setup, configure `Vigiloom:SetupToken` on the Identity service;
 the Web host forwards the administrator's submitted value for verification.
+
+To copy an existing installation to a separate Identity database, stop the
+platform and other writers first. Create an empty destination database, set
+`VIGILOOM_MIGRATION_SQL_CONNECTION` to the existing platform database and
+`VIGILOOM_IDENTITY_SQL_CONNECTION` to the destination, then run
+`Vigiloom.Migrator migrate-identity`. EF applies the Identity migrations before
+the copy. The copy requires empty Identity tables and commits all copied tables
+together; keep the original database and key ring until the migrated service is
+verified. This command prepares the data; deployment must also point the Identity
+service and its remaining audit integrations at the appropriate databases.
