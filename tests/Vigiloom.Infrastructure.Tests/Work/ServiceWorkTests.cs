@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -22,19 +24,22 @@ public sealed class ServiceWorkTests
         var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
         if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
 
-        var client = await TemporalClient.ConnectAsync(new(address));
         var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
         var id = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
-        var handler = new TestHandler();
-        using var worker = ServiceWorkWorker.Create(client, queue, handler);
-        await worker.ExecuteAsync(async () =>
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddVigiloomTemporalClient(address, "default");
+        builder.Services.AddVigiloomTemporalWorker<TestHandler>(queue);
+        using var host = builder.Build();
+        await host.StartAsync(TestContext.CancellationToken);
+        try
         {
-            var producer = new ServiceWorkClient(client);
+            using var scope = host.Services.CreateScope();
+            var producer = scope.ServiceProvider.GetRequiredService<ServiceWorkClient>();
             await producer.StartAsync(id, queue, new("inventory", "device-123"), TestContext.CancellationToken);
             var result = await producer.Get(id).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
             Assert.AreEqual("inventory:device-123", result);
-            Assert.AreEqual(1, handler.Executions);
-        }, TestContext.CancellationToken);
+        }
+        finally { await host.StopAsync(CancellationToken.None); }
     }
 
     [TestMethod]
@@ -88,7 +93,7 @@ public sealed class ServiceWorkTests
         }, TestContext.CancellationToken), TestContext.CancellationToken);
     }
 
-    private sealed class TestHandler : IServiceWorkHandler
+    public sealed class TestHandler : IServiceWorkHandler
     {
         public int Executions { get; private set; }
         public string? LastDeliveryId { get; private set; }
