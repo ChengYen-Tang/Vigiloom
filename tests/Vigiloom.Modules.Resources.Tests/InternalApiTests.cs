@@ -33,11 +33,16 @@ public sealed class InternalApiTests
             var now = DateTimeOffset.UtcNow;
             var active = new Device("Active", "active.example", true, now);
             var disabled = new Device("Disabled", "disabled.example", true, now);
+            var group = new Group("Servers", now);
+            var serviceId = Guid.CreateVersion7();
             disabled.Update("Disabled", "disabled.example", true, false, now);
             await using (var db = await contexts.CreateDbContextAsync(token))
             {
                 await db.Database.MigrateAsync(token);
                 db.Devices.AddRange(active, disabled);
+                db.Groups.Add(group);
+                db.DeviceGroups.Add(new DeviceGroup(group.Id, active.Id));
+                db.ServiceGroups.Add(new ServiceGroup(group.Id, serviceId));
                 db.DeviceTargets.Add(new DeviceTarget(active.Id, "extra.example"));
                 await db.SaveChangesAsync(token);
             }
@@ -54,6 +59,12 @@ public sealed class InternalApiTests
             Assert.IsFalse(disabledAgent?.Eligible);
             using var missing = await client.GetAsync($"/internal/v1/devices/{Guid.CreateVersion7():D}/agent", token);
             Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
+            var members = await client.GetFromJsonAsync<GroupMembers>($"/internal/v1/groups/{group.Id:D}/members", token);
+            Assert.IsNotNull(members);
+            CollectionAssert.AreEquivalent(new[] { active.Id }, members.DeviceIds.ToArray());
+            CollectionAssert.AreEquivalent(new[] { serviceId }, members.ServiceIds.ToArray());
+            using var missingGroup = await client.GetAsync($"/internal/v1/groups/{Guid.CreateVersion7():D}/members", token);
+            Assert.AreEqual(HttpStatusCode.NotFound, missingGroup.StatusCode);
         }, TestContext.CancellationToken);
 
     [AssemblyCleanup]
