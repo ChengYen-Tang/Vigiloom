@@ -11,6 +11,7 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
@@ -42,6 +43,9 @@ public sealed class RemoteDeviceManagementTests
                 var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(resourceDb.ConnectionString,
                     sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
                 await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
+                var candidate = new ApplicationCandidate(Guid.CreateVersion7(), "orders", "production", "Orders", "", DateTimeOffset.UtcNow);
+                var application = new ApplicationService(candidate, DateTimeOffset.UtcNow);
+                await using (var db = new ResourcesDbContext(options)) { db.ApplicationServices.Add(application); await db.SaveChangesAsync(token); }
                 using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
@@ -61,6 +65,8 @@ public sealed class RemoteDeviceManagementTests
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteDeviceManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteGroupManagement))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteServiceMembership))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
                 await using var scope = web.Services.CreateAsyncScope();
@@ -83,6 +89,13 @@ public sealed class RemoteDeviceManagementTests
                 Assert.AreEqual(GroupResultStatus.Success, membership.Status);
                 Assert.HasCount(1, (await groups.ListForDeviceAsync(id, 1, token)).Items);
                 Assert.HasCount(1, (await groups.ListDevicesAsync(group.Group.Id, false, true, null, 1, token)).Items);
+                var services = scope.ServiceProvider.GetRequiredService<IServiceMembership>();
+                Assert.IsInstanceOfType<RemoteServiceMembership>(services);
+                var serviceMembership = await services.ChangeAsync(group.Group.Id,
+                    new GroupMembershipChange(membership.Group!.Version, [application.Id], []), Guid.CreateVersion7(), token);
+                Assert.AreEqual(GroupResultStatus.Success, serviceMembership.Status);
+                Assert.HasCount(1, (await services.ListAsync(group.Group.Id, false, true, null, 1, token)).Items);
+                Assert.HasCount(1, (await services.ListGroupsAsync(application.Id, 1, token)).Items);
                 var archived = await devices.SetArchivedAsync(id, true, updated.Device!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);

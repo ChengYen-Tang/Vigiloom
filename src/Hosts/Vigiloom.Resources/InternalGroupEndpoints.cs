@@ -24,5 +24,11 @@ internal static class InternalGroupEndpoints
             Results.Ok(await service.ChangeMembersAsync(id, request.Change, request.ActorId, token)));
         groups.MapPost("/{id:guid}/delete", async (Guid id, GroupDeleteRequest request, GroupManagement service, CancellationToken token) =>
             Results.Ok(await service.DeleteAsync(id, request.Version, request.ActorId, token)));
+        groups.MapGet("/service/{id:guid}", async (Guid id, int page, ServiceGroupManagement service, CancellationToken token) =>
+            Results.Ok(await service.ListGroupsAsync(id, page, token)));
+        groups.MapGet("/services", async (Guid? groupId, bool ungrouped, bool? member, string? search, int page, ServiceGroupManagement service, CancellationToken token) =>
+            Results.Ok(await service.ListAsync(groupId, ungrouped, member, search, page, token)));
+        groups.MapPut("/{id:guid}/services", async (Guid id, GroupMembersRequest request, ServiceGroupManagement service, CancellationToken token) =>
+            Results.Ok(await service.ChangeAsync(id, request.Change, request.ActorId, token)));
     }
 }
