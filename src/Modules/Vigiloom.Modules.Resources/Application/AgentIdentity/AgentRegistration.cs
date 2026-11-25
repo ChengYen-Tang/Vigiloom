@@ -12,6 +12,18 @@ namespace Vigiloom.Modules.Resources.Application.AgentIdentity;
 /// <summary>Owns device-bound Agent registration and credentials.</summary>
 public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IDbContextOutbox outbox)
 {
+    public async Task<DeviceAgentRegistrations?> ListAsync(Guid deviceId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var generation = await db.Devices.AsNoTracking().Where(d => d.Id == deviceId).Select(d => (long?)d.AgentAuthorizationGeneration).SingleOrDefaultAsync(token);
+        if (generation is null) return null;
+        var agents = await db.Agents.AsNoTracking().Where(a => a.DeviceId == deviceId).OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.RowId)
+            .Take(50).Select(a => new AgentRegistrationSummary(a.Id, a.DeviceGeneration, a.CreatedAt, a.RevokedAt)).ToArrayAsync(token);
+        var enrollments = await db.AgentEnrollments.AsNoTracking().Where(e => e.DeviceId == deviceId).OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.RowId)
+            .Take(50).Select(e => new AgentEnrollmentSummary(e.Id, e.DeviceGeneration, e.CreatedAt, e.ExpiresAt, e.RevokedAt, e.AgentId != null)).ToArrayAsync(token);
+        return new(agents, enrollments, generation.Value);
+    }
+
     public async Task<AgentEnrollmentIssue> IssueAsync(Guid deviceId, Guid actorId, CancellationToken token)
     {
         if (actorId == Guid.Empty) return new(AgentRegistrationStatus.Invalid);
@@ -92,6 +104,109 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
                 ? new(agent.Id, agent.DeviceId, agent.DeviceGeneration) : null;
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
+    }
+
+    public async Task<AgentEnrollmentResult> RecoverAsync(string? enrollmentSecret, string? machineProof, CancellationToken token)
+    {
+        if (!TryDecode(enrollmentSecret, "vle", out var enrollmentId, out var enrollmentBytes)) return new(AgentRegistrationStatus.Invalid);
+        try
+        {
+            if (!TryDecode(machineProof, "vlr", out var proofId, out var machineBytes)) return new(AgentRegistrationStatus.Invalid);
+            try
+            {
+                if (enrollmentId != proofId) return new(AgentRegistrationStatus.Invalid);
+                await using var db = await contexts.CreateDbContextAsync(token);
+                var enrollment = await db.AgentEnrollments.AsNoTracking().SingleOrDefaultAsync(e => e.Id == enrollmentId, token);
+                if (enrollment is null || enrollment.RevokedAt is not null || enrollment.AgentId is null ||
+                    !CryptographicOperations.FixedTimeEquals(enrollment.Verifier, SHA256.HashData(enrollmentBytes))) return new(AgentRegistrationStatus.Invalid);
+                var agent = await db.Agents.AsNoTracking().SingleOrDefaultAsync(a => a.Id == enrollment.AgentId, token);
+                if (agent is null || agent.RevokedAt is not null || !CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(machineBytes)))
+                    return new(AgentRegistrationStatus.Invalid);
+                var device = await db.Devices.AsNoTracking().SingleOrDefaultAsync(d => d.Id == agent.DeviceId, token);
+                return device is not null && Eligible(device) && device.AgentAuthorizationGeneration == agent.DeviceGeneration
+                    ? new(AgentRegistrationStatus.Success, agent.Id) : new(AgentRegistrationStatus.Invalid);
+            }
+            finally { CryptographicOperations.ZeroMemory(machineBytes); }
+        }
+        finally { CryptographicOperations.ZeroMemory(enrollmentBytes); }
+    }
+
+    public async Task<AgentRegistrationStatus> BeginRotationAsync(string? credential, byte[]? verifier, CancellationToken token)
+    {
+        if (!TryDecode(credential, "vla", out var id, out var secret)) return AgentRegistrationStatus.Invalid;
+        try
+        {
+            if (verifier is not { Length: 32 }) return AgentRegistrationStatus.Invalid;
+            await using var db = await contexts.CreateDbContextAsync(token);
+            var binding = await db.Agents.AsNoTracking().Where(a => a.Id == id).Select(a => (Guid?)a.DeviceId).SingleOrDefaultAsync(token);
+            if (binding is null) return AgentRegistrationStatus.Invalid;
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            var device = await LockDeviceAsync(db, binding.Value, token);
+            var agent = await db.Agents.SingleAsync(a => a.Id == id, token);
+            if (device is null || !Eligible(device) || agent.RevokedAt is not null || agent.DeviceGeneration != device.AgentAuthorizationGeneration ||
+                !CryptographicOperations.FixedTimeEquals(agent.Verifier, SHA256.HashData(secret)) || CryptographicOperations.FixedTimeEquals(agent.Verifier, verifier))
+                return AgentRegistrationStatus.Invalid;
+            var now = clock.GetUtcNow();
+            if (agent.PendingVerifier is not null && agent.PendingUntil > now)
+                return CryptographicOperations.FixedTimeEquals(agent.PendingVerifier, verifier) ? AgentRegistrationStatus.Success : AgentRegistrationStatus.Conflict;
+            agent.PendingVerifier = verifier.ToArray();
+            agent.PendingUntil = now.AddMinutes(15);
+            await db.SaveChangesAsync(token);
+            outbox.Enroll(db);
+            await outbox.PublishAsync(new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationStarted", now));
+            await outbox.SaveChangesAndFlushMessagesAsync(token);
+            return AgentRegistrationStatus.Success;
+        }
+        finally { CryptographicOperations.ZeroMemory(secret); }
+    }
+
+    public async Task<AgentRegistrationStatus> FinishRotationAsync(string? credential, CancellationToken token)
+    {
+        if (!TryDecode(credential, "vla", out var id, out var secret)) return AgentRegistrationStatus.Invalid;
+        try
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            var binding = await db.Agents.AsNoTracking().Where(a => a.Id == id).Select(a => (Guid?)a.DeviceId).SingleOrDefaultAsync(token);
+            if (binding is null) return AgentRegistrationStatus.Invalid;
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            var device = await LockDeviceAsync(db, binding.Value, token);
+            var agent = await db.Agents.SingleAsync(a => a.Id == id, token);
+            if (device is null || !Eligible(device) || agent.RevokedAt is not null || agent.DeviceGeneration != device.AgentAuthorizationGeneration)
+                return AgentRegistrationStatus.Invalid;
+            var digest = SHA256.HashData(secret);
+            if (agent.PendingVerifier is null && CryptographicOperations.FixedTimeEquals(agent.Verifier, digest)) return AgentRegistrationStatus.Success;
+            var now = clock.GetUtcNow();
+            if (agent.PendingVerifier is null || agent.PendingUntil <= now || !CryptographicOperations.FixedTimeEquals(agent.PendingVerifier, digest))
+                return AgentRegistrationStatus.Invalid;
+            agent.Verifier = agent.PendingVerifier;
+            agent.PendingVerifier = null;
+            agent.PendingUntil = null;
+            await db.SaveChangesAsync(token);
+            outbox.Enroll(db);
+            await outbox.PublishAsync(new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationFinished", now));
+            await outbox.SaveChangesAndFlushMessagesAsync(token);
+            return AgentRegistrationStatus.Success;
+        }
+        finally { CryptographicOperations.ZeroMemory(secret); }
+    }
+
+    public async Task<AgentRegistrationStatus> RevokeEnrollmentAsync(Guid enrollmentId, Guid actorId, CancellationToken token)
+    {
+        if (actorId == Guid.Empty) return AgentRegistrationStatus.Invalid;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var deviceId = await db.AgentEnrollments.AsNoTracking().Where(e => e.Id == enrollmentId).Select(e => (Guid?)e.DeviceId).SingleOrDefaultAsync(token);
+        if (deviceId is null) return AgentRegistrationStatus.NotFound;
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        await LockDeviceAsync(db, deviceId.Value, token);
+        var enrollment = await db.AgentEnrollments.SingleAsync(e => e.Id == enrollmentId, token);
+        if (enrollment.RevokedAt is not null) return AgentRegistrationStatus.Success;
+        var now = clock.GetUtcNow();
+        enrollment.RevokedAt = now;
+        await db.SaveChangesAsync(token);
+        outbox.Enroll(db);
+        await outbox.PublishAsync(new AgentRegistrationAudit(enrollment.DeviceId, enrollment.AgentId, actorId, "EnrollmentRevoked", now));
+        await outbox.SaveChangesAndFlushMessagesAsync(token);
+        return AgentRegistrationStatus.Success;
     }
 
     public async Task<AgentRegistrationStatus> RevokeAsync(Guid agentId, Guid actorId, CancellationToken token)
