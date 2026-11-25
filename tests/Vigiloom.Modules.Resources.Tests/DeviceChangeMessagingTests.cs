@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
@@ -55,6 +56,8 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<SelfServiceRegistration>();
                 builder.Services.AddScoped<AgentAssignments>();
                 builder.Services.AddScoped<PublicTemplates>();
+                builder.Services.AddScoped<TemplateChanges>();
+                builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
                 builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
                 builder.UseWolverine(options =>
                 {
@@ -210,6 +213,61 @@ public sealed class DeviceChangeMessagingTests
                                 await Task.Delay(100, auditTimeout.Token);
                             Assert.Contains(template.Id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
                         }
+                    }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var device = await db.Devices.SingleAsync(d => d.Id == id, token);
+                        device.SetTemplatePublication("Public host", template.Id, false, DateTimeOffset.UtcNow);
+                        await db.SaveChangesAsync(token);
+                    }
+                    PublicationTemplateUpdatePreview updatePreview;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var preview = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .PreviewUpdateAsync(template.Id, new PublicationTemplateUpdate("Updated", true, true, 3), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, preview.Status);
+                        Assert.IsNotNull(preview.Value);
+                        updatePreview = preview.Value;
+                        Assert.AreEqual(1, updatePreview.Impact.Count);
+                    }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var device = await db.Devices.SingleAsync(d => d.Id == id, token);
+                        device.Rename("Updated host", DateTimeOffset.UtcNow);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var changes = scope.ServiceProvider.GetRequiredService<TemplateChanges>();
+                        var stale = await changes.ConfirmUpdateAsync(template.Id, new ConfirmPublicationTemplateUpdate(updatePreview.Confirmation), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Conflict, stale.Status);
+                        var refreshed = await changes.PreviewUpdateAsync(template.Id, new PublicationTemplateUpdate("Updated", true, true, 3), actor, token);
+                        Assert.IsNotNull(refreshed.Value);
+                        updatePreview = refreshed.Value;
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var updated = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .ConfirmUpdateAsync(template.Id, new ConfirmPublicationTemplateUpdate(updatePreview.Confirmation), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, updated.Status);
+                        Assert.AreEqual("Updated", updated.Value?.Name);
+                    }
+                    PublicationTemplateRetirementPreview retirePreview;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var preview = await scope.ServiceProvider.GetRequiredService<TemplateChanges>()
+                            .PreviewRetireAsync(template.Id, new PublicationTemplateRetirement(null, null), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, preview.Status);
+                        Assert.IsNotNull(preview.Value);
+                        retirePreview = preview.Value;
+                        Assert.AreEqual(1, retirePreview.Impact.PublicCount);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var changes = scope.ServiceProvider.GetRequiredService<TemplateChanges>();
+                        Assert.AreEqual(TemplateOperationStatus.Success,
+                            await changes.ConfirmRetireAsync(template.Id, new ConfirmPublicationTemplateRetirement(retirePreview.Confirmation), actor, token));
+                        Assert.AreEqual(TemplateOperationStatus.NotFound, (await changes.ImpactAsync(template.Id, 1, token)).Status);
                     }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
