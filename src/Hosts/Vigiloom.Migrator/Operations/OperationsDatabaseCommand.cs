@@ -20,10 +20,13 @@ internal static class OperationsDatabaseCommand
         var services = new ServiceCollection();
         services.AddModuleSqlServer<OperationsDbContext>(target, "operations");
         services.AddModuleSqlServer<LogAdmissionDbContext>(target, "logquota");
+        services.AddModuleSqlServer<CentralLogsDbContext>(target, "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
         using var provider = services.BuildServiceProvider();
         await using (var db = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
         await using (var db = await provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        await using (var db = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
         Console.WriteLine("Operations schema initialized successfully.");
     }

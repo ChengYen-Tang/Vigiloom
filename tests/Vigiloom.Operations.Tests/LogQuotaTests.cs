@@ -27,11 +27,18 @@ public sealed class LogQuotaTests(TestContext context)
             var services = new ServiceCollection();
             services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
             services.AddModuleSqlServer<LogAdmissionDbContext>(database.ConnectionString, "logquota");
+            services.AddModuleSqlServer<CentralLogsDbContext>(database.ConnectionString, "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
             using var provider = services.BuildServiceProvider();
             await using (var db = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
             await using (var db = await provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
                 await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                var tables = await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM sys.tables WHERE schema_id = SCHEMA_ID('logs') AND name IN ('HostLogs', 'LogContexts', 'LogRecords')").SingleAsync(token);
+                Assert.AreEqual(3, tables);
+            }
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Operations"] = database.ConnectionString })));

@@ -4,6 +4,7 @@ using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
@@ -11,6 +12,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddModuleSqlServer<LogAdmissionDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "logquota");
+builder.Services.AddModuleSqlServer<CentralLogsDbContext>(services =>
+    services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
+        ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
 builder.Services.AddScoped<PolicyAdministration>();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<SharedLogQuota>();
