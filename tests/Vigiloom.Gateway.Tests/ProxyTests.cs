@@ -167,6 +167,25 @@ public sealed class ProxyTests
         Assert.AreEqual(HttpStatusCode.Unauthorized, rejected.StatusCode);
     }
 
+    [TestMethod]
+    public async Task PublicRoutesDoNotValidateSessionAtGateway()
+    {
+        await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
+        var address = web.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:web:Destinations:web:Address"] = address,
+                ["Services:Identity:Url"] = "http://127.0.0.1:1"
+            })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false });
+        var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+        var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D")), new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
+        var cookie = options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
+        client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={cookie}");
+        Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
+    }
+
     private static async Task<WebApplication> StartUpstreamAsync(string name, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();
