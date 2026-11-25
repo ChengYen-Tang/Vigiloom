@@ -30,7 +30,8 @@ public static class SqlTableDataMigration
     public static Task CopyAsync(string sourceConnection, string targetConnection, string schema, IReadOnlyList<string> tables, CancellationToken token = default) =>
         CopyAsync(sourceConnection, targetConnection, tables.Select(table => new TableMapping(schema, table, schema, table)).ToArray(), token);
 
-    public static async Task CopyAsync(string sourceConnection, string targetConnection, IReadOnlyList<TableMapping> tables, CancellationToken token = default)
+    public static async Task CopyAsync(string sourceConnection, string targetConnection, IReadOnlyList<TableMapping> tables, CancellationToken token = default,
+        Func<SqlConnection, SqlConnection, SqlTransaction, CancellationToken, Task>? afterCopy = null)
     {
         ValidateConnections(sourceConnection, targetConnection);
         await using var source = new SqlConnection(sourceConnection);
@@ -91,6 +92,7 @@ public static class SqlTableDataMigration
             foreach (var column in columns) copy.ColumnMappings.Add(column, column);
             await copy.WriteToServerAsync(rows, token);
         }
+        if (afterCopy is not null) await afterCopy(source, target, transaction, token);
         await transaction.CommitAsync(token);
     }
 
