@@ -219,6 +219,59 @@ public sealed class ServiceWorkTests
     }
 
     [TestMethod]
+    public async Task WorkRetriesTransientFailuresAndExposesPermanentFailure()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
+        var client = await TemporalClient.ConnectAsync(new(address));
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var ids = new[] { "vigiloom-test-" + Guid.CreateVersion7().ToString("N"), "vigiloom-test-" + Guid.CreateVersion7().ToString("N") };
+        var handler = new RetryHandler();
+        using var worker = ServiceWorkWorker.Create(client, queue, handler);
+        try
+        {
+            await worker.ExecuteAsync(async () =>
+            {
+                var producer = new ServiceWorkClient(client);
+                var transient = await producer.StartAsync(ids[0], queue, new("retry", ""), TestContext.CancellationToken);
+                Assert.AreEqual("recovered", await transient.GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken));
+                Assert.AreEqual(2, handler.Attempts);
+                var permanent = await producer.StartAsync(ids[1], queue, new("invalid", ""), TestContext.CancellationToken);
+                await Assert.ThrowsAsync<Temporalio.Exceptions.WorkflowFailedException>(async () =>
+                    await permanent.GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken));
+                Assert.AreEqual(Temporalio.Api.Enums.V1.WorkflowExecutionStatus.Failed, (await permanent.DescribeAsync()).Status);
+            }, TestContext.CancellationToken);
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            foreach (var id in ids)
+            {
+                try
+                {
+                    await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                    {
+                        Namespace = "default",
+                        WorkflowExecution = new() { WorkflowId = id }
+                    }, new Temporalio.Client.RpcOptions { CancellationToken = cleanup.Token });
+                }
+                catch (Temporalio.Exceptions.RpcException error) when (error.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound) { }
+            }
+        }
+    }
+
+    private sealed class RetryHandler : IServiceWorkHandler
+    {
+        public int Attempts { get; private set; }
+        public Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
+        {
+            if (work.Kind == "invalid") throw new Temporalio.Exceptions.ApplicationFailureException("Invalid work", nonRetryable: true);
+            if (++Attempts == 1) throw new InvalidOperationException("Temporary failure");
+            return Task.FromResult<string?>("recovered");
+        }
+    }
+
+    [TestMethod]
     public async Task CancelRunningWorkReachesTheActivityHandler()
     {
         var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
