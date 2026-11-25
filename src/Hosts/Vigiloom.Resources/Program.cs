@@ -52,6 +52,8 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+    options.PublishReliablyTo<ApplicationStateChanged>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+    options.PublishReliablyTo<ApplicationStateAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
 }));
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
@@ -68,6 +70,8 @@ builder.Services.AddScoped<ServiceGroupManagement>();
 builder.Services.AddScoped<ApplicationDiscovery>();
 builder.Services.AddScoped<ApplicationApproval>();
 builder.Services.AddScoped<SelfServiceRegistration>();
+builder.Services.AddScoped<ApplicationLifecycle>();
+builder.Services.AddScoped<ApplicationCatalog>();
 builder.Services.AddScoped<PackageCatalog>();
 builder.Services.AddHttpClient<IPackageRuntimeUsage, PackageRuntimeUsage>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -130,6 +134,12 @@ internalApi.MapPost("/application-candidates/observe", async (ApplicationObserva
     Results.Ok(await discovery.ObserveAsync(request, token)));
 internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>
     await registration.RegisterAsync(request, token) is { } id ? Results.Ok(id) : Results.BadRequest());
+internalApi.MapPost("/application-services/{id:guid}/state", async (Guid id, ApplicationStateChange request, ApplicationLifecycle lifecycle, CancellationToken token) =>
+    Results.Ok(await lifecycle.ChangeAsync(id, request, token)));
+internalApi.MapGet("/application-services", async (int? page, ApplicationCatalog catalog, CancellationToken token) =>
+    page is < 1 or > 1000 ? Results.BadRequest() : Results.Ok(await catalog.ListAsync(page ?? 1, token)));
+internalApi.MapGet("/application-services/{id:guid}", async (Guid id, ApplicationCatalog catalog, CancellationToken token) =>
+    await catalog.GetAsync(id, token) is { } service ? Results.Ok(service) : Results.NotFound());
 internalApi.MapGet("/application-candidates", async (int? page, ApplicationDiscovery discovery, CancellationToken token) =>
     page is < 1 ? Results.BadRequest() : Results.Ok(await discovery.ListAsync(page ?? 1, token)));
 internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id, ApplicationApprovalRequest request, ApplicationApproval approval, CancellationToken token) =>

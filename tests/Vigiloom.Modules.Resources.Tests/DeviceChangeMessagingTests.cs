@@ -55,6 +55,8 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<ApplicationDiscovery>();
                 builder.Services.AddScoped<ApplicationApproval>();
                 builder.Services.AddScoped<SelfServiceRegistration>();
+                builder.Services.AddScoped<ApplicationLifecycle>();
+                builder.Services.AddScoped<ApplicationCatalog>();
                 builder.Services.AddScoped<AgentAssignments>();
                 builder.Services.AddScoped<PublicTemplates>();
                 builder.Services.AddScoped<TemplateChanges>();
@@ -76,6 +78,8 @@ public sealed class DeviceChangeMessagingTests
                     options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
                     options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
                     options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
+                    options.PublishReliablyTo<ApplicationStateChanged>(observabilityQueue);
+                    options.PublishReliablyTo<ApplicationStateAudit>(auditQueue);
                 });
                 using var host = builder.Build();
                 await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -367,6 +371,40 @@ public sealed class DeviceChangeMessagingTests
                         Assert.IsNull(await policies.ServiceAsync(applicationService.Id, token));
                         Assert.IsEmpty((await policies.GroupsAsync("Billing", 1, token)).Items);
                         Assert.IsNull(await policies.GroupSummaryAsync(publicGroup.Id, token));
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var lifecycle = scope.ServiceProvider.GetRequiredService<ApplicationLifecycle>();
+                        var catalog = scope.ServiceProvider.GetRequiredService<ApplicationCatalog>();
+                        Assert.IsTrue((await catalog.ListAsync(1, token)).Any(s => s.Id == applicationService.Id));
+                        var contexts = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                        async Task<string> VersionAsync()
+                        {
+                            await using var db = await contexts.CreateDbContextAsync(token);
+                            return Convert.ToBase64String((await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).Version);
+                        }
+                        var publication = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var settings = await publication.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(settings);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, (await publication.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                            new PublicationChange(true, "Billing status", PublicationPolicy.BaselineVersion, settings.Version), actor, token)).Status);
+                        Assert.IsNotNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "stop", actor), token));
+                        DateTimeOffset? stoppedAt;
+                        await using (var db = await contexts.CreateDbContextAsync(token))
+                            stoppedAt = (await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).RevokedAt;
+                        var oldVersion = await VersionAsync();
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(oldVersion, "archive", actor), token));
+                        Assert.IsNotNull((await catalog.GetAsync(applicationService.Id, token))?.ArchivedAt);
+                        await using (var db = await contexts.CreateDbContextAsync(token))
+                            Assert.AreEqual(stoppedAt, (await db.ApplicationServices.SingleAsync(s => s.Id == applicationService.Id, token)).RevokedAt);
+                        Assert.AreEqual(ApplicationStateChangeStatus.Conflict, await lifecycle.ChangeAsync(applicationService.Id, new(oldVersion, "restore", actor), token));
+                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "restore", actor), token));
+                        sources.Active = false;
+                        Assert.AreEqual(ApplicationStateChangeStatus.SourceUnavailable, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "resume", actor), token));
+                        sources.Active = true;
+                        Assert.AreEqual(ApplicationStateChangeStatus.Updated, await lifecycle.ChangeAsync(applicationService.Id, new(await VersionAsync(), "resume", actor), token));
                     }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())

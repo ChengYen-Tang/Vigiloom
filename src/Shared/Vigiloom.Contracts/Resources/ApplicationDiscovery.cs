@@ -12,3 +12,7 @@ public sealed record ApplicationApproved(Guid ServiceId, Guid SourceId, string S
     string DisplayName, string ServiceNamespace, DateTimeOffset ApprovedAt, byte[] Version);
 public sealed record ApplicationApprovalAudit(Guid ActorId, Guid ServiceId, Guid SourceId, DateTimeOffset OccurredAt);
 public sealed record ApplicationApprovalRequest(Guid ActorId);
+public sealed record ApplicationStateChange(string Version, string Action, Guid ActorId);
+public enum ApplicationStateChangeStatus { Updated, NotFound, Conflict, SourceUnavailable }
+public sealed record ApplicationStateChanged(Guid ServiceId, DateTimeOffset? StoppedAt, DateTimeOffset? ArchivedAt, byte[] Version);
+public sealed record ApplicationStateAudit(Guid ActorId, Guid ServiceId, string Action, DateTimeOffset OccurredAt);
