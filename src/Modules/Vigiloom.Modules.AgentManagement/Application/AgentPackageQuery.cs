@@ -5,7 +5,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
-public sealed class AgentPackageQuery(IDbContextFactory<AgentManagementDbContext> contexts, IPackageLibraryTransport transport)
+public sealed class AgentPackageQuery(IDbContextFactory<AgentManagementDbContext> contexts, IPackageLibraryTransport transport) : IAgentPackageQuery
 {
     private const int PageSize = 50;
 

@@ -61,6 +61,16 @@ public sealed class PackageCatalog(IDbContextFactory<ResourcesDbContext> context
         return new AgentPackagePage(items, page, rows.Length > pageSize);
     }
 
+    public async Task<IReadOnlyList<AgentPackageView>> GetVersionsAsync(string[] versions, CancellationToken token)
+    {
+        if (versions.Length == 0) return [];
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var rows = await db.AgentPackages.AsNoTracking().Where(p => versions.Contains(p.Version))
+            .Select(p => new { p.Id, p.Version, p.RuntimeIdentifier, p.Size, p.Sha256, p.ManifestSha256 }).ToArrayAsync(token);
+        return rows.Select(p => new AgentPackageView(p.Id, p.Version, p.RuntimeIdentifier, p.Size, p.Sha256)
+            { Cached = files.IsCached(p.Sha256, p.ManifestSha256) }).ToArray();
+    }
+
     public async Task<AgentPackageRemovalResult> RemoveAsync(Guid packageId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

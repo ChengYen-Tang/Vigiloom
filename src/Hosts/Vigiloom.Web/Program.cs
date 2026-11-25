@@ -251,12 +251,26 @@ builder.Services.AddScoped<AgentQueueCapacityConfiguration>();
 builder.Services.AddScoped<AgentMetricConfiguration>();
 builder.Services.AddScoped<HostLogConfiguration>();
 builder.Services.AddScoped<AgentPackageQuery>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentPackageQuery>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentPackageQuery>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>());
 builder.Services.AddScoped<AgentVersionAssignments>();
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<PackageLibrary>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentPackageLibrary>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<PackageLibrary>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>());
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");

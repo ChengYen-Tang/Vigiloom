@@ -8,7 +8,7 @@ internal static class AgentPackageEndpoints
 {
     public static void MapAgentPackageEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/agent-packages", async (int? page, HttpContext context, AgentPackageQuery query, CancellationToken token) =>
+        app.MapGet("/api/v1/agent-packages", async (int? page, HttpContext context, IAgentPackageQuery query, CancellationToken token) =>
         {
             if (page is < 1 or > 20000)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["page"] = ["Page must be between 1 and 20000."] });
@@ -18,7 +18,7 @@ internal static class AgentPackageEndpoints
             .Produces<AgentPackagePage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("List downloaded Agent package versions");
 
-        app.MapPost("/api/v1/agent-packages/cache", async (AgentPackageDownloadRequest request, PackageLibrary library, HttpContext context, CancellationToken token) =>
+        app.MapPost("/api/v1/agent-packages/cache", async (AgentPackageDownloadRequest request, IAgentPackageLibrary library, HttpContext context, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ =>
             {
                 try { return await library.CacheAsync(request.Version, request.RuntimeIdentifier, token) ? Results.NoContent() : Results.NotFound(); }
@@ -30,7 +30,7 @@ internal static class AgentPackageEndpoints
             .Produces(204).ProducesProblem(401).ProducesProblem(403).Produces(404).Produces(409).ProducesProblem(429).ProducesProblem(503)
             .WithSummary("Download an Agent release to the central platform");
 
-        app.MapDelete("/api/v1/agent-packages/{id:guid}/cache", async (Guid id, PackageLibrary library, HttpContext context, CancellationToken token) =>
+        app.MapDelete("/api/v1/agent-packages/{id:guid}/cache", async (Guid id, IAgentPackageLibrary library, HttpContext context, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ => (await library.RemoveAsync(id, token)) switch
             {
                 PackageRemovalResult.Removed => Results.NoContent(),
