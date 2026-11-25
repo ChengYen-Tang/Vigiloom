@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
@@ -21,14 +22,27 @@ public sealed class InternalApiTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public Task ReturnsEnabledTargetsAndCurrentAgentEligibility() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public async Task ReturnsEnabledTargetsAndCurrentAgentEligibility()
+    {
+        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
+        if (string.IsNullOrWhiteSpace(broker)) Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ for the RabbitMQ integration test.");
+        var suffix = Guid.CreateVersion7().ToString("N");
+        var networkQueue = "vigiloom-test-network-" + suffix;
+        var agentQueue = "vigiloom-test-agent-" + suffix;
+        try
+        {
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Development");
+                builder.UseSetting("ConnectionStrings:Resources", database.ConnectionString);
+                builder.UseSetting("ConnectionStrings:Messaging", broker);
+                builder.UseSetting("Messaging:NetworkQueue", networkQueue);
+                builder.UseSetting("Messaging:AgentQueue", agentQueue);
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
-                    new Dictionary<string, string?> { ["ConnectionStrings:Resources"] = database.ConnectionString }));
+                    new Dictionary<string, string?> { ["ConnectionStrings:Resources"] = database.ConnectionString, ["ConnectionStrings:Messaging"] = broker,
+                        ["Messaging:NetworkQueue"] = networkQueue, ["Messaging:AgentQueue"] = agentQueue }));
             });
             var contexts = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             var now = DateTimeOffset.UtcNow;
@@ -89,6 +103,16 @@ public sealed class InternalApiTests
             Assert.IsFalse(archivedAgent?.Eligible);
             Assert.AreEqual(1L, archivedAgent?.Generation);
         }, TestContext.CancellationToken);
+        }
+        finally
+        {
+            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
+            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
+            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
+        }
+    }
 
     [AssemblyCleanup]
     public static void Cleanup() => SqlTestDatabase.CompleteRun();

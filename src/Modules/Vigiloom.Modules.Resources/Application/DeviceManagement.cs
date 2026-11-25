@@ -15,7 +15,7 @@ public sealed record DeviceResult(DeviceResultStatus Status, DeviceDetails? Devi
 
 /// <summary>Owns device state and SQL transactions. Callers must authorize the current principal.</summary>
 public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit>? audit = null,
-    ILogger<DeviceManagement>? logger = null)
+    ILogger<DeviceManagement>? logger = null, DeviceChangeOutbox? changes = null)
 {
     public const int PageSize = 50;
     public const int MaxAdditionalTargets = 16;
@@ -87,17 +87,18 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         if (!input.Enabled) device.Update(validation.Name, validation.Address, input.DeepMonitoring, false, now);
         if (input.Public) { PublicationPolicy.TryValidateName(input.PublicDisplayName, out var publicName); device.SetPublication(true, publicName, input.PublicPolicyVersion, now); }
         await using var db = await contexts.CreateDbContextAsync(token);
-        await using var tx = input.Public ? await db.Database.BeginTransactionAsync(token) : null;
+        await using var tx = await db.Database.BeginTransactionAsync(token);
         db.Devices.Add(device);
         db.DeviceTargets.AddRange(validation.Targets.Select(address => new DeviceTarget(device.Id, address)));
         db.DeviceAudits.Add(new DeviceAudit(device.Id, actor, "created", now));
         await db.SaveChangesAsync(token);
         if (input.Public)
         {
-            await audit!.AppendAsync(db.Database.GetDbConnection(), tx!.GetDbTransaction(),
+            await audit!.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
                 new OperationAudit(actor, device.Id, now.ToUniversalTime(), new PublicationChanged(PublicationResourceKind.Device, false, true, true)), token);
-            await tx!.CommitAsync(token);
         }
+        if (changes is null) await tx.CommitAsync(token);
+        else await changes.CommitAsync(db, device, token);
         var confirmed = input.Public ? await DevicePublicationPeriod.ConfirmAsync(contexts, device.Id, device.Version, logger, token) : null;
         var result = Map(device, validation.Targets);
         if (confirmed is not null) result = result with { Version = Convert.ToBase64String(confirmed) };
@@ -125,7 +126,12 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         var now = clock.GetUtcNow();
         device.Update(validation.Name, validation.Address, input.DeepMonitoring, input.Enabled, now);
         db.DeviceAudits.Add(new DeviceAudit(id, actor, "updated", now));
-        try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
+        try
+        {
+            await db.SaveChangesAsync(token);
+            if (changes is null) await transaction.CommitAsync(token);
+            else await changes.CommitAsync(db, device, token);
+        }
         catch (DbUpdateConcurrencyException) { return new(DeviceResultStatus.Conflict); }
         return new(DeviceResultStatus.Success, Map(device, validation.Targets));
     }
@@ -144,7 +150,12 @@ public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> conte
         var now = clock.GetUtcNow();
         if (archive) device.Archive(now); else device.Restore(now);
         db.DeviceAudits.Add(new DeviceAudit(id, actor, archive ? "archived" : "restored", now));
-        try { await db.SaveChangesAsync(token); await transaction.CommitAsync(token); }
+        try
+        {
+            await db.SaveChangesAsync(token);
+            if (changes is null) await transaction.CommitAsync(token);
+            else await changes.CommitAsync(db, device, token);
+        }
         catch (DbUpdateConcurrencyException) { return new(DeviceResultStatus.Conflict); }
         var targets = await db.DeviceTargets.AsNoTracking().Where(x => x.DeviceId == id).OrderBy(x => x.Address).Select(x => x.Address).ToArrayAsync(token);
         return new(DeviceResultStatus.Success, Map(device, targets));
