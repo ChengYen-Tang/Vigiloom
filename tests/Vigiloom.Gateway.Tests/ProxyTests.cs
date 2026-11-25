@@ -57,6 +57,28 @@ public sealed class ProxyTests
         CollectionAssert.AreEquivalent(new[] { "first", "second" }, seen.ToArray());
     }
 
+    [TestMethod]
+    public async Task RoutesAgentAndOtlpToTheirConfiguredServices()
+    {
+        await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
+        await using var agent = await StartUpstreamAsync("agent", TestContext.CancellationToken);
+        await using var otlp = await StartUpstreamAsync("otlp", TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>()
+            .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
+                ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = Address(agent),
+                ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = Address(otlp)
+            })));
+        using var client = factory.CreateClient();
+        Assert.AreEqual("web", await client.GetStringAsync("/api/v1/devices", TestContext.CancellationToken));
+        Assert.AreEqual("agent", await client.GetStringAsync("/api/v1/agent/identity", TestContext.CancellationToken));
+        Assert.AreEqual("otlp", await client.GetStringAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken));
+        Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/devices", TestContext.CancellationToken));
+    }
+
     private static async Task<WebApplication> StartUpstreamAsync(string name, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();
