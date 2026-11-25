@@ -1,4 +1,4 @@
-using Vigiloom.Infrastructure.AgentPackages;
+using Vigiloom.UpdateSecurity.AgentPackages;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;

@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Workspace;
@@ -85,6 +86,11 @@ public sealed class InternalApiTests
             }
 
             using var client = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+            var packages = await client.GetFromJsonAsync<AgentPackagePage>("/internal/v1/agent-packages", token);
+            Assert.IsNotNull(packages);
+            Assert.IsEmpty(packages.Items);
+            using (var badPage = await client.GetAsync("/internal/v1/agent-packages?page=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, badPage.StatusCode);
             var targets = await client.GetFromJsonAsync<PingDeviceSnapshot[]>("/internal/v1/ping-targets", token);
             Assert.IsNotNull(targets);
             Assert.HasCount(1, targets);

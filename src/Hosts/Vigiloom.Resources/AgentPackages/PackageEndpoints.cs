@@ -1,0 +1,16 @@
+using Vigiloom.Modules.Resources.Application.AgentPackages;
+
+namespace Vigiloom.Resources.AgentPackages;
+
+internal static class PackageEndpoints
+{
+    internal static void MapInternalPackages(this RouteGroupBuilder api)
+    {
+        api.MapGet("/agent-packages", async (int? page, PackageCatalog catalog, CancellationToken token) =>
+            page is < 1 or > 20000 ? Results.BadRequest() : Results.Ok(await catalog.ListAsync(page ?? 1, token)));
+        api.MapPost("/agent-packages/download", async (DownloadPackage request, PackageCatalog catalog, CancellationToken token) =>
+            await catalog.DownloadAsync(request.Version, request.RuntimeIdentifier, token) ? Results.NoContent() : Results.NotFound());
+    }
+
+    internal sealed record DownloadPackage(string Version, string RuntimeIdentifier);
+}

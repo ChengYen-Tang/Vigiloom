@@ -1,4 +1,4 @@
-namespace Vigiloom.Infrastructure.AgentPackages;
+namespace Vigiloom.UpdateSecurity.AgentPackages;
 
 public interface IPackageLibraryTransport
 {

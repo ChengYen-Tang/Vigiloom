@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.UpdateSecurity.AgentPackages;
+using Vigiloom.Modules.Resources.Application.AgentPackages;
+using Vigiloom.Resources.AgentPackages;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -54,6 +57,24 @@ builder.Services.AddScoped<ServiceGroupManagement>();
 builder.Services.AddScoped<ApplicationDiscovery>();
 builder.Services.AddScoped<ApplicationApproval>();
 builder.Services.AddScoped<SelfServiceRegistration>();
+builder.Services.AddScoped<PackageCatalog>();
+builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Vigiloom");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
+{
+    var directory = services.GetRequiredService<IConfiguration>()["Vigiloom:AgentPackages:CachePath"];
+    if (string.IsNullOrWhiteSpace(directory))
+    {
+        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localData)) throw new InvalidOperationException("Set Vigiloom:AgentPackages:CachePath.");
+        directory = Path.Combine(localData, "Vigiloom", "agent-packages");
+    }
+    return new PackageLibraryTransport(directory);
+});
 builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Observability:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -68,6 +89,7 @@ internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersRead
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
 internalApi.MapInternalDeviceManagement();
 internalApi.MapInternalGroupManagement();
+internalApi.MapInternalPackages();
 internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
     Results.Ok(await discovery.ObserveAsync(request, token)));
 internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>

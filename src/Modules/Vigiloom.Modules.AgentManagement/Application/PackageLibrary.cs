@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
-using Vigiloom.Infrastructure.AgentPackages;
+using Vigiloom.UpdateSecurity.AgentPackages;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 

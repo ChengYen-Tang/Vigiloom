@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Vigiloom.UpdateSecurity;
 
-namespace Vigiloom.Infrastructure.AgentPackages;
+namespace Vigiloom.UpdateSecurity.AgentPackages;
 
 /// <summary>Stores GitHub packages and manifests for offline Agent updates.</summary>
 public sealed class PackageLibraryTransport(string cacheDirectory) : IPackageLibraryTransport

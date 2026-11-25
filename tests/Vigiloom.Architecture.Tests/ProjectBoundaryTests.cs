@@ -150,6 +150,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Agent" => ["Vigiloom.Agent.Core", "Vigiloom.Agent.Platforms.Windows", "Vigiloom.Agent.Platforms.Linux"],
         "Vigiloom.Updater" => ["Vigiloom.Updater.Core"],
         "Vigiloom.Modules.AgentManagement" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
+        "Vigiloom.Modules.Resources" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
         _ when modules.Contains(name) => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure"],
         _ => null
     };
