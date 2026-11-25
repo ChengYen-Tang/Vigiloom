@@ -158,6 +158,13 @@ builder.Services.AddScoped<IDeviceManagement>(services =>
         ? services.GetRequiredService<DeviceManagement>()
         : services.GetRequiredService<Vigiloom.Web.Devices.RemoteDeviceManagement>());
 builder.Services.AddScoped<GroupManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Groups.RemoteGroupManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IGroupManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<GroupManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Groups.RemoteGroupManagement>());
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();

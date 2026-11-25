@@ -8,10 +8,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Groups;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Devices;
+using Vigiloom.Web.Groups;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -31,6 +33,7 @@ public sealed class RemoteDeviceManagementTests
         var suffix = Guid.CreateVersion7().ToString("N");
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
+        var auditQueue = "vigiloom-test-audit-" + suffix;
         try
         {
             await ReusableWebDatabase.ExecuteAsync(async (webDb, outerToken) =>
@@ -46,6 +49,7 @@ public sealed class RemoteDeviceManagementTests
                     builder.UseSetting("ConnectionStrings:Messaging", broker);
                     builder.UseSetting("Messaging:NetworkQueue", networkQueue);
                     builder.UseSetting("Messaging:AgentQueue", agentQueue);
+                    builder.UseSetting("Messaging:AuditQueue", auditQueue);
                 });
                 using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
@@ -55,6 +59,8 @@ public sealed class RemoteDeviceManagementTests
                         ["Services:Resources:Url"] = "http://resources"
                     }));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteDeviceManagement))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteGroupManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
                 await using var scope = web.Services.CreateAsyncScope();
@@ -68,6 +74,15 @@ public sealed class RemoteDeviceManagementTests
                 var updated = await devices.UpdateAsync(id, new DeviceInput("Renamed", "changed.example", [], true, Version: result.Device.Version), Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, updated.Status);
                 Assert.AreEqual("changed.example", (await devices.GetAsync(id, token))?.Address);
+                var groups = scope.ServiceProvider.GetRequiredService<IGroupManagement>();
+                Assert.IsInstanceOfType<RemoteGroupManagement>(groups);
+                var group = await groups.CreateAsync(new GroupInput("Remote group", null), Guid.CreateVersion7(), token);
+                Assert.AreEqual(GroupResultStatus.Success, group.Status);
+                var membership = await groups.ChangeMembersAsync(group.Group!.Id,
+                    new GroupMembershipChange(group.Group.Version, [id], []), Guid.CreateVersion7(), token);
+                Assert.AreEqual(GroupResultStatus.Success, membership.Status);
+                Assert.HasCount(1, (await groups.ListForDeviceAsync(id, 1, token)).Items);
+                Assert.HasCount(1, (await groups.ListDevicesAsync(group.Group.Id, false, true, null, 1, token)).Items);
                 var archived = await devices.SetArchivedAsync(id, true, updated.Device!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);
@@ -83,6 +98,7 @@ public sealed class RemoteDeviceManagementTests
             await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
         }
     }
 }
