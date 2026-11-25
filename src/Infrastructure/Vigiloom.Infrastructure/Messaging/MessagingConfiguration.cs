@@ -19,6 +19,8 @@ public static class MessagingConfiguration
 
         options.PersistMessagesWithSqlServer(connectionString, "wolverine");
         options.UseEntityFrameworkCoreTransactions();
+        options.Durability.MessageDeduplicationMode = MessageDeduplicationMode.CompareByHash;
+        options.Durability.DeduplicationWindow = TimeSpan.FromDays(7);
         options.UseRabbitMq(brokerConnectionString).AutoProvision();
     }
 

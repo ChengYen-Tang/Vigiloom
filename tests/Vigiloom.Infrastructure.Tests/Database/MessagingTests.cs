@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Vigiloom.Infrastructure.Messaging;
 using Vigiloom.Testing.SqlServer;
 using Wolverine;
+using Wolverine.Attributes;
 using Wolverine.EntityFrameworkCore;
 
 namespace Vigiloom.Infrastructure.Tests.Database;
@@ -24,6 +25,7 @@ public sealed class MessagingTests
 
         var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
         var messageId = Guid.CreateVersion7();
+        var rolledBackId = Guid.CreateVersion7();
         var server = TestDatabaseServer.FromEnvironment();
         await SqlTestDatabase.ExecuteAsync(server, async (senderDb, token) =>
         await SqlTestDatabase.ExecuteAsync(server, async (receiverDb, innerToken) =>
@@ -40,8 +42,18 @@ public sealed class MessagingTests
                 var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
                 var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
                 outbox.Enroll(context);
-                context.Receipts.Add(new MessageReceipt { Id = messageId });
-                await outbox.PublishAsync(new MessagingTestMessage(messageId));
+                context.Receipts.Add(new MessageReceipt { Id = rolledBackId, Marker = "duplicate" });
+                context.Receipts.Add(new MessageReceipt { Id = Guid.CreateVersion7(), Marker = "duplicate" });
+                await outbox.PublishAsync(new MessagingTestMessage(rolledBackId), new DeliveryOptions { DeduplicationId = rolledBackId.ToString("N") });
+                await Assert.ThrowsAsync<DbUpdateException>(() => outbox.SaveChangesAndFlushMessagesAsync(innerToken));
+            }
+            await using (var scope = sender.Services.CreateAsyncScope())
+            {
+                var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
+                var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
+                outbox.Enroll(context);
+                context.Receipts.Add(new MessageReceipt { Id = messageId, Marker = messageId.ToString("N") });
+                await outbox.PublishAsync(new MessagingTestMessage(messageId), new DeliveryOptions { DeduplicationId = messageId.ToString("N") });
                 await outbox.SaveChangesAndFlushMessagesAsync(innerToken);
             }
 
@@ -54,7 +66,11 @@ public sealed class MessagingTests
                 while (true)
                 {
                     await using var read = CreateContext(receiverDb.ConnectionString);
-                    if (await read.Receipts.AnyAsync(x => x.Id == messageId, timeout.Token)) break;
+                    if (await read.Receipts.AnyAsync(x => x.Id == messageId, timeout.Token))
+                    {
+                        Assert.IsFalse(await read.Receipts.AnyAsync(x => x.Id == rolledBackId, timeout.Token));
+                        break;
+                    }
                     await Task.Delay(250, timeout.Token);
                 }
             }
@@ -89,18 +105,21 @@ public sealed class MessagingTests
 }
 
 public sealed record MessagingTestMessage(Guid Id);
-public sealed class MessageReceipt { public Guid Id { get; set; } }
+public sealed class MessageReceipt { public Guid Id { get; set; } public string Marker { get; set; } = ""; }
 
 public sealed class MessagingTestContext(DbContextOptions<MessagingTestContext> options) : DbContext(options)
 {
     public DbSet<MessageReceipt> Receipts => Set<MessageReceipt>();
+    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<MessageReceipt>().HasIndex(x => x.Marker).IsUnique();
 }
 
 public sealed class MessagingTestHandler
 {
+    [Deduplicated]
     public static async Task Handle(MessagingTestMessage message, MessagingTestContext context)
     {
-        context.Receipts.Add(new MessageReceipt { Id = message.Id });
+        context.Receipts.Add(new MessageReceipt { Id = message.Id, Marker = message.Id.ToString("N") });
         await context.SaveChangesAsync();
     }
 }
