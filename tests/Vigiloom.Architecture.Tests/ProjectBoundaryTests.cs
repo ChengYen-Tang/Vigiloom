@@ -137,6 +137,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
         "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
+        "Vigiloom.Operations" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.AlertingOperations"],
         "Vigiloom.Web.Client" => ["Vigiloom.Contracts"],
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
         "Vigiloom.Worker" => [.. modules, "Vigiloom.Infrastructure"],

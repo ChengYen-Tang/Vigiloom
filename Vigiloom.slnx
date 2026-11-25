@@ -10,11 +10,15 @@
     <Project Path="src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
   </Folder>
   <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Vigiloom.Operations/Vigiloom.Operations.csproj" />
     <Project Path="src/Hosts/Vigiloom.Identity/Vigiloom.Identity.csproj" />
     <Project Path="src/Hosts/Vigiloom.Migrator/Vigiloom.Migrator.csproj" />
     <Project Path="src/Hosts/Vigiloom.Web.Client/Vigiloom.Web.Client.csproj" />
     <Project Path="src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
     <Project Path="src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/Operations/">
+    <Project Path="tests/Vigiloom.Operations.Tests/Vigiloom.Operations.Tests.csproj" />
   </Folder>
   <Folder Name="/src/Infrastructure/">
     <Project Path="src/Infrastructure/Vigiloom.Infrastructure/Vigiloom.Infrastructure.csproj" />
