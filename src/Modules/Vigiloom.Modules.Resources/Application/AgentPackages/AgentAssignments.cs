@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.Resources.Application.AgentPackages;
 
 /// <summary>Owns desired Agent versions and publishes changes for delivery to the Agent.</summary>
 public sealed class AgentAssignments(IDbContextFactory<ResourcesDbContext> contexts, IPackageLibraryTransport files,
-    IDbContextOutbox outbox, TimeProvider clock)
+    IDbContextOutbox outbox, TimeProvider clock, IHostAgentVersion? host = null)
 {
     public async Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token)
     {
@@ -21,9 +21,12 @@ public sealed class AgentAssignments(IDbContextFactory<ResourcesDbContext> conte
             from package in packages.DefaultIfEmpty()
             where assignment.AgentId == agentId
             select new { assignment.PackageId, assignment.AssignedAt, assignment.Version, Package = package }).SingleOrDefaultAsync(token);
-        if (row is null) return new(agentId, null, null, null, default, "", false);
+        var observation = host is null ? null : await host.GetAsync(agentId, token);
+        if (row is null) return new(agentId, null, null, null, default, "", false,
+            observation?.ReportedVersion, observation?.ReportedRuntimeIdentifier, observation?.ReportedAt, observation?.LatestResult);
         return new(agentId, row.PackageId, row.Package?.Version, row.Package?.RuntimeIdentifier, row.AssignedAt,
-            Convert.ToBase64String(row.Version), row.Package is not null && files.IsCached(row.Package.Sha256, row.Package.ManifestSha256));
+            Convert.ToBase64String(row.Version), row.Package is not null && files.IsCached(row.Package.Sha256, row.Package.ManifestSha256),
+            observation?.ReportedVersion, observation?.ReportedRuntimeIdentifier, observation?.ReportedAt, observation?.LatestResult);
     }
 
     public async Task<AgentVersionTarget?> GetTargetAsync(Guid agentId, CancellationToken token)

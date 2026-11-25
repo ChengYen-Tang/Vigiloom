@@ -65,6 +65,7 @@ builder.Services.AddScoped<ApplicationApproval>();
 builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddScoped<PackageCatalog>();
 builder.Services.AddHttpClient<IPackageRuntimeUsage, PackageRuntimeUsage>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<AgentAssignments>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentRegistration>();
