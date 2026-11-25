@@ -471,6 +471,12 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 {
     Predicate = _ => false
 }).AllowAnonymous();
+// This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
+app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(new { SourceId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value });
+}).RequireAuthorization("ServiceSource");
 app.MapAccountEndpoints();
 app.MapDeviceEndpoints();
 app.MapPublicationEndpoints();
