@@ -3,6 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
     <PackageVersion Include="CsvHelper" Version="34.0.0" />
     <PackageVersion Include="Google.Api.CommonProtos" Version="2.17.0" />
     <PackageVersion Include="Respawn" Version="7.0.0" />
