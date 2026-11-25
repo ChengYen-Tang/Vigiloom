@@ -48,14 +48,17 @@
     <PackageVersion Include="QRCoder" Version="1.8.1" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
     <PackageVersion Include="MSTest" Version="4.0.2" />
-    <!-- SqlClient 6.1.7 requests 9.0.11; pin the patched 9.x release. -->
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.22" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <PackageVersion Include="System.Management" Version="10.0.14" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.14" />
     <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
     <PackageVersion Include="System.DirectoryServices.AccountManagement" Version="10.0.14" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
     <PackageVersion Include="Vizor.ECharts" Version="0.9.7" />
+    <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.64.2" />
+    <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.64.2" />
+    <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.64.2" />
+    <PackageVersion Include="WolverineFx.SqlServer" Version="6.64.2" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 </Project>

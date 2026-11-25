@@ -11,7 +11,7 @@ public sealed class ProjectBoundaryTests
         "IdentityAccess", "Resources", "NetworkMonitoring", "AgentManagement",
         "ServiceObservability", "SecurityAnalysis", "Publishing", "AlertingOperations"
     ];
-    private static readonly string[] TestHelpers = ["Vigiloom.Testing.SqlServer", "Vigiloom.Testing.AgentHost"];
+    private static readonly string[] TestHelpers = ["Vigiloom.Testing.SqlServer", "Vigiloom.Testing.AgentHost", "Vigiloom.MessagingProbe"];
 
     [TestMethod]
     public void Solution_ContainsEverySourceAndTestProject()
