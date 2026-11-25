@@ -239,6 +239,9 @@ public sealed class DeviceChangeMessagingTests
                         Assert.IsTrue(publicDevice?.ShowLatency);
                         Assert.IsFalse(publicDevice?.ShowObservedAt);
                         Assert.IsNotNull(publicDevice?.PublicSince);
+                        var publishedDevices = await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DevicesAsync("Public", 1, null, token);
+                        Assert.AreEqual(id, publishedDevices.Items.Single().Id);
+                        Assert.IsEmpty((await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DevicesAsync("missing", 1, null, token)).Items);
                     }
                     PublicationTemplateUpdatePreview updatePreview;
                     await using (var scope = host.Services.CreateAsyncScope())
@@ -331,7 +334,12 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
                     }
                     await using (var scope = host.Services.CreateAsyncScope())
-                        Assert.AreEqual("Billing status", (await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token))?.Name);
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.AreEqual("Billing status", (await policies.ServiceAsync(applicationService.Id, token))?.Name);
+                        Assert.AreEqual(applicationService.Id, (await policies.ServicesAsync("Billing", 1, null, token)).Items.Single().Id);
+                        Assert.IsEmpty((await policies.ServicesAsync(null, 1, publicGroup.Id, token)).Items);
+                    }
                     await using (var scope = host.Services.CreateAsyncScope())
                     {
                         var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
