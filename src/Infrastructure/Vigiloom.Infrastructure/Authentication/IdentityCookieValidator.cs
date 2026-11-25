@@ -50,9 +50,11 @@ public static class IdentityCookieClientRegistration
 {
     public static IServiceCollection AddVigiloomIdentityCookieClient(this IServiceCollection services)
     {
+        services.AddServiceDiscovery();
         services.AddHttpClient<IdentityCookieValidator>((provider, client) =>
             client.BaseAddress = new Uri(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddServiceDiscovery();
         return services;
     }
 }

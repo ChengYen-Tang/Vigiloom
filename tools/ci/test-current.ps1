@@ -4,7 +4,7 @@ $temporary = Join-Path $root ('.vigiloom-ci-' + [guid]::NewGuid().ToString('N') 
 # Update this list as migrated services replace their legacy module tests.
 $testProjects = @(
     'Vigiloom.Architecture.Tests', 'Vigiloom.BuildingBlocks.Tests', 'Vigiloom.Contracts.Tests',
-    'Vigiloom.Identity.Tests', 'Vigiloom.Modules.Resources.Tests',
+    'Vigiloom.Identity.Tests', 'Vigiloom.Modules.Resources.Tests', 'Vigiloom.Gateway.Tests',
     'Vigiloom.Agent.Core.Tests', 'Vigiloom.Agent.Platforms.Linux.Tests', 'Vigiloom.Agent.Platforms.Windows.Tests',
     'Vigiloom.Agent.Tests', 'Vigiloom.Updater.Core.Tests', 'Vigiloom.Updater.Tests', 'Vigiloom.UpdateSecurity.Tests'
 )
