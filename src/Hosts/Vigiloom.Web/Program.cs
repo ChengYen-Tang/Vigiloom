@@ -196,6 +196,17 @@ builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentRegistration>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentIdentity>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
+builder.Services.AddScoped<IMachineAgentIdentity>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentIdentity>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
 builder.Services.AddScoped<CandidateDiscovery>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
@@ -266,8 +277,19 @@ builder.Services.AddScoped<IAgentAssignments>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentVersionAssignments>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
+builder.Services.AddScoped<IAgentVersionDelivery>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentVersionAssignments>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentPackageAccess>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentUpdateAccess>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentPackageAccess>()
+        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>());
 builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<PackageLibrary>();
