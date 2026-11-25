@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.Resources.Application.AgentPackages;
 
 /// <summary>Maintains the resource service's offline Agent package catalogue.</summary>
 public sealed class PackageCatalog(IDbContextFactory<ResourcesDbContext> contexts, GitHubAgentReleases releases,
-    IPackageLibraryTransport files)
+    IPackageLibraryTransport files, IPackageRuntimeUsage runtime)
 {
     public async Task<bool> DownloadAsync(string version, string runtimeIdentifier, CancellationToken token)
     {
@@ -50,5 +50,22 @@ public sealed class PackageCatalog(IDbContextFactory<ResourcesDbContext> context
         var items = rows.Take(pageSize).Select(p => new AgentPackageView(p.Id, p.Version, p.RuntimeIdentifier, p.Size, p.Sha256)
             { Cached = files.IsCached(p.Sha256, p.ManifestSha256) }).ToArray();
         return new AgentPackagePage(items, page, rows.Length > pageSize);
+    }
+
+    public async Task<AgentPackageRemovalResult> RemoveAsync(Guid packageId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var candidate = await db.AgentPackages.AsNoTracking().Where(p => p.Id == packageId).Select(p => new { p.Sha256 }).SingleOrDefaultAsync(token);
+        if (candidate is null) return AgentPackageRemovalResult.NotFound;
+        var related = await db.AgentPackages.FromSqlInterpolated($"SELECT * FROM [resources].[AgentPackages] WITH (UPDLOCK, HOLDLOCK) WHERE [Sha256] = {candidate.Sha256}").ToArrayAsync(token);
+        var selected = related.SingleOrDefault(p => p.Id == packageId);
+        if (selected is null) return AgentPackageRemovalResult.NotFound;
+        if (await db.AgentVersionAssignments.AnyAsync(a => a.PackageId == packageId, token) ||
+            await runtime.IsInstalledAsync(selected.Version, selected.RuntimeIdentifier, token)) return AgentPackageRemovalResult.InUse;
+        await files.RemoveCachedAsync(selected.Sha256, selected.ManifestSha256,
+            related.Where(p => p.Id != packageId).Select(p => p.ManifestSha256).ToArray(), token);
+        await transaction.CommitAsync(token);
+        return AgentPackageRemovalResult.Removed;
     }
 }

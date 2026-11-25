@@ -12,6 +12,9 @@ Content-Type: application/json
   "runtimeIdentifier": "win-x64"
 }
 
+### Remove an unused cached package
+DELETE {{resources}}/internal/v1/agent-packages/01912345-6789-7abc-8def-123456789abd/cache
+
 ### Read the desired version for an Agent
 GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
 
