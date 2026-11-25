@@ -94,6 +94,58 @@ public sealed class ServiceWorkTests
     }
 
     [TestMethod]
+    public async Task MultipleWorkersShareQueueWithoutDuplicatingWork()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
+        var client = await TemporalClient.ConnectAsync(new(address));
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var ids = Enumerable.Range(0, 8).Select(_ => "vigiloom-test-" + Guid.CreateVersion7().ToString("N")).ToArray();
+        var handler = new CountingHandler();
+        var secondClient = await TemporalClient.ConnectAsync(new(address));
+        using var first = ServiceWorkWorker.Create(client, queue, handler);
+        using var second = ServiceWorkWorker.Create(secondClient, queue, handler);
+        try
+        {
+            await first.ExecuteAsync(async () => await second.ExecuteAsync(async () =>
+            {
+                var producer = new ServiceWorkClient(client);
+                var handles = await Task.WhenAll(ids.Select(id => producer.StartAsync(id, queue, new("test", id), TestContext.CancellationToken)));
+                var results = await Task.WhenAll(handles.Select(handle => handle.GetResultAsync())).WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+                CollectionAssert.AreEquivalent(ids, results);
+                Assert.HasCount(ids.Length, handler.Counts);
+                Assert.IsTrue(handler.Counts.Values.All(count => count == 1));
+            }, TestContext.CancellationToken), TestContext.CancellationToken);
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            foreach (var id in ids)
+            {
+                try
+                {
+                    await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                    {
+                        Namespace = "default",
+                        WorkflowExecution = new() { WorkflowId = id }
+                    }, new Temporalio.Client.RpcOptions { CancellationToken = cleanup.Token });
+                }
+                catch (Temporalio.Exceptions.RpcException error) when (error.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound) { }
+            }
+        }
+    }
+
+    private sealed class CountingHandler : IServiceWorkHandler
+    {
+        public System.Collections.Concurrent.ConcurrentDictionary<string, int> Counts { get; } = new();
+        public Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
+        {
+            Counts.AddOrUpdate(work.Payload, 1, (_, count) => count + 1);
+            return Task.FromResult<string?>(work.Payload);
+        }
+    }
+
+    [TestMethod]
     public async Task CancelRunningWorkReachesTheActivityHandler()
     {
         var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
