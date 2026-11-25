@@ -403,6 +403,35 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.ToTable("PingAlertEvents", "operations");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.PingTransitionCursor", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("DeviceId", "Target")
+                        .IsUnique();
+
+                    b.ToTable("PingTransitionCursors", "operations");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.ServiceHealthAlert", b =>
                 {
                     b.Property<Guid>("Id")

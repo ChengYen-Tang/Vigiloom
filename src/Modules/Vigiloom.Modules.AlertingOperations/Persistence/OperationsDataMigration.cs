@@ -30,6 +30,7 @@ public static class OperationsDataMigration
         string securityLogQueue = "vigiloom.security.logs") =>
         SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token, async (source, target, transaction, ct) =>
         {
+            await PingCursorMigration.CopyAsync(source, target, transaction, ct);
             await TimelineDataMigration.CopyLogsAsync(source, target, transaction, ct);
             await PendingHostLogMigration.CopyAsync(source, target, transaction, securityLogQueue, ct);
         });

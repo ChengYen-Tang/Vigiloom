@@ -86,6 +86,13 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         alertEvent.HasIndex(x => new { x.AlertId, x.Generation }).IsUnique();
         alertEvent.HasOne<PingAlert>().WithMany().HasForeignKey(x => x.AlertId).OnDelete(DeleteBehavior.Cascade);
 
+        var pingCursor = modelBuilder.Entity<PingTransitionCursor>();
+        pingCursor.ToTable("PingTransitionCursors");
+        pingCursor.HasKey(x => x.RowId).IsClustered();
+        pingCursor.Property(x => x.RowId).UseIdentityColumn();
+        pingCursor.Property(x => x.Target).HasMaxLength(253).IsRequired();
+        pingCursor.HasIndex(x => new { x.DeviceId, x.Target }).IsUnique();
+
         var notification = modelBuilder.Entity<Notification>();
         notification.ToTable("Notifications");
         notification.HasKey(x => x.Id).IsClustered(false);

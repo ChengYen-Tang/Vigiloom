@@ -24,6 +24,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Testing.SqlServer;
 using Agent = Vigiloom.Modules.AgentManagement.Domain.Agent;
 using OldHostLog = Vigiloom.Modules.AgentManagement.Domain.HostLog;
@@ -47,6 +49,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             sourceServices.AddModuleSqlServer<AgentManagementDbContext>(source.ConnectionString, "agent");
             sourceServices.AddModuleSqlServer<ServiceObservabilityDbContext>(source.ConnectionString, "service");
             sourceServices.AddModuleSqlServer<SecurityAnalysisDbContext>(source.ConnectionString, "security");
+            sourceServices.AddModuleSqlServer<NetworkDbContext>(source.ConnectionString, "network");
             sourceServices.AddModuleSqlServer<OperationsDbContext>(source.ConnectionString, "operations");
             sourceServices.AddModuleSqlServer<LogAdmissionDbContext>(source.ConnectionString, "logquota");
             sourceServices.AddModuleSqlServer<SchedulingDbContext>(source.ConnectionString, "scheduling");
@@ -55,6 +58,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>(), token);
+            await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<NetworkDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
@@ -104,6 +108,11 @@ public sealed class OperationsMigrationTests(TestContext context)
             var device = new Device("Server", "server.example", true, now);
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<NetworkDbContext>>().CreateDbContextAsync(token))
+            {
+                db.PingTargets.Add(new PingTargetState { DeviceId = device.Id, Target = "server.example", DeviceVersion = new byte[8], Enabled = true, DueAt = now, Generation = 42 });
+                await db.SaveChangesAsync(token);
+            }
             var agent = new Agent(device.Id, 0, new byte[32], now);
             var sigmaWork = Guid.CreateVersion7(); var iocWork = Guid.CreateVersion7(); var finishedWork = Guid.CreateVersion7();
             var eventMessage = Guid.CreateVersion7();
@@ -175,6 +184,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
             {
                 Assert.AreEqual(0, await db.Set<Notification>().CountAsync(token));
+                Assert.AreEqual(0, await db.Set<PingTransitionCursor>().CountAsync(token));
                 await db.Set<TimelineRecord>().ExecuteDeleteAsync(token);
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
@@ -193,6 +203,7 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<Notification>().AnyAsync(x => x.Id == notification.Id && x.Title == "Alert", token));
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
+                Assert.AreEqual(42L, (await db.Set<PingTransitionCursor>().SingleAsync(token)).Generation);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
                 Assert.HasCount(11, timeline);
                 Assert.IsTrue(timeline.Any(x => x.Source == "host-log" && x.ResourceId == device.Id && x.LocalLogRowId != null && x.Evidence.Contains("host event")));

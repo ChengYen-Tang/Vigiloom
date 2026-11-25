@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
@@ -26,6 +27,38 @@ namespace Vigiloom.Operations.Tests;
 [TestCategory("Database")]
 public sealed class NotificationWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task PingTransitionsRetryInOrderAndPreserveAlertHistory() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var services = new ServiceCollection();
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
+            services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
+            using var provider = services.BuildServiceProvider();
+            var factory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            await using (var db = await factory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
+            var device = Guid.CreateVersion7(); var now = DateTimeOffset.UtcNow;
+            var down = new PingTransition(device, "router.example", 5, now, Reachability.Reachable, Reachability.Unreachable, new("Router", []));
+            var up = down with { Generation = 7, OccurredAt = now.AddSeconds(10), Previous = Reachability.Unreachable, Current = Reachability.Reachable };
+            var downWork = new ServiceWork(PingTransitionDelivery.Kind, JsonSerializer.Serialize(new PingTransitionDelivery(down, 0)), Guid.CreateVersion7().ToString("D"));
+            var upWork = new ServiceWork(PingTransitionDelivery.Kind, JsonSerializer.Serialize(new PingTransitionDelivery(up, 5)), Guid.CreateVersion7().ToString("D"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => handler.ExecuteAsync(upWork, token));
+            await handler.ExecuteAsync(downWork, token);
+            await handler.ExecuteAsync(upWork, token);
+            await handler.ExecuteAsync(downWork, token);
+            var unknown = up with { Generation = 9, Previous = Reachability.Reachable, Current = Reachability.Unknown };
+            await handler.ExecuteAsync(new(PingTransitionDelivery.Kind, JsonSerializer.Serialize(new PingTransitionDelivery(unknown, 7)), Guid.CreateVersion7().ToString("D")), token);
+            await using var result = await factory.CreateDbContextAsync(token);
+            Assert.IsNotNull((await result.Set<PingAlert>().SingleAsync(token)).RecoveredAt);
+            Assert.AreEqual(2, await result.Set<PingAlertEvent>().CountAsync(token));
+            Assert.AreEqual(2, await result.Set<Notification>().CountAsync(token));
+            Assert.AreEqual(9L, (await result.Set<PingTransitionCursor>().SingleAsync(token)).Generation);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task ResourceServiceAuditWorkIsRecordedAndQueryable() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
