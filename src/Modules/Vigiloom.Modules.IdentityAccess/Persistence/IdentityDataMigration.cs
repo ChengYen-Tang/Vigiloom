@@ -17,12 +17,20 @@ public static class IdentityDataMigration
         var source = new SqlConnectionStringBuilder(sourceConnection);
         var target = new SqlConnectionStringBuilder(targetConnection);
         var systemDatabases = new[] { "master", "model", "msdb", "tempdb" };
-        if (string.IsNullOrWhiteSpace(source.InitialCatalog) || string.IsNullOrWhiteSpace(target.InitialCatalog) ||
+        ValidateTarget(targetConnection);
+        if (string.IsNullOrWhiteSpace(source.InitialCatalog) ||
             systemDatabases.Contains(source.InitialCatalog, StringComparer.OrdinalIgnoreCase) ||
-            systemDatabases.Contains(target.InitialCatalog, StringComparer.OrdinalIgnoreCase) ||
             (string.Equals(source.DataSource, target.DataSource, StringComparison.OrdinalIgnoreCase) &&
              string.Equals(source.InitialCatalog, target.InitialCatalog, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("Source and target must be distinct non-system databases.");
+    }
+
+    public static void ValidateTarget(string targetConnection)
+    {
+        var target = new SqlConnectionStringBuilder(targetConnection);
+        if (string.IsNullOrWhiteSpace(target.InitialCatalog) ||
+            new[] { "master", "model", "msdb", "tempdb" }.Contains(target.InitialCatalog, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Identity target must be a non-system database.");
     }
 
     public static async Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default)

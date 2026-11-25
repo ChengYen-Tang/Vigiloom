@@ -11,6 +11,19 @@ The Identity service and its `/internal/identity` endpoints are for the
 restricted internal network and must not be exposed by the public gateway.
 For initial setup, configure `Vigiloom:SetupToken` on the Identity service;
 the Web host forwards the administrator's submitted value for verification.
+For a new installation, create an empty Identity database, set
+`VIGILOOM_IDENTITY_SQL_CONNECTION`, and run `Vigiloom.Migrator initialize-identity`
+to apply the EF migrations and initialize the built-in roles. Administrator
+recovery uses `VIGILOOM_IDENTITY_SQL_CONNECTION` when set, with the existing
+`VIGILOOM_MIGRATION_SQL_CONNECTION` as a legacy fallback.
+
+For Windows development, Identity defaults to the separate LocalDB database
+`Vigiloom_Identity_Development` and listens on `http://localhost:5054` when
+using its launch profile. Set `Services:Identity:Url` on Web and Worker to that
+address to use the separate service; their existing database settings remain
+unchanged. Create and initialize the Identity database before starting it.
+The Identity EF design-time factory uses the same development database by
+default; `VIGILOOM_DESIGN_SQL_CONNECTION` overrides it when required.
 
 To copy an existing installation to a separate Identity database, stop the
 platform and other writers first. Create an empty destination database, set
