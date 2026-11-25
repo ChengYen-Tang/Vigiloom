@@ -259,6 +259,13 @@ builder.Services.AddScoped<IAgentPackageQuery>(services =>
         ? services.GetRequiredService<AgentPackageQuery>()
         : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>());
 builder.Services.AddScoped<AgentVersionAssignments>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAgentAssignments>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<AgentVersionAssignments>()
+        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentUpdateResults>();
