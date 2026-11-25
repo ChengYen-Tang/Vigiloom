@@ -46,6 +46,31 @@ public sealed class OutboxTests
     });
 
     [TestMethod]
+    public Task DurableHandler_RetriesAfterUsualAttemptLimit() => WithDatabase(async (connectionString, token) =>
+    {
+        var handler = new TestHandler { KeepRetrying = true, Fail = true };
+        await EnqueueAsync(connectionString, handler, token);
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(token);
+        await using (var prepare = connection.CreateCommand())
+        {
+            prepare.CommandText = "UPDATE scheduling.Outbox SET Attempts = 10";
+            await prepare.ExecuteNonQueryAsync(token);
+        }
+        await Dispatcher(connectionString, handler).DispatchAsync(token);
+        Assert.AreEqual(1, await CountAsync(connection, "SELECT COUNT(*) FROM scheduling.Outbox WHERE State=0 AND Attempts=11", token));
+        handler.Fail = false;
+        await using (var retry = connection.CreateCommand())
+        {
+            retry.CommandText = "UPDATE scheduling.Outbox SET AvailableAt = SYSDATETIMEOFFSET()";
+            await retry.ExecuteNonQueryAsync(token);
+        }
+        await Dispatcher(connectionString, handler).DispatchAsync(token);
+        Assert.AreEqual(1, await CountAsync(connection, "SELECT COUNT(*) FROM scheduling.TestEffects", token));
+        Assert.AreEqual(1, await CountAsync(connection, "SELECT COUNT(*) FROM scheduling.Outbox WHERE State=2 AND Attempts=12", token));
+    });
+
+    [TestMethod]
     public Task Dispatch_DrainsMoreThanOneFormerBatch() => WithDatabase(async (connectionString, token) =>
     {
         var handler = new TestHandler();
@@ -250,6 +275,7 @@ public sealed class OutboxTests
     private sealed class TestHandler : IOutboxHandler
     {
         public string MessageType => "test.effect.v1";
+        public bool KeepRetrying { get; set; }
         public bool Fail { get; set; }
         public bool ExpireLease { get; set; }
         public bool WaitForCancellation { get; set; }

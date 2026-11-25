@@ -10,6 +10,7 @@ public sealed class TemporalOutboxHandler(ServiceWorkClient client) : IOutboxHan
 {
     public const string Type = "temporal.service-work";
     public string MessageType => Type;
+    public bool KeepRetrying => true;
 
     public async Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
     {
@@ -17,7 +18,8 @@ public sealed class TemporalOutboxHandler(ServiceWorkClient client) : IOutboxHan
             ?? throw new InvalidOperationException("The work request is empty.");
         try
         {
-            await client.StartAsync(message.MessageId.ToString("D"), request.TaskQueue, request.Work, cancellationToken);
+            var deliveryId = message.MessageId.ToString("D");
+            await client.StartAsync(deliveryId, request.TaskQueue, request.Work with { DeliveryId = deliveryId }, cancellationToken);
         }
         catch (WorkflowAlreadyStartedException)
         {
