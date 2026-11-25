@@ -150,6 +150,13 @@ builder.Services.AddScoped<IApiCredentialValidation>(services =>
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Devices.RemoteDeviceManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IDeviceManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<DeviceManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Devices.RemoteDeviceManagement>());
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();

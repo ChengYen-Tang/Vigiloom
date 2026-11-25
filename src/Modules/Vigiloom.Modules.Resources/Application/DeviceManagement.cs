@@ -15,7 +15,7 @@ public sealed record DeviceResult(DeviceResultStatus Status, DeviceDetails? Devi
 
 /// <summary>Owns device state and SQL transactions. Callers must authorize the current principal.</summary>
 public sealed class DeviceManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit>? audit = null,
-    ILogger<DeviceManagement>? logger = null, DeviceChangeOutbox? changes = null)
+    ILogger<DeviceManagement>? logger = null, DeviceChangeOutbox? changes = null) : IDeviceManagement
 {
     public const int PageSize = 50;
     public const int MaxAdditionalTargets = 16;

@@ -10,34 +10,34 @@ internal static class DeviceEndpoints
     {
         var devices = app.MapGroup("/api/v1/devices").RequireRateLimiting("api-client");
         devices.ProducesProblem(StatusCodes.Status429TooManyRequests);
-        devices.MapGet("/", async (string? search, string? sort, bool? descending, bool? archived, int? page, DeviceManagement service, CancellationToken token) =>
+        devices.MapGet("/", async (string? search, string? sort, bool? descending, bool? archived, int? page, IDeviceManagement service, CancellationToken token) =>
         {
             if (search?.Length > 256 || page is < 1 or > 42949672 || sort is not (null or "name" or "address" or "created")) return Results.BadRequest();
             return Results.Ok(await service.ListAsync(search, sort, descending ?? false, archived ?? false, page ?? 1, token));
         }).RequireAuthorization("MonitoringApiRead").Produces<DevicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List monitored devices");
-        devices.MapGet("/{id:guid}", async (Guid id, DeviceManagement service, CancellationToken token) =>
+        devices.MapGet("/{id:guid}", async (Guid id, IDeviceManagement service, CancellationToken token) =>
             await service.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound())
             .RequireAuthorization("MonitoringApiRead").Produces<DeviceDetails>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithName("GetDevice").WithSummary("Get a device");
-        devices.MapGet("/address-matches", async (string address, Guid? excludeId, DeviceManagement service, CancellationToken token) =>
+        devices.MapGet("/address-matches", async (string address, Guid? excludeId, IDeviceManagement service, CancellationToken token) =>
             address.Length > 253 ? Results.BadRequest() : Results.Ok(await service.FindAddressMatchesAsync(address, excludeId, token)))
             .RequireAuthorization("DeviceWrite").Produces<IReadOnlyList<DeviceDetails>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Find devices using a target address");
-        devices.MapPost("/", async (DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
+        devices.MapPost("/", async (DeviceInput input, HttpContext context, IDeviceManagement service, CancellationToken token) =>
             input.Public && !context.User.IsInRole("Administrator") ? Results.Forbid() :
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.CreateAsync(input, actor, token), created: true), allowApiCredential: !input.Public))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Create a device, private by default");
-        devices.MapPut("/{id:guid}", async (Guid id, DeviceInput input, HttpContext context, DeviceManagement service, CancellationToken token) =>
+        devices.MapPut("/{id:guid}", async (Guid id, DeviceInput input, HttpContext context, IDeviceManagement service, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.UpdateAsync(id, input, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Update a device");
-        devices.MapPost("/{id:guid}/archive", async (Guid id, DeviceVersionRequest input, HttpContext context, DeviceManagement service, CancellationToken token) =>
+        devices.MapPost("/{id:guid}/archive", async (Guid id, DeviceVersionRequest input, HttpContext context, IDeviceManagement service, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.SetArchivedAsync(id, true, input.Version, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Archive a device");
-        devices.MapPost("/{id:guid}/restore", async (Guid id, DeviceVersionRequest input, HttpContext context, DeviceManagement service, CancellationToken token) =>
+        devices.MapPost("/{id:guid}/restore", async (Guid id, DeviceVersionRequest input, HttpContext context, IDeviceManagement service, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.SetArchivedAsync(id, false, input.Version, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<DeviceDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Restore a device in the disabled state");

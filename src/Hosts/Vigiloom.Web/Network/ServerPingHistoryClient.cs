@@ -7,7 +7,7 @@ using Vigiloom.Web.Authentication;
 namespace Vigiloom.Web.Network;
 
 internal sealed class ServerPingHistoryClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    DeviceManagement devices, PingHistoryReader history) : IPingHistoryClient
+    IDeviceManagement devices, PingHistoryReader history) : IPingHistoryClient
 {
     public async Task<PingHistoryPage?> QueryAsync(PingHistoryQuery query, CancellationToken token)
     {

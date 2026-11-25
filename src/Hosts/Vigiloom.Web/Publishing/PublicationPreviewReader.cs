@@ -8,7 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 
 namespace Vigiloom.Web.Publishing;
 
-internal sealed class PublicationPreviewReader(DeviceManagement devices, PingStore ping, HealthStatusReader health,
+internal sealed class PublicationPreviewReader(IDeviceManagement devices, PingStore ping, HealthStatusReader health,
     PublicationAdministration settings)
 {
     public async Task<PublicationPreview?> ReadAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
