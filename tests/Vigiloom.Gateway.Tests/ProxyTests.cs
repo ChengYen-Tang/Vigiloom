@@ -57,11 +57,31 @@ public sealed class ProxyTests
                 ["Services:test-service:http:0"] = HostPort(first),
                 ["Services:test-service:http:1"] = HostPort(second)
             })));
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
         var seen = new HashSet<string>();
         for (var attempt = 0; attempt < 40 && seen.Count < 2; attempt++)
             seen.Add(await client.GetStringAsync("/status", TestContext.CancellationToken));
         CollectionAssert.AreEquivalent(new[] { "first", "second" }, seen.ToArray());
+    }
+
+    [TestMethod]
+    public async Task KeepsWebSessionOnTheSameDiscoveredEndpoint()
+    {
+        await using var first = await StartUpstreamAsync("first", TestContext.CancellationToken);
+        await using var second = await StartUpstreamAsync("second", TestContext.CancellationToken);
+        static string HostPort(WebApplication app) => new Uri(app.Services.GetRequiredService<IServer>()
+            .Features.Get<IServerAddressesFeature>()!.Addresses.Single()).Authority;
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+            web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:web:Destinations:web:Address"] = "http://test-service/",
+                ["Services:test-service:http:0"] = HostPort(first),
+                ["Services:test-service:http:1"] = HostPort(second)
+            })));
+        using var client = factory.CreateClient();
+        var selected = await client.GetStringAsync("/status", TestContext.CancellationToken);
+        for (var attempt = 0; attempt < 20; attempt++)
+            Assert.AreEqual(selected, await client.GetStringAsync("/_blazor/negotiate", TestContext.CancellationToken));
     }
 
     [TestMethod]
@@ -177,7 +197,9 @@ public sealed class ProxyTests
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
         using var ownPassword = await client.PutAsync("/api/v1/session/password", null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, ownPassword.StatusCode);
-        Assert.IsFalse(read.Headers.Contains("Set-Cookie"), "Gateway must not renew the Web session cookie.");
+        Assert.IsFalse(read.Headers.TryGetValues("Set-Cookie", out var setCookies) &&
+            setCookies.Any(value => value.StartsWith(options.Cookie.Name + "=", StringComparison.Ordinal)),
+            "Gateway must not renew the Web session cookie.");
         foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
         {
             using var adminDenied = await client.GetAsync(adminPath, TestContext.CancellationToken);
