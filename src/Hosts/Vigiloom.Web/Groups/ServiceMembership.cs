@@ -15,7 +15,7 @@ namespace Vigiloom.Web.Groups;
 internal sealed class ServiceMembership(
     IDbContextFactory<ResourcesDbContext> resources,
     IDbContextFactory<ServiceObservabilityDbContext> services,
-    GroupManagement groups,
+    IGroupManagement groups,
     TimeProvider clock,
     IOperationAuditWriter<OperationAudit> audit)
 {

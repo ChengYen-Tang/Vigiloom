@@ -35,6 +35,7 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.Discovery.DisableConventionalDiscovery();
     options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
     options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+    options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
 }));
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
@@ -45,6 +46,8 @@ builder.Services.AddScoped<GroupMembersReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
+builder.Services.AddScoped<GroupManagement>();
+builder.Services.AddScoped<GroupAuditOutbox>();
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
@@ -54,6 +57,7 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
 internalApi.MapInternalDeviceManagement();
+internalApi.MapInternalGroupManagement();
 app.MapDeviceManagement();
 app.Run();
 
