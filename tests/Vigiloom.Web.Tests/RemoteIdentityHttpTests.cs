@@ -122,6 +122,27 @@ public sealed class RemoteIdentityHttpTests
             Assert.IsNull(await workspace.GetAsync(principal, token));
             Assert.IsFalse(await revalidation.RevalidateAsync(principal, token));
             Assert.AreEqual(7, sessionRequests);
+
+            Assert.IsTrue((await users.ResetAuthenticatorKeyAsync(user)).Succeeded);
+            Assert.IsTrue((await users.SetTwoFactorEnabledAsync(user, true)).Succeeded);
+            using var twoFactorBrowser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            using var twoFactorLoginPage = await twoFactorBrowser.GetAsync("/account/login", token);
+            var loginDocument = await new HtmlParser().ParseDocumentAsync(await twoFactorLoginPage.Content.ReadAsStringAsync(token), token);
+            var loginForm = loginDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+            var loginFields = loginForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            loginFields["Input.UserName"] = "remote-reader";
+            loginFields["Input.Password"] = "Reader-Password-123";
+            using var twoFactorLogin = await twoFactorBrowser.PostAsync("/account/login", new FormUrlEncodedContent(loginFields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, twoFactorLogin.StatusCode);
+            var challengePath = twoFactorLogin.Headers.Location!.PathAndQuery;
+            Assert.Contains("/account/two-factor", challengePath);
+            var callsBeforeChallenge = cookieRequests;
+            using (var challenge = await twoFactorBrowser.GetAsync(challengePath, token))
+                Assert.AreEqual(HttpStatusCode.OK, challenge.StatusCode);
+            Assert.IsGreaterThan(callsBeforeChallenge, cookieRequests);
+            Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
+            using var invalidChallenge = await twoFactorBrowser.GetAsync(challengePath, token);
+            Assert.AreEqual(HttpStatusCode.Redirect, invalidChallenge.StatusCode);
         }, TestContext.CancellationToken);
 
     private sealed class CountingHandler(HttpMessageHandler inner, Action count) : DelegatingHandler(inner)

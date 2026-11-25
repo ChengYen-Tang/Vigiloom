@@ -66,6 +66,12 @@ internal static class IdentityRegistration
             {
                 var id = context.Principal?.FindFirstValue(ClaimTypes.Name);
                 var stamp = context.Principal?.FindFirstValue(BoundSignInManager.StampClaim);
+                if (!string.IsNullOrWhiteSpace(context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Services:Identity:Url"]))
+                {
+                    var validator = context.HttpContext.RequestServices.GetRequiredService<RemoteCookieValidator>();
+                    if (!await validator.ValidateTwoFactorAsync(id, stamp, context.HttpContext.RequestAborted)) context.RejectPrincipal();
+                    return;
+                }
                 var db = context.HttpContext.RequestServices.GetRequiredService<IdentityAccessDbContext>();
                 var account = id is not null && Guid.TryParse(id, out var parsed)
                     ? await db.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Id == parsed) : null;

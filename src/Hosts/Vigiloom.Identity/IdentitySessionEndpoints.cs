@@ -46,5 +46,20 @@ internal static class IdentitySessionEndpoints
             return Results.Ok(new ValidatedCookieResponse(principal.Claims.Select(claim =>
                 new IdentityClaim(claim.Type, claim.Value, claim.ValueType, claim.Issuer, claim.OriginalIssuer)).ToArray()));
         });
+        app.MapPost("/internal/identity/two-factor/validate", async (
+            ValidateSessionRequest request, HttpContext context, IdentityAccessDbContext db,
+            UserManager<Account> users, IOptions<IdentityOptions> options) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (request.AccountId == Guid.Empty || string.IsNullOrEmpty(request.SecurityStamp))
+                return Results.Unauthorized();
+            var identity = new ClaimsIdentity([
+                new Claim(options.Value.ClaimsIdentity.UserIdClaimType, request.AccountId.ToString("D")),
+                new Claim(options.Value.ClaimsIdentity.SecurityStampClaimType, request.SecurityStamp)
+            ]);
+            var account = await CurrentAccount.FindValidAsync(db, users, new ClaimsPrincipal(identity), options);
+            return account is not null && await users.GetTwoFactorEnabledAsync(account)
+                ? Results.NoContent() : Results.Unauthorized();
+        });
     }
 }
