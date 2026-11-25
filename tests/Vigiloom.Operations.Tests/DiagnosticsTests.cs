@@ -9,6 +9,9 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
+using Microsoft.Data.SqlClient;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -25,6 +28,7 @@ public sealed class DiagnosticsTests(TestContext context)
         {
             var services = new ServiceCollection();
             services.AddModuleSqlServer<SchedulingDbContext>(operations.ConnectionString, "scheduling");
+            services.AddModuleSqlServer<OperationsDbContext>(operations.ConnectionString, "operations");
             using var provider = services.BuildServiceProvider();
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
@@ -36,7 +40,21 @@ public sealed class DiagnosticsTests(TestContext context)
                     VALUES ({id}, 'test', {payload}, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET(), 0, 0)
                     """, token);
             }
+            var operationsFactory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            await using (var db = await operationsFactory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var workerStore = new WorkerDiagnosticsStore(operationsFactory);
+            var bootId = Guid.CreateVersion7();
+            var slot = await workerStore.ClaimAsync(bootId, token);
+            Assert.IsNotNull(slot);
+            Assert.IsTrue(await workerStore.UpdateAsync(slot.Value, bootId,
+                new WorkerObservation(new ScannerObservation(DateTimeOffset.UtcNow, null, 0), new ScannerObservation(null, DateTimeOffset.UtcNow, 2, ScannerFailureKind.Timeout)), token));
             await HangfireSchemaInstaller.InstallAsync(scheduling.ConnectionString, token);
+            await using (var connection = new SqlConnection(scheduling.ConnectionString))
+            {
+                await connection.OpenAsync(token);
+                await using var command = new SqlCommand("INSERT INTO hangfire.Server (Id, Data, LastHeartbeat) VALUES ('test-worker', '{}', SYSUTCDATETIME())", connection);
+                await command.ExecuteNonQueryAsync(token);
+            }
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -51,5 +69,13 @@ public sealed class DiagnosticsTests(TestContext context)
             Assert.IsNotNull(overview);
             Assert.AreEqual(1, overview.PendingMessages);
             Assert.AreEqual(0, overview.FailedMessages);
+            var heartbeat = await client.GetFromJsonAsync<SchedulerHeartbeatsInfo>("/internal/v1/diagnostics/scheduler", token);
+            Assert.HasCount(1, heartbeat!.Values);
+            Assert.IsNotNull(heartbeat.Values[0]);
+            var workers = await client.GetFromJsonAsync<WorkerDiagnosticsInfo>("/internal/v1/diagnostics/workers", token);
+            Assert.HasCount(1, workers!.Workers);
+            Assert.AreEqual(bootId, workers.Workers[0].BootId);
+            Assert.AreEqual(2, workers.Workers[0].Speed.ConsecutiveFailures);
+            Assert.AreEqual(ScannerDiagnosticFailure.Timeout, workers.Workers[0].Speed.FailureKind);
         }, outerToken), context.CancellationToken);
 }

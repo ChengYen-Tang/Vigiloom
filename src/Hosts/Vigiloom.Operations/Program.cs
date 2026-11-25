@@ -1,5 +1,7 @@
 using Hangfire;
 using Hangfire.SqlServer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
@@ -73,6 +75,17 @@ builder.Services.AddSingleton(services =>
         ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."));
 });
 builder.Services.AddScoped<SchedulingOverview>();
+builder.Services.AddSingleton(services =>
+{
+    var config = services.GetRequiredService<IConfiguration>();
+    var connection = config.GetConnectionString("Scheduling") ?? config.GetConnectionString("Operations")
+        ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required.");
+    var options = new DbContextOptionsBuilder<SchedulingDbContext>()
+        .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+            .MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+    return new SchedulingHealth(new PooledDbContextFactory<SchedulingDbContext>(options));
+});
+builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddHealthChecks().AddCheck<OperationsDatabaseHealth>("database");
 builder.Services.AddScoped<AuditRetentionSettings>();
 builder.Services.AddScoped<AuditRetentionCleanup>();
@@ -112,6 +125,17 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 app.MapHealthChecks("/health/ready");
 app.MapGet("/internal/v1/diagnostics/jobs", async (SchedulingOverview overview, CancellationToken token) =>
     Results.Ok(await overview.GetAsync(token)));
+app.MapGet("/internal/v1/diagnostics/scheduler", async (SchedulingHealth scheduler, CancellationToken token) =>
+{
+    var result = await scheduler.ReadAsync(token);
+    return Results.Ok(new SchedulerHeartbeatsInfo(result.ObservedAt, result.Values));
+});
+app.MapGet("/internal/v1/diagnostics/workers", async (WorkerDiagnosticsStore workers, CancellationToken token) =>
+{
+    var result = await workers.GetSnapshotAsync(token);
+    return Results.Ok(new WorkerDiagnosticsInfo(result.ObservedAt, result.Workers.Select(item => new WorkerDiagnosticInfo(
+        item.BootId, item.ObservedAt, item.LeaseUntil, MapScanner(item.Observation.Ping), MapScanner(item.Observation.Speed))).ToArray()));
+});
 
 // The deployment exposes this endpoint only to the trusted service network.
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>
@@ -153,6 +177,9 @@ app.Run();
 
 static QuotaContract Map(LogQuotaSnapshot value) =>
     new(value.Values.SourceRate, value.Values.SourceBurst, value.Values.GlobalRate, value.Values.GlobalBurst, value.Version);
+
+static ScannerDiagnosticInfo MapScanner(ScannerObservation value) =>
+    new(value.LastSuccess, value.LastFailure, value.ConsecutiveFailures, (ScannerDiagnosticFailure)value.FailureKind);
 
 static IResult MapReceipt(LogReceipt receipt) => receipt.Status switch
 {
