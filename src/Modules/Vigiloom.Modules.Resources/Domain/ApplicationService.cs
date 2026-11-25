@@ -19,6 +19,12 @@ public sealed class ApplicationService
         ApprovedAt = CreatedAt = UpdatedAt = now.ToUniversalTime();
     }
 
+    public ApplicationService(Guid sourceId, string serviceKey, string environment, string displayName, string serviceNamespace, DateTimeOffset now)
+        : this(new ApplicationCandidate(sourceId, serviceKey, environment, displayName, serviceNamespace, now), now)
+    {
+        CandidateId = null;
+    }
+
     public Guid Id { get; private set; }
     public long RowId { get; private set; }
     public Guid SourceId { get; private set; }
