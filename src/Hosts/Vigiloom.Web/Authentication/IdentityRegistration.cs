@@ -84,7 +84,10 @@ internal static class IdentityRegistration
             options.SlidingExpiration = true;
             options.Events.OnValidatePrincipal = async context =>
             {
-                await SecurityStampValidator.ValidatePrincipalAsync(context);
+                if (string.IsNullOrWhiteSpace(context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Services:Identity:Url"]))
+                    await SecurityStampValidator.ValidatePrincipalAsync(context);
+                else
+                    await context.HttpContext.RequestServices.GetRequiredService<RemoteCookieValidator>().ValidateAsync(context);
                 if (context.Principal?.Identity is not ClaimsIdentity identity || context.Properties.ExpiresUtc is not { } expires) return;
                 foreach (var claim in identity.FindAll(SessionLifetime.ExpirationClaim).ToArray()) identity.RemoveClaim(claim);
                 identity.AddClaim(new Claim(SessionLifetime.ExpirationClaim, expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));

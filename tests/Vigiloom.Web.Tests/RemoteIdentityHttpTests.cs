@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Globalization;
+using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -35,6 +36,7 @@ public sealed class RemoteIdentityHttpTests
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
             var sessionRequests = 0;
+            var cookieRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -51,6 +53,8 @@ public sealed class RemoteIdentityHttpTests
                     .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteWorkspaceIdentity))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), () => Interlocked.Increment(ref sessionRequests))));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCookieValidator))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), () => Interlocked.Increment(ref cookieRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -79,8 +83,23 @@ public sealed class RemoteIdentityHttpTests
             await using var scope = web.Services.CreateAsyncScope();
             var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
             var user = new Account { UserName = "remote-reader" };
-            Assert.IsTrue((await users.CreateAsync(user)).Succeeded);
+            Assert.IsTrue((await users.CreateAsync(user, "Reader-Password-123")).Succeeded);
             Assert.IsTrue((await users.AddToRoleAsync(user, BuiltInRoles.ReadOnly)).Succeeded);
+            using var browser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            using var loginPage = await browser.GetAsync("/account/login", token);
+            var document = await new HtmlParser().ParseDocumentAsync(await loginPage.Content.ReadAsStringAsync(token), token);
+            var form = document.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+            var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            fields["Input.UserName"] = "remote-reader";
+            fields["Input.Password"] = "Reader-Password-123";
+            using (var login = await browser.PostAsync("/account/login", new FormUrlEncodedContent(fields), token))
+                Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+            using (var authorized = await browser.GetAsync("/api/v1/workspace/identity", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, authorized.StatusCode);
+                Assert.IsTrue(authorized.Headers.Contains("Set-Cookie"));
+            }
+            Assert.IsGreaterThan(0, cookieRequests);
             var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>().Value;
             var principal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim(options.ClaimsIdentity.UserIdClaimType, user.Id.ToString("D")),
@@ -98,9 +117,11 @@ public sealed class RemoteIdentityHttpTests
             Assert.IsTrue(await revalidation.RevalidateAsync(principal, token));
             Assert.IsTrue((await users.SetLockoutEndDateAsync(user, null)).Succeeded);
             Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
+            using (var expiredCookie = await browser.GetAsync("/api/v1/workspace/identity", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, expiredCookie.StatusCode);
             Assert.IsNull(await workspace.GetAsync(principal, token));
             Assert.IsFalse(await revalidation.RevalidateAsync(principal, token));
-            Assert.AreEqual(6, sessionRequests);
+            Assert.AreEqual(7, sessionRequests);
         }, TestContext.CancellationToken);
 
     private sealed class CountingHandler(HttpMessageHandler inner, Action count) : DelegatingHandler(inner)
