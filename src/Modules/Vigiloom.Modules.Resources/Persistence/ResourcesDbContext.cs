@@ -13,10 +13,26 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     public DbSet<DeviceAudit> DeviceAudits => Set<DeviceAudit>();
     public DbSet<ApplicationService> ApplicationServices => Set<ApplicationService>();
     public DbSet<ApplicationCandidate> ApplicationCandidates => Set<ApplicationCandidate>();
+    public DbSet<AgentPackage> AgentPackages => Set<AgentPackage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("resources");
+        var package = modelBuilder.Entity<AgentPackage>();
+        package.ToTable("AgentPackages", table =>
+        {
+            table.HasCheckConstraint("CK_AgentPackages_Id_NotEmpty", "[Id] <> '00000000-0000-0000-0000-000000000000'");
+            table.HasCheckConstraint("CK_AgentPackages_Size", "[Size] > 0");
+        });
+        package.HasKey(x => x.Id).IsClustered(false);
+        package.Property(x => x.Id).ValueGeneratedNever();
+        package.Property(x => x.RowId).UseIdentityColumn();
+        package.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        package.Property(x => x.Version).HasMaxLength(128).IsRequired();
+        package.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsRequired();
+        package.Property(x => x.Sha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        package.Property(x => x.ManifestSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+        package.HasIndex(x => new { x.Version, x.RuntimeIdentifier }).IsUnique();
         var candidate = modelBuilder.Entity<ApplicationCandidate>();
         candidate.ToTable("ApplicationCandidates");
         candidate.HasKey(x => x.Id).IsClustered(false);

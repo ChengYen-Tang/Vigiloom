@@ -14,7 +14,8 @@ public static class ResourcesDataMigration
         new("resources", "DeviceGroups", "resources", "DeviceGroups"),
         new("resources", "ServiceGroups", "resources", "ServiceGroups"),
         new("service", "Candidates", "resources", "ApplicationCandidates"),
-        new("service", "Services", "resources", "ApplicationServices")
+        new("service", "Services", "resources", "ApplicationServices"),
+        new("agent", "Packages", "resources", "AgentPackages")
     ];
 
     public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default) =>
