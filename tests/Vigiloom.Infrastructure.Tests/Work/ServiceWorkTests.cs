@@ -94,6 +94,79 @@ public sealed class ServiceWorkTests
     }
 
     [TestMethod]
+    [TestCategory("Database")]
+    public async Task PendingSqlWorkIsDeliveredAfterTemporalRecovers()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
+        var client = await TemporalClient.ConnectAsync(new(address));
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var id = Guid.CreateVersion7();
+        var handler = new TestHandler();
+        using var worker = ServiceWorkWorker.Create(client, queue, handler);
+        try
+        {
+            await worker.ExecuteAsync(async () => await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+            {
+                var options = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var db = new SchedulingDbContext(options)) await db.Database.MigrateAsync(token);
+                var offlineClient = TemporalClient.CreateLazy(new("127.0.0.1:1"));
+                var offlineHandler = new TemporalOutboxHandler(new ServiceWorkClient(offlineClient));
+                var message = new OutboxMessage(id, TemporalOutboxHandler.Type,
+                    JsonSerializer.Serialize(new TemporalWorkRequest(queue, new("inventory", "device-123"))));
+                await using var connection = new SqlConnection(database.ConnectionString);
+                await connection.OpenAsync(token);
+                await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
+                {
+                    await new OutboxWriter([offlineHandler]).WriteAsync(message, connection, transaction, token);
+                    await transaction.CommitAsync(token);
+                }
+                await new OutboxDispatcher(database.ConnectionString, [offlineHandler], NullLogger<OutboxDispatcher>.Instance,
+                    TimeSpan.FromSeconds(2)).DispatchAsync(token);
+                await using (var check = connection.CreateCommand())
+                {
+                    check.CommandText = "SELECT State, Attempts, LastFailureCode FROM scheduling.Outbox WHERE MessageId = @id";
+                    check.Parameters.AddWithValue("@id", id);
+                    await using var reader = await check.ExecuteReaderAsync(token);
+                    Assert.IsTrue(await reader.ReadAsync(token));
+                    Assert.AreEqual(0, reader.GetInt32(0));
+                    Assert.AreEqual(1, reader.GetInt32(1));
+                    Assert.IsFalse(reader.IsDBNull(2));
+                }
+                await using (var retry = connection.CreateCommand())
+                {
+                    retry.CommandText = "UPDATE scheduling.Outbox SET AvailableAt = SYSDATETIMEOFFSET() WHERE MessageId = @id";
+                    retry.Parameters.AddWithValue("@id", id);
+                    await retry.ExecuteNonQueryAsync(token);
+                }
+                var onlineHandler = new TemporalOutboxHandler(new ServiceWorkClient(client));
+                await new OutboxDispatcher(database.ConnectionString, [onlineHandler], NullLogger<OutboxDispatcher>.Instance).DispatchAsync(token);
+                var result = await new ServiceWorkClient(client).Get(id.ToString("D")).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
+                Assert.AreEqual("inventory:device-123", result);
+                Assert.AreEqual(1, handler.Executions);
+                await using var completed = connection.CreateCommand();
+                completed.CommandText = "SELECT State FROM scheduling.Outbox WHERE MessageId = @id";
+                completed.Parameters.AddWithValue("@id", id);
+                Assert.AreEqual(2, (int)(await completed.ExecuteScalarAsync(token))!);
+            }, TestContext.CancellationToken), TestContext.CancellationToken);
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                {
+                    Namespace = "default",
+                    WorkflowExecution = new() { WorkflowId = id.ToString("D") }
+                }, new Temporalio.Client.RpcOptions { CancellationToken = cleanup.Token });
+            }
+            catch (Temporalio.Exceptions.RpcException error) when (error.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound) { }
+        }
+    }
+
+    [TestMethod]
     public async Task MultipleWorkersShareQueueWithoutDuplicatingWork()
     {
         var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
