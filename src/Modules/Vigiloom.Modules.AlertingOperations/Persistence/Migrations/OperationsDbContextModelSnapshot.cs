@@ -173,7 +173,6 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("AggregationSeconds")
-                        .HasSentinel(-1)
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(10);
@@ -449,6 +448,62 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.HasIndex("ServiceId", "OpenedAt");
 
                     b.ToTable("ServiceHealthAlerts", "operations");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.TimelineRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Link")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResourceKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("RuleLink")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("Time")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("Time", "RowId");
+
+                    b.HasIndex("ResourceId", "Time", "RowId");
+
+                    b.ToTable("TimelineRecords", "operations");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.WorkerDiagnosticSlot", b =>

@@ -15,10 +15,24 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     internal DbSet<LineSettings> LineSettings => Set<LineSettings>();
     internal DbSet<LineGroup> LineGroups => Set<LineGroup>();
     internal DbSet<LineDelivery> LineDeliveries => Set<LineDelivery>();
+    internal DbSet<TimelineRecord> TimelineRecords => Set<TimelineRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("operations");
+        var timeline = modelBuilder.Entity<TimelineRecord>();
+        timeline.ToTable("TimelineRecords");
+        timeline.HasKey(x => x.RowId).IsClustered();
+        timeline.Property(x => x.RowId).UseIdentityColumn();
+        timeline.Property(x => x.MessageId).ValueGeneratedNever();
+        timeline.Property(x => x.Source).HasMaxLength(32).IsRequired();
+        timeline.Property(x => x.ResourceKind).HasMaxLength(16).IsRequired();
+        timeline.Property(x => x.Summary).IsRequired();
+        timeline.Property(x => x.Evidence).IsRequired();
+        timeline.Property(x => x.Link).IsRequired();
+        timeline.HasIndex(x => x.MessageId).IsUnique();
+        timeline.HasIndex(x => new { x.Time, x.RowId });
+        timeline.HasIndex(x => new { x.ResourceId, x.Time, x.RowId });
         var audit = modelBuilder.Entity<OperationAuditRecord>();
         audit.ToTable("AuditEvents");
         audit.HasKey(x => x.RowId).IsClustered();

@@ -13,6 +13,7 @@ using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Line;
 using Vigiloom.Modules.AlertingOperations.Application.Retention;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using Vigiloom.Operations.HostLogs;
@@ -42,6 +43,16 @@ builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Addre
     builder.Configuration["Temporal:Namespace"] ?? "default");
 builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<OperationAuditWriter>();
+builder.Services.AddScoped<TimelineWriter>();
+builder.Services.AddScoped<TimelineReader>();
+builder.Services.AddServiceDiscovery();
+builder.Services.AddHttpClient("Resources", (services, client) =>
+{
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(5);
+})
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceDiscovery();
 if (builder.Configuration.GetValue("Temporal:EnableOperationsWorker", true))
 {
     builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(builder.Configuration["Work:OperationsQueue"] ?? Vigiloom.Contracts.Operations.OperationsWork.Queue);
@@ -92,6 +103,7 @@ var app = builder.Build();
 app.MapLineEndpoints();
 app.MapHistoryEndpoints();
 app.MapAuditEndpoints();
+app.MapTimelineEndpoints();
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready");
 app.MapGet("/internal/v1/diagnostics/jobs", async (SchedulingOverview overview, CancellationToken token) =>
