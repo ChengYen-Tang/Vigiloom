@@ -4,6 +4,7 @@ using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Gateway.Authentication;
+using Vigiloom.Gateway.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -16,10 +17,16 @@ builder.Services.AddAuthentication(options =>
     options.DefaultForbidScheme = IdentityConstants.ApplicationScheme;
 }).AddIdentityCookies();
 builder.Services.AddAuthentication().AddVigiloomApiCredentials()
-    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentAuthentication>(AgentAuthentication.SchemeName, _ => { });
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentAuthentication>(AgentAuthentication.SchemeName, _ => { })
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, SourceAuthentication>(SourceAuthentication.SchemeName, _ => { });
 builder.Services.AddHttpClient(AgentAuthentication.SchemeName, (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Vigiloom:Gateway:AgentIdentityAddress"] ?? "http://vigiloom-agent";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient(SourceAuthentication.SchemeName, (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Vigiloom:Gateway:SourceIdentityAddress"] ?? "http://vigiloom-observability";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
@@ -38,6 +45,7 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
 builder.Services.AddAuthorization(options =>
 {
     options.AddVigiloomAccessPolicies();
+    options.AddPolicy("GatewaySource", policy => policy.AddAuthenticationSchemes(SourceAuthentication.SchemeName).RequireAuthenticatedUser());
     options.AddPolicy("GatewayAgent", policy => policy.AddAuthenticationSchemes(AgentAuthentication.SchemeName).RequireAuthenticatedUser());
     options.AddPolicy("GatewayAdministrator", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme)
         .RequireAuthenticatedUser().RequireRole(WorkspaceAccess.Administrator));
@@ -60,6 +68,20 @@ app.Use(async (context, next) =>
     }
     await next(context);
 });
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/otlp"), otlp =>
+    otlp.Use(async (context, next) =>
+    {
+        try { await next(context); }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { throw; }
+        catch (Exception) when (!context.Response.HasStarted)
+        {
+            context.Response.Clear();
+            await OtlpErrors.WriteAsync(context, StatusCodes.Status503ServiceUnavailable);
+            return;
+        }
+        if (!context.Response.HasStarted && context.Response.StatusCode >= 400 && context.Response.ContentLength is null)
+            await OtlpErrors.WriteAsync(context, context.Response.StatusCode);
+    }));
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapReverseProxy();

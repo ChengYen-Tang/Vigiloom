@@ -77,7 +77,8 @@ public sealed class ProxyTests
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
                 ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = Address(agent),
-                ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = Address(otlp)
+                ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = Address(otlp),
+                ["Vigiloom:Gateway:SourceIdentityAddress"] = Address(otlp)
             })));
         using var client = factory.CreateClient();
         Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
@@ -85,7 +86,8 @@ public sealed class ProxyTests
         Assert.AreEqual(HttpStatusCode.Unauthorized, agentDenied.StatusCode);
         using var enrollment = await client.PostAsync("/api/v1/agent/enroll", null, TestContext.CancellationToken);
         Assert.AreEqual("agent", await enrollment.Content.ReadAsStringAsync(TestContext.CancellationToken));
-        Assert.AreEqual("otlp", await client.GetStringAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken));
+        using var otlpDenied = await client.GetAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, otlpDenied.StatusCode);
         using var denied = await client.GetAsync("/api/v1/agent-management/devices", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
     }
@@ -268,11 +270,81 @@ public sealed class ProxyTests
         Assert.AreEqual(HttpStatusCode.NoContent, rotationFinish.StatusCode);
     }
 
+    [TestMethod]
+    public async Task OtlpAndDiscoveryRequireSourceCredentialAndForwardPayload()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var observability = builder.Build();
+        var sourceId = Guid.CreateVersion7();
+        var received = Array.Empty<byte>();
+        observability.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
+            context.Request.Headers.Authorization == "Bearer valid-source"
+                ? Results.Json(new { SourceId = sourceId }) : Results.Unauthorized());
+        observability.MapPost("/api/v1/otlp/v1/metrics", async (HttpContext context) =>
+        {
+            using var buffer = new MemoryStream();
+            await context.Request.Body.CopyToAsync(buffer, context.RequestAborted);
+            received = buffer.ToArray();
+            return Results.Bytes([9, 8], "application/x-protobuf");
+        });
+        observability.MapPost("/api/v1/service-discovery/observations", () => Results.NoContent());
+        await observability.StartAsync(TestContext.CancellationToken);
+        var address = observability.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = address,
+                ["Vigiloom:Gateway:SourceIdentityAddress"] = address
+            })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        using var missing = await client.PostAsync("/api/v1/otlp/v1/metrics", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, missing.StatusCode);
+        Assert.AreEqual("application/x-protobuf", missing.Content.Headers.ContentType?.MediaType);
+        var failure = Google.Rpc.Status.Parser.ParseFrom(await missing.Content.ReadAsByteArrayAsync(TestContext.CancellationToken));
+        Assert.IsFalse(string.IsNullOrEmpty(failure.Message));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-source");
+        using var invalid = await client.PostAsync("/api/v1/service-discovery/observations", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, invalid.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-source");
+        using var content = new ByteArrayContent([1, 2, 3]);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
+        using var result = await client.PostAsync("/api/v1/otlp/v1/metrics", content, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, received);
+        CollectionAssert.AreEqual(new byte[] { 9, 8 }, await result.Content.ReadAsByteArrayAsync(TestContext.CancellationToken));
+        using var discovery = await client.PostAsync("/api/v1/service-discovery/observations", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NoContent, discovery.StatusCode);
+        using var internalEndpoint = await client.GetAsync("/internal/telemetry/source/identity", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.NotFound, internalEndpoint.StatusCode);
+        using var insecure = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("http://localhost"), AllowAutoRedirect = false });
+        insecure.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-source");
+        using var insecureResult = await insecure.PostAsync("/api/v1/otlp/v1/metrics", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, insecureResult.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task OtlpIdentityOutageReturnsProtobufUnavailable()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Vigiloom:Gateway:SourceIdentityAddress"] = "http://127.0.0.1:1"
+            })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-source");
+        using var response = await client.PostAsync("/api/v1/otlp/v1/metrics", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.AreEqual("application/x-protobuf", response.Content.Headers.ContentType?.MediaType);
+        Assert.IsFalse(string.IsNullOrEmpty(Google.Rpc.Status.Parser.ParseFrom(await response.Content.ReadAsByteArrayAsync(TestContext.CancellationToken)).Message));
+    }
+
     private static async Task<WebApplication> StartUpstreamAsync(string name, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var app = builder.Build();
+        app.MapGet("/internal/telemetry/source/identity", () => Results.Unauthorized());
         app.MapMethods("/{**path}", ["GET", "POST", "PUT", "PATCH", "DELETE"], () => name);
         await app.StartAsync(token);
         return app;
