@@ -53,6 +53,3 @@ internal static class DeviceEndpoints
             extensions: new Dictionary<string, object?> { ["code"] = "device_conflict" })
     };
 }
-
-/// <summary>The rowversion returned by the most recent read.</summary>
-public sealed record DeviceVersionRequest(string? Version);
