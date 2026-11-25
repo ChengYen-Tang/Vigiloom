@@ -72,6 +72,7 @@ public sealed class ServiceWorkTests
             await dispatcher.DispatchAsync(token);
             var result = await new ServiceWorkClient(client).Get(message.MessageId.ToString("D")).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
             Assert.AreEqual("inventory:device-123", result);
+            Assert.AreEqual(message.MessageId.ToString("D"), handler.LastDeliveryId);
             await using (var simulateLostAck = connection.CreateCommand())
             {
                 simulateLostAck.CommandText = "UPDATE scheduling.Outbox SET State = 0, AvailableAt = SYSDATETIMEOFFSET() WHERE MessageId = @id";
@@ -90,9 +91,11 @@ public sealed class ServiceWorkTests
     private sealed class TestHandler : IServiceWorkHandler
     {
         public int Executions { get; private set; }
+        public string? LastDeliveryId { get; private set; }
         public Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
         {
             Executions++;
+            LastDeliveryId = work.DeliveryId;
             return Task.FromResult<string?>($"{work.Kind}:{work.Payload}");
         }
     }
