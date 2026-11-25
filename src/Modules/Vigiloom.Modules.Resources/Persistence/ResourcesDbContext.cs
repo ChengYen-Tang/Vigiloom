@@ -11,10 +11,47 @@ public sealed class ResourcesDbContext(DbContextOptions<ResourcesDbContext> opti
     public DbSet<ServiceGroup> ServiceGroups => Set<ServiceGroup>();
     public DbSet<DeviceTarget> DeviceTargets => Set<DeviceTarget>();
     public DbSet<DeviceAudit> DeviceAudits => Set<DeviceAudit>();
+    public DbSet<ApplicationService> ApplicationServices => Set<ApplicationService>();
+    public DbSet<ApplicationCandidate> ApplicationCandidates => Set<ApplicationCandidate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("resources");
+        var candidate = modelBuilder.Entity<ApplicationCandidate>();
+        candidate.ToTable("ApplicationCandidates");
+        candidate.HasKey(x => x.Id).IsClustered(false);
+        candidate.Property(x => x.Id).ValueGeneratedNever();
+        candidate.Property(x => x.RowId).UseIdentityColumn();
+        candidate.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        candidate.Property(x => x.ServiceKey).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        candidate.Property(x => x.ServiceNamespace).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").HasDefaultValue("").IsRequired();
+        candidate.Property(x => x.ServiceNamespaceBytes).HasColumnType("varbinary(256)").HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", stored: true);
+        candidate.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        candidate.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
+        candidate.HasIndex(x => new { x.SourceId, x.ServiceNamespaceBytes, x.ServiceKey, x.Environment }).IsUnique();
+        candidate.HasIndex(x => x.LastSeen);
+
+        var service = modelBuilder.Entity<ApplicationService>();
+        service.ToTable("ApplicationServices", table =>
+        {
+            table.HasCheckConstraint("CK_ApplicationServices_PublicPeriod", "([IsPublic] = 0 AND [PublicSince] IS NULL) OR ([IsPublic] = 1 AND [PublicSince] IS NOT NULL)");
+            table.HasCheckConstraint("CK_ApplicationServices_Archived", "[ArchivedAt] IS NULL OR ([IsPublic] = 0 AND [RevokedAt] IS NOT NULL)");
+        });
+        service.HasKey(x => x.Id).IsClustered(false);
+        service.Property(x => x.Id).ValueGeneratedNever();
+        service.Property(x => x.RowId).UseIdentityColumn();
+        service.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        service.Property(x => x.Version).IsRowVersion();
+        service.Property(x => x.ServiceKey).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        service.Property(x => x.ServiceNamespace).HasMaxLength(128).UseCollation("Latin1_General_100_BIN2").HasDefaultValue("").IsRequired();
+        service.Property(x => x.ServiceNamespaceBytes).HasColumnType("varbinary(256)").HasComputedColumnSql("CONVERT(varbinary(256), [ServiceNamespace])", stored: true);
+        service.Property(x => x.Environment).HasMaxLength(64).UseCollation("Latin1_General_100_BIN2").IsRequired();
+        service.Property(x => x.DisplayName).HasMaxLength(128).IsRequired();
+        service.Property(x => x.PublicDisplayName).HasMaxLength(256);
+        service.Property(x => x.PublicPolicyVersion).HasMaxLength(32);
+        service.HasIndex(x => new { x.SourceId, x.ServiceNamespaceBytes, x.ServiceKey, x.Environment }).IsUnique();
+        service.HasIndex(x => x.CandidateId).IsUnique().HasFilter("[CandidateId] IS NOT NULL");
+        service.HasIndex(x => new { x.IsPublic, x.PublicDisplayName, x.RowId });
         var device = modelBuilder.Entity<Device>();
         device.ToTable("Devices", table =>
         {

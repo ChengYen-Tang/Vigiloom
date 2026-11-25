@@ -30,14 +30,14 @@ internal static class GroupEndpoints
             return Results.Ok(await service.ListDevicesAsync(id, false, member, search, page ?? 1, token));
         }).RequireAuthorization("MonitoringApiRead").Produces<GroupDevicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List group devices or candidates");
-        groups.MapGet("/{id:guid}/services", async (Guid id, bool? member, string? search, int? page, IGroupManagement groupsService, ServiceMembership service, CancellationToken token) =>
+        groups.MapGet("/{id:guid}/services", async (Guid id, bool? member, string? search, int? page, IGroupManagement groupsService, IServiceMembership service, CancellationToken token) =>
         {
             if (InvalidSearch(search, page)) return Results.BadRequest();
             if (await groupsService.GetAsync(id, token) is null) return Results.NotFound();
             return Results.Ok(await service.ListAsync(id, false, member, search, page ?? 1, token));
         }).RequireAuthorization("MonitoringApiRead").Produces<GroupServicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List group services or candidates");
-        groups.MapGet("/ungrouped-services", async (string? search, int? page, ServiceMembership service, CancellationToken token) =>
+        groups.MapGet("/ungrouped-services", async (string? search, int? page, IServiceMembership service, CancellationToken token) =>
             InvalidSearch(search, page) ? Results.BadRequest() : Results.Ok(await service.ListAsync(null, true, null, search, page ?? 1, token)))
             .RequireAuthorization("MonitoringApiRead").Produces<GroupServicePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List services without a group");
@@ -53,7 +53,7 @@ internal static class GroupEndpoints
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.ChangeMembersAsync(id, input, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<GroupDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Change device memberships");
-        groups.MapPut("/{id:guid}/services", async (Guid id, GroupMembershipChange input, HttpContext context, ServiceMembership service, CancellationToken token) =>
+        groups.MapPut("/{id:guid}/services", async (Guid id, GroupMembershipChange input, HttpContext context, IServiceMembership service, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => Response(await service.ChangeAsync(id, input, actor, token))))
             .RequireAuthorization("DeviceWrite").Produces<GroupDetails>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Change service memberships");

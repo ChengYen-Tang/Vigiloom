@@ -48,6 +48,7 @@ builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<GroupAuditOutbox>();
+builder.Services.AddScoped<ServiceGroupManagement>();
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
