@@ -63,6 +63,11 @@ public sealed class HistoryEndpointTests(TestContext context)
                 });
             });
             using var client = host.CreateClient();
+            using (var live = await client.GetAsync("/health/live", token)) Assert.AreEqual(HttpStatusCode.OK, live.StatusCode);
+            using (var ready = await client.GetAsync("/health/ready", token)) Assert.AreEqual(HttpStatusCode.OK, ready.StatusCode);
+            var jobs = await client.GetFromJsonAsync<WorkOverview>("/internal/v1/diagnostics/jobs", token);
+            Assert.IsNotNull(jobs);
+            Assert.AreEqual(0, jobs.FailedMessages);
             var alerts = await client.GetFromJsonAsync<AlertEpisodePage>("/internal/v1/history/alerts", token);
             Assert.HasCount(2, alerts!.Items);
             var notices = await client.GetFromJsonAsync<NotificationPage>("/internal/v1/history/notifications?source=ping", token);
