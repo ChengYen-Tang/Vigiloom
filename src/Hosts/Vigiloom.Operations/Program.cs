@@ -8,6 +8,7 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Line;
@@ -25,6 +26,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddModuleSqlServer<OperationsDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "operations");
+builder.Services.AddModuleSqlServer<SchedulingDbContext>(services =>
+    services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
+        ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "scheduling");
 builder.Services.AddModuleSqlServer<LogAdmissionDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "logquota");
@@ -50,6 +54,14 @@ builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped<LineDeliveryStatus>();
 builder.Services.AddScoped<NotificationReader>();
 builder.Services.AddScoped<OperationAuditQueryService>();
+builder.Services.AddSingleton(services =>
+{
+    var config = services.GetRequiredService<IConfiguration>();
+    return new SchedulingReadStorage(config.GetConnectionString("Scheduling") ?? config.GetConnectionString("Operations")
+        ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."));
+});
+builder.Services.AddScoped<SchedulingOverview>();
+builder.Services.AddHealthChecks().AddCheck<OperationsDatabaseHealth>("database");
 builder.Services.AddScoped<AuditRetentionSettings>();
 builder.Services.AddScoped<AuditRetentionCleanup>();
 if (builder.Configuration.GetValue("Hangfire:Enabled", true))
@@ -80,6 +92,10 @@ var app = builder.Build();
 app.MapLineEndpoints();
 app.MapHistoryEndpoints();
 app.MapAuditEndpoints();
+app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready");
+app.MapGet("/internal/v1/diagnostics/jobs", async (SchedulingOverview overview, CancellationToken token) =>
+    Results.Ok(await overview.GetAsync(token)));
 
 // The deployment exposes this endpoint only to the trusted service network.
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>
