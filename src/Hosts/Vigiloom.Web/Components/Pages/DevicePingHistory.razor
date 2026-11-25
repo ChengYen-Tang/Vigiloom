@@ -3,7 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Modules.Resources.Application
 @using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
-@inject DeviceManagement Devices
+@inject IDeviceManagement Devices
 @inject ILogger<DevicePingHistory> Logger
 
 <PageTitle>設備 Ping 歷史 - Vigiloom</PageTitle>

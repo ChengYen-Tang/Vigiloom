@@ -139,6 +139,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Gateway" => ["Vigiloom.Infrastructure"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
         "Vigiloom.Web.Client" => ["Vigiloom.Contracts"],
+        "Vigiloom.Resources" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.Resources"],
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
         "Vigiloom.Worker" => [.. modules, "Vigiloom.Infrastructure"],
         "Vigiloom.Migrator" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess", "Vigiloom.Modules.Resources", "Vigiloom.Modules.NetworkMonitoring", "Vigiloom.Modules.AgentManagement", "Vigiloom.Modules.ServiceObservability", "Vigiloom.Modules.SecurityAnalysis", "Vigiloom.Modules.Publishing", "Vigiloom.Modules.AlertingOperations"],
@@ -150,6 +151,7 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Agent" => ["Vigiloom.Agent.Core", "Vigiloom.Agent.Platforms.Windows", "Vigiloom.Agent.Platforms.Linux"],
         "Vigiloom.Updater" => ["Vigiloom.Updater.Core"],
         "Vigiloom.Modules.AgentManagement" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
+        "Vigiloom.Modules.Resources" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
         _ when modules.Contains(name) => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure"],
         _ => null
     };

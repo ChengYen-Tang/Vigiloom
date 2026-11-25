@@ -8,8 +8,8 @@
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Groups
 @using System.Security.Claims
-@inject GroupManagement GroupsService
-@inject ServiceMembership ServiceMembers
+@inject IGroupManagement GroupsService
+@inject IServiceMembership ServiceMembers
 @inject NavigationManager Navigation
 @inject ILogger<GroupDetails> Logger
 

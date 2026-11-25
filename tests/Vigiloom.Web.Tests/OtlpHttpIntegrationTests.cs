@@ -87,7 +87,7 @@ public sealed class OtlpHttpIntegrationTests(TestContext context)
             metadata.Request.ContentType = "application/json";
             metadata.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"serviceKey\":\"orders\",\"environment\":\"prod\",\"displayName\":\"Orders\"}"));
             metadata.Response.Body = new MemoryStream();
-            var candidates = scope.ServiceProvider.GetRequiredService<CandidateDiscovery>();
+            var candidates = scope.ServiceProvider.GetRequiredService<Vigiloom.Web.Services.ICandidateAdministration>();
             await (await ServiceObservationEndpoint.ReceiveAsync(metadata, candidates, token)).ExecuteAsync(metadata);
             Assert.AreEqual(StatusCodes.Status401Unauthorized, metadata.Response.StatusCode);
             var resource = new Resource();

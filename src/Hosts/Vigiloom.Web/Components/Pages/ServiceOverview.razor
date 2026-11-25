@@ -3,8 +3,9 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Modules.ServiceObservability.Application
 @using Vigiloom.Web.Groups
+@using Vigiloom.Contracts.Groups
 @using Microsoft.AspNetCore.Components.Authorization
-@inject ServiceMembership Memberships
+@inject IServiceMembership Memberships
 @inject ServiceDetailsReader Services
 @inject ILogger<ServiceOverview> Logger
 
@@ -33,7 +34,7 @@
     [Parameter] public Guid Id { get; set; }
     [SupplyParameterFromQuery(Name = "groupPage")] public int? GroupPage { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
-    private ServiceMembership.GroupLinkPage? groups;
+    private ServiceGroupLinkPage? groups;
     private bool groupError;
     private int CurrentPage => Math.Clamp(GroupPage ?? 1, 1, 1000);
     private string PageUrl(int page) => $"/services/{Id:D}?groupPage={page}";

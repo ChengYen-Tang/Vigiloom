@@ -14,6 +14,7 @@ internal static class PublicationEndpoints
         admin.MapPost("/templates", async (CreatePublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteResult(await remote.CreateAsync(input, actor, token)), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await templates.CreateAsync(input, actor, token);
@@ -29,6 +30,7 @@ internal static class PublicationEndpoints
         admin.MapPut("/templates/{id:guid}/default", async (Guid id, SetDefaultPublicationTemplate input, TemplateAdministration templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteResult(await remote.SetDefaultAsync(id, input, actor, token)), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await templates.SetDefaultAsync(id, input, actor, token);
@@ -45,24 +47,28 @@ internal static class PublicationEndpoints
         admin.MapGet("/templates", async (int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return page is < 1 or > TemplateReader.MaximumPage ? Results.BadRequest() : Results.Ok(await remote.TemplatesAsync(page ?? 1, token));
             return page is < 1 or > TemplateReader.MaximumPage ? Results.BadRequest() : Results.Ok(await templates.ListAsync(page ?? 1, token));
         }).Produces<PublicationTemplatePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List publication templates");
         admin.MapGet("/templates/default", async (TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await remote.DefaultAsync(token) is { } item ? Results.Ok(item) : Results.NotFound();
             return await templates.DefaultAsync(token) is { } template ? Results.Ok(template) : Results.NotFound();
         }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the current default publication template");
         admin.MapGet("/templates/{id:guid}", async (Guid id, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await remote.TemplateAsync(id, token) is { } item ? Results.Ok(item) : Results.NotFound();
             return await templates.GetAsync(id, token) is { } template ? Results.Ok(template) : Results.NotFound();
         }).Produces<PublicationTemplateItem>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get a publication template");
         admin.MapPost("/templates/{id:guid}/update-preview", async (Guid id, PublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteResult(await remote.PreviewUpdateAsync(id, input, actor, token)), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await workflow.PreviewAsync(id, input, actor, token);
@@ -79,6 +85,7 @@ internal static class PublicationEndpoints
         admin.MapPut("/templates/{id:guid}", async (Guid id, ConfirmPublicationTemplateUpdate input, TemplateUpdateWorkflow workflow, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteResult(await remote.ConfirmUpdateAsync(id, input, actor, token)), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await workflow.ConfirmAsync(id, input, actor, token);
@@ -95,6 +102,7 @@ internal static class PublicationEndpoints
         admin.MapPost("/templates/{id:guid}/retirement-preview", async (Guid id, PublicationTemplateRetirement input, TemplateRetirementWorkflow workflow, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteResult(await remote.PreviewRetireAsync(id, input, actor, token)), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await workflow.PreviewAsync(id, input, actor, token);
@@ -111,6 +119,7 @@ internal static class PublicationEndpoints
         admin.MapPost("/templates/{id:guid}/retire", async (Guid id, ConfirmPublicationTemplateRetirement input, TemplateRetirementWorkflow workflow, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor => RemoteStatus((await remote.ConfirmRetireAsync(id, input, actor, token)).Status), allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var status = await workflow.ConfirmAsync(id, input, actor, token);
@@ -127,6 +136,7 @@ internal static class PublicationEndpoints
         admin.MapGet("/templates/{id:guid}/impact", async (Guid id, int? page, TemplateReader templates, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            if (Remote(context) is { } remote) return page is < 1 or > 42949672 ? Results.BadRequest() : RemoteResult(await remote.ImpactAsync(id, page ?? 1, token));
             if (page is < 1 or > (TemplateImpact.MaximumDevices + TemplateImpact.PageSize - 1) / TemplateImpact.PageSize) return Results.BadRequest();
             var result = await templates.ImpactAsync(id, page ?? 1, token);
             if (result.Changed) return Results.Problem(statusCode: 409, title: "The template changed; refresh the preview.");
@@ -138,6 +148,7 @@ internal static class PublicationEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             if (!TryKind(kind, out var resourceKind)) return Results.NotFound();
+            if (Remote(context) is { } remote) return await remote.GetAsync(kind, id, token) is { } item ? Results.Ok(item) : Results.NotFound();
             return await publications.ReadAsync(resourceKind, id, token) is { } settings ? Results.Ok(settings) : Results.NotFound();
         }).Produces<PublicationSettings>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get publication settings");
@@ -158,6 +169,12 @@ internal static class PublicationEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             if (!TryKind(kind, out var resourceKind)) return Results.NotFound();
+            if (Remote(context) is { } remote) return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await remote.SaveAsync(kind, id, change, actor, token);
+                return result.Status switch { PublicationSaveStatus.Updated => Results.Ok(result.Settings), PublicationSaveStatus.NotFound => Results.NotFound(),
+                    PublicationSaveStatus.Invalid => Results.BadRequest(), _ => Results.Conflict() };
+            }, allowApiCredential: false);
             return await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await publications.SetAsync(resourceKind, id, change, actor, token);
@@ -252,6 +269,22 @@ internal static class PublicationEndpoints
     }
 
     private static bool Valid(string? search, int? page) => search?.Length is null or <= 256 && page is null or >= 1 and <= PublicReader.MaximumPage;
+
+    private static RemotePublicationManagement? Remote(HttpContext context) =>
+        string.IsNullOrWhiteSpace(context.RequestServices.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+            ? null : context.RequestServices.GetRequiredService<RemotePublicationManagement>();
+
+    private static IResult RemoteResult<T>(TemplateOperationResult<T> result) => result.Status switch
+    {
+        TemplateOperationStatus.Success => Results.Ok(result.Value), TemplateOperationStatus.NotFound => Results.NotFound(),
+        TemplateOperationStatus.Invalid => Results.BadRequest(), _ => Results.Conflict()
+    };
+
+    private static IResult RemoteStatus(TemplateOperationStatus status) => status switch
+    {
+        TemplateOperationStatus.Success => Results.NoContent(), TemplateOperationStatus.NotFound => Results.NotFound(),
+        TemplateOperationStatus.Invalid => Results.BadRequest(), _ => Results.Conflict()
+    };
 
     internal static bool TryKind(string text, out PublicationResourceKind kind)
     {

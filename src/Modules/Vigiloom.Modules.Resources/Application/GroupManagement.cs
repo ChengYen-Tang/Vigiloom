@@ -16,7 +16,8 @@ public sealed record DeviceGroupSummary(Guid Id, string Name);
 public sealed record DeviceGroupPage(IReadOnlyList<DeviceGroupSummary> Items, int Page, int PageSize, int Total);
 
 /// <summary>Owns group state and membership transactions. Callers must authorize access.</summary>
-public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit> audit)
+public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock,
+    IOperationAuditWriter<OperationAudit>? audit = null, GroupAuditOutbox? outbox = null) : IGroupManagement
 {
     public const int PageSize = 50;
     public const int MaxBatchSize = 100;
@@ -82,8 +83,7 @@ public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contex
         db.Groups.Add(group);
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateException ex) when (IsDuplicate(ex)) { return DuplicateName(); }
-        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), new OperationAudit(actor, group.Id, now, new GroupChanged(GroupAction.Created, 0, 0)), token);
-        await transaction.CommitAsync(token);
+        await CommitAsync(db, transaction, new OperationAudit(actor, group.Id, now, new GroupChanged(GroupAction.Created, 0, 0)), token);
         return new(GroupResultStatus.Success, Map(new(group, 0, 0, 0)));
     }
 
@@ -104,8 +104,7 @@ public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contex
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateConcurrencyException) { return new(GroupResultStatus.Conflict); }
         catch (DbUpdateException ex) when (IsDuplicate(ex)) { return DuplicateName(); }
-        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), new OperationAudit(actor, id, now, new GroupChanged(GroupAction.Updated, 0, 0)), token);
-        await transaction.CommitAsync(token);
+        await CommitAsync(db, transaction, new OperationAudit(actor, id, now, new GroupChanged(GroupAction.Updated, 0, 0)), token);
         return new(GroupResultStatus.Success, await GetAsync(id, token));
     }
 
@@ -137,9 +136,8 @@ public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contex
         group.Touch(now);
         db.Entry(group).Property(x => x.UpdatedAt).IsModified = true;
         await db.SaveChangesAsync(token);
-        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+        await CommitAsync(db, transaction,
             new OperationAudit(actor, id, now, new GroupChanged(GroupAction.DevicesChanged, addIds.Count(x => !present.Contains(x)), relevant.Count(x => removeIds.Contains(x.DeviceId)))), token);
-        await transaction.CommitAsync(token);
         return new(GroupResultStatus.Success, await GetAsync(id, token));
     }
 
@@ -156,9 +154,19 @@ public sealed class GroupManagement(IDbContextFactory<ResourcesDbContext> contex
         await db.ServiceGroups.Where(x => x.GroupId == id).ExecuteDeleteAsync(token);
         db.Groups.Remove(group);
         await db.SaveChangesAsync(token);
-        await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), new OperationAudit(actor, id, clock.GetUtcNow().ToUniversalTime(), new GroupChanged(GroupAction.Deleted, 0, 0)), token);
-        await transaction.CommitAsync(token);
+        await CommitAsync(db, transaction, new OperationAudit(actor, id, clock.GetUtcNow().ToUniversalTime(), new GroupChanged(GroupAction.Deleted, 0, 0)), token);
         return new(GroupResultStatus.Success);
+    }
+
+    private async Task CommitAsync(ResourcesDbContext db, IDbContextTransaction transaction, OperationAudit record, CancellationToken token)
+    {
+        if (outbox is not null) await outbox.CommitAsync(db, record, token);
+        else
+        {
+            if (audit is null) throw new InvalidOperationException("A group audit writer is required.");
+            await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), record, token);
+            await transaction.CommitAsync(token);
+        }
     }
 
     private static IQueryable<GroupRow> Project(ResourcesDbContext db, IQueryable<Group> query) => query.Select(g => new GroupRow(g,

@@ -1,3 +1,4 @@
+using Vigiloom.UpdateSecurity.AgentPackages;
 using System.Net;
 using System.Security.Cryptography;
 using AngleSharp.Html.Parser;

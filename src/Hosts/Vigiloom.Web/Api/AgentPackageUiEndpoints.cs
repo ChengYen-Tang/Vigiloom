@@ -16,7 +16,7 @@ internal static class AgentPackageUiEndpoints
             return Results.File(script, "application/octet-stream", "grant-sysmon-read.ps1");
         }).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         app.MapPost("/settings/agent-packages/download", async ([FromForm] string version, [FromForm] string runtimeIdentifier,
-            HttpContext context, PackageLibrary library, ILogger<PackageLibrary> logger, CancellationToken token) =>
+            HttpContext context, IAgentPackageLibrary library, ILogger<PackageLibrary> logger, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ =>
             {
                 try
@@ -36,7 +36,7 @@ internal static class AgentPackageUiEndpoints
                 }
             }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
 
-        app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, PackageLibrary library,
+        app.MapPost("/settings/agent-packages/{id:guid}/remove", async (Guid id, HttpContext context, IAgentPackageLibrary library,
             ILogger<PackageLibrary> logger, CancellationToken token) => await ApiMutation.ExecuteAsync(context, async _ =>
         {
             try

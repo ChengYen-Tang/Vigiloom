@@ -23,6 +23,15 @@ public sealed class MonitoredService
         ApprovedAt = CreatedAt = UpdatedAt = approvedAt.ToUniversalTime();
     }
 
+    /// <summary>Creates an observation record for an identity approved by the resource service.</summary>
+    public static MonitoredService FromResource(Guid id, Guid sourceId, string serviceKey, string environment, string displayName,
+        DateTimeOffset approvedAt, string? serviceNamespace = null)
+    {
+        if (id.Version != 7) throw new ArgumentException("A version 7 service ID is required.", nameof(id));
+        var candidate = new ServiceCandidate(sourceId, serviceKey, environment, displayName, approvedAt, serviceNamespace);
+        return new MonitoredService(candidate, approvedAt) { Id = id, CandidateId = null };
+    }
+
     public Guid Id { get; private set; }
     public long RowId { get; private set; }
     public Guid SourceId { get; private set; }

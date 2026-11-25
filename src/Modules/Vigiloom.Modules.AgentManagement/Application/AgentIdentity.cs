@@ -5,6 +5,7 @@ using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using static Vigiloom.Infrastructure.Authentication.AgentCredentials;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
@@ -17,7 +18,7 @@ public sealed record EnrollmentSummary(Guid Id, long DeviceGeneration, DateTimeO
 public sealed record DeviceAgents(IReadOnlyList<AgentSummary> Agents, IReadOnlyList<EnrollmentSummary> Enrollments, long? CurrentGeneration);
 
 /// <summary>Coordinates device-bound enrollment and machine credentials. Callers authorize administrative operations.</summary>
-public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock) : IAgentRegistration, IMachineAgentIdentity
 {
     private static readonly TimeSpan EnrollmentLifetime = TimeSpan.FromMinutes(15);
 
@@ -318,17 +319,4 @@ public sealed class AgentIdentity(IDbContextFactory<AgentManagementDbContext> co
     private async Task<bool> IsCurrentAsync(AgentManagementDbContext db, DeviceAgentState device, CancellationToken token) =>
         await devices.IsCurrentAsync(device.DeviceId, device.Generation, db.Database.GetDbConnection(), db.Database.CurrentTransaction!.GetDbTransaction(), token);
 
-    private static string Encode(string prefix, Guid id, byte[] secret) =>
-        $"{prefix}_{id:D}.{Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
-
-    private static bool TryDecode(string? value, string prefix, out Guid id, out byte[] secret)
-    {
-        id = default; secret = [];
-        var expected = prefix + "_";
-        if (value is null || value.Length != expected.Length + 80 || !value.StartsWith(expected, StringComparison.Ordinal) ||
-            value[expected.Length + 36] != '.' || !Guid.TryParseExact(value.AsSpan(expected.Length, 36), "D", out id) || id == Guid.Empty) return false;
-        try { secret = Convert.FromBase64String(value[(expected.Length + 37)..].Replace('-', '+').Replace('_', '/') + "="); }
-        catch (FormatException) { return false; }
-        return secret.Length == 32;
-    }
 }
