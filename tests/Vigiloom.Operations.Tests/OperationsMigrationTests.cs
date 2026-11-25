@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -13,6 +14,7 @@ using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Domain;
@@ -103,6 +105,14 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             var agent = new Agent(device.Id, 0, new byte[32], now);
+            var sigmaWork = Guid.CreateVersion7(); var iocWork = Guid.CreateVersion7(); var finishedWork = Guid.CreateVersion7();
+            var eventMessage = Guid.CreateVersion7();
+            var workPayload = JsonSerializer.Serialize(new HostLogDispatch(agent.Id, device.Id, 0, [eventMessage]));
+            await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts) VALUES ({sigmaWork}, {HostLogDispatch.MessageType}, {workPayload}, {now}, {now}, 0, 0), ({iocWork}, {HostLogDispatch.IocMessageType}, {workPayload}, {now}, {now}, 1, 1), ({finishedWork}, {HostLogDispatch.MessageType}, {workPayload}, {now}, {now}, 2, 1)", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE scheduling.Outbox SET LeaseId = {Guid.CreateVersion7()}, LeaseUntil = {now.AddMinutes(1)} WHERE MessageId = {iocWork}", token);
+            }
             var scopeId = Guid.CreateVersion7();
             var revision = Guid.CreateVersion7(); var securitySource = Guid.CreateVersion7(); var eventId = Guid.CreateVersion7();
             var ruleTest = Guid.CreateVersion7(); var activation = Guid.CreateVersion7(); var finding = Guid.CreateVersion7();
@@ -181,7 +191,15 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
                 Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {delivery.Id} AND MessageType = 'line.push.v1'").SingleAsync(token));
-                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+                Assert.AreEqual(3, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+                var migrated = await db.Database.SqlQuery<string>($"SELECT Payload AS [Value] FROM scheduling.Outbox WHERE MessageId = {sigmaWork}").SingleAsync(token);
+                var request = JsonSerializer.Deserialize<TemporalWorkRequest>(migrated);
+                Assert.AreEqual("vigiloom.security.logs", request!.TaskQueue);
+                Assert.AreEqual(HostLogDispatch.MessageType, request.Work.Kind);
+                Assert.AreEqual(workPayload, request.Work.Payload);
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {iocWork} AND MessageType = {TemporalOutboxHandler.Type} AND State = 0 AND LeaseId IS NULL").SingleAsync(token));
+                Assert.AreEqual(0, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {finishedWork}").SingleAsync(token));
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE scheduling.Outbox SET AvailableAt = DATEADD(day, 1, {now}) WHERE MessageType = {TemporalOutboxHandler.Type}", token);
             }
             var push = new FakePush();
             using var http = new HttpClient(push);

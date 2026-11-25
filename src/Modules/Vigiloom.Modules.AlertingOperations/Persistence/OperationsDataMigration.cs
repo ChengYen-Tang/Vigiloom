@@ -26,6 +26,11 @@ public static class OperationsDataMigration
         new("scheduling", "Outbox", "scheduling", "Outbox", "MessageType", "line.push.v1")
     ];
 
-    public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default) =>
-        SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token, TimelineDataMigration.CopyLogsAsync);
+    public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default,
+        string securityLogQueue = "vigiloom.security.logs") =>
+        SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token, async (source, target, transaction, ct) =>
+        {
+            await TimelineDataMigration.CopyLogsAsync(source, target, transaction, ct);
+            await PendingHostLogMigration.CopyAsync(source, target, transaction, securityLogQueue, ct);
+        });
 }
