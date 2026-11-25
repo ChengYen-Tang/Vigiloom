@@ -350,6 +350,7 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(publicGroup.Id, group.Id);
                         Assert.AreEqual(0, group.DeviceCount);
                         Assert.AreEqual(1, group.ServiceCount);
+                        Assert.AreEqual(group, await policies.GroupSummaryAsync(publicGroup.Id, token));
                     }
                     await using (var scope = host.Services.CreateAsyncScope())
                     {
@@ -365,6 +366,7 @@ public sealed class DeviceChangeMessagingTests
                         var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
                         Assert.IsNull(await policies.ServiceAsync(applicationService.Id, token));
                         Assert.IsEmpty((await policies.GroupsAsync("Billing", 1, token)).Items);
+                        Assert.IsNull(await policies.GroupSummaryAsync(publicGroup.Id, token));
                     }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())

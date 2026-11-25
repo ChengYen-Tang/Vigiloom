@@ -8,7 +8,8 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Web.Publishing;
 
 /// <summary>Reads public history only within the service's explicitly authorized policy.</summary>
-internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObservabilityDbContext> contexts, HealthHistoryReader history)
+internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObservabilityDbContext> contexts, HealthHistoryReader history,
+    IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
     public static bool Valid(DateTimeOffset from, DateTimeOffset to) => from.Offset == TimeSpan.Zero && to.Offset == TimeSpan.Zero &&
         from < to && to - from <= TimeSpan.FromDays(90);
@@ -28,6 +29,8 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
     {
         if (id.Version != 7) return null;
         if (!Valid(from, to)) throw new ArgumentException("A UTC history window of at most 90 days is required.");
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]))
+            return await ReadRemoteAsync(id, from, to, requireDetails, project, provider!.GetRequiredService<RemotePublicReader>(), token);
         await using var db = await contexts.CreateDbContextAsync(token);
         var before = await ReadAuthorizationAsync(db, id, requireDetails, token);
         if (before is null || before.PublicSince == MonitoredService.PendingPublicSince ||
@@ -50,6 +53,43 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
         return after is not null && before.PublicSince == after.PublicSince && before.Version.AsSpan().SequenceEqual(after.Version) &&
             before.SourceVersion.AsSpan().SequenceEqual(after.SourceVersion) ? result : null;
     }
+
+    private async Task<T?> ReadRemoteAsync<T>(Guid id, DateTimeOffset from, DateTimeOffset to, bool requireDetails,
+        Func<DateTimeOffset, DateTimeOffset, DateTimeOffset, IReadOnlyList<ServiceHealthInterval>, T> project,
+        RemotePublicReader remote, CancellationToken token) where T : class
+    {
+        var before = await remote.ServicePolicyAsync(id, token);
+        if (before?.PublicSince is not { } publicSince ||
+            (before.PolicyVersion != PublicationPolicy.ServiceHistoryDetailsVersion &&
+             (requireDetails || before.PolicyVersion != PublicationPolicy.ServiceHistoryVersion))) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var source = await SourceVersionsAsync(db, id, token);
+        if (source is null) return null;
+        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var first = from > publicSince ? from : publicSince;
+        var oldest = now.AddDays(-90);
+        if (first < oldest) first = oldest;
+        var last = to < now ? to : now;
+        T result;
+        if (first >= last) result = project(last, last, now, []);
+        else
+        {
+            var rows = await history.ReadAsync(id, first, last, token);
+            if (rows is null) return null;
+            result = project(first, last, now, rows.Intervals);
+        }
+        var current = await SourceVersionsAsync(db, id, token);
+        return current is not null && source.Service.AsSpan().SequenceEqual(current.Service) && source.Source.AsSpan().SequenceEqual(current.Source) &&
+            before == await remote.ServicePolicyAsync(id, token) ? result : null;
+    }
+
+    private static Task<SourceVersions?> SourceVersionsAsync(ServiceObservabilityDbContext db, Guid id, CancellationToken token) =>
+        (from service in db.Services.AsNoTracking()
+         join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
+         where service.Id == id
+         select new SourceVersions(service.Version, source.Version)).SingleOrDefaultAsync(token);
+
+    private sealed record SourceVersions(byte[] Service, byte[] Source);
 
     internal static IReadOnlyList<PublicHealthPeriod> ToPeriods(IReadOnlyList<ServiceHealthInterval> intervals)
     {

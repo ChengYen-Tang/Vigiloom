@@ -17,7 +17,23 @@ public sealed class PublishedPolicies(IDbContextFactory<ResourcesDbContext> cont
         var groups = db.Groups.AsNoTracking().Where(g => g.IsPublic && g.PublicDisplayName != null &&
             g.PublicPolicyVersion == PublicationPolicy.BaselineVersion);
         if (!string.IsNullOrWhiteSpace(search)) groups = groups.Where(g => g.PublicDisplayName!.Contains(search));
-        var query = groups.Select(g => new
+        var query = GroupSummaries(db, groups);
+        var rows = await query.OrderBy(x => x.Group.PublicDisplayName).ThenBy(x => x.Group.RowId)
+            .Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
+        var items = rows.Select(MapGroup).OfType<PublishedGroupSummary>().Take(PageSize).ToArray();
+        return new(items, page, rows.Length > PageSize);
+    }
+
+    public async Task<PublishedGroupSummary?> GroupSummaryAsync(Guid id, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var groups = db.Groups.AsNoTracking().Where(g => g.Id == id && g.IsPublic && g.PublicDisplayName != null &&
+            g.PublicPolicyVersion == PublicationPolicy.BaselineVersion);
+        var row = await GroupSummaries(db, groups).SingleOrDefaultAsync(token);
+        return row is null ? null : MapGroup(row);
+    }
+
+    private static IQueryable<GroupSummaryRow> GroupSummaries(ResourcesDbContext db, IQueryable<Group> groups) => groups.Select(g => new GroupSummaryRow
         {
             Group = g,
             DeviceCount = db.DeviceGroups.Count(m => m.GroupId == g.Id && db.Devices.Any(d => d.Id == m.DeviceId && d.IsPublic && !d.IsArchived &&
@@ -26,13 +42,17 @@ public sealed class PublishedPolicies(IDbContextFactory<ResourcesDbContext> cont
             ServiceCount = db.ServiceGroups.Count(m => m.GroupId == g.Id && db.ApplicationServices.Any(s => s.Id == m.ServiceId && s.IsPublic &&
                 s.ArchivedAt == null && s.PublicDisplayName != null && (s.PublicPolicyVersion == PublicationPolicy.BaselineVersion ||
                 s.PublicPolicyVersion == PublicationPolicy.ServiceHistoryVersion || s.PublicPolicyVersion == PublicationPolicy.ServiceHistoryDetailsVersion)))
-        }).Where(x => x.DeviceCount > 0 || x.ServiceCount > 0).OrderBy(x => x.Group.PublicDisplayName).ThenBy(x => x.Group.RowId);
-        var rows = await query.Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
-        var items = rows.Where(x => x.Group.PublicPolicyVersion == PublicationPolicy.BaselineVersion &&
-                PublicationPolicy.TryValidateName(x.Group.PublicDisplayName, out _))
-            .Take(PageSize).Select(x => new PublishedGroupSummary(x.Group.Id, x.Group.PublicDisplayName!.Trim(), x.DeviceCount, x.ServiceCount,
-                Convert.ToBase64String(x.Group.Version))).ToArray();
-        return new(items, page, rows.Length > PageSize);
+        }).Where(x => x.DeviceCount > 0 || x.ServiceCount > 0);
+
+    private static PublishedGroupSummary? MapGroup(GroupSummaryRow row) =>
+        row.Group.PublicPolicyVersion == PublicationPolicy.BaselineVersion && PublicationPolicy.TryValidateName(row.Group.PublicDisplayName, out var name)
+            ? new(row.Group.Id, name, row.DeviceCount, row.ServiceCount, Convert.ToBase64String(row.Group.Version)) : null;
+
+    private sealed class GroupSummaryRow
+    {
+        public Group Group { get; init; } = null!;
+        public int DeviceCount { get; init; }
+        public int ServiceCount { get; init; }
     }
 
     public async Task<PublicPage<PublishedDevicePolicy>> DevicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
