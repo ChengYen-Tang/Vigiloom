@@ -31,6 +31,10 @@ public sealed record AgentVersionTarget(Guid UpdateId, Guid PackageId, string Pa
 
 public enum VersionAssignmentResult { Saved, NotFound, Conflict }
 
+/// <summary>An immutable update target, available after reassignment or cancellation.</summary>
+public sealed record RecordedAgentUpdateTarget(Guid UpdateId, Guid AgentId, Guid PackageId, string PackageVersion,
+    string RuntimeIdentifier, string ManifestSha256, DateTimeOffset AssignedAt);
+
 public interface IAgentVersionClient
 {
     Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token);
