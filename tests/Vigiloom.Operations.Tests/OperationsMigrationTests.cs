@@ -140,6 +140,7 @@ public sealed class OperationsMigrationTests(TestContext context)
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:Operations"] = target.ConnectionString,
+                    ["Temporal:EnableNotificationWorker"] = "false",
                     ["Temporal:Address"] = "127.0.0.1:1"
                 }));
                 web.ConfigureTestServices(services =>
