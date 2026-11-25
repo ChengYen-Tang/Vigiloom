@@ -81,6 +81,13 @@ public sealed class HistoryEndpointTests(TestContext context)
             using var update = await client.PutAsJsonAsync("/internal/v1/history/retention",
                 new RetentionChange(actor, new(30, settings.Version, preview.ConfirmationToken)), token);
             Assert.AreEqual(HttpStatusCode.OK, update.StatusCode);
+            var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
+            var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
+            var audit = await client.GetFromJsonAsync<OperationAuditPage>($"/internal/v1/audit/audit-retention?from={from}&to={to}", token);
+            Assert.AreEqual(actor, audit!.Items.Single().ActorId);
+            Assert.AreEqual(30, audit.Items.Single().AuditRetention?.CurrentDays);
+            using (var missing = await client.GetAsync($"/internal/v1/audit/missing?from={from}&to={to}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             // Run a regular scheduler against the shared storage; the Operations worker only consumes its queue.
             await using (var schedulingDb = await factory.CreateDbContextAsync(token))
             {

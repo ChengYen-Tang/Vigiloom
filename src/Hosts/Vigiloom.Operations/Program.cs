@@ -45,6 +45,7 @@ builder.Services.AddScoped<LineDeliveryQueue>();
 builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped<LineDeliveryStatus>();
 builder.Services.AddScoped<NotificationReader>();
+builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<AuditRetentionSettings>();
 builder.Services.AddScoped<AuditRetentionCleanup>();
 if (builder.Configuration.GetValue("Hangfire:Enabled", true))
@@ -74,6 +75,7 @@ builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
 app.MapLineEndpoints();
 app.MapHistoryEndpoints();
+app.MapAuditEndpoints();
 
 // The deployment exposes this endpoint only to the trusted service network.
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>
