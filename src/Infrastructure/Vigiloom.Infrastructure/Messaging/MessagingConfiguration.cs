@@ -1,5 +1,6 @@
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
+using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 using Wolverine.SqlServer;
 
@@ -22,6 +23,8 @@ public static class MessagingConfiguration
         options.Durability.MessageDeduplicationMode = MessageDeduplicationMode.CompareByHash;
         options.Durability.DeduplicationWindow = TimeSpan.FromDays(7);
         options.UseRabbitMq(brokerConnectionString).AutoProvision();
+        options.OnException<Exception>().RetryWithCooldown(
+            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15));
     }
 
     /// <summary>Routes a message requiring reliable delivery to one service's queue.</summary>

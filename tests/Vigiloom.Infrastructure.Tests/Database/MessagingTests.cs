@@ -1,6 +1,10 @@
+using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using RabbitMQ.Client;
 using Vigiloom.Infrastructure.Messaging;
 using Vigiloom.Testing.SqlServer;
 using Wolverine;
@@ -26,60 +30,110 @@ public sealed class MessagingTests
         var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
         var messageId = Guid.CreateVersion7();
         var rolledBackId = Guid.CreateVersion7();
+        var retriedId = Guid.CreateVersion7();
         var server = TestDatabaseServer.FromEnvironment();
-        await SqlTestDatabase.ExecuteAsync(server, async (senderDb, token) =>
-        await SqlTestDatabase.ExecuteAsync(server, async (receiverDb, innerToken) =>
+        Exception? failure = null;
+        try
         {
-            await using (var setup = CreateContext(senderDb.ConnectionString))
-                await setup.Database.EnsureCreatedAsync(innerToken);
-            await using (var setup = CreateContext(receiverDb.ConnectionString))
-                await setup.Database.EnsureCreatedAsync(innerToken);
+            await SqlTestDatabase.ExecuteAsync(server, async (senderDb, token) =>
+            await SqlTestDatabase.ExecuteAsync(server, async (receiverDb, innerToken) =>
+            {
+                await using (var setup = CreateContext(senderDb.ConnectionString))
+                    await setup.Database.EnsureCreatedAsync(innerToken);
+                await using (var setup = CreateContext(receiverDb.ConnectionString))
+                    await setup.Database.EnsureCreatedAsync(innerToken);
 
-            using var sender = BuildHost(senderDb.ConnectionString, broker!, queue, receiver: false);
-            await sender.StartAsync(innerToken);
-            await using (var scope = sender.Services.CreateAsyncScope())
-            {
-                var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
-                var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
-                outbox.Enroll(context);
-                context.Receipts.Add(new MessageReceipt { Id = rolledBackId, Marker = "duplicate" });
-                context.Receipts.Add(new MessageReceipt { Id = Guid.CreateVersion7(), Marker = "duplicate" });
-                await outbox.PublishAsync(new MessagingTestMessage(rolledBackId), new DeliveryOptions { DeduplicationId = rolledBackId.ToString("N") });
-                await Assert.ThrowsAsync<DbUpdateException>(() => outbox.SaveChangesAndFlushMessagesAsync(innerToken));
-            }
-            await using (var scope = sender.Services.CreateAsyncScope())
-            {
-                var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
-                var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
-                outbox.Enroll(context);
-                context.Receipts.Add(new MessageReceipt { Id = messageId, Marker = messageId.ToString("N") });
-                await outbox.PublishAsync(new MessagingTestMessage(messageId), new DeliveryOptions { DeduplicationId = messageId.ToString("N") });
-                await outbox.SaveChangesAndFlushMessagesAsync(innerToken);
-            }
-
-            using var receiver = BuildHost(receiverDb.ConnectionString, broker!, queue, receiver: true);
-            await receiver.StartAsync(innerToken);
-            try
-            {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(innerToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(30));
-                while (true)
+                using var sender = BuildHost(senderDb.ConnectionString, broker!, queue, receiver: false);
+                await sender.StartAsync(innerToken);
+                await using (var scope = sender.Services.CreateAsyncScope())
                 {
-                    await using var read = CreateContext(receiverDb.ConnectionString);
-                    if (await read.Receipts.AnyAsync(x => x.Id == messageId, timeout.Token))
-                    {
-                        Assert.IsFalse(await read.Receipts.AnyAsync(x => x.Id == rolledBackId, timeout.Token));
-                        break;
-                    }
-                    await Task.Delay(250, timeout.Token);
+                    var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
+                    var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
+                    outbox.Enroll(context);
+                    context.Receipts.Add(new MessageReceipt { Id = rolledBackId, Marker = "duplicate" });
+                    context.Receipts.Add(new MessageReceipt { Id = Guid.CreateVersion7(), Marker = "duplicate" });
+                    await outbox.PublishAsync(new MessagingTestMessage(rolledBackId), new DeliveryOptions { DeduplicationId = rolledBackId.ToString("N") });
+                    await Assert.ThrowsAsync<DbUpdateException>(() => outbox.SaveChangesAndFlushMessagesAsync(innerToken));
                 }
-            }
-            finally
-            {
-                await receiver.StopAsync(CancellationToken.None);
-                await sender.StopAsync(CancellationToken.None);
-            }
-        }, token), TestContext.CancellationToken);
+                await using (var scope = sender.Services.CreateAsyncScope())
+                {
+                    var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
+                    var context = scope.ServiceProvider.GetRequiredService<MessagingTestContext>();
+                    outbox.Enroll(context);
+                    context.Receipts.Add(new MessageReceipt { Id = messageId, Marker = messageId.ToString("N") });
+                    await outbox.PublishAsync(new MessagingTestMessage(messageId), new DeliveryOptions { DeduplicationId = messageId.ToString("N") });
+                    await outbox.SaveChangesAndFlushMessagesAsync(innerToken);
+                }
+
+                using var receiver = BuildHost(receiverDb.ConnectionString, broker!, queue, receiver: true);
+                await receiver.StartAsync(innerToken);
+                try
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(innerToken);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    while (true)
+                    {
+                        await using var read = CreateContext(receiverDb.ConnectionString);
+                        if (await read.Receipts.AnyAsync(x => x.Id == messageId, timeout.Token))
+                        {
+                            Assert.IsFalse(await read.Receipts.AnyAsync(x => x.Id == rolledBackId, timeout.Token));
+                            break;
+                        }
+                        await Task.Delay(250, timeout.Token);
+                    }
+                    while (await CountIncomingAsync(receiverDb.ConnectionString, timeout.Token) < 1)
+                        await Task.Delay(250, timeout.Token);
+                    var before = await CountIncomingAsync(receiverDb.ConnectionString, timeout.Token);
+                    await sender.Services.GetRequiredService<IMessageBus>().PublishAsync(
+                        new MessagingTestMessage(messageId),
+                        new DeliveryOptions { DeduplicationId = messageId.ToString("N") });
+                    while (await CountIncomingAsync(receiverDb.ConnectionString, timeout.Token) <= before)
+                        await Task.Delay(250, timeout.Token);
+                    Assert.AreEqual(1, MessagingTestHandler.Attempts[messageId]);
+                    await sender.Services.GetRequiredService<IMessageBus>().PublishAsync(
+                        new MessagingTestMessage(retriedId, FailOnce: true),
+                        new DeliveryOptions { DeduplicationId = retriedId.ToString("N") });
+                    while (true)
+                    {
+                        await using var read = CreateContext(receiverDb.ConnectionString);
+                        if (await read.Receipts.AnyAsync(x => x.Id == retriedId, timeout.Token)) break;
+                        await Task.Delay(250, timeout.Token);
+                    }
+                    Assert.AreEqual(2, MessagingTestHandler.Attempts[retriedId]);
+                }
+                finally
+                {
+                    await receiver.StopAsync(CancellationToken.None);
+                    await sender.StopAsync(CancellationToken.None);
+                }
+            }, token), TestContext.CancellationToken);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+        try
+        {
+            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
+            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
+            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
+        }
+        catch (Exception cleanupFailure)
+        {
+            throw new AggregateException($"Failed to delete test queue {queue}.",
+                failure is null ? [cleanupFailure] : [failure, cleanupFailure]);
+        }
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static async Task<int> CountIncomingAsync(string database, CancellationToken token)
+    {
+        await using var connection = new SqlConnection(database);
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM wolverine.wolverine_incoming_envelopes WHERE status = 'Handled'";
+        return (int)(await command.ExecuteScalarAsync(token))!;
     }
 
     private static IHost BuildHost(string database, string broker, string queue, bool receiver)
@@ -104,7 +158,7 @@ public sealed class MessagingTests
         new(new DbContextOptionsBuilder<MessagingTestContext>().UseSqlServer(connection).Options);
 }
 
-public sealed record MessagingTestMessage(Guid Id);
+public sealed record MessagingTestMessage(Guid Id, bool FailOnce = false);
 public sealed class MessageReceipt { public Guid Id { get; set; } public string Marker { get; set; } = ""; }
 
 public sealed class MessagingTestContext(DbContextOptions<MessagingTestContext> options) : DbContext(options)
@@ -116,9 +170,13 @@ public sealed class MessagingTestContext(DbContextOptions<MessagingTestContext> 
 
 public sealed class MessagingTestHandler
 {
+    public static ConcurrentDictionary<Guid, int> Attempts { get; } = new();
+
     [Deduplicated]
     public static async Task Handle(MessagingTestMessage message, MessagingTestContext context)
     {
+        var attempts = Attempts.AddOrUpdate(message.Id, 1, (_, value) => value + 1);
+        if (message.FailOnce && attempts == 1) throw new InvalidOperationException("Simulated transient failure");
         context.Receipts.Add(new MessageReceipt { Id = message.Id, Marker = message.Id.ToString("N") });
         await context.SaveChangesAsync();
     }
