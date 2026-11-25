@@ -47,6 +47,8 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.PublishReliablyTo<AgentRegistrationAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<AgentVersionAssignmentAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<PublicTemplateAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
+    options.PublishReliablyTo<PublicationSettingAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
+    options.PublishReliablyTo<ApplicationPublicationChanged>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
@@ -74,6 +76,8 @@ builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentRegistration>();
 builder.Services.AddScoped<PublicTemplates>();
 builder.Services.AddScoped<TemplateChanges>();
+builder.Services.AddScoped<PublishedPolicies>();
+builder.Services.AddScoped<PublicationSettingsManager>();
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
@@ -103,6 +107,10 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
+internalApi.MapGet("/publications/devices/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
+    await policies.DeviceAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
+internalApi.MapGet("/publications/services/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
+    await policies.ServiceAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapInternalDeviceManagement();
 internalApi.MapInternalGroupManagement();
 internalApi.MapInternalPackages();
