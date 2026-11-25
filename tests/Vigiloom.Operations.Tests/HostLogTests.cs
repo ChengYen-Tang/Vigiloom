@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -81,8 +82,9 @@ public sealed class HostLogTests(TestContext context)
             using (var conflicting = await client.PostAsJsonAsync("/internal/v1/host-logs", input with { Batch = batch with { Items = [item with { Content = "changed" }] } }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, conflicting.StatusCode);
             var payload = new OtlpLog { Body = new AnyValue { StringValue = "Application event" } }.ToByteArray();
+            var traceId = Enumerable.Repeat((byte)1, 16).ToArray();
             var appLog = new ApplicationLogSubmission(Guid.CreateVersion7(), Guid.CreateVersion7(), null,
-                [1], [], "", "", [new ApplicationLogItem(DateTimeOffset.UtcNow, false, false, null, null, payload)]);
+                [1], [], "", "", [new ApplicationLogItem(DateTimeOffset.UtcNow, false, false, traceId, null, payload)]);
             using (var application = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
                 Assert.AreEqual(HttpStatusCode.OK, application.StatusCode);
             using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
@@ -100,9 +102,35 @@ public sealed class HostLogTests(TestContext context)
             Assert.AreEqual(2, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "service-log" && x.ResourceId == appLog.ServiceId, token));
             var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
             var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
+            var history = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}", token);
+            Assert.HasCount(2, history!.Items);
+            Assert.HasCount(2, history.Contexts);
+            CollectionAssert.AreEqual(payload, history.Items[0].Record);
+            var filtered = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId={Convert.ToHexString(traceId)}", token);
+            Assert.HasCount(2, filtered!.Items);
+            var absent = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId={new string('2', 32)}", token);
+            Assert.IsEmpty(absent!.Items);
+            var otherHistory = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{Guid.CreateVersion7():D}?from={from}&to={until}&page=1", token);
+            Assert.IsEmpty(otherHistory!.Items);
+            using (var invalidTrace = await client.GetAsync($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId=abc", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidTrace.StatusCode);
             var events = await client.GetFromJsonAsync<EventTimelinePage>($"/internal/v1/events?from={from}&until={until}&source=service-log", token);
             Assert.HasCount(2, events!.Items);
             Assert.IsTrue(events.Items.All(entry => entry.Summary.Contains("Application event", StringComparison.Ordinal)));
+            var existingLog = await logs.LogRecords.FirstAsync(token);
+            for (var i = 0; i < 25; i++)
+                logs.LogRecords.Add(new Vigiloom.Modules.AlertingOperations.Domain.Logs.LogRecord
+                {
+                    ServiceId = appLog.ServiceId, ContextId = existingLog.ContextId, OccurredAt = existingLog.OccurredAt,
+                    ReceivedAt = existingLog.ReceivedAt, RecordPayload = payload
+                });
+            await logs.SaveChangesAsync(token);
+            var firstPage = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}", token);
+            var secondPage = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=2", token);
+            Assert.HasCount(25, firstPage!.Items);
+            Assert.IsTrue(firstPage.HasMore);
+            Assert.HasCount(2, secondPage!.Items);
+            Assert.IsFalse(secondPage.HasMore);
             await logs.LogRecords.ExecuteDeleteAsync(token);
             await using (var scope = host.Services.CreateAsyncScope())
                 Assert.AreEqual(2L, await scope.ServiceProvider.GetRequiredService<TimelineLogCleanup>().RunAsync(token));
