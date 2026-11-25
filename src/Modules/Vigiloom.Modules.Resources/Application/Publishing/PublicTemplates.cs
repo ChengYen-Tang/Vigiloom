@@ -6,13 +6,13 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
+
+using Vigiloom.Modules.Resources.Application;
 
 namespace Vigiloom.Modules.Resources.Application.Publishing;
 
 /// <summary>Owns publication templates and their default selection.</summary>
-public sealed class PublicTemplates(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IDbContextOutbox outbox)
+public sealed class PublicTemplates(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, ResourceWork outbox)
 {
     public async Task<PublicationTemplatePage> ListAsync(int page, CancellationToken token)
     {
@@ -47,9 +47,9 @@ public sealed class PublicTemplates(IDbContextFactory<ResourcesDbContext> contex
         db.PublicTemplates.Add(row);
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateException error) when (error.InnerException is SqlException { Number: 2601 or 2627 }) { return new(TemplateOperationStatus.Conflict); }
-        outbox.Enroll(db);
-        await outbox.PublishAsync(new PublicTemplateAuditRecorded(actor, row.Id, now, PublicationTemplateAction.Created, 0));
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new PublicTemplateAuditRecorded(actor, row.Id, now, PublicationTemplateAction.Created, 0), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         if (row.HistorySince == PublicTemplate.PendingHistorySince)
             await ConfirmHistoryAsync(row.Id, row.Version, token);
         return new(TemplateOperationStatus.Success, await GetAsync(row.Id, false, token));
@@ -77,9 +77,9 @@ public sealed class PublicTemplates(IDbContextFactory<ResourcesDbContext> contex
             if (previous is not null) { previous.SetDefault(false, now); await db.SaveChangesAsync(token); }
             row.SetDefault(true, now);
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new PublicTemplateAuditRecorded(actor, row.Id, now, PublicationTemplateAction.DefaultChanged, 0));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new PublicTemplateAuditRecorded(actor, row.Id, now, PublicationTemplateAction.DefaultChanged, 0), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
         }
         catch (DbUpdateConcurrencyException) { return new(TemplateOperationStatus.Conflict); }
         catch (DbUpdateException error) when (error.InnerException is SqlException { Number: 2601 or 2627 }) { return new(TemplateOperationStatus.Conflict); }

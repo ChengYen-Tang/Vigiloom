@@ -66,3 +66,7 @@ and TLS deployment. After creating the first administrator, remove the setup
 token from `.env` and run `docker compose up -d --force-recreate web` so the
 new container no longer receives it. Keep persistent volumes and secrets when updating the
 image. This container example still requires real deployment verification.
+
+## Temporal deployment
+
+The `temporal` directory includes a single-host Temporal and PostgreSQL Compose example and its setup instructions. It is separate from the central platform Compose example. Service-specific Temporal integration is delivered with the corresponding microservice.

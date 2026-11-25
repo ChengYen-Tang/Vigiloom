@@ -2,16 +2,17 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using RabbitMQ.Client;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.Authentication;
-using Vigiloom.Infrastructure.Messaging;
+using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Application.AgentIdentity;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
-using Wolverine;
 
 namespace Vigiloom.Modules.Resources.Tests;
 
@@ -25,12 +26,6 @@ public sealed class AgentRegistrationTests
     [TestMethod]
     public async Task EnrollmentAuthenticatesAndRevocationTakesEffect()
     {
-        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
-        if (string.IsNullOrWhiteSpace(broker)) Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ for the RabbitMQ integration test.");
-        var suffix = Guid.CreateVersion7().ToString("N");
-        var agentQueue = "vigiloom-test-agent-registration-" + suffix;
-        var auditQueue = "vigiloom-test-agent-audit-" + suffix;
-        try
         {
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
             {
@@ -38,15 +33,15 @@ public sealed class AgentRegistrationTests
                 builder.Services.AddModuleSqlServer<ResourcesDbContext>(database.ConnectionString, "resources");
                 builder.Services.AddSingleton(TimeProvider.System);
                 builder.Services.AddScoped<AgentRegistration>();
-                builder.UseWolverine(options =>
-                {
-                    options.UseVigiloomMessaging(database.ConnectionString, broker!);
-                    options.Discovery.DisableConventionalDiscovery();
-                    options.PublishReliablyTo<AgentRegistrationChanged>(agentQueue);
-                    options.PublishReliablyTo<AgentRegistrationAudit>(auditQueue);
-                });
+                builder.Services.AddScoped<IOutboxHandler, TestTemporalOutboxHandler>();
+                builder.Services.AddScoped<OutboxWriter>();
+                builder.Services.AddScoped<TemporalWorkWriter>();
+                builder.Services.AddScoped<ResourceWork>();
                 using var host = builder.Build();
                 var contexts = host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
                 var device = new Device("Server", "server.example", true, DateTimeOffset.UtcNow);
                 await using (var db = await contexts.CreateDbContextAsync(token))
                 {
@@ -96,13 +91,6 @@ public sealed class AgentRegistrationTests
                 finally { await host.StopAsync(CancellationToken.None); }
             }, TestContext.CancellationToken);
         }
-        finally
-        {
-            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
-            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
-        }
+
     }
 }

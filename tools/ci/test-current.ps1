@@ -22,8 +22,8 @@ try {
     $solution.Save($temporary)
     & dotnet test $temporary --configuration Release --no-build --no-restore -m:2
     if ($LASTEXITCODE -ne 0) { throw "Current service tests failed with exit code $LASTEXITCODE." }
-    & dotnet test (Join-Path $root 'tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~MessagingTests'
-    if ($LASTEXITCODE -ne 0) { throw "Messaging tests failed with exit code $LASTEXITCODE." }
+    & dotnet test (Join-Path $root 'tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~ServiceWorkTests|FullyQualifiedName~TransactionalWorkTests|FullyQualifiedName~CrossProcessTemporalTests'
+    if ($LASTEXITCODE -ne 0) { throw "Temporal work tests failed with exit code $LASTEXITCODE." }
 } finally {
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction Stop }
 }

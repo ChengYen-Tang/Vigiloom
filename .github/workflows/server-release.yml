@@ -63,6 +63,7 @@ jobs:
           New-Item -ItemType Directory -Force (Join-Path $package 'docs') | Out-Null
           Copy-Item -Recurse docs/architecture (Join-Path $package 'docs/architecture')
           Copy-Item docs/getting-started.md (Join-Path $package 'docs/getting-started.md')
+          Copy-Item -Recurse packaging/temporal (Join-Path $package 'temporal')
           if (-not $IsWindows) {
             Copy-Item packaging/server/Dockerfile $package
             Copy-Item packaging/server/compose.yaml $package

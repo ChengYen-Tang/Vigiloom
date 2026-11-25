@@ -8,14 +8,14 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
+
+using Vigiloom.Modules.Resources.Application;
 
 namespace Vigiloom.Modules.Resources.Application.Publishing;
 
 /// <summary>Previews and applies changes to templates and their assigned devices.</summary>
 public sealed class TemplateChanges(IDbContextFactory<ResourcesDbContext> contexts, PublicTemplates templates,
-    IDataProtectionProvider protection, TimeProvider clock, IDbContextOutbox outbox)
+    IDataProtectionProvider protection, TimeProvider clock, ResourceWork outbox)
 {
     private readonly IDataProtector updateProtector = protection.CreateProtector("Vigiloom.ResourceTemplate.Update.v1");
     private readonly IDataProtector retireProtector = protection.CreateProtector("Vigiloom.ResourceTemplate.Retire.v1");
@@ -69,9 +69,9 @@ public sealed class TemplateChanges(IDbContextFactory<ResourcesDbContext> contex
         {
             row.Update(proof.Proposed.Name!, proof.Proposed.ShowLatency, proof.Proposed.ShowObservedAt, now, proof.Proposed.HistoryDays ?? row.HistoryDays);
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new PublicTemplateAuditRecorded(actor, id, now, PublicationTemplateAction.Updated, impact.Count));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new PublicTemplateAuditRecorded(actor, id, now, PublicationTemplateAction.Updated, impact.Count), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
         }
         catch (DbUpdateConcurrencyException) { return new(TemplateOperationStatus.Conflict); }
         catch (DbUpdateException error) when (error.InnerException is SqlException { Number: 2601 or 2627 }) { return new(TemplateOperationStatus.Conflict); }
@@ -119,11 +119,11 @@ public sealed class TemplateChanges(IDbContextFactory<ResourcesDbContext> contex
             row.Retire(now);
             await db.SaveChangesAsync(token);
             if (replacement is not null) { replacement.SetDefault(true, now); await db.SaveChangesAsync(token); }
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new PublicTemplateAuditRecorded(actor, id, now, PublicationTemplateAction.Retired, impact.Count));
-            if (wasDefault) await outbox.PublishAsync(new PublicTemplateAuditRecorded(actor, replacement?.Id ?? id, now,
-                replacement is null ? PublicationTemplateAction.DefaultCleared : PublicationTemplateAction.DefaultChanged, 0));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new PublicTemplateAuditRecorded(actor, id, now, PublicationTemplateAction.Retired, impact.Count), token);
+            if (wasDefault) await outbox.PublishAsync(db, new PublicTemplateAuditRecorded(actor, replacement?.Id ?? id, now,
+                replacement is null ? PublicationTemplateAction.DefaultCleared : PublicationTemplateAction.DefaultChanged, 0), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
         }
         catch (DbUpdateConcurrencyException) { return TemplateOperationStatus.Conflict; }
         catch (DbUpdateException error) when (error.InnerException is SqlException { Number: 2601 or 2627 }) { return TemplateOperationStatus.Conflict; }

@@ -2,14 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Operations;
-using Vigiloom.Infrastructure.Messaging;
+using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Application.AgentPackages;
@@ -17,7 +20,6 @@ using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
-using Wolverine;
 using Vigiloom.UpdateSecurity.AgentPackages;
 
 namespace Vigiloom.Modules.Resources.Tests;
@@ -30,17 +32,14 @@ public sealed class DeviceChangeMessagingTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public async Task CommittedDeviceIsSentToNetworkAndAgentServices()
+    public async Task CommittedDeviceCreatesWorkForNetworkAndAgentServices()
     {
-        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
-        if (string.IsNullOrWhiteSpace(broker)) Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ for the RabbitMQ integration test.");
         var suffix = Guid.CreateVersion7().ToString("N");
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
         var observabilityQueue = "vigiloom-test-observation-" + suffix;
         var sources = new TestSources();
-        try
         {
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
             {
@@ -64,26 +63,21 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<PublicationSettingsManager>();
                 builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
                 builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
-                builder.UseWolverine(options =>
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    options.UseVigiloomMessaging(database.ConnectionString, broker!);
-                    options.Discovery.DisableConventionalDiscovery();
-                    options.PublishReliablyTo<NetworkDeviceChanged>(networkQueue);
-                    options.PublishReliablyTo<AgentDeviceChanged>(agentQueue);
-                    options.PublishReliablyTo<AgentAssignmentChanged>(agentQueue);
-                    options.PublishReliablyTo<AgentVersionAssignmentAudit>(auditQueue);
-                    options.PublishReliablyTo<PublicTemplateAuditRecorded>(auditQueue);
-                    options.PublishReliablyTo<PublicationSettingAudit>(auditQueue);
-                    options.PublishReliablyTo<ApplicationPublicationChanged>(observabilityQueue);
-                    options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
-                    options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
-                    options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
-                    options.PublishReliablyTo<ApplicationStateChanged>(observabilityQueue);
-                    options.PublishReliablyTo<ApplicationStateAudit>(auditQueue);
+                    ["Work:NetworkQueue"] = networkQueue, ["Work:AgentQueue"] = agentQueue,
+                    ["Work:AuditQueue"] = auditQueue, ["Work:ObservabilityQueue"] = observabilityQueue
                 });
+                builder.Services.AddScoped<IOutboxHandler, TestTemporalOutboxHandler>();
+                builder.Services.AddScoped<OutboxWriter>();
+                builder.Services.AddScoped<TemporalWorkWriter>();
+                builder.Services.AddScoped<ResourceWork>();
                 using var host = builder.Build();
                 await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                     await db.Database.MigrateAsync(token);
+                var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
                 await host.StartAsync(token);
                 try
                 {
@@ -95,14 +89,12 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(DeviceResultStatus.Success, result.Status);
                         id = result.Device!.Id;
                     }
-                    var factory = new ConnectionFactory { Uri = new Uri(broker!) };
-                    await using var connection = await factory.CreateConnectionAsync(token);
-                    await using var channel = await connection.CreateChannelAsync(cancellationToken: token);
+                    var channel = new TestWorkQueue(database.ConnectionString);
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                     timeout.CancelAfter(TimeSpan.FromSeconds(20));
                     foreach (var queue in new[] { networkQueue, agentQueue })
                     {
-                        BasicGetResult? message;
+                        TestWorkMessage? message;
                         while ((message = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken: timeout.Token)) is null)
                             await Task.Delay(100, timeout.Token);
                         Assert.Contains(id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
@@ -115,7 +107,7 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(GroupResultStatus.Success, created.Status);
                         groupId = created.Group!.Id;
                     }
-                    BasicGetResult? groupMessage;
+                    TestWorkMessage? groupMessage;
                     while ((groupMessage = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
                         await Task.Delay(100, timeout.Token);
                     Assert.Contains(groupId.ToString("D"), System.Text.Encoding.UTF8.GetString(groupMessage.Body.Span));
@@ -142,7 +134,7 @@ public sealed class DeviceChangeMessagingTests
                     }
                     foreach (var queue in new[] { auditQueue, observabilityQueue })
                     {
-                        BasicGetResult? message;
+                        TestWorkMessage? message;
                         while ((message = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken: timeout.Token)) is null)
                             await Task.Delay(100, timeout.Token);
                         Assert.Contains(serviceId.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
@@ -160,7 +152,7 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(1, await db.ServiceGroups.CountAsync(m => m.GroupId == self.Id && m.ServiceId == ownId, token));
                         Assert.AreEqual(1, await db.ApplicationServices.CountAsync(s => s.Id == ownId, token));
                     }
-                    BasicGetResult? ownMessage;
+                    TestWorkMessage? ownMessage;
                     while ((ownMessage = await channel.BasicGetAsync(observabilityQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
                         await Task.Delay(100, timeout.Token);
                     Assert.Contains(ownId.Value.ToString("D"), System.Text.Encoding.UTF8.GetString(ownMessage.Body.Span));
@@ -186,11 +178,11 @@ public sealed class DeviceChangeMessagingTests
                     using (var notificationTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
                     {
                         notificationTimeout.CancelAfter(TimeSpan.FromSeconds(20));
-                        BasicGetResult? assignmentMessage;
+                        TestWorkMessage? assignmentMessage;
                         while ((assignmentMessage = await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
                             await Task.Delay(100, notificationTimeout.Token);
                         Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentMessage.Body.Span));
-                        BasicGetResult? assignmentAudit;
+                        TestWorkMessage? assignmentAudit;
                         while ((assignmentAudit = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
                             await Task.Delay(100, notificationTimeout.Token);
                         Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentAudit.Body.Span));
@@ -219,7 +211,7 @@ public sealed class DeviceChangeMessagingTests
                         auditTimeout.CancelAfter(TimeSpan.FromSeconds(20));
                         for (var i = 0; i < 2; i++)
                         {
-                            BasicGetResult? message;
+                            TestWorkMessage? message;
                             while ((message = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: auditTimeout.Token)) is null)
                                 await Task.Delay(100, auditTimeout.Token);
                             Assert.Contains(template.Id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
@@ -424,15 +416,26 @@ public sealed class DeviceChangeMessagingTests
                 finally { await host.StopAsync(CancellationToken.None); }
             }, TestContext.CancellationToken);
         }
-        finally
+
+    }
+
+    private sealed record TestWorkMessage(ReadOnlyMemory<byte> Body);
+
+    private sealed class TestWorkQueue(string connectionString)
+    {
+        private readonly Dictionary<string, long> offsets = new(StringComparer.Ordinal);
+        public async Task<TestWorkMessage?> BasicGetAsync(string queue, bool autoAck, CancellationToken cancellationToken)
         {
-            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
-            await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
-            await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
-            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT TOP (1) RowId, Payload FROM scheduling.Outbox WHERE RowId > @offset AND JSON_VALUE(Payload, '$.TaskQueue') = @queue ORDER BY RowId";
+            command.Parameters.AddWithValue("@offset", offsets.GetValueOrDefault(queue));
+            command.Parameters.AddWithValue("@queue", queue);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)) return null;
+            if (autoAck) offsets[queue] = reader.GetInt64(0);
+            return new TestWorkMessage(System.Text.Encoding.UTF8.GetBytes(reader.GetString(1)));
         }
     }
 

@@ -3,14 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
 using static Vigiloom.Infrastructure.Authentication.AgentCredentials;
+
+using Vigiloom.Modules.Resources.Application;
 
 namespace Vigiloom.Modules.Resources.Application.AgentIdentity;
 
 /// <summary>Owns device-bound Agent registration and credentials.</summary>
-public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, IDbContextOutbox outbox)
+public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, ResourceWork outbox)
 {
     public async Task<DeviceAgentRegistrations?> ListAsync(Guid deviceId, CancellationToken token)
     {
@@ -45,10 +45,10 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
                 Verifier = SHA256.HashData(secret), CreatedAt = now, ExpiresAt = now.AddMinutes(15) };
             db.AgentEnrollments.Add(enrollment);
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            if (active is not null) await outbox.PublishAsync(new AgentRegistrationChanged(active.Id, deviceId, true));
-            await outbox.PublishAsync(new AgentRegistrationAudit(deviceId, active?.Id, actorId, "EnrollmentIssued", now));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            if (active is not null) await outbox.PublishAsync(db, new AgentRegistrationChanged(active.Id, deviceId, true), token);
+            await outbox.PublishAsync(db, new AgentRegistrationAudit(deviceId, active?.Id, actorId, "EnrollmentIssued", now), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
             return new(AgentRegistrationStatus.Success, Encode("vle", enrollment.Id, secret), enrollment.ExpiresAt);
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
@@ -82,10 +82,10 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
             db.Agents.Add(agent);
             enrollment.AgentId = agent.Id;
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new AgentRegistrationChanged(agent.Id, device.Id, false));
-            await outbox.PublishAsync(new AgentRegistrationAudit(device.Id, agent.Id, null, "AgentEnrolled", now));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new AgentRegistrationChanged(agent.Id, device.Id, false), token);
+            await outbox.PublishAsync(db, new AgentRegistrationAudit(device.Id, agent.Id, null, "AgentEnrolled", now), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
             return new(AgentRegistrationStatus.Success, agent.Id);
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
@@ -152,9 +152,9 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
             agent.PendingVerifier = verifier.ToArray();
             agent.PendingUntil = now.AddMinutes(15);
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationStarted", now));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationStarted", now), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
             return AgentRegistrationStatus.Success;
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
@@ -182,9 +182,9 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
             agent.PendingVerifier = null;
             agent.PendingUntil = null;
             await db.SaveChangesAsync(token);
-            outbox.Enroll(db);
-            await outbox.PublishAsync(new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationFinished", now));
-            await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+            await outbox.PublishAsync(db, new AgentRegistrationAudit(device.Id, agent.Id, null, "RotationFinished", now), token);
+            await db.Database.CurrentTransaction!.CommitAsync(token);
             return AgentRegistrationStatus.Success;
         }
         finally { CryptographicOperations.ZeroMemory(secret); }
@@ -203,9 +203,9 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
         var now = clock.GetUtcNow();
         enrollment.RevokedAt = now;
         await db.SaveChangesAsync(token);
-        outbox.Enroll(db);
-        await outbox.PublishAsync(new AgentRegistrationAudit(enrollment.DeviceId, enrollment.AgentId, actorId, "EnrollmentRevoked", now));
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new AgentRegistrationAudit(enrollment.DeviceId, enrollment.AgentId, actorId, "EnrollmentRevoked", now), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         return AgentRegistrationStatus.Success;
     }
 
@@ -222,10 +222,10 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
         var now = clock.GetUtcNow();
         agent.RevokedAt = now;
         await db.SaveChangesAsync(token);
-        outbox.Enroll(db);
-        await outbox.PublishAsync(new AgentRegistrationChanged(agent.Id, agent.DeviceId, true));
-        await outbox.PublishAsync(new AgentRegistrationAudit(agent.DeviceId, agent.Id, actorId, "AgentRevoked", now));
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new AgentRegistrationChanged(agent.Id, agent.DeviceId, true), token);
+        await outbox.PublishAsync(db, new AgentRegistrationAudit(agent.DeviceId, agent.Id, actorId, "AgentRevoked", now), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         return AgentRegistrationStatus.Success;
     }
 

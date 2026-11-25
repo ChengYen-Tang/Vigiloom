@@ -6,14 +6,14 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Wolverine;
-using Wolverine.EntityFrameworkCore;
+
+using Vigiloom.Modules.Resources.Application;
 
 namespace Vigiloom.Modules.Resources.Application.Publishing;
 
 /// <summary>Owns the public/private settings of monitored resources.</summary>
 public sealed class PublicationSettingsManager(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock,
-    IDbContextOutbox outbox, ILogger<PublicationSettingsManager> logger)
+    ResourceWork outbox, ILogger<PublicationSettingsManager> logger)
 {
     public async Task<PublicationSettings?> GetAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
     {
@@ -114,10 +114,10 @@ public sealed class PublicationSettingsManager(IDbContextFactory<ResourcesDbCont
         }
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateConcurrencyException) { return new(PublicationSaveStatus.Conflict); }
-        outbox.Enroll(db);
-        await outbox.PublishAsync(new PublicationSettingAudit(actor, id, now, kind, previous, change.Public, changedName, changedTemplate, changedPolicy));
-        if (service is not null) await outbox.PublishAsync(new ApplicationPublicationChanged(id, service.Version));
-        await outbox.SaveChangesAndFlushMessagesAsync(token);
+
+        await outbox.PublishAsync(db, new PublicationSettingAudit(actor, id, now, kind, previous, change.Public, changedName, changedTemplate, changedPolicy), token);
+        if (service is not null) await outbox.PublishAsync(db, new ApplicationPublicationChanged(id, service.Version), token);
+        await db.Database.CurrentTransaction!.CommitAsync(token);
         if (device?.PublicSince == Device.PendingPublicSince) await DevicePublicationPeriod.ConfirmAsync(contexts, id, device.Version, logger, token);
         if (service?.PublicSince == DateTimeOffset.MaxValue) await ConfirmServiceAsync(id, service.Version, token);
         return new(PublicationSaveStatus.Updated, await GetAsync(kind, id, token));
