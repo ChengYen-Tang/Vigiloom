@@ -16,6 +16,7 @@ builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(
 builder.Services.AddIdentityAccessOperations();
 builder.Services.AddScoped<AdministratorActorValidator>();
 builder.Services.AddScoped<AccountActorValidator>();
+builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication().AddIdentityCookies();
 builder.Services.AddIdentityCore<Account>().AddSignInManager();
@@ -26,6 +27,7 @@ app.MapCredentialManagementEndpoints();
 app.MapAccountManagementEndpoints();
 app.MapAccountPasswordEndpoints();
 app.MapTwoFactorSettingsEndpoints();
+app.MapIdentityAuditEndpoints();
 
 // This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
 app.MapPost("/internal/identity/api-credentials/validate", async (

@@ -19,9 +19,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Contracts.Identity;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -46,6 +48,7 @@ public sealed class RemoteIdentityHttpTests
             var accountManagementRequests = 0;
             var passwordOperationRequests = 0;
             var twoFactorSettingRequests = 0;
+            var auditRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -83,6 +86,8 @@ public sealed class RemoteIdentityHttpTests
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref passwordOperationRequests))));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteTwoFactorSettings))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref twoFactorSettingRequests))));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteIdentityAuditReader))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref auditRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -215,6 +220,27 @@ public sealed class RemoteIdentityHttpTests
                 Assert.IsNotNull(createdDocument.QuerySelector("textarea[aria-label='一次性設定密碼代碼']"));
             }
             Assert.IsGreaterThan(beforeCreate, accountManagementRequests);
+            var auditReader = scope.ServiceProvider.GetRequiredService<IdentityAuditReader>();
+            var auditQuery = new OperationAuditQuery(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddMinutes(1), 1);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await auditReader.QueryAsync(principal, AuditFeedSource.Accounts, auditQuery, token));
+            var auditPage = await auditReader.QueryAsync(adminPrincipal, AuditFeedSource.Accounts, auditQuery, token);
+            Assert.IsTrue(auditPage.Items.Any(item => item.Action == AuditFeedAction.AccountCreated));
+            var actorNames = await auditReader.NamesAsync(adminPrincipal, [administrator.Id], token);
+            Assert.AreEqual("remote-admin", actorNames[administrator.Id]);
+            var from = Uri.EscapeDataString(auditQuery.From.ToString("O", CultureInfo.InvariantCulture));
+            var to = Uri.EscapeDataString(auditQuery.To.ToString("O", CultureInfo.InvariantCulture));
+            using (var auditResponse = await adminBrowser.GetAsync($"/api/v1/operations/audit-feed/accounts?from={from}&to={to}", token))
+                Assert.AreEqual(HttpStatusCode.OK, auditResponse.StatusCode);
+            Assert.IsGreaterThan(3, auditRequests);
+            var beforeAuditPage = auditRequests;
+            var fromDate = DateTimeOffset.UtcNow.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var toDate = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            using (var auditUi = await adminBrowser.GetAsync($"/settings/audit?source=accounts&from={fromDate}&to={toDate}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, auditUi.StatusCode);
+                Assert.Contains("remote-admin", await auditUi.Content.ReadAsStringAsync(token));
+            }
+            Assert.IsGreaterThan(beforeAuditPage, auditRequests);
             using var managementPage = await adminBrowser.GetAsync("/account/api-credentials", token);
             Assert.AreEqual(HttpStatusCode.OK, managementPage.StatusCode);
             var managementDocument = await new HtmlParser().ParseDocumentAsync(await managementPage.Content.ReadAsStringAsync(token), token);

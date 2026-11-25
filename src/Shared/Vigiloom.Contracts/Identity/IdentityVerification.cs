@@ -1,3 +1,5 @@
+using Vigiloom.Contracts.Operations;
+
 namespace Vigiloom.Contracts.Identity;
 
 public sealed record VerifyApiCredentialRequest(string? Value);
@@ -20,3 +22,5 @@ public sealed record ChangePasswordRequest(IdentityActor Actor, string CurrentPa
 public sealed record TwoFactorSettingsRequest(IdentityActor Actor, string? Password = null, string? Code = null);
 public sealed record TwoFactorSettingsState(bool Enabled, bool Pending);
 public sealed record TwoFactorSettingsResponse(int Status, string? Key, string[] RecoveryCodes, IdentityClaim[]? Claims);
+public sealed record IdentityAuditQueryRequest(IdentityActor Actor, AuditFeedSource Source, OperationAuditQuery Query);
+public sealed record IdentityAuditNamesRequest(IdentityActor Actor, Guid[] Ids);

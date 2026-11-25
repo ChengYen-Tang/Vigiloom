@@ -136,12 +136,12 @@ internal static class OperationAuditEndpoints
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryServiceInstancesAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit-feed/{source}", async (string source, DateTimeOffset from, DateTimeOffset to,
-            AuditFeedReader feeds, CancellationToken token, int page = 1) =>
+            AuditFeedReader feeds, HttpContext context, CancellationToken token, int page = 1) =>
         {
             var selected = AuditFeedReader.Parse(source);
             var query = new OperationAuditQuery(from, to, page);
             return selected is { } value && AuditFeedLimits.Valid(query)
-                ? Results.Ok(await feeds.QueryAsync(value, query, token))
+                ? Results.Ok(await feeds.QueryAsync(context.User, value, query, token))
                 : Results.ValidationProblem(new Dictionary<string, string[]> { ["query"] = ["Use a supported source, UTC range of at most 31 days, and a valid page."] });
         }).RequireAuthorization(AccessPolicies.Administrator)
             .Produces<AuditFeedPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
