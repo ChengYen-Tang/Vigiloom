@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 public sealed class AccountPasswordReset(IdentityAccessDbContext db, UserManager<Account> users)
 {

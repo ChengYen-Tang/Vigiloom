@@ -81,7 +81,7 @@ Agent.Core 保留跨平台採集／傳輸邊界，Windows／Linux 適配只依�
 |---|---|---|
 | Vigiloom.BuildingBlocks | 無 | Vigiloom.BuildingBlocks.Tests |
 | Vigiloom.Contracts | 無 | Vigiloom.Contracts.Tests |
-| Vigiloom.Infrastructure | Vigiloom.BuildingBlocks | Vigiloom.Infrastructure.Tests |
+| Vigiloom.Infrastructure | Vigiloom.BuildingBlocks、Vigiloom.Contracts | Vigiloom.Infrastructure.Tests |
 | Vigiloom.Modules.IdentityAccess | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.IdentityAccess.Tests |
 | Vigiloom.Modules.Resources | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.Resources.Tests |
 | Vigiloom.Modules.NetworkMonitoring | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.NetworkMonitoring.Tests |

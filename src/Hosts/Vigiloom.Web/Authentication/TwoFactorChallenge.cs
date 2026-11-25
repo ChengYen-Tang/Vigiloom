@@ -7,11 +7,21 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 
 namespace Vigiloom.Web.Authentication;
 
-internal sealed class TwoFactorChallenge(IdentityAccessDbContext db, UserManager<Account> users, SignInManager<Account> signIn)
+internal sealed class TwoFactorChallenge(IdentityAccessDbContext db, UserManager<Account> users, SignInManager<Account> signIn,
+    IConfiguration configuration, IServiceProvider services)
 {
+    public async Task<bool> HasPendingAsync(HttpContext context)
+    {
+        if (string.IsNullOrWhiteSpace(configuration["Services:Identity:Url"]))
+            return await signIn.GetTwoFactorAuthenticationUserAsync() is not null;
+        return (await context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme)).Succeeded;
+    }
+
     public async Task<SignInResult> CompleteAsync(HttpContext context, string code, bool recovery, bool persistent,
         CancellationToken token)
     {
+        if (!string.IsNullOrWhiteSpace(configuration["Services:Identity:Url"]))
+            return await services.GetRequiredService<RemotePasswordLogin>().CompleteTwoFactorAsync(context, code, recovery, persistent, token);
         await using var transaction = await AccountMutationLock.AcquireAsync(db, token);
         var challenge = await context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
         var id = challenge.Principal?.FindFirstValue(ClaimTypes.Name);
