@@ -18,7 +18,7 @@ internal static class AgentVersionEndpoints
             .Produces<AgentVersionTarget>().Produces(204).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Read the authenticated Agent's current version assignment");
 
-        app.MapGet("/api/v1/agents/{agentId:guid}/version-assignment", async (Guid agentId, AgentVersionAssignments assignments,
+        app.MapGet("/api/v1/agents/{agentId:guid}/version-assignment", async (Guid agentId, IAgentAssignments assignments,
             HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
@@ -28,7 +28,7 @@ internal static class AgentVersionEndpoints
             .WithSummary("Read a desired Agent package assignment");
 
         app.MapPut("/api/v1/agents/{agentId:guid}/version-assignment", async (Guid agentId, AgentVersionAssignmentUpdate input,
-            AgentVersionAssignments assignments, HttpContext context, CancellationToken token) =>
+            IAgentAssignments assignments, HttpContext context, CancellationToken token) =>
         {
             if (input.Revision is null || input.Revision.Length > 32 || input.PackageId == Guid.Empty)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["assignment"] = ["Invalid package or revision."] });
