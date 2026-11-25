@@ -51,6 +51,24 @@ Content-Type: application/json
 
 { "confirmation": "replace-with-preview-confirmation" }
 
+### Read publication settings for a device
+GET {{resources}}/api/v1/admin/publications/devices/01912345-6789-7abc-8def-123456789abd
+Cookie: {{cookie}}
+
+### Apply a template using current device and template versions
+PUT {{resources}}/api/v1/admin/publications/devices/01912345-6789-7abc-8def-123456789abd
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "public": true, "displayName": "Network", "policyVersion": "template-v1", "version": "replace-with-device-version", "templateId": "{{template}}", "templateVersion": "replace-with-template-version" }
+
+### Check current public authorization from the internal network
+GET {{resources}}/internal/v1/publications/devices/01912345-6789-7abc-8def-123456789abd
+
+### Check current public application authorization
+GET {{resources}}/internal/v1/publications/services/01912345-6789-7abc-8def-123456789abe
+
 ### Preview retirement
 POST {{resources}}/api/v1/admin/publications/templates/{{template}}/retirement-preview
 Cookie: {{cookie}}

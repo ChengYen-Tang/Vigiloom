@@ -1,4 +1,5 @@
 using Vigiloom.BuildingBlocks.Identifiers;
+using Vigiloom.Contracts.Publishing;
 
 namespace Vigiloom.Modules.Resources.Domain;
 
@@ -44,4 +45,23 @@ public sealed class ApplicationService
     public string? PublicDisplayName { get; private set; }
     public string? PublicPolicyVersion { get; private set; }
     public byte[] Version { get; private set; } = [];
+
+    public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
+    {
+        if (isPublic && ArchivedAt is not null) throw new InvalidOperationException("An archived service cannot be published.");
+        if (isPublic && (policyVersion is not (PublicationPolicy.BaselineVersion or PublicationPolicy.ServiceHistoryVersion or PublicationPolicy.ServiceHistoryDetailsVersion) ||
+            !PublicationPolicy.TryValidateName(displayName, out _))) throw new ArgumentException("An approved publication policy and public name are required.");
+        if (isPublic && (!IsPublic || policyVersion != PublicPolicyVersion)) PublicSince = DateTimeOffset.MaxValue;
+        if (!isPublic) PublicSince = null;
+        IsPublic = isPublic;
+        if (isPublic) { PublicDisplayName = displayName; PublicPolicyVersion = policyVersion; }
+        UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void ConfirmPublicSince(DateTimeOffset committedAfter)
+    {
+        if (!IsPublic || PublicSince != DateTimeOffset.MaxValue || committedAfter.Offset != TimeSpan.Zero || committedAfter >= DateTimeOffset.MaxValue)
+            throw new InvalidOperationException("The publication period is not pending.");
+        PublicSince = committedAfter;
+    }
 }

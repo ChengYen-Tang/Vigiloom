@@ -8,6 +8,7 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.Messaging;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Application;
@@ -57,6 +58,8 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<AgentAssignments>();
                 builder.Services.AddScoped<PublicTemplates>();
                 builder.Services.AddScoped<TemplateChanges>();
+                builder.Services.AddScoped<PublishedPolicies>();
+                builder.Services.AddScoped<PublicationSettingsManager>();
                 builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
                 builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
                 builder.UseWolverine(options =>
@@ -68,6 +71,8 @@ public sealed class DeviceChangeMessagingTests
                     options.PublishReliablyTo<AgentAssignmentChanged>(agentQueue);
                     options.PublishReliablyTo<AgentVersionAssignmentAudit>(auditQueue);
                     options.PublishReliablyTo<PublicTemplateAuditRecorded>(auditQueue);
+                    options.PublishReliablyTo<PublicationSettingAudit>(auditQueue);
+                    options.PublishReliablyTo<ApplicationPublicationChanged>(observabilityQueue);
                     options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
                     options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
                     options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
@@ -201,6 +206,8 @@ public sealed class DeviceChangeMessagingTests
                         var templates = scope.ServiceProvider.GetRequiredService<PublicTemplates>();
                         var result = await templates.SetDefaultAsync(template.Id, new SetDefaultPublicationTemplate(template.Version), actor, token);
                         Assert.AreEqual(TemplateOperationStatus.Success, result.Status);
+                        Assert.IsNotNull(result.Value);
+                        template = result.Value;
                         Assert.IsTrue((await templates.GetAsync(null, true, token))?.IsDefault);
                     }
                     using (var auditTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
@@ -214,11 +221,22 @@ public sealed class DeviceChangeMessagingTests
                             Assert.Contains(template.Id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
                         }
                     }
-                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    await using (var scope = host.Services.CreateAsyncScope())
                     {
-                        var device = await db.Devices.SingleAsync(d => d.Id == id, token);
-                        device.SetTemplatePublication("Public host", template.Id, false, DateTimeOffset.UtcNow);
-                        await db.SaveChangesAsync(token);
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Device, id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Device, id,
+                            new PublicationChange(true, "Public host", PublicationPolicy.TemplateVersion, current.Version, template.Id, template.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var publicDevice = await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token);
+                        Assert.AreEqual("Public host", publicDevice?.Name);
+                        Assert.IsTrue(publicDevice?.ShowLatency);
+                        Assert.IsFalse(publicDevice?.ShowObservedAt);
+                        Assert.IsNotNull(publicDevice?.PublicSince);
                     }
                     PublicationTemplateUpdatePreview updatePreview;
                     await using (var scope = host.Services.CreateAsyncScope())
@@ -268,7 +286,37 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(TemplateOperationStatus.Success,
                             await changes.ConfirmRetireAsync(template.Id, new ConfirmPublicationTemplateRetirement(retirePreview.Confirmation), actor, token));
                         Assert.AreEqual(TemplateOperationStatus.NotFound, (await changes.ImpactAsync(template.Id, 1, token)).Status);
+                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token));
                     }
+                    var candidateService = new ApplicationCandidate(Guid.CreateVersion7(), "billing", "production", "Billing", "", DateTimeOffset.UtcNow);
+                    var applicationService = new ApplicationService(candidateService, DateTimeOffset.UtcNow);
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.ApplicationServices.Add(applicationService);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                            new PublicationChange(true, "Billing status", PublicationPolicy.BaselineVersion, current.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual("Billing status", (await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token))?.Name);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Service, applicationService.Id, token);
+                        Assert.IsNotNull(current);
+                        Assert.AreEqual(PublicationSaveStatus.Updated,
+                            (await settings.SetAsync(PublicationResourceKind.Service, applicationService.Id,
+                                new PublicationChange(false, null, null, current.Version), actor, token)).Status);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
                     await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))

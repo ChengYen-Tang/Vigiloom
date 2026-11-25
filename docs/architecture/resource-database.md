@@ -9,3 +9,5 @@ This command also copies publication templates, retaining device references. Oth
 For package removal, configure the resource service's `Services:Host:Url` to the internal host-monitoring endpoint. During the transition, the existing Web host supplies the internal package-usage check. The shared `Vigiloom:AgentPackages:CachePath` must be accessible to each resource-service instance that serves packages.
 
 The resource service exposes assigned manifest and archive endpoints on its internal network. REQ-47 must authenticate the Agent and pass its verified Agent ID to these endpoints; the resource service checks device eligibility and the current assignment before returning files. These internal routes are not public Agent APIs.
+
+REQ-46 and REQ-48 can read current public policy from the internal publication endpoints. They must check again after fetching monitoring data and before returning a public response, compare the returned version tokens, and suppress the response if the policy is unavailable or changed. A pending public history boundary is returned as null.

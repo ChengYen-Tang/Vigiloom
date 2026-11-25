@@ -2,6 +2,7 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.Resources.Application.Publishing;
+using Vigiloom.Contracts.Operations;
 
 namespace Vigiloom.Resources.Publication;
 
@@ -60,6 +61,29 @@ internal static class TemplateEndpoints
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => Status(await changes.ConfirmRetireAsync(id, input, actor, token)), allowApiCredential: false);
         });
+        var settings = app.MapGroup("/api/v1/admin/publications").RequireAuthorization(WorkspaceAccess.Administrator);
+        settings.MapGet("/{kind}/{id:guid}", async (string kind, Guid id, PublicationSettingsManager manager, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (!TryKind(kind, out var resourceKind)) return Results.NotFound();
+            return await manager.GetAsync(resourceKind, id, token) is { } result ? Results.Ok(result) : Results.NotFound();
+        });
+        settings.MapPut("/{kind}/{id:guid}", async (string kind, Guid id, PublicationChange change, PublicationSettingsManager manager, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (!TryKind(kind, out var resourceKind)) return Results.NotFound();
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                var result = await manager.SetAsync(resourceKind, id, change, actor, token);
+                return result.Status switch
+                {
+                    PublicationSaveStatus.Updated => Results.Ok(result.Settings),
+                    PublicationSaveStatus.NotFound => Results.NotFound(),
+                    PublicationSaveStatus.Invalid => Results.BadRequest(),
+                    _ => Results.Conflict()
+                };
+            }, allowApiCredential: false);
+        });
     }
 
     private static IResult Response<T>(TemplateOperationResult<T> result) => result.Status switch
@@ -77,4 +101,10 @@ internal static class TemplateEndpoints
         TemplateOperationStatus.NotFound => Results.NotFound(),
         _ => Results.Conflict()
     };
+
+    private static bool TryKind(string value, out PublicationResourceKind kind)
+    {
+        kind = value switch { "devices" => PublicationResourceKind.Device, "services" => PublicationResourceKind.Service, "groups" => PublicationResourceKind.Group, _ => 0 };
+        return kind != 0;
+    }
 }
