@@ -99,6 +99,7 @@ builder.Services.AddScoped(provider => new OutboxDispatcher(
 builder.Services.AddScoped<HostLogIngestion>();
 builder.Services.AddScoped<HostLogReader>();
 builder.Services.AddScoped<ApplicationLogIngestion>();
+builder.Services.AddScoped<ApplicationLogHistory>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
@@ -126,6 +127,12 @@ app.MapPost("/internal/v1/host-logs/read", async (HostLogReadRequest input, Host
 app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
+app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid serviceId, DateTimeOffset from, DateTimeOffset to,
+    int? page, string? traceId, ApplicationLogHistory history, CancellationToken token) =>
+{
+    try { return Results.Ok(await history.GetAsync(serviceId, from, to, page ?? 1, traceId, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
 app.MapPut("/internal/v1/log-quota", async (LogQuotaUpdate input, SharedLogQuota quota, CancellationToken token) =>
 {
     if (input.Settings is null || input.ActorId == Guid.Empty) return Results.BadRequest();
