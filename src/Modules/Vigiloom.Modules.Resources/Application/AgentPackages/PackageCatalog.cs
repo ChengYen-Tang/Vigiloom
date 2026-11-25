@@ -25,17 +25,26 @@ public sealed class PackageCatalog(IDbContextFactory<ResourcesDbContext> context
         var manifestHash = Convert.ToHexStringLower(SHA256.HashData(manifest));
         if (package is not null && package.ManifestSha256 != manifestHash)
         {
-            manifest = await files.ReadManifestAsync(package.ManifestSha256, token)
-                ?? throw new InvalidOperationException("The existing package manifest is unavailable.");
-            manifestHash = package.ManifestSha256;
+            var existingManifest = await files.ReadManifestAsync(package.ManifestSha256, token);
+            if (existingManifest is not null)
+            {
+                manifest = existingManifest;
+                manifestHash = package.ManifestSha256;
+            }
+            else
+            {
+                if (await db.AgentVersionAssignments.AnyAsync(a => a.PackageId == package.Id, token))
+                    throw new InvalidOperationException("The existing package manifest is unavailable while assigned.");
+                package.ManifestSha256 = manifestHash;
+            }
         }
         await files.SaveAsync(version, asset, manifestHash, manifest, releases, token);
         if (package is null)
         {
             db.AgentPackages.Add(new AgentPackage { Id = Guid.CreateVersion7(), Version = version, RuntimeIdentifier = runtimeIdentifier,
                 Sha256 = asset.Sha256, ManifestSha256 = manifestHash, Size = asset.Size });
-            await db.SaveChangesAsync(token);
         }
+        await db.SaveChangesAsync(token);
         return true;
     }
 

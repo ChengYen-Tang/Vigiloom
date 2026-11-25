@@ -110,6 +110,7 @@ public sealed class InternalApiTests
             Assert.AreEqual(HttpStatusCode.NotFound, missingGroup.StatusCode);
 
             using (var anonymous = await client.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var anonymousPackages = await client.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousPackages.StatusCode);
             var cookieOptions = host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
             var identityOptions = host.Services.GetRequiredService<IOptions<IdentityOptions>>().Value;
             var claims = new[] { new Claim(identityOptions.ClaimsIdentity.UserIdClaimType, Guid.CreateVersion7().ToString("D")),
@@ -121,11 +122,14 @@ public sealed class InternalApiTests
                 cookieClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookieOptions.TicketDataFormat.Protect(ticket)}");
                 using var readerCookie = await cookieClient.GetAsync("/api/v1/devices/", token);
                 Assert.AreEqual(HttpStatusCode.OK, readerCookie.StatusCode);
+                using var deniedAgentManagement = await cookieClient.GetAsync($"/api/v1/agent-management/devices/{active.Id:D}", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, deniedAgentManagement.StatusCode);
                 identityHandler.Revoked = true;
                 using var revokedCookie = await cookieClient.GetAsync("/api/v1/devices/", token);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, revokedCookie.StatusCode);
             }
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
+            using (var readerPackages = await client.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, readerPackages.StatusCode);
             using (var readerList = await client.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, readerList.StatusCode);
             using (var reader = await client.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("Denied", "denied.example", [], true), token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, reader.StatusCode);

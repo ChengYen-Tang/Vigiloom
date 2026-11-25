@@ -78,6 +78,14 @@ public sealed class PackageCatalogTests
                 Assert.AreEqual(AgentPackageRemovalResult.Removed, await catalog.RemoveAsync(item.Id, token));
                 Assert.IsNull(await access.OpenArchiveAsync(agent.Id, sha, token));
                 Assert.IsFalse((await catalog.ListAsync(1, token)).Items.Single().Cached);
+                await using (var db = await contexts.CreateDbContextAsync(token))
+                {
+                    var oldPackage = await db.AgentPackages.SingleAsync(p => p.Id == item.Id, token);
+                    oldPackage.ManifestSha256 = new string('c', 64);
+                    await db.SaveChangesAsync(token);
+                }
+                Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
+                Assert.IsTrue((await catalog.ListAsync(1, token)).Items.Single().Cached);
             }
             finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
         }, TestContext.CancellationToken);
