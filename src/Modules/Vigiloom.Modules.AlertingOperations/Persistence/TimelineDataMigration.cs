@@ -1,6 +1,8 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application.Timeline;
@@ -76,6 +78,50 @@ internal static class TimelineDataMigration
             var service = reader.GetGuid(0); var targetId = reader.GetGuid(2);
             return new("service-health", reader.GetDateTimeOffset(1), service, "service",
                 $"服務健康檢查：{(HealthCheckObservationKind)reader.GetByte(3)}", $"檢查 {targetId:D}", $"/services/{service:D}");
+        });
+        await CopyEventsAsync("SELECT DeviceId, AgentId, ObservedAt, Source, [Key], Kind, Generation FROM security.InventoryChanges ORDER BY RowId", reader =>
+        {
+            var device = reader.GetGuid(0); var agent = reader.GetGuid(1);
+            return new("inventory", reader.GetDateTimeOffset(2), device, "device", $"資產盤點變更：{reader.GetString(4)}",
+                $"來源 {(InventorySource)Convert.ToInt32(reader.GetValue(3))}；類型 {reader.GetInt32(5)}；Agent {agent:D}；世代 {reader.GetInt64(6)}", $"/devices/{device:D}");
+        });
+        await CopyEventsAsync("SELECT DeviceId, AgentId, ObservedAt, ScopeId, ScopeRevision, [Key], Kind, CoverageGap FROM security.IntegrityChanges ORDER BY RowId", reader =>
+        {
+            var device = reader.GetGuid(0); var agent = reader.GetGuid(1); var scope = reader.GetGuid(3);
+            return new("integrity", reader.GetDateTimeOffset(2), device, "device", $"完整性變更：{reader.GetString(5)}",
+                $"範圍 {scope:D}；版本 {reader.GetInt64(4)}；類型 {reader.GetInt32(6)}；Agent {agent:D}{(reader.GetBoolean(7) ? "；採集有缺口" : "")}", $"/devices/{device:D}");
+        });
+        await CopyEventsAsync("""
+            SELECT r.DeviceId, r.AgentId, r.MessageId, r.ReceivedAt, r.Result, t.Path, t.RevisionId, r.TestId
+            FROM security.SigmaDetectionResults AS r INNER JOIN security.SigmaRuleTests AS t ON r.TestId = t.Id ORDER BY r.RowId
+            """, reader =>
+        {
+            var device = reader.GetGuid(0); var agent = reader.GetGuid(1); var message = reader.GetGuid(2);
+            var revision = reader.GetGuid(6); var test = reader.GetGuid(7);
+            return new("sigma", reader.GetDateTimeOffset(3), device, "device",
+                Convert.ToInt32(reader.GetValue(4)) == 1 ? $"行為規則命中：{reader.GetString(5)}" : $"行為規則未評估：{reader.GetString(5)}",
+                $"版本 {revision:D}；事件 {agent:D}/{message:D}", $"/devices/{device:D}/host-logs/{agent:D}/{message:D}", $"/events/rules/{test:D}");
+        });
+        await CopyEventsAsync("""
+            SELECT f.DeviceId, f.AdvisoryId, e.EvaluatedAt, e.RevisionId, e.State FROM security.VulnerabilityEvaluations AS e
+            INNER JOIN security.VulnerabilityFindings AS f ON e.FindingId = f.Id ORDER BY e.RowId
+            """, reader =>
+        {
+            var device = reader.GetGuid(0); var advisory = reader.GetString(1); var revision = reader.GetGuid(3);
+            return new("vulnerability", reader.GetDateTimeOffset(2), device, "device", $"漏洞評估：{advisory}",
+                $"情報版本 {revision:D}；狀態 {reader.GetInt32(4)}", $"/devices/{device:D}?tab=vulnerabilities&search={Uri.EscapeDataString(advisory)}");
+        });
+        await CopyEventsAsync("SELECT DeviceId, ReceivedAt, CheckId, RevisionId, Outcome FROM security.BaselineObservations ORDER BY RowId", reader =>
+        {
+            var device = reader.GetGuid(0); var revision = reader.GetGuid(3);
+            return new("baseline", reader.GetDateTimeOffset(1), device, "device", $"安全基準檢查：{reader.GetString(2)}",
+                $"版本 {revision:D}；結果 {(BaselineOutcome)Convert.ToInt32(reader.GetValue(4))}", $"/devices/{device:D}");
+        });
+        await CopyEventsAsync("SELECT DeviceId, ReceivedAt, AgentId, MessageId, Kind, Value, RevisionId FROM security.IocDetections ORDER BY RowId", reader =>
+        {
+            var device = reader.GetGuid(0); var agent = reader.GetGuid(2); var message = reader.GetGuid(3); var revision = reader.GetGuid(6);
+            return new("ioc", reader.GetDateTimeOffset(1), device, "device", $"IOC 比對線索：{reader.GetString(4)} {reader.GetString(5)}",
+                $"版本 {revision:D}；事件 {agent:D}/{message:D}", $"/devices/{device:D}");
         });
         return;
 

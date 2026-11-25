@@ -20,6 +20,7 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Agent = Vigiloom.Modules.AgentManagement.Domain.Agent;
 using OldHostLog = Vigiloom.Modules.AgentManagement.Domain.HostLog;
@@ -42,6 +43,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             sourceServices.AddModuleSqlServer<ResourcesDbContext>(source.ConnectionString, "resources");
             sourceServices.AddModuleSqlServer<AgentManagementDbContext>(source.ConnectionString, "agent");
             sourceServices.AddModuleSqlServer<ServiceObservabilityDbContext>(source.ConnectionString, "service");
+            sourceServices.AddModuleSqlServer<SecurityAnalysisDbContext>(source.ConnectionString, "security");
             sourceServices.AddModuleSqlServer<OperationsDbContext>(source.ConnectionString, "operations");
             sourceServices.AddModuleSqlServer<LogAdmissionDbContext>(source.ConnectionString, "logquota");
             sourceServices.AddModuleSqlServer<SchedulingDbContext>(source.ConnectionString, "scheduling");
@@ -49,6 +51,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), token);
+            await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
@@ -99,6 +102,23 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             { db.Devices.Add(device); await db.SaveChangesAsync(token); }
             var agent = new Agent(device.Id, 0, new byte[32], now);
+            var scopeId = Guid.CreateVersion7();
+            var revision = Guid.CreateVersion7(); var securitySource = Guid.CreateVersion7(); var eventId = Guid.CreateVersion7();
+            var ruleTest = Guid.CreateVersion7(); var activation = Guid.CreateVersion7(); var finding = Guid.CreateVersion7();
+            await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token))
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.InventoryChanges (AgentId, DeviceId, Source, Generation, ObservedAt, RecordedAt, Kind, [Key], AfterJson) VALUES ({agent.Id}, {device.Id}, 1, 1, {now}, {now}, 1, 'package', '{{}}')", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.IntegrityChanges (AgentId, DeviceId, ScopeId, ScopeRevision, Generation, ObservedAt, RecordedAt, Kind, [Key], AfterJson, CoverageGap) VALUES ({agent.Id}, {device.Id}, {scopeId}, 1, 1, {now}, {now}, 1, 'file', '{{}}', 1)", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.BaselineObservations (AgentId,DeviceId,DeviceGeneration,BatchId,SourceId,RevisionId,ActivationVersion,CheckId,ObservedAt,ReceivedAt,OperatingSystem,Outcome) VALUES ({agent.Id},{device.Id},0,{eventId},{securitySource},{revision},'v1','check',{now},{now},'linux',2)", token);
+                // These source records normally reference intelligence data; the timeline only reads their event fields.
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE security.IocDetections NOCHECK CONSTRAINT ALL; ALTER TABLE security.SigmaRuleTests NOCHECK CONSTRAINT ALL; ALTER TABLE security.VulnerabilityFindings NOCHECK CONSTRAINT ALL; ALTER TABLE security.VulnerabilityEvaluations NOCHECK CONSTRAINT ALL;", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.IocDetections (AgentId,DeviceId,MessageId,SourceId,RevisionId,Kind,Value,Field,SourceLine,ReceivedAt,EvaluatedAt) VALUES ({agent.Id},{device.Id},{eventId},{securitySource},{revision},'domain','example.org','url',1,{now},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.SigmaRuleTests (Id,SourceId,RevisionId,Path,Digest,ActivationVersion,MatcherVersion,SamplesJson,Passed,ActorId,TestedAt) VALUES ({ruleTest},{securitySource},{revision},'rules/test','digest','v1','v1','[]',1,{agent.Id},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.SigmaRuleActivations (Id,SourceId,Path,TestId,Enabled,UpdatedBy,UpdatedAt) VALUES ({activation},{securitySource},'rules/test',{ruleTest},1,{agent.Id},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.SigmaDetectionResults (AgentId,DeviceId,DeviceGeneration,MessageId,ActivationId,TestId,ActivationVersion,Result,ReceivedAt,EvaluatedAt) VALUES ({agent.Id},{device.Id},0,{eventId},{activation},{ruleTest},0x0000000000000001,1,{now},{now})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.VulnerabilityFindings (Id,DeviceId,SourceId,IdentityHash,PackageKey,AdvisoryId,CurrentState,FirstEvaluatedAt,LastEvaluatedAt,LastRevisionId,LastRunId) VALUES ({finding},{device.Id},{securitySource},0x0000000000000000000000000000000000000000000000000000000000000000,'package','CVE-2026-1',1,{now},{now},{revision},{eventId})", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO security.VulnerabilityEvaluations (RunId,FindingId,SourceId,RevisionId,AgentId,DeviceGeneration,HostSnapshotId,EvaluatedAt,MatcherVersion,Ecosystem,Architecture,State,Origin,Reason) VALUES ({eventId},{finding},{securitySource},{revision},{agent.Id},0,{scopeId},{now},'windows-v1','windows','x64',1,1,1)", token);
+            }
             var record = new AgentLogRecord(Guid.CreateVersion7(), now, "host event", null, null, null, null, null);
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, Guid.CreateVersion7(),
                 AgentLogSourceKind.TextFile, "system", 1, [record]);
@@ -144,12 +164,18 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
-                Assert.HasCount(5, timeline);
+                Assert.HasCount(11, timeline);
                 Assert.IsTrue(timeline.Any(x => x.Source == "host-log" && x.ResourceId == device.Id && x.LocalLogRowId != null && x.Evidence.Contains("host event")));
                 Assert.IsTrue(timeline.Any(x => x.Source == "service-log" && x.ResourceId == application.Id && x.LocalLogRowId == copied.RowId));
                 Assert.IsTrue(timeline.Any(x => x.Source == "yara" && x.ResourceId == device.Id && x.Summary == "YARA 掃描：C:/sample" && x.Evidence.EndsWith("結果 1")));
                 Assert.IsTrue(timeline.Any(x => x.Source == "service-trace" && x.ResourceId == application.Id && x.Evidence.Contains("01010101") && x.Evidence.Contains("02020202")));
                 Assert.IsTrue(timeline.Any(x => x.Source == "service-health" && x.ResourceId == application.Id && x.Summary == "服務健康檢查：Degraded" && x.Evidence.Contains(healthTarget.Id.ToString("D"))));
+                Assert.IsTrue(timeline.Any(x => x.Source == "inventory" && x.ResourceId == device.Id && x.Summary == "資產盤點變更：package"));
+                Assert.IsTrue(timeline.Any(x => x.Source == "integrity" && x.ResourceId == device.Id && x.Summary == "完整性變更：file" && x.Evidence.Contains("採集有缺口")));
+                Assert.IsTrue(timeline.Any(x => x.Source == "baseline" && x.Summary == "安全基準檢查：check" && x.Evidence.EndsWith("結果 Fail")));
+                Assert.IsTrue(timeline.Any(x => x.Source == "ioc" && x.Summary == "IOC 比對線索：domain example.org"));
+                Assert.IsTrue(timeline.Any(x => x.Source == "sigma" && x.Summary == "行為規則命中：rules/test" && x.RuleLink == $"/events/rules/{ruleTest:D}"));
+                Assert.IsTrue(timeline.Any(x => x.Source == "vulnerability" && x.Summary == "漏洞評估：CVE-2026-1"));
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
