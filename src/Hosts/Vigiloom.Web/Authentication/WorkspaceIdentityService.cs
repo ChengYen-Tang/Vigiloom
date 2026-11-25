@@ -13,6 +13,8 @@ internal sealed class WorkspaceIdentityService(IServiceScopeFactory scopes)
     {
         token.ThrowIfCancellationRequested();
         await using var scope = scopes.CreateAsyncScope();
+        if (!string.IsNullOrWhiteSpace(scope.ServiceProvider.GetRequiredService<IConfiguration>()["Services:Identity:Url"]))
+            return await scope.ServiceProvider.GetRequiredService<RemoteWorkspaceIdentity>().GetAsync(principal, token);
         var db = scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>();

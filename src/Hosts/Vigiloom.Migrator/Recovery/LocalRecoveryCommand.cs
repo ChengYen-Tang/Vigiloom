@@ -19,9 +19,10 @@ internal static partial class LocalRecoveryCommand
             throw new UnauthorizedAccessException("Run recovery with local administrator privileges.");
         if (Console.IsOutputRedirected)
             throw new InvalidOperationException("Recovery must be run in an interactive terminal; do not redirect its secret output.");
-        var connection = Environment.GetEnvironmentVariable("VIGILOOM_MIGRATION_SQL_CONNECTION");
+        var connection = Environment.GetEnvironmentVariable("VIGILOOM_IDENTITY_SQL_CONNECTION")
+            ?? Environment.GetEnvironmentVariable("VIGILOOM_MIGRATION_SQL_CONNECTION");
         if (string.IsNullOrWhiteSpace(connection))
-            throw new InvalidOperationException("Set VIGILOOM_MIGRATION_SQL_CONNECTION to the existing target database.");
+            throw new InvalidOperationException("Set VIGILOOM_IDENTITY_SQL_CONNECTION to the existing Identity database.");
         var configuration = new ConfigurationBuilder().AddEnvironmentVariables().Build();
         var services = new ServiceCollection();
         services.AddLogging();

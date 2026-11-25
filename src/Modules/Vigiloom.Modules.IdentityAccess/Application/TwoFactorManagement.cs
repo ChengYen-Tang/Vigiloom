@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<Account> users, IOptions<IdentityOptions> options)
 {
@@ -24,7 +24,7 @@ public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<
             await db.SaveChangesAsync(token);
         }
         await transaction.CommitAsync(token);
-        return new(TwoFactorStatus.Success, key, []);
+        return new(TwoFactorStatus.Success, key, [], await users.GetSecurityStampAsync(account));
     }
 
     public async Task<TwoFactorResult> EnableAsync(ClaimsPrincipal principal, string code, CancellationToken token = default)
@@ -42,7 +42,7 @@ public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<
         db.AccountAuditEvents.Add(new AccountAuditEvent(account.Id, account.Id, "TwoFactorEnabled", DateTimeOffset.UtcNow));
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
-        return new(TwoFactorStatus.Success, null, codes);
+        return new(TwoFactorStatus.Success, null, codes, await users.GetSecurityStampAsync(account));
     }
 
     public async Task<TwoFactorResult> DisableAsync(ClaimsPrincipal principal, string password, string code, CancellationToken token = default)
@@ -62,7 +62,7 @@ public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<
         db.AccountAuditEvents.Add(new AccountAuditEvent(account.Id, account.Id, "TwoFactorDisabled", DateTimeOffset.UtcNow));
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
-        return new(TwoFactorStatus.Success, null, []);
+        return new(TwoFactorStatus.Success, null, [], await users.GetSecurityStampAsync(account));
     }
 
     private static void EnsureSuccess(IdentityResult result)
@@ -72,4 +72,4 @@ public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<
 }
 
 public enum TwoFactorStatus { Success, InvalidCredentials, AlreadyEnabled, NotEnabled }
-public sealed record TwoFactorResult(TwoFactorStatus Status, string? Key, IReadOnlyList<string> RecoveryCodes);
+public sealed record TwoFactorResult(TwoFactorStatus Status, string? Key, IReadOnlyList<string> RecoveryCodes, string? SecurityStamp = null);

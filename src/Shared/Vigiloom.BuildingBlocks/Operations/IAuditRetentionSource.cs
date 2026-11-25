@@ -2,7 +2,8 @@ using System.Data.Common;
 
 namespace Vigiloom.BuildingBlocks.Operations;
 
-/// <summary>Counts and removes a module's expired audit records in the caller's retention-policy transaction.</summary>
+/// <summary>Counts and removes expired audit records while the caller holds the retention-policy lock.
+/// Co-located sources use the caller's transaction; remote sources commit in their own database.</summary>
 public interface IAuditRetentionSource
 {
     Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token);

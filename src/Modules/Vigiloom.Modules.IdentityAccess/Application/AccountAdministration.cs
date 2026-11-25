@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 /// <summary>Administrative account operations and their transactional audit records.</summary>
 public sealed class AccountAdministration(
@@ -186,7 +186,7 @@ public sealed class AccountAdministration(
 
     private async Task<Guid> EnsureAdministratorAsync(ClaimsPrincipal actor)
     {
-        if (!(await authorization.AuthorizeAsync(actor, AccessPolicies.Administrator)).Succeeded ||
+        if (!(await authorization.AuthorizeAsync(actor, BuiltInRoles.Administrator)).Succeeded ||
             !Guid.TryParse(users.GetUserId(actor), out var actorId) || actorId == Guid.Empty)
             throw new UnauthorizedAccessException("Administrator authorization is required.");
         return actorId;
