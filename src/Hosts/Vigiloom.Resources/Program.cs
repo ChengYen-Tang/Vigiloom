@@ -1,9 +1,23 @@
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Messaging;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Resources;
+using Wolverine;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.ConfigureServices((context, services) => services.AddWolverine(options =>
+{
+    var database = context.Configuration.GetConnectionString("Resources")
+        ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.");
+    var broker = context.Configuration.GetConnectionString("Messaging")
+        ?? throw new InvalidOperationException("ConnectionStrings:Messaging is required.");
+    options.UseVigiloomMessaging(database, broker);
+    options.Discovery.DisableConventionalDiscovery();
+    options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
+    options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+}));
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
         ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), "resources", pooled: true);
@@ -12,6 +26,7 @@ builder.Services.AddScoped<DeviceAgentSource>();
 builder.Services.AddScoped<GroupMembersReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddScoped<DeviceChangeOutbox>();
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
