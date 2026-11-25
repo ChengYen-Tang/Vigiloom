@@ -257,7 +257,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name vigiloom-test-rabbit -p 127.0.0.1:5678:5672 rabbitmq:4.1-alpine > /dev/null
+          docker run -d --name vigiloom-test-rabbit -p 127.0.0.1:5678:5672 \
+            -e 'ERL_FLAGS=+S 2:2 +A 4' rabbitmq:4.1-alpine > /dev/null
           for attempt in $(seq 1 45); do
             if docker exec vigiloom-test-rabbit rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
               echo 'VIGILOOM_TEST_RABBITMQ=amqp://guest:guest@localhost:5678' >> "$GITHUB_ENV"
@@ -266,6 +267,7 @@ jobs:
             sleep 2
           done
           echo 'The isolated RabbitMQ did not become ready.' >&2
+          docker logs vigiloom-test-rabbit >&2 || true
           exit 1
       - name: Test solution
         run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
