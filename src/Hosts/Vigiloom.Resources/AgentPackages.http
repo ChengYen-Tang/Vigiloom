@@ -11,3 +11,19 @@ Content-Type: application/json
   "version": "1.2.3",
   "runtimeIdentifier": "win-x64"
 }
+
+### Read the desired version for an Agent
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
+
+### Read the target to deliver to an authenticated Agent
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/target
+
+### Assign an available package to an Agent
+PUT {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
+Content-Type: application/json
+
+{
+  "packageId": "01912345-6789-7abc-8def-123456789abd",
+  "revision": "",
+  "actorId": "01912345-6789-7abc-8def-123456789abe"
+}

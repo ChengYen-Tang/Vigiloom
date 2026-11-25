@@ -3,15 +3,18 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Messaging;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Application.AgentPackages;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Wolverine;
+using Vigiloom.UpdateSecurity.AgentPackages;
 
 namespace Vigiloom.Modules.Resources.Tests;
 
@@ -48,12 +51,16 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<ApplicationDiscovery>();
                 builder.Services.AddScoped<ApplicationApproval>();
                 builder.Services.AddScoped<SelfServiceRegistration>();
+                builder.Services.AddScoped<AgentAssignments>();
+                builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
                 builder.UseWolverine(options =>
                 {
                     options.UseVigiloomMessaging(database.ConnectionString, broker!);
                     options.Discovery.DisableConventionalDiscovery();
                     options.PublishReliablyTo<NetworkDeviceChanged>(networkQueue);
                     options.PublishReliablyTo<AgentDeviceChanged>(agentQueue);
+                    options.PublishReliablyTo<AgentAssignmentChanged>(agentQueue);
+                    options.PublishReliablyTo<AgentVersionAssignmentAudit>(auditQueue);
                     options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
                     options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
                     options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
@@ -141,6 +148,37 @@ public sealed class DeviceChangeMessagingTests
                     while ((ownMessage = await channel.BasicGetAsync(observabilityQueue, autoAck: true, cancellationToken: timeout.Token)) is null)
                         await Task.Delay(100, timeout.Token);
                     Assert.Contains(ownId.Value.ToString("D"), System.Text.Encoding.UTF8.GetString(ownMessage.Body.Span));
+                    var agentId = Guid.CreateVersion7();
+                    var packageId = Guid.CreateVersion7();
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.Agents.Add(new RegisteredAgent { Id = agentId, DeviceId = id, Verifier = new byte[32], CreatedAt = DateTimeOffset.UtcNow });
+                        db.AgentPackages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64",
+                            Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 123 });
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var assignments = scope.ServiceProvider.GetRequiredService<AgentAssignments>();
+                        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId,
+                            new AgentVersionAssignmentCommand(packageId, "", Guid.CreateVersion7()), token));
+                        var target = await assignments.GetTargetAsync(agentId, token);
+                        Assert.IsNotNull(target);
+                        Assert.AreEqual(packageId, target.PackageId);
+                        Assert.AreEqual("1.2.3", target.PackageVersion);
+                    }
+                    using (var notificationTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                    {
+                        notificationTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+                        BasicGetResult? assignmentMessage;
+                        while ((assignmentMessage = await channel.BasicGetAsync(agentQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
+                            await Task.Delay(100, notificationTimeout.Token);
+                        Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentMessage.Body.Span));
+                        BasicGetResult? assignmentAudit;
+                        while ((assignmentAudit = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
+                            await Task.Delay(100, notificationTimeout.Token);
+                        Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentAudit.Body.Span));
+                    }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
                     await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -175,5 +213,14 @@ public sealed class DeviceChangeMessagingTests
     {
         public bool Active { get; set; } = true;
         public Task<ApplicationSourceStatus> GetAsync(Guid sourceId, CancellationToken token) => Task.FromResult(new ApplicationSourceStatus(Active, "Source"));
+    }
+
+    private sealed class CachedPackages : IPackageLibraryTransport
+    {
+        public bool IsCached(string archiveHash, string manifestHash) => true;
+        public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] manifest, GitHubAgentReleases github, CancellationToken token) => throw new NotSupportedException();
+        public Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token) => throw new NotSupportedException();
+        public Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token) => throw new NotSupportedException();
+        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> otherManifests, CancellationToken token) => throw new NotSupportedException();
     }
 }
