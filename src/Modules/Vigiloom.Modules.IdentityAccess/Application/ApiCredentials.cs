@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 public sealed class ApiCredentials(IdentityAccessDbContext db, UserManager<Account> users,
     IAuthorizationService authorization, IOptions<IdentityOptions> options)
@@ -67,7 +67,7 @@ public sealed class ApiCredentials(IdentityAccessDbContext db, UserManager<Accou
 
     private async Task<Account> EnsureAdministratorAsync(ClaimsPrincipal principal)
     {
-        if (!(await authorization.AuthorizeAsync(principal, AccessPolicies.Administrator)).Succeeded)
+        if (!(await authorization.AuthorizeAsync(principal, BuiltInRoles.Administrator)).Succeeded)
             throw new UnauthorizedAccessException();
         var account = await CurrentAccount.FindValidAsync(db, users, principal, options);
         if (account is null || !await users.IsInRoleAsync(account, BuiltInRoles.Administrator))

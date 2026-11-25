@@ -11,6 +11,8 @@ using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Operations;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Application.Retention;
@@ -80,7 +82,13 @@ builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
 builder.Services.AddScoped<TraceQuotaSettings>();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<IdentityAuditRetention>();
-builder.Services.AddScoped<IAuditRetentionSource>(provider => provider.GetRequiredService<IdentityAuditRetention>());
+builder.Services.AddScoped<IAuditRetentionSource>(provider =>
+    string.IsNullOrWhiteSpace(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
+        ? provider.GetRequiredService<IdentityAuditRetention>()
+        : provider.GetRequiredService<RemoteIdentityAuditRetention>());
+builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
@@ -94,6 +102,7 @@ builder.Services.AddScoped<DeviceAuditFeed>();
 builder.Services.AddScoped<AgentAuditFeed>();
 builder.Services.AddScoped<InventoryAuditFeed>();
 builder.Services.AddScoped<AuditFeedReader>();
+builder.Services.AddScoped<IdentityAuditReader>();
 builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineChannel>();
@@ -102,6 +111,42 @@ builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHand
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryQueue>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryStatus>();
 builder.Services.AddVigiloomIdentity();
+builder.Services.AddScoped<AccountLogin>();
+builder.Services.AddScoped<CredentialManagement>();
+builder.Services.AddScoped<AccountManagement>();
+builder.Services.AddScoped<AccountPasswordOperations>();
+builder.Services.AddScoped<TwoFactorSettings>();
+builder.Services.AddScoped<LocalApiCredentialValidation>();
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddHttpClient<RemoteWorkspaceIdentity>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteCookieValidator>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemotePasswordLogin>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteCredentialManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteAccountManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteAccountPasswordOperations>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteTwoFactorSettings>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteIdentityAuditReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IApiCredentialValidation>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
+        ? services.GetRequiredService<LocalApiCredentialValidation>()
+        : services.GetRequiredService<RemoteApiCredentialValidation>());
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();

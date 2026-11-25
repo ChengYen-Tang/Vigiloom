@@ -19,16 +19,21 @@ internal sealed class IdentityRevalidatingAuthenticationStateProvider(
 
     protected override async Task<bool> ValidateAuthenticationStateAsync(
         AuthenticationState authenticationState, CancellationToken cancellationToken)
+        => await RevalidateAsync(authenticationState.User, cancellationToken);
+
+    internal async Task<bool> RevalidateAsync(ClaimsPrincipal principal, CancellationToken cancellationToken)
     {
+        if (!SessionLifetime.IsCurrent(principal)) return false;
         // Get the user manager from a new scope to ensure it fetches fresh data
         await using var scope = scopeFactory.CreateAsyncScope();
+        if (!string.IsNullOrWhiteSpace(scope.ServiceProvider.GetRequiredService<IConfiguration>()["Services:Identity:Url"]))
+            return await scope.ServiceProvider.GetRequiredService<RemoteWorkspaceIdentity>().ValidateAsync(principal, cancellationToken, allowLockedOut: true) is not null;
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
-        return await ValidateSecurityStampAsync(userManager, authenticationState.User);
+        return await ValidateSecurityStampAsync(userManager, principal);
     }
 
     private async Task<bool> ValidateSecurityStampAsync(UserManager<Account> userManager, ClaimsPrincipal principal)
     {
-        if (!SessionLifetime.IsCurrent(principal)) return false;
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
         {

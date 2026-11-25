@@ -9,7 +9,7 @@ public sealed class DesignTimeFactory : IDesignTimeDbContextFactory<IdentityAcce
     public IdentityAccessDbContext CreateDbContext(string[] args)
     {
         var connection = Environment.GetEnvironmentVariable("VIGILOOM_DESIGN_SQL_CONNECTION")
-            ?? "Server=(localdb)\\MSSQLLocalDB;Database=Vigiloom_Development;Integrated Security=true;TrustServerCertificate=true";
+            ?? "Server=(localdb)\\MSSQLLocalDB;Database=Vigiloom_Identity_Development;Integrated Security=true;TrustServerCertificate=true";
         var options = new DbContextOptionsBuilder<IdentityAccessDbContext>()
             .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "identity"))
             .Options;

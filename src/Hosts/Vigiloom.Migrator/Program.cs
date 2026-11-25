@@ -15,12 +15,18 @@ using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Migrator.Identity;
 
+if (args is ["migrate-identity"] or ["initialize-identity"])
+{
+    await IdentityDatabaseCommand.RunAsync(copyExisting: args[0] == "migrate-identity");
+    return;
+}
 var freshInstall = args is ["fresh-install"];
 if (args.Length > 0 && !freshInstall)
 {
     if (args.Length != 2 || args[0] != "recover-admin")
-        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | recover-admin <account-name>]");
+        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | recover-admin <account-name>]");
     await LocalRecoveryCommand.RunAsync(args[1]);
     return;
 }

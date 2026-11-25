@@ -11,7 +11,7 @@
 @using Vigiloom.Web.Diagnostics
 @inject OperationAuditQueryService Audit
 @inject AuditFeedReader Feeds
-@inject UserManager<Account> Users
+@inject IdentityAuditReader Identities
 @inject TimeProvider Clock
 @inject ILogger<AuditLog> Logger
 
@@ -370,13 +370,12 @@
             }
             else
             {
-                feedResult = await Feeds.QueryAsync(selected!.Value, query, HttpContext.RequestAborted);
+                feedResult = await Feeds.QueryAsync(HttpContext.User, selected!.Value, query, HttpContext.RequestAborted);
                 ids = feedResult.Items.Where(x => x.ActorId.HasValue).Select(x => x.ActorId!.Value).Distinct().ToArray();
             }
             try
             {
-                actors = await Users.Users.AsNoTracking().Where(x => ids.Contains(x.Id) && x.UserName != null)
-                    .ToDictionaryAsync(x => x.Id, x => x.UserName!, HttpContext.RequestAborted);
+                actors = await Identities.NamesAsync(HttpContext.User, ids, HttpContext.RequestAborted);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             { actorLookupFailed = true; Logger.LogWarning("Audit actor lookup failed: {ExceptionType}", ex.GetType().Name); }
