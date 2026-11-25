@@ -120,9 +120,13 @@ public sealed class ProxyTests
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
         using var anonymous = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        using var anonymousApi = await client.GetAsync("/api/v1/events", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousApi.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
         using var read = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+        using var generalRead = await client.GetAsync("/api/v1/events", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, generalRead.StatusCode);
         using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_write");
@@ -171,6 +175,8 @@ public sealed class ProxyTests
         client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={cookie}");
         using var read = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+        using var ownPassword = await client.PutAsync("/api/v1/session/password", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, ownPassword.StatusCode);
         Assert.IsFalse(read.Headers.Contains("Set-Cookie"), "Gateway must not renew the Web session cookie.");
         foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
         {
@@ -209,6 +215,9 @@ public sealed class ProxyTests
         var cookie = options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
         client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={cookie}");
         Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
+        Assert.AreEqual("web", await client.GetStringAsync("/api/v1/public/status", TestContext.CancellationToken));
+        using var webhook = await client.PostAsync("/api/v1/line/webhook", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, webhook.StatusCode);
     }
 
     [TestMethod]
