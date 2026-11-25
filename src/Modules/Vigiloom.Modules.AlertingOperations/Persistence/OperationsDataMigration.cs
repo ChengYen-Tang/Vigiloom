@@ -22,7 +22,8 @@ public static class OperationsDataMigration
         new("logquota", "TraceBuckets", "logquota", "TraceBuckets"),
         new("agent", "HostLogs", "logs", "HostLogs"),
         new("service", "LogContexts", "logs", "LogContexts"),
-        new("service", "LogRecords", "logs", "LogRecords")
+        new("service", "LogRecords", "logs", "LogRecords"),
+        new("scheduling", "Outbox", "scheduling", "Outbox", "MessageType", "line.push.v1")
     ];
 
     public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default) =>

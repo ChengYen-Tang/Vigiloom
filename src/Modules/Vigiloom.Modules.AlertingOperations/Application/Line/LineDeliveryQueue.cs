@@ -19,7 +19,7 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
         var configured = await db.LineSettings.AsNoTracking().AnyAsync(x => x.ProtectedAccessToken != null, token);
         if (group is null || !configured) return null;
         var delivery = new LineDelivery { GroupId = group.Id, Recipient = group.ExternalId,
-            Text = "Vigiloom 測試通知：LINE 通知設定已連線。", CreatedAt = clock.GetUtcNow() };
+            Text = "Vigiloom test notification: LINE notifications are connected.", CreatedAt = clock.GetUtcNow() };
         db.LineDeliveries.Add(delivery);
         await db.SaveChangesAsync(token);
         await outbox.WriteAsync(new(delivery.Id, LineDeliveryHandler.Type, "{}"),

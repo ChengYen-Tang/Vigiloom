@@ -3,9 +3,11 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Line;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using Vigiloom.Operations.HostLogs;
@@ -13,6 +15,11 @@ using Vigiloom.Operations.ApplicationLogs;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddModuleSqlServer<OperationsDbContext>(services =>
+    services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
+        ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "operations");
 builder.Services.AddModuleSqlServer<LogAdmissionDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."), "logquota");
@@ -24,6 +31,10 @@ builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAudit
 builder.Services.AddScoped<SharedLogQuota>();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddHttpClient<LinePushClient>();
+builder.Services.AddScoped<IOutboxHandler, LineDeliveryHandler>();
+builder.Services.AddScoped<LineDeliveryQueue>();
+builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped(provider => new OutboxDispatcher(
     provider.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."),

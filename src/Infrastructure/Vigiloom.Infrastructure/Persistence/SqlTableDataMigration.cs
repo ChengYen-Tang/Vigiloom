@@ -24,7 +24,8 @@ public static class SqlTableDataMigration
             throw new InvalidOperationException("Source and target must be distinct non-system databases.");
     }
 
-    public sealed record TableMapping(string SourceSchema, string SourceTable, string TargetSchema, string TargetTable);
+    public sealed record TableMapping(string SourceSchema, string SourceTable, string TargetSchema, string TargetTable,
+        string? FilterColumn = null, string? FilterValue = null);
 
     public static Task CopyAsync(string sourceConnection, string targetConnection, string schema, IReadOnlyList<string> tables, CancellationToken token = default) =>
         CopyAsync(sourceConnection, targetConnection, tables.Select(table => new TableMapping(schema, table, schema, table)).ToArray(), token);
@@ -63,7 +64,9 @@ public static class SqlTableDataMigration
             var sourceTable = quote.QuoteIdentifier(table.SourceSchema) + "." + quote.QuoteIdentifier(table.SourceTable);
             var targetTable = quote.QuoteIdentifier(table.TargetSchema) + "." + quote.QuoteIdentifier(table.TargetTable);
             var projection = string.Join(", ", columns.Select(quote.QuoteIdentifier));
-            await using var command = new SqlCommand($"SELECT {projection} FROM {sourceTable}", source);
+            var filter = table.FilterColumn is null ? "" : $" WHERE {quote.QuoteIdentifier(table.FilterColumn)} = @filter";
+            await using var command = new SqlCommand($"SELECT {projection} FROM {sourceTable}{filter}", source);
+            if (table.FilterColumn is not null) command.Parameters.AddWithValue("@filter", table.FilterValue ?? throw new InvalidOperationException("A filter value is required."));
             await using var rows = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, token);
             using var copy = new SqlBulkCopy(target, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.CheckConstraints, transaction)
             {

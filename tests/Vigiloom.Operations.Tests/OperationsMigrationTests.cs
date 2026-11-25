@@ -1,12 +1,21 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Domain;
+using Vigiloom.Modules.AlertingOperations.Application.Line;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.ServiceObservability.Domain;
@@ -35,28 +44,45 @@ public sealed class OperationsMigrationTests(TestContext context)
             sourceServices.AddModuleSqlServer<ServiceObservabilityDbContext>(source.ConnectionString, "service");
             sourceServices.AddModuleSqlServer<OperationsDbContext>(source.ConnectionString, "operations");
             sourceServices.AddModuleSqlServer<LogAdmissionDbContext>(source.ConnectionString, "logquota");
+            sourceServices.AddModuleSqlServer<SchedulingDbContext>(source.ConnectionString, "scheduling");
             using var sourceProvider = sourceServices.BuildServiceProvider();
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>(), token);
             await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>(), token);
+            await MigrateAsync(sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
             var targetServices = new ServiceCollection();
             targetServices.AddModuleSqlServer<OperationsDbContext>(target.ConnectionString, "operations");
             targetServices.AddModuleSqlServer<LogAdmissionDbContext>(target.ConnectionString, "logquota");
             targetServices.AddModuleSqlServer<CentralLogsDbContext>(target.ConnectionString, "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
+            targetServices.AddModuleSqlServer<SchedulingDbContext>(target.ConnectionString, "scheduling");
             using var targetProvider = targetServices.BuildServiceProvider();
             await MigrateAsync(targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>(), token);
             await MigrateAsync(targetProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>(), token);
             await MigrateAsync(targetProvider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>(), token);
+            await MigrateAsync(targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
 
             var now = DateTimeOffset.UtcNow;
             var sourceQuota = new PolicyAdministration(sourceProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>());
             Assert.IsNotNull(await sourceQuota.UpdateAsync(new LogQuotaValues(7, 14, 120, 240), "", Guid.CreateVersion7(),
                 (_, _, _, _) => Task.CompletedTask, token));
             var notification = new Notification { MessageId = Guid.CreateVersion7(), Source = "test", Title = "Alert", Detail = "details", OccurredAt = now };
+            var protection = new EphemeralDataProtectionProvider();
+            var group = new LineGroup { ExternalId = "group", Approved = true, LastSeenAt = now };
+            var delivery = new LineDelivery { Recipient = group.ExternalId, Text = "Alert", GroupId = group.Id, CreatedAt = now };
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
-            { db.Set<Notification>().Add(notification); await db.SaveChangesAsync(token); }
+            {
+                db.Set<Notification>().Add(notification); db.Set<LineDelivery>().Add(delivery); db.Set<LineGroup>().Add(group);
+                db.Set<LineSettings>().Add(new LineSettings { Enabled = true,
+                    ProtectedAccessToken = protection.CreateProtector("Vigiloom.Line.Channel.v1").Protect("token") });
+                await db.SaveChangesAsync(token);
+            }
+            await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            {
+                var unrelated = Guid.CreateVersion7();
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts) VALUES ({delivery.Id}, 'line.push.v1', '{{}}', {now}, {now}, 0, 0), ({unrelated}, 'other.work', '{{}}', {now}, {now}, 0, 0)", token);
+            }
             var device = new Device("Server", "server.example", true, now);
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             { db.Devices.Add(device); await db.SaveChangesAsync(token); }
@@ -85,7 +111,39 @@ public sealed class OperationsMigrationTests(TestContext context)
             var targetQuota = new PolicyAdministration(targetProvider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>());
             Assert.AreEqual(120, (await targetQuota.GetAsync(token)).Values.GlobalRate);
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+            {
                 Assert.IsTrue(await db.Set<Notification>().AnyAsync(x => x.Id == notification.Id && x.Title == "Alert", token));
+                Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
+            }
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {delivery.Id} AND MessageType = 'line.push.v1'").SingleAsync(token));
+                Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+            }
+            var push = new FakePush();
+            using var http = new HttpClient(push);
+            using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+            {
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Operations"] = target.ConnectionString,
+                    ["Temporal:Address"] = "127.0.0.1:1"
+                }));
+                web.ConfigureTestServices(services =>
+                {
+                    var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
+                    if (dispatcher is not null) services.Remove(dispatcher);
+                    services.RemoveAll<IDataProtectionProvider>();
+                    services.AddSingleton<IDataProtectionProvider>(protection);
+                    services.RemoveAll<LinePushClient>();
+                    services.AddSingleton(new LinePushClient(http));
+                });
+            });
+            await using (var scope = host.Services.CreateAsyncScope())
+                await scope.ServiceProvider.GetRequiredService<OutboxDispatcher>().DispatchAsync(token);
+            Assert.AreEqual(1, push.Count);
+            await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+                Assert.IsNotNull((await db.Set<LineDelivery>().SingleAsync(x => x.Id == delivery.Id, token)).CompletedAt);
             await Assert.ThrowsAsync<InvalidOperationException>(() => OperationsDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token));
         }, outerToken), context.CancellationToken);
 
@@ -93,5 +151,15 @@ public sealed class OperationsMigrationTests(TestContext context)
     {
         await using var db = await factory.CreateDbContextAsync(token);
         await db.Database.MigrateAsync(token);
+    }
+
+    private sealed class FakePush : HttpMessageHandler
+    {
+        public int Count { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Count++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        }
     }
 }
