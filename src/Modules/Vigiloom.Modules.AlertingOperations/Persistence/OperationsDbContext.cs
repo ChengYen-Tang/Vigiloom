@@ -93,6 +93,12 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         pingCursor.Property(x => x.Target).HasMaxLength(253).IsRequired();
         pingCursor.HasIndex(x => new { x.DeviceId, x.Target }).IsUnique();
 
+        var healthCursor = modelBuilder.Entity<HealthTransitionCursor>();
+        healthCursor.ToTable("HealthTransitionCursors");
+        healthCursor.HasKey(x => x.RowId).IsClustered();
+        healthCursor.Property(x => x.RowId).UseIdentityColumn();
+        healthCursor.HasIndex(x => x.TargetId).IsUnique();
+
         var notification = modelBuilder.Entity<Notification>();
         notification.ToTable("Notifications");
         notification.HasKey(x => x.Id).IsClustered(false);

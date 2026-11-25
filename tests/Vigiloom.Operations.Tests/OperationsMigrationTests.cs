@@ -166,6 +166,7 @@ public sealed class OperationsMigrationTests(TestContext context)
                     { ServiceId = application.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now,
                         TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [1] });
                 db.HealthTargets.Add(healthTarget);
+                db.HealthSchedules.Add(new Vigiloom.Modules.ServiceObservability.Domain.Health.HealthSchedule(healthTarget.Id, true, now));
                 await db.SaveChangesAsync(token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO service.HealthObservations (TargetId, LeaseGeneration, NetworkGeneration, SourceVersion, ServiceVersion, TargetVersion, NetworkVersion, Kind, ObservedAt, ReceivedAt) VALUES ({healthTarget.Id}, 1, 1, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 2, {now}, {now})", token);
             }
@@ -185,6 +186,7 @@ public sealed class OperationsMigrationTests(TestContext context)
             {
                 Assert.AreEqual(0, await db.Set<Notification>().CountAsync(token));
                 Assert.AreEqual(0, await db.Set<PingTransitionCursor>().CountAsync(token));
+                Assert.AreEqual(0, await db.Set<HealthTransitionCursor>().CountAsync(token));
                 await db.Set<TimelineRecord>().ExecuteDeleteAsync(token);
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
@@ -204,6 +206,7 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
                 Assert.AreEqual(42L, (await db.Set<PingTransitionCursor>().SingleAsync(token)).Generation);
+                Assert.AreEqual(0L, (await db.Set<HealthTransitionCursor>().SingleAsync(token)).Generation);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
                 Assert.HasCount(11, timeline);
                 Assert.IsTrue(timeline.Any(x => x.Source == "host-log" && x.ResourceId == device.Id && x.LocalLogRowId != null && x.Evidence.Contains("host event")));
