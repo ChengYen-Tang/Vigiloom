@@ -288,6 +288,30 @@ public sealed class DeviceChangeMessagingTests
                         Assert.AreEqual(TemplateOperationStatus.NotFound, (await changes.ImpactAsync(template.Id, 1, token)).Status);
                         Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token));
                     }
+                    var publicGroup = new Group("Internal group", DateTimeOffset.UtcNow);
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        db.Groups.Add(publicGroup);
+                        await db.SaveChangesAsync(token);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.IsNull(await policies.GroupAsync(publicGroup.Id, token));
+                        var settings = scope.ServiceProvider.GetRequiredService<PublicationSettingsManager>();
+                        var current = await settings.GetAsync(PublicationResourceKind.Group, publicGroup.Id, token);
+                        Assert.IsNotNull(current);
+                        var result = await settings.SetAsync(PublicationResourceKind.Group, publicGroup.Id,
+                            new PublicationChange(true, "Public group", PublicationPolicy.BaselineVersion, current.Version), actor, token);
+                        Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
+                        var published = await policies.GroupAsync(publicGroup.Id, token);
+                        Assert.AreEqual("Public group", published?.Name);
+                        Assert.IsFalse(string.IsNullOrEmpty(published?.Version));
+                        Assert.AreEqual(PublicationSaveStatus.Updated,
+                            (await settings.SetAsync(PublicationResourceKind.Group, publicGroup.Id,
+                                new PublicationChange(false, null, null, result.Settings!.Version), actor, token)).Status);
+                        Assert.IsNull(await policies.GroupAsync(publicGroup.Id, token));
+                    }
                     var candidateService = new ApplicationCandidate(Guid.CreateVersion7(), "billing", "production", "Billing", "", DateTimeOffset.UtcNow);
                     var applicationService = new ApplicationService(candidateService, DateTimeOffset.UtcNow);
                     await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))

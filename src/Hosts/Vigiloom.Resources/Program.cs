@@ -107,6 +107,8 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
+internalApi.MapGet("/publications/groups/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
+    await policies.GroupAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapGet("/publications/devices/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
     await policies.DeviceAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapGet("/publications/services/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
