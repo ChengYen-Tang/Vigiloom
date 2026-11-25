@@ -2,7 +2,7 @@ using Vigiloom.Infrastructure.Persistence;
 
 namespace Vigiloom.Modules.Resources.Persistence;
 
-/// <summary>Copies device and group data into the independent resource database.</summary>
+/// <summary>Copies resource-owned data into the independent resource database.</summary>
 public static class ResourcesDataMigration
 {
     private static readonly SqlTableDataMigration.TableMapping[] Tables =
