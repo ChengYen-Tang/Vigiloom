@@ -46,6 +46,33 @@ public sealed class ApplicationService
     public string? PublicPolicyVersion { get; private set; }
     public byte[] Version { get; private set; } = [];
 
+    public void Stop(DateTimeOffset now)
+    {
+        if (RevokedAt is not null) return;
+        RevokedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Resume(DateTimeOffset now)
+    {
+        if (ArchivedAt is not null) throw new InvalidOperationException("An archived service cannot resume collection.");
+        RevokedAt = null;
+        ApprovedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Archive(DateTimeOffset now)
+    {
+        Stop(now);
+        IsPublic = false;
+        PublicSince = null;
+        ArchivedAt = UpdatedAt = now.ToUniversalTime();
+    }
+
+    public void Restore(DateTimeOffset now)
+    {
+        ArchivedAt = null;
+        UpdatedAt = now.ToUniversalTime();
+    }
+
     public void SetPublication(bool isPublic, string? displayName, string? policyVersion, DateTimeOffset now)
     {
         if (isPublic && ArchivedAt is not null) throw new InvalidOperationException("An archived service cannot be published.");
