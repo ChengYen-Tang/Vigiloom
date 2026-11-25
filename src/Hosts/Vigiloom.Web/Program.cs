@@ -44,6 +44,7 @@ using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
+using Vigiloom.Web.Gateway;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -381,6 +382,9 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
+
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 
 // Anonymous status HTML may contain published information and must not survive revocation in caches.
 app.Use(async (context, next) =>
