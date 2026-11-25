@@ -83,7 +83,8 @@ public sealed class ProxyTests
         Assert.AreEqual("web", await client.GetStringAsync("/status", TestContext.CancellationToken));
         Assert.AreEqual("agent", await client.GetStringAsync("/api/v1/agent/identity", TestContext.CancellationToken));
         Assert.AreEqual("otlp", await client.GetStringAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken));
-        Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/devices", TestContext.CancellationToken));
+        using var denied = await client.GetAsync("/api/v1/agent-management/devices", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
     }
 
     [TestMethod]
@@ -122,6 +123,11 @@ public sealed class ProxyTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_write");
         using var write = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, write.StatusCode);
+        foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
+        {
+            using var adminDenied = await client.GetAsync(adminPath, TestContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, adminDenied.StatusCode);
+        }
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_revoked");
         using var revoked = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
@@ -161,9 +167,19 @@ public sealed class ProxyTests
         using var read = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
         Assert.IsFalse(read.Headers.Contains("Set-Cookie"), "Gateway must not renew the Web session cookie.");
+        foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
+        {
+            using var adminDenied = await client.GetAsync(adminPath, TestContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.Forbidden, adminDenied.StatusCode);
+        }
         using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         role = "Administrator";
+        foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
+        {
+            using var adminRead = await client.GetAsync(adminPath, TestContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.OK, adminRead.StatusCode);
+        }
         using var write = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, write.StatusCode);
         revoked = true;

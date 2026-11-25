@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Contracts.Workspace;
 using Vigiloom.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +31,8 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
 builder.Services.AddAuthorization(options =>
 {
     options.AddVigiloomAccessPolicies();
+    options.AddPolicy("GatewayAdministrator", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme)
+        .RequireAuthenticatedUser().RequireRole(WorkspaceAccess.Administrator));
     options.AddPolicy("DenyUnmappedDeviceMethod", policy => policy.RequireAssertion(_ => false));
 });
 builder.Services.AddServiceDiscovery();
