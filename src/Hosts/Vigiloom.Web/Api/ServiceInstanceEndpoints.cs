@@ -1,6 +1,7 @@
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Services;
 
 namespace Vigiloom.Web.Api;
 
@@ -10,7 +11,7 @@ internal static class ServiceInstanceEndpoints
     {
         var admin = app.MapGroup("/api/v1/service-instances").RequireAuthorization(AccessPolicies.Administrator)
             .RequireRateLimiting("api-client");
-        admin.MapGet("/services", async (ServiceInstanceAdministration management, HttpContext context, CancellationToken token, int page = 1) =>
+        admin.MapGet("/services", async (IApplicationManagement management, HttpContext context, CancellationToken token, int page = 1) =>
         {
             if (page is < 1 or > 1000) return Results.BadRequest();
             context.Response.Headers.CacheControl = "no-store";

@@ -67,7 +67,7 @@ internal static class ServiceDiscoveryEndpoints
         var services = app.MapGroup("/api/v1/service-discovery/services").RequireAuthorization(AccessPolicies.Administrator)
             .RequireRateLimiting("api-client");
         services.MapPost("/{serviceId:guid}/{action}", async (Guid serviceId, string action, ServiceInstanceUpdate request,
-            HttpContext context, ServiceCollectionAdministration management, CancellationToken token) =>
+            HttpContext context, IApplicationManagement management, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 if (serviceId.Version != 7 || action is not ("stop" or "resume" or "archive" or "restore")) return Results.BadRequest();

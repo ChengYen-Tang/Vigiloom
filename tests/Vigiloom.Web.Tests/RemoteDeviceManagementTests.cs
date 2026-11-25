@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Net.Http.Json;
 using System.Net;
 using System.Security.Claims;
@@ -58,9 +59,17 @@ public sealed class RemoteDeviceManagementTests
                 var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(resourceDb.ConnectionString,
                     sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
                 await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
-                var candidate = new ApplicationCandidate(Guid.CreateVersion7(), "orders", "production", "Orders", "", DateTimeOffset.UtcNow);
+                var existingSource = new ServiceSource("Orders source", new byte[32], DateTimeOffset.UtcNow);
+                var candidate = new ApplicationCandidate(existingSource.Id, "orders", "production", "Orders", "", DateTimeOffset.UtcNow);
                 var application = new ApplicationService(candidate, DateTimeOffset.UtcNow);
                 await using (var db = new ResourcesDbContext(options)) { db.ApplicationServices.Add(application); await db.SaveChangesAsync(token); }
+                var observationOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(webDb.ConnectionString).Options;
+                await using (var db = new ServiceObservabilityDbContext(observationOptions))
+                {
+                    db.Sources.Add(existingSource);
+                    db.Services.Add(MonitoredService.FromResource(application.Id, existingSource.Id, "orders", "production", "Orders", DateTimeOffset.UtcNow));
+                    await db.SaveChangesAsync(token);
+                }
                 WebApplicationFactory<Program>? web = null;
                 ClaimsPrincipal circuitPrincipal = new(new ClaimsIdentity());
                 using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(builder =>
@@ -77,10 +86,16 @@ public sealed class RemoteDeviceManagementTests
                 });
                 using var webHost = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
+                    builder.UseSetting("Services:Resources:Url", "http://resources");
+                    builder.UseSetting("ConnectionStrings:Vigiloom", webDb.ConnectionString);
+                    builder.UseSetting("ConnectionStrings:Messaging", broker);
+                    builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
                     builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
                         ["ConnectionStrings:Vigiloom"] = webDb.ConnectionString,
-                        ["Services:Resources:Url"] = "http://resources"
+                        ["ConnectionStrings:Messaging"] = broker,
+                        ["Services:Resources:Url"] = "http://resources",
+                        ["Messaging:ObservabilityQueue"] = observabilityQueue
                     }));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteDeviceManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
@@ -93,6 +108,8 @@ public sealed class RemoteDeviceManagementTests
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicReader))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicationManagement))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteApplicationManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddScoped<AuthenticationStateProvider>(_ => new TestCircuitAuthentication(() => circuitPrincipal)));
                 });
@@ -210,7 +227,18 @@ public sealed class RemoteDeviceManagementTests
                 var candidates = await candidatesApi.ListAsync(1, token);
                 Assert.HasCount(1, candidates);
                 Assert.AreEqual("Receiver", candidates[0].SourceName);
-                Assert.AreEqual(ApprovalStatus.Approved, (await candidatesApi.ApproveAsync(candidates[0].Id, Guid.CreateVersion7(), token)).Status);
+                var approved = await candidatesApi.ApproveAsync(candidates[0].Id, Guid.CreateVersion7(), token);
+                Assert.AreEqual(ApprovalStatus.Approved, approved.Status);
+                using (var eventTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    eventTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    while (true)
+                    {
+                        await using var db = new ServiceObservabilityDbContext(observationOptions);
+                        if (await db.Services.AnyAsync(s => s.Id == approved.ServiceId && s.RevokedAt == null, eventTimeout.Token)) break;
+                        await Task.Delay(100, eventTimeout.Token);
+                    }
+                }
                 Assert.AreEqual(CandidateObservation.Recorded, await candidatesApi.ObserveAsync(authenticated, "other-api", "production", "Other API", token, ""));
                 var other = (await candidatesApi.ListAsync(1, token)).Single();
                 await using (var db = await sourceContexts.CreateDbContextAsync(token))
@@ -220,6 +248,51 @@ public sealed class RemoteDeviceManagementTests
                 }
                 Assert.IsEmpty(await candidatesApi.ListAsync(1, token));
                 Assert.AreEqual(ApprovalStatus.SourceUnavailable, (await candidatesApi.ApproveAsync(other.Id, Guid.CreateVersion7(), token)).Status);
+                var applications = scope.ServiceProvider.GetRequiredService<IApplicationManagement>();
+                Assert.IsInstanceOfType<RemoteApplicationManagement>(applications);
+                var listed = (await applications.ListServicesAsync(1, token)).Single(s => s.Id == application.Id);
+                Assert.AreEqual("Orders", listed.Name);
+                await using (var db = new ServiceObservabilityDbContext(observationOptions))
+                await using (var tx = await db.Database.BeginTransactionAsync(token))
+                    Assert.IsNotNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
+                        new AuthenticatedSource(existingSource.Id, existingSource.Version), "orders", "production", token));
+                Assert.AreEqual(ServiceCollectionStatus.Updated, await applications.SetArchivedAsync(application.Id, listed.Version, true, Guid.CreateVersion7(), token));
+                var archivedApplication = await applications.GetServiceAsync(application.Id, token);
+                Assert.IsNotNull(archivedApplication?.ArchivedAt);
+                await using (var db = new ServiceObservabilityDbContext(observationOptions))
+                await using (var tx = await db.Database.BeginTransactionAsync(token))
+                {
+                    Assert.IsNotNull((await db.Services.SingleAsync(s => s.Id == application.Id, token)).ArchivedAt);
+                    Assert.IsNull(await ServiceReceptionAuthorization.LockAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
+                        new AuthenticatedSource(existingSource.Id, existingSource.Version), "orders", "production", token));
+                }
+                Assert.AreEqual(ServiceCollectionStatus.Updated, await applications.SetArchivedAsync(application.Id, archivedApplication!.Version, false, Guid.CreateVersion7(), token));
+                await using (var db = new ServiceObservabilityDbContext(observationOptions))
+                {
+                    var observed = await db.Services.SingleAsync(s => s.Id == application.Id, token);
+                    Assert.IsNull(observed.ArchivedAt);
+                    Assert.IsNotNull(observed.RevokedAt);
+                }
+                var restoredApplication = await applications.GetServiceAsync(application.Id, token);
+                Assert.AreEqual(ServiceCollectionStatus.Updated, await applications.SetStoppedAsync(application.Id, restoredApplication!.Version, false, Guid.CreateVersion7(), token));
+                var runningApplication = await applications.GetServiceAsync(application.Id, token);
+                using (var resourceClient = resources.CreateClient())
+                using (var response = await resourceClient.PostAsJsonAsync($"/internal/v1/application-services/{application.Id:D}/state",
+                    new ApplicationStateChange(runningApplication!.Version, "stop", Guid.CreateVersion7()), token))
+                {
+                    response.EnsureSuccessStatusCode();
+                    Assert.AreEqual(ApplicationStateChangeStatus.Updated, await response.Content.ReadFromJsonAsync<ApplicationStateChangeStatus>(cancellationToken: token));
+                }
+                using (var eventTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    eventTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+                    while (true)
+                    {
+                        await using var db = new ServiceObservabilityDbContext(observationOptions);
+                        if (await db.Services.AnyAsync(s => s.Id == application.Id && s.RevokedAt != null, eventTimeout.Token)) break;
+                        await Task.Delay(100, eventTimeout.Token);
+                    }
+                }
                 var archived = await devices.SetArchivedAsync(id, true, (await devices.GetAsync(id, token))!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);

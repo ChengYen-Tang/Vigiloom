@@ -47,6 +47,8 @@ using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Infrastructure.Messaging;
+using Wolverine;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -58,6 +60,20 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.ConfigureServices((context, services) =>
+{
+    if (string.IsNullOrWhiteSpace(context.Configuration["Services:Resources:Url"])) return;
+    var database = context.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required.");
+    var broker = context.Configuration.GetConnectionString("Messaging") ?? throw new InvalidOperationException("ConnectionStrings:Messaging is required when using the resource service.");
+    services.AddWolverine(options =>
+    {
+        options.UseVigiloomMessaging(database, broker);
+        options.Discovery.DisableConventionalDiscovery();
+        options.Discovery.IncludeType<Vigiloom.Web.Services.ApplicationEventHandler>();
+        options.ListenReliablyOn(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+    });
+});
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
@@ -215,6 +231,15 @@ builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Hea
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthHistoryReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
+builder.Services.AddScoped<ApplicationStateProjection>();
+builder.Services.AddScoped<Vigiloom.Web.Services.LocalApplicationManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteApplicationManagement>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Vigiloom.Web.Services.IApplicationManagement>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<Vigiloom.Web.Services.LocalApplicationManagement>()
+        : services.GetRequiredService<Vigiloom.Web.Services.RemoteApplicationManagement>());
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
 builder.Services.AddScoped<AgentMonitoring>();

@@ -48,9 +48,9 @@ public partial class ServiceHealth
             var policy = await Networks.GetAsync(token);
             networkEmpty = policy.Networks.Count == 0;
             if (handler != "health-networks") NetworkForm = new() { Text = string.Join('\n', policy.Networks), Version = policy.Version };
-            services = await Instances.ListServicesAsync(servicePage, token);
+            services = await Applications.ListServicesAsync(servicePage, token);
             if (SelectedService is not { } selected || selected.Version != 7) return;
-            selectedService = await Instances.GetServiceAsync(selected, token);
+            selectedService = await Applications.GetServiceAsync(selected, token);
             if (selectedService is null) { error = "找不到選取的服務。"; return; }
             targets = await Targets.ListAsync(selected, targetPage, token);
             observations = await Observations.LatestAsync(selected, targetPage, token);
