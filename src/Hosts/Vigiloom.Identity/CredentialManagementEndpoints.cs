@@ -13,7 +13,7 @@ internal static class CredentialManagementEndpoints
     public static void MapCredentialManagementEndpoints(this WebApplication app)
     {
         app.MapPost("/internal/identity/credentials/list", async (CredentialListRequest request, HttpContext context,
-            CredentialActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
+            AdministratorActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var actor = await actors.FindAsync(request.Actor);
@@ -21,7 +21,7 @@ internal static class CredentialManagementEndpoints
             return Results.Ok(await credentials.ListAsync(actor, request.Page, token));
         });
         app.MapPost("/internal/identity/credentials/issue", async (CredentialIssueRequest request, HttpContext context,
-            CredentialActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
+            AdministratorActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var actor = await actors.FindAsync(request.Actor);
@@ -29,7 +29,7 @@ internal static class CredentialManagementEndpoints
             return Results.Ok(await credentials.IssueAsync(actor, request.Name, request.CanWrite, request.Days, request.Password, token));
         });
         app.MapPost("/internal/identity/credentials/revoke", async (CredentialRevokeRequest request, HttpContext context,
-            CredentialActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
+            AdministratorActorValidator actors, ApiCredentials credentials, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var actor = await actors.FindAsync(request.Actor);
@@ -39,7 +39,7 @@ internal static class CredentialManagementEndpoints
     }
 }
 
-internal sealed class CredentialActorValidator(IdentityAccessDbContext db, UserManager<Account> users,
+internal sealed class AdministratorActorValidator(IdentityAccessDbContext db, UserManager<Account> users,
     IOptions<IdentityOptions> options, IUserClaimsPrincipalFactory<Account> factory)
 {
     public async Task<ClaimsPrincipal?> FindAsync(IdentityActor actor)

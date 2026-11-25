@@ -14,7 +14,7 @@ builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(
     _ => builder.Configuration.GetConnectionString("VigiloomIdentity")
         ?? throw new InvalidOperationException("ConnectionStrings:VigiloomIdentity is required."), "identity");
 builder.Services.AddIdentityAccessOperations();
-builder.Services.AddScoped<CredentialActorValidator>();
+builder.Services.AddScoped<AdministratorActorValidator>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication().AddIdentityCookies();
 builder.Services.AddIdentityCore<Account>().AddSignInManager();
@@ -22,6 +22,7 @@ builder.Services.AddIdentityCore<Account>().AddSignInManager();
 var app = builder.Build();
 app.MapIdentitySessionEndpoints();
 app.MapCredentialManagementEndpoints();
+app.MapAccountManagementEndpoints();
 
 // This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
 app.MapPost("/internal/identity/api-credentials/validate", async (

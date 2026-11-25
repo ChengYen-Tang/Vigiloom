@@ -43,6 +43,7 @@ public sealed class RemoteIdentityHttpTests
             var passwordRequests = 0;
             var twoFactorCompletions = 0;
             var credentialManagementRequests = 0;
+            var accountManagementRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -73,6 +74,8 @@ public sealed class RemoteIdentityHttpTests
                     })));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCredentialManagement))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref credentialManagementRequests))));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteAccountManagement))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref accountManagementRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -144,6 +147,21 @@ public sealed class RemoteIdentityHttpTests
                 new Claim(options.ClaimsIdentity.SecurityStampClaimType, (await users.GetSecurityStampAsync(administrator))!),
                 new Claim(SessionLifetime.ExpirationClaim, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
             ], "test"));
+            var accountManagement = scope.ServiceProvider.GetRequiredService<AccountManagement>();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await accountManagement.ListAsync(principal, 1, token));
+            var createdAccount = await accountManagement.CreateAsync(adminPrincipal, "managed-reader", BuiltInRoles.ReadOnly, token);
+            Assert.AreEqual(AccountOperationStatus.Success, createdAccount.Result.Status);
+            Assert.IsNotNull(createdAccount.AccountId);
+            var managedId = createdAccount.AccountId.Value;
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.RenameAsync(adminPrincipal, managedId, "renamed-reader", token)).Status);
+            Assert.AreEqual("renamed-reader", (await accountManagement.GetAsync(adminPrincipal, managedId, token))!.UserName);
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.SetRoleAsync(adminPrincipal, managedId, BuiltInRoles.Administrator, token)).Status);
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.SetRoleAsync(adminPrincipal, managedId, BuiltInRoles.ReadOnly, token)).Status);
+            Assert.AreEqual(AccountOperationStatus.InvalidCredentials, (await accountManagement.ResetTwoFactorAsync(adminPrincipal, managedId, "wrong-password", token)).Status);
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.ResetTwoFactorAsync(adminPrincipal, managedId, "Admin-Password-123", token)).Status);
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.IssuePasswordResetAsync(adminPrincipal, managedId, token)).Result.Status);
+            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.DeleteAsync(adminPrincipal, managedId, token)).Status);
+            Assert.IsNull(await accountManagement.GetAsync(adminPrincipal, managedId, token));
             var issued = await management.IssueAsync(adminPrincipal, "remote-managed", false, 30, "Admin-Password-123", token);
             Assert.AreEqual(ApiCredentialStatus.Success, issued.Status);
             Assert.IsFalse(string.IsNullOrEmpty(issued.Secret));
@@ -161,6 +179,21 @@ public sealed class RemoteIdentityHttpTests
             adminLoginFields["Input.Password"] = "Admin-Password-123";
             using (var adminLogin = await adminBrowser.PostAsync("/account/login", new FormUrlEncodedContent(adminLoginFields), token))
                 Assert.AreEqual(HttpStatusCode.Redirect, adminLogin.StatusCode);
+            using var accountsPage = await adminBrowser.GetAsync("/account/manage", token);
+            Assert.AreEqual(HttpStatusCode.OK, accountsPage.StatusCode);
+            var accountsDocument = await new HtmlParser().ParseDocumentAsync(await accountsPage.Content.ReadAsStringAsync(token), token);
+            var createForm = accountsDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "create-account");
+            var createFields = createForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            createFields["Input.UserName"] = "remote-ui-reader";
+            createFields["Input.Role"] = BuiltInRoles.ReadOnly;
+            var beforeCreate = accountManagementRequests;
+            using (var createResponse = await adminBrowser.PostAsync("/account/manage", new FormUrlEncodedContent(createFields), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, createResponse.StatusCode);
+                var createdDocument = await new HtmlParser().ParseDocumentAsync(await createResponse.Content.ReadAsStringAsync(token), token);
+                Assert.IsNotNull(createdDocument.QuerySelector("textarea[aria-label='一次性設定密碼代碼']"));
+            }
+            Assert.IsGreaterThan(beforeCreate, accountManagementRequests);
             using var managementPage = await adminBrowser.GetAsync("/account/api-credentials", token);
             Assert.AreEqual(HttpStatusCode.OK, managementPage.StatusCode);
             var managementDocument = await new HtmlParser().ParseDocumentAsync(await managementPage.Content.ReadAsStringAsync(token), token);

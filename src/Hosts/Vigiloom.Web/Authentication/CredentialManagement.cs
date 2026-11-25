@@ -21,15 +21,7 @@ internal sealed class CredentialManagement(IServiceProvider services, IConfigura
 
     private bool Remote => !string.IsNullOrWhiteSpace(configuration["Services:Identity:Url"]);
     private RemoteCredentialManagement Client() => services.GetRequiredService<RemoteCredentialManagement>();
-    private IdentityActor Actor(ClaimsPrincipal principal)
-    {
-        if (principal.HasClaim(claim => claim.Type == SessionLifetime.ExpirationClaim) && !SessionLifetime.IsCurrent(principal))
-            throw new UnauthorizedAccessException();
-        var id = principal.FindFirstValue(options.Value.ClaimsIdentity.UserIdClaimType);
-        var stamp = principal.FindFirstValue(options.Value.ClaimsIdentity.SecurityStampClaimType);
-        if (!Guid.TryParse(id, out var accountId) || string.IsNullOrEmpty(stamp)) throw new UnauthorizedAccessException();
-        return new IdentityActor(accountId, stamp);
-    }
+    private IdentityActor Actor(ClaimsPrincipal principal) => IdentityActorFactory.Create(principal, options.Value);
 }
 
 internal sealed class RemoteCredentialManagement(HttpClient client)
