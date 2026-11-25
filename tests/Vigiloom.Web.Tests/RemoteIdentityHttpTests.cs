@@ -287,6 +287,29 @@ public sealed class RemoteIdentityHttpTests
             var disabledDocument = await new HtmlParser().ParseDocumentAsync(await disableResponse.Content.ReadAsStringAsync(token), token);
             Assert.Contains("雙重驗證已停用", disabledDocument.QuerySelector(".account-success")?.TextContent ?? "");
             Assert.IsGreaterThan(3, twoFactorSettingRequests);
+            var applicationCookie = disableResponse.Headers.GetValues("Set-Cookie")
+                .Single(value => value.StartsWith(".AspNetCore.Identity.Application=", StringComparison.Ordinal)).Split(';')[0];
+            using var secondWeb = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                    ["Services:Identity:Url"] = "http://identity"
+                }));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCookieValidator))
+                    .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteWorkspaceIdentity))
+                    .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
+            });
+            using var secondBrowser = secondWeb.CreateClient(new WebApplicationFactoryClientOptions
+                { BaseAddress = new Uri("https://localhost"), HandleCookies = false, AllowAutoRedirect = false });
+            secondBrowser.DefaultRequestHeaders.Add("Cookie", applicationCookie);
+            using (var secondInstance = await secondBrowser.GetAsync("/api/v1/workspace/identity", token))
+                Assert.AreEqual(HttpStatusCode.OK, secondInstance.StatusCode);
+            await identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(administrator).ReloadAsync(token);
+            Assert.IsTrue((await users.UpdateSecurityStampAsync(administrator)).Succeeded);
+            using (var revokedOnSecondInstance = await secondBrowser.GetAsync("/api/v1/workspace/identity", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, revokedOnSecondInstance.StatusCode);
             var workspace = scope.ServiceProvider.GetRequiredService<WorkspaceIdentityService>();
             var revalidation = (IdentityRevalidatingAuthenticationStateProvider)scope.ServiceProvider.GetRequiredService<AuthenticationStateProvider>();
             var validSession = await workspace.GetAsync(principal, token);
