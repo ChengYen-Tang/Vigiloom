@@ -17,6 +17,8 @@ internal static class PackageEndpoints
             await assignments.GetAsync(id, token) is { } result ? Results.Ok(result) : Results.NotFound());
         api.MapGet("/agents/{id:guid}/target", async (Guid id, AgentAssignments assignments, CancellationToken token) =>
             await assignments.GetTargetAsync(id, token) is { } target ? Results.Ok(target) : Results.NoContent());
+        api.MapGet("/agents/{id:guid}/update-targets/{updateId:guid}", async (Guid id, Guid updateId, AgentAssignments assignments, CancellationToken token) =>
+            await assignments.GetRecordedTargetAsync(id, updateId, token) is { } target ? Results.Ok(target) : Results.NotFound());
         api.MapPut("/agents/{id:guid}/assignment", async (Guid id, AgentVersionAssignmentCommand request, AgentAssignments assignments, CancellationToken token) =>
             Results.Ok(await assignments.SetAsync(id, request, token)));
         api.MapGet("/agents/{id:guid}/update/targets/{name}", async (Guid id, string name, AgentPackageAccess access, HttpContext context, CancellationToken token) =>

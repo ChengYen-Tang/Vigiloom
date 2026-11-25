@@ -39,6 +39,16 @@ public sealed class AgentAssignments(IDbContextFactory<ResourcesDbContext> conte
                 row.Package.ManifestSha256, Convert.ToBase64String(row.Version));
     }
 
+    public async Task<RecordedAgentUpdateTarget?> GetRecordedTargetAsync(Guid agentId, Guid updateId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await (from agent in EligibleAgents(db)
+            join target in db.AgentUpdateTargets.AsNoTracking() on agent.Id equals target.AgentId
+            where agent.Id == agentId && target.Id == updateId
+            select new RecordedAgentUpdateTarget(target.Id, target.AgentId, target.PackageId, target.Version,
+                target.RuntimeIdentifier, target.ManifestSha256, target.AssignedAt)).SingleOrDefaultAsync(token);
+    }
+
     public async Task<VersionAssignmentResult> SetAsync(Guid agentId, AgentVersionAssignmentCommand request, CancellationToken token)
     {
         if (agentId == Guid.Empty || request.ActorId == Guid.Empty || request.PackageId == Guid.Empty) return VersionAssignmentResult.NotFound;
