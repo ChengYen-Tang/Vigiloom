@@ -95,6 +95,65 @@ public sealed class ServiceWorkTests
 
     [TestMethod]
     [TestCategory("Database")]
+    public async Task OneBusinessTransactionDeliversToBothDestinationServices()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL to run the Temporal integration test.");
+        var client = await TemporalClient.ConnectAsync(new(address));
+        var ids = new Guid[2];
+        var queues = new[] { "vigiloom-test-" + Guid.CreateVersion7().ToString("N"), "vigiloom-test-" + Guid.CreateVersion7().ToString("N") };
+        var handlers = new[] { new TestHandler(), new TestHandler() };
+        using var first = ServiceWorkWorker.Create(client, queues[0], handlers[0]);
+        using var second = ServiceWorkWorker.Create(client, queues[1], handlers[1]);
+        try
+        {
+            await first.ExecuteAsync(async () => await second.ExecuteAsync(async () =>
+                await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+                {
+                    var options = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                        sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                    await using var db = new SchedulingDbContext(options);
+                    await db.Database.MigrateAsync(token);
+                    var handler = new TemporalOutboxHandler(new ServiceWorkClient(client));
+                    var services = new ServiceCollection();
+                    services.AddVigiloomTemporalClient(address, "default");
+                    using var provider = services.BuildServiceProvider();
+                    using var scope = provider.CreateScope();
+                    var writer = scope.ServiceProvider.GetRequiredService<TemporalWorkWriter>();
+                    await using (var transaction = await db.Database.BeginTransactionAsync(token))
+                    {
+                        for (var index = 0; index < ids.Length; index++)
+                            ids[index] = await writer.WriteAsync(db, queues[index], new("device-change", "device-123"), token);
+                        await transaction.CommitAsync(token);
+                    }
+                    await new OutboxDispatcher(database.ConnectionString, [handler], NullLogger<OutboxDispatcher>.Instance).DispatchAsync(token);
+                    var producer = new ServiceWorkClient(client);
+                    foreach (var id in ids)
+                        Assert.AreEqual("device-change:device-123", await producer.Get(id.ToString("D")).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token));
+                    Assert.AreEqual(1, handlers[0].Executions);
+                    Assert.AreEqual(1, handlers[1].Executions);
+                }, TestContext.CancellationToken), TestContext.CancellationToken), TestContext.CancellationToken);
+        }
+        finally
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            foreach (var id in ids.Where(id => id != Guid.Empty))
+            {
+                try
+                {
+                    await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                    {
+                        Namespace = "default",
+                        WorkflowExecution = new() { WorkflowId = id.ToString("D") }
+                    }, new Temporalio.Client.RpcOptions { CancellationToken = cleanup.Token });
+                }
+                catch (Temporalio.Exceptions.RpcException error) when (error.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound) { }
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Database")]
     public async Task PendingSqlWorkIsDeliveredAfterTemporalRecovers()
     {
         var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
