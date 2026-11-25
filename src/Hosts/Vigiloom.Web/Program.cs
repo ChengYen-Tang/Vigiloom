@@ -513,6 +513,11 @@ app.MapAgentBatchEndpoints();
 app.MapServiceDiscoveryEndpoints();
 app.MapLineWebhookEndpoints();
 app.MapLineSettingsEndpoints();
+app.MapGet("/internal/v1/observation-sources/{id:guid}/active", async (Guid id, IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    return Results.Ok(await db.Sources.AsNoTracking().AnyAsync(source => source.Id == id && source.RevokedAt == null, token));
+});
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapTelemetryRetentionEndpoints();

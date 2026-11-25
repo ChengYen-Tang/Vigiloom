@@ -31,6 +31,8 @@ public sealed class DeviceChangeMessagingTests
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
+        var observabilityQueue = "vigiloom-test-observation-" + suffix;
+        var sources = new TestSources();
         try
         {
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -42,6 +44,9 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<DeviceChangeOutbox>();
                 builder.Services.AddScoped<GroupManagement>();
                 builder.Services.AddScoped<GroupAuditOutbox>();
+                builder.Services.AddSingleton<IApplicationSourceVerifier>(sources);
+                builder.Services.AddScoped<ApplicationDiscovery>();
+                builder.Services.AddScoped<ApplicationApproval>();
                 builder.UseWolverine(options =>
                 {
                     options.UseVigiloomMessaging(database.ConnectionString, broker!);
@@ -49,6 +54,8 @@ public sealed class DeviceChangeMessagingTests
                     options.PublishReliablyTo<NetworkDeviceChanged>(networkQueue);
                     options.PublishReliablyTo<AgentDeviceChanged>(agentQueue);
                     options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
+                    options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
+                    options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
                 });
                 using var host = builder.Build();
                 await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -90,6 +97,32 @@ public sealed class DeviceChangeMessagingTests
                     Assert.Contains(groupId.ToString("D"), System.Text.Encoding.UTF8.GetString(groupMessage.Body.Span));
                     await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                         Assert.IsTrue(await db.Groups.AnyAsync(x => x.Id == groupId, token));
+                    Guid candidateId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var discovery = scope.ServiceProvider.GetRequiredService<ApplicationDiscovery>();
+                        var observation = new ApplicationObservation(Guid.CreateVersion7(), "orders", "production", "Orders", "");
+                        await discovery.ObserveAsync(observation, token);
+                        candidateId = (await discovery.ListAsync(1, token)).Single().Id;
+                        sources.Active = false;
+                        var denied = await scope.ServiceProvider.GetRequiredService<ApplicationApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
+                        Assert.AreEqual(ApplicationApprovalStatus.SourceUnavailable, denied.Status);
+                    }
+                    sources.Active = true;
+                    Guid serviceId;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var approval = await scope.ServiceProvider.GetRequiredService<ApplicationApproval>().ApproveAsync(candidateId, Guid.CreateVersion7(), token);
+                        Assert.AreEqual(ApplicationApprovalStatus.Approved, approval.Status);
+                        serviceId = approval.ServiceId!.Value;
+                    }
+                    foreach (var queue in new[] { auditQueue, observabilityQueue })
+                    {
+                        BasicGetResult? message;
+                        while ((message = await channel.BasicGetAsync(queue, autoAck: true, cancellationToken: timeout.Token)) is null)
+                            await Task.Delay(100, timeout.Token);
+                        Assert.Contains(serviceId.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
+                    }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
                     await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
@@ -116,6 +149,13 @@ public sealed class DeviceChangeMessagingTests
             await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
         }
+    }
+
+    private sealed class TestSources : IApplicationSourceVerifier
+    {
+        public bool Active { get; set; } = true;
+        public Task<bool> IsActiveAsync(Guid sourceId, CancellationToken token) => Task.FromResult(Active);
     }
 }
