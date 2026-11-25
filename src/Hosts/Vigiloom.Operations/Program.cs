@@ -9,6 +9,7 @@ using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations;
 using Vigiloom.Operations.HostLogs;
+using Vigiloom.Operations.ApplicationLogs;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +29,7 @@ builder.Services.AddScoped(provider => new OutboxDispatcher(
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."),
     provider.GetServices<IOutboxHandler>(), provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddScoped<HostLogIngestion>();
+builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddHostedService<WorkDispatcher>();
 var app = builder.Build();
 
@@ -35,18 +37,11 @@ var app = builder.Build();
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>
     Results.Ok(Map(await quota.GetAsync(token))));
 app.MapPost("/internal/v1/host-logs", async (HostLogSubmission input, HostLogIngestion ingestion, CancellationToken token) =>
-{
-    var receipt = await ingestion.ReceiveAsync(input, token);
-    return receipt.Status switch
-    {
-        HostLogReceiptStatus.Accepted => Results.Ok(receipt),
-        HostLogReceiptStatus.Invalid => Results.BadRequest(receipt),
-        HostLogReceiptStatus.Conflict => Results.Conflict(receipt),
-        HostLogReceiptStatus.BatchTooLarge => Results.Json(receipt, statusCode: StatusCodes.Status413PayloadTooLarge),
-        HostLogReceiptStatus.RateLimited => Results.Json(receipt, statusCode: StatusCodes.Status429TooManyRequests),
-        _ => Results.Json(receipt, statusCode: StatusCodes.Status503ServiceUnavailable)
-    };
-}).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2 * 1024 * 1024));
+    MapReceipt(await ingestion.ReceiveAsync(input, token)))
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2 * 1024 * 1024));
+app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
+    MapReceipt(await ingestion.ReceiveAsync(input, token)))
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
 app.MapPut("/internal/v1/log-quota", async (LogQuotaUpdate input, SharedLogQuota quota, CancellationToken token) =>
 {
     if (input.Settings is null || input.ActorId == Guid.Empty) return Results.BadRequest();
@@ -60,5 +55,15 @@ app.Run();
 
 static QuotaContract Map(LogQuotaSnapshot value) =>
     new(value.Values.SourceRate, value.Values.SourceBurst, value.Values.GlobalRate, value.Values.GlobalBurst, value.Version);
+
+static IResult MapReceipt(LogReceipt receipt) => receipt.Status switch
+{
+    LogReceiptStatus.Accepted => Results.Ok(receipt),
+    LogReceiptStatus.Invalid => Results.BadRequest(receipt),
+    LogReceiptStatus.Conflict => Results.Conflict(receipt),
+    LogReceiptStatus.BatchTooLarge => Results.Json(receipt, statusCode: StatusCodes.Status413PayloadTooLarge),
+    LogReceiptStatus.RateLimited => Results.Json(receipt, statusCode: StatusCodes.Status429TooManyRequests),
+    _ => Results.Json(receipt, statusCode: StatusCodes.Status503ServiceUnavailable)
+};
 
 public partial class Program;
