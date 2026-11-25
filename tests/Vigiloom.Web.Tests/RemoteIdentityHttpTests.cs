@@ -25,6 +25,7 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Tests.Fixtures;
+using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests;
 
@@ -37,7 +38,8 @@ public sealed class RemoteIdentityHttpTests
 
     [TestMethod]
     public Task WebApi_UsesIdentityHostForCredentialAndRevocation() =>
-        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+        ReusableWebDatabase.ExecuteAsync(async (database, outerToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (identityDatabase, token) =>
         {
             var sessionRequests = 0;
             var cookieRequests = 0;
@@ -52,7 +54,7 @@ public sealed class RemoteIdentityHttpTests
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:VigiloomIdentity"] = database.ConnectionString,
+                    ["ConnectionStrings:VigiloomIdentity"] = identityDatabase.ConnectionString,
                     ["Vigiloom:SetupToken"] = "test-only-bootstrap-secret-with-adequate-length"
                 })));
             using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -91,7 +93,8 @@ public sealed class RemoteIdentityHttpTests
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
-            var contexts = web.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
+            var contexts = identity.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
+            await using (var identityDb = await contexts.CreateDbContextAsync(token)) await identityDb.Database.MigrateAsync(token);
             var secret = RandomNumberGenerator.GetBytes(32);
             var credential = new ApiCredential("remote", SHA256.HashData(secret), true, DateTimeOffset.UtcNow.AddDays(1), Guid.CreateVersion7());
             await using (var db = await contexts.CreateDbContextAsync(token))
@@ -114,7 +117,8 @@ public sealed class RemoteIdentityHttpTests
 
             await RoleInitializer.InitializeAsync(contexts, token);
             await using var scope = web.Services.CreateAsyncScope();
-            var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+            await using var identityScope = identity.Services.CreateAsyncScope();
+            var users = identityScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
             var user = new Account { UserName = "remote-reader" };
             Assert.IsTrue((await users.CreateAsync(user, "Reader-Password-123")).Succeeded);
             Assert.IsTrue((await users.AddToRoleAsync(user, BuiltInRoles.ReadOnly)).Succeeded);
@@ -127,7 +131,7 @@ public sealed class RemoteIdentityHttpTests
             fields["Input.Password"] = "wrong-password";
             using (var failedLogin = await browser.PostAsync("/account/login", new FormUrlEncodedContent(fields), token))
                 Assert.AreEqual(HttpStatusCode.OK, failedLogin.StatusCode);
-            await using (var verifyFailure = web.Services.CreateAsyncScope())
+            await using (var verifyFailure = identity.Services.CreateAsyncScope())
             {
                 var failedUsers = verifyFailure.ServiceProvider.GetRequiredService<UserManager<Account>>();
                 var failedAccount = await failedUsers.FindByIdAsync(user.Id.ToString("D"));
@@ -142,7 +146,7 @@ public sealed class RemoteIdentityHttpTests
                 Assert.IsTrue(authorized.Headers.Contains("Set-Cookie"));
             }
             Assert.IsGreaterThan(0, cookieRequests);
-            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
+            await identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>().Value;
             var principal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim(options.ClaimsIdentity.UserIdClaimType, user.Id.ToString("D")),
@@ -301,7 +305,7 @@ public sealed class RemoteIdentityHttpTests
             using (var logout = await browser.PostAsync("/account/logout", new FormUrlEncodedContent(logoutFields), token))
                 Assert.AreEqual(HttpStatusCode.Redirect, logout.StatusCode);
             Assert.AreEqual(1, revocationRequests);
-            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
+            await identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             using (var expiredCookie = await browser.GetAsync("/api/v1/workspace/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, expiredCookie.StatusCode);
             Assert.IsNull(await workspace.GetAsync(principal, token));
@@ -311,9 +315,9 @@ public sealed class RemoteIdentityHttpTests
             Assert.IsTrue((await users.ResetAuthenticatorKeyAsync(user)).Succeeded);
             var authenticatorKey = await users.GetAuthenticatorKeyAsync(user);
             Assert.IsFalse(string.IsNullOrEmpty(authenticatorKey));
-            await using (var identityScope = identity.Services.CreateAsyncScope())
+            await using (var keyScope = identity.Services.CreateAsyncScope())
             {
-                var identityUsers = identityScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var identityUsers = keyScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
                 var identityUser = await identityUsers.FindByIdAsync(user.Id.ToString("D"));
                 Assert.AreEqual(authenticatorKey, await identityUsers.GetAuthenticatorKeyAsync(identityUser!));
             }
@@ -354,7 +358,7 @@ public sealed class RemoteIdentityHttpTests
             pendingFields["Input.Password"] = "Reader-Password-123";
             using var pendingLogin = await pendingBrowser.PostAsync("/account/login", new FormUrlEncodedContent(pendingFields), token);
             Assert.AreEqual(HttpStatusCode.Redirect, pendingLogin.StatusCode);
-            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
+            await identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
             using var invalidChallenge = await pendingBrowser.GetAsync(challengePath, token);
             Assert.AreEqual(HttpStatusCode.Redirect, invalidChallenge.StatusCode);
@@ -385,7 +389,7 @@ public sealed class RemoteIdentityHttpTests
             }
             using var lockedLogin = await identityClient.PostAsJsonAsync("/internal/identity/password-login", new PasswordLoginRequest("remote-locked", "Reader-Password-123"), token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, lockedLogin.StatusCode);
-        }, TestContext.CancellationToken);
+        }, outerToken), TestContext.CancellationToken);
 
     private sealed class CountingHandler(HttpMessageHandler inner, Action<HttpRequestMessage> count) : DelegatingHandler(inner)
     {
