@@ -87,7 +87,9 @@ public sealed class ProxyTests
     }
 
     [TestMethod]
-    public async Task DeviceRoutesEnforceApiCredentialPermissions()
+    [DataRow("/api/v1/devices")]
+    [DataRow("/api/v1/groups")]
+    public async Task ResourceRoutesEnforceApiCredentialPermissions(string path)
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
@@ -110,23 +112,25 @@ public sealed class ProxyTests
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
-        using var anonymous = await client.GetAsync("/api/v1/devices", TestContext.CancellationToken);
+        using var anonymous = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
-        using var read = await client.GetAsync("/api/v1/devices", TestContext.CancellationToken);
+        using var read = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
-        using var denied = await client.PostAsync("/api/v1/devices", null, TestContext.CancellationToken);
+        using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_write");
-        using var write = await client.PostAsync("/api/v1/devices", null, TestContext.CancellationToken);
+        using var write = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, write.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_revoked");
-        using var revoked = await client.GetAsync("/api/v1/devices", TestContext.CancellationToken);
+        using var revoked = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
     }
 
     [TestMethod]
-    public async Task DeviceRoutesEnforceCookieRolesAndRevocation()
+    [DataRow("/api/v1/devices")]
+    [DataRow("/api/v1/groups")]
+    public async Task ResourceRoutesEnforceCookieRolesAndRevocation(string path)
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
@@ -154,16 +158,16 @@ public sealed class ProxyTests
         var properties = new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow.AddHours(-7), ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) };
         var cookie = options.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), properties, IdentityConstants.ApplicationScheme));
         client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={cookie}");
-        using var read = await client.GetAsync("/api/v1/devices", TestContext.CancellationToken);
+        using var read = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
         Assert.IsFalse(read.Headers.Contains("Set-Cookie"), "Gateway must not renew the Web session cookie.");
-        using var denied = await client.PostAsync("/api/v1/devices", null, TestContext.CancellationToken);
+        using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         role = "Administrator";
-        using var write = await client.PostAsync("/api/v1/devices", null, TestContext.CancellationToken);
+        using var write = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, write.StatusCode);
         revoked = true;
-        using var rejected = await client.GetAsync("/api/v1/devices", TestContext.CancellationToken);
+        using var rejected = await client.GetAsync(path, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, rejected.StatusCode);
     }
 
