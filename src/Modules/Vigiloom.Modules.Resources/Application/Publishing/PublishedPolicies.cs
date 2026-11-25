@@ -8,6 +8,15 @@ namespace Vigiloom.Modules.Resources.Application.Publishing;
 /// <summary>Reads current public authorization directly from the owning database.</summary>
 public sealed class PublishedPolicies(IDbContextFactory<ResourcesDbContext> contexts)
 {
+    public async Task<PublishedGroupPolicy?> GroupAsync(Guid id, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var group = await db.Groups.AsNoTracking().SingleOrDefaultAsync(g => g.Id == id && g.IsPublic, token);
+        if (group is null || group.PublicPolicyVersion != PublicationPolicy.BaselineVersion ||
+            !PublicationPolicy.TryValidateName(group.PublicDisplayName, out var name)) return null;
+        return new(group.Id, name, Convert.ToBase64String(group.Version));
+    }
+
     public async Task<PublishedDevicePolicy?> DeviceAsync(Guid id, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
