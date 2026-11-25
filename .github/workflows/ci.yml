@@ -268,6 +268,11 @@ jobs:
           echo 'The isolated RabbitMQ did not become ready.' >&2
           docker logs vigiloom-test-rabbit >&2 || true
           exit 1
+      - name: Start isolated Temporal
+        shell: bash
+        run: |
+          docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci up -d --wait
+          echo 'VIGILOOM_TEST_TEMPORAL=127.0.0.1:7233' >> "$GITHUB_ENV"
       - name: Test solution
         run: dotnet test Vigiloom.slnx --configuration Release --no-build --no-restore
       - name: Verify recovery requires local administrator privileges
@@ -296,6 +301,9 @@ jobs:
       - name: Remove isolated RabbitMQ
         if: always()
         run: docker rm -f vigiloom-test-rabbit > /dev/null 2>&1 || true
+      - name: Remove isolated Temporal
+        if: always()
+        run: docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci down -v
 
   ubuntu_required:
     name: Ubuntu build and test
