@@ -9,7 +9,7 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Downloads selected GitHub Agent releases to the central offline library.</summary>
 public sealed class PackageLibrary(IDbContextFactory<AgentManagementDbContext> contexts, GitHubAgentReleases github,
-    IPackageLibraryTransport transport)
+    IPackageLibraryTransport transport) : IAgentPackageLibrary
 {
     public async Task<bool> CacheAsync(string version, string runtimeIdentifier, CancellationToken token)
     {

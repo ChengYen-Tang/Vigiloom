@@ -8,7 +8,7 @@ using Vigiloom.Web.Authentication;
 namespace Vigiloom.Web.AgentVersions;
 
 internal sealed class ServerAgentVersionClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    AgentVersionAssignments assignments, AgentPackageQuery packages) : IAgentVersionClient
+    AgentVersionAssignments assignments, IAgentPackageQuery packages) : IAgentVersionClient
 {
     public async Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token)
     { await ActorAsync(false, token); return await assignments.GetAsync(agentId, token); }

@@ -3,6 +3,12 @@
 ### List cached and previously known Agent packages (internal network only)
 GET {{resources}}/internal/v1/agent-packages?page=1
 
+### Look up cached packages for release versions
+POST {{resources}}/internal/v1/agent-packages/versions
+Content-Type: application/json
+
+["1.2.3"]
+
 ### Download one published Agent package (internal network only)
 POST {{resources}}/internal/v1/agent-packages/download
 Content-Type: application/json
