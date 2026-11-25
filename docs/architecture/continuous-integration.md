@@ -1,6 +1,6 @@
 # Continuous integration
 
-Every branch push and pull request runs the `CI` workflow. The Windows and Ubuntu jobs run independently and in parallel. Both restore and build the entire solution in Release using `global.json`, install Chromium for the browser tests, and run `dotnet test` on the entire solution without rebuilding. Projects that currently contain no tests remain part of the solution build; a successful run does not imply unimplemented functionality has been tested.
+Every branch push and pull request runs the `CI` workflow. The Windows and Ubuntu jobs run independently and in parallel. CI installs a .NET 10 SDK and runs the configured build and tests; the SDK is not pinned for local development.
 
 Windows uses the runner's LocalDB instance and the test fixture's isolated, uniquely named databases. Ubuntu starts a disposable SQL Server container, configures an explicit test-only connection and verifies that tests leave no test databases behind and do not alter the development-named sentinel on that disposable server. The container is removed even when earlier steps fail. Neither job connects to a developer or production database.
 

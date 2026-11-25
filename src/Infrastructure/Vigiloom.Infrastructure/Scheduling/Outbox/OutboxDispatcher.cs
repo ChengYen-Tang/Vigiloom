@@ -1,5 +1,6 @@
 using System.Data;
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
@@ -22,11 +23,15 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
             var leaseId = Guid.CreateVersion7();
             var claim = await ClaimAsync(leaseId, cancellationToken);
             if (claim is null) return;
-            if (claim.Value.Exhausted) continue;
             var message = claim.Value.Message;
             if (!handlersByType.TryGetValue(message.MessageType, out var handler))
             {
-                await FailAsync(message.MessageId, leaseId, "unknown_type", terminal: true, cancellationToken);
+                await FailAsync(message.MessageId, leaseId, "unknown_type", terminal: true, keepRetrying: false, cancellationToken);
+                continue;
+            }
+            if (claim.Value.PreviousAttempts >= MaxAttempts && !handler.KeepRetrying)
+            {
+                await FailAsync(message.MessageId, leaseId, "attempts_exhausted", terminal: true, keepRetrying: false, cancellationToken);
                 continue;
             }
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -38,18 +43,18 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested)
             {
-                await FailAsync(message.MessageId, leaseId, "handler_timeout", terminal: false, cancellationToken);
+                await FailAsync(message.MessageId, leaseId, "handler_timeout", terminal: false, handler.KeepRetrying, cancellationToken);
             }
             catch (Exception exception)
             {
                 // Exception messages and payloads can contain sensitive values. Retain only a safe code.
                 logger.LogWarning("Outbox message {MessageId} failed with {ExceptionType}.", message.MessageId, exception.GetType().Name);
-                await FailAsync(message.MessageId, leaseId, "handler_failed", terminal: false, cancellationToken);
+                await FailAsync(message.MessageId, leaseId, "handler_failed", terminal: false, handler.KeepRetrying, cancellationToken);
             }
         }
     }
 
-    private async Task<(OutboxMessage Message, bool Exhausted)?> ClaimAsync(Guid leaseId, CancellationToken token)
+    private async Task<(OutboxMessage Message, int PreviousAttempts)?> ClaimAsync(Guid leaseId, CancellationToken token)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(token);
@@ -62,20 +67,23 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
                    OR (State = 1 AND LeaseUntil <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
                 ORDER BY AvailableAt, RowId
             )
-            UPDATE candidate SET State = CASE WHEN Attempts >= @max THEN 3 ELSE 1 END,
-                LeaseId = CASE WHEN Attempts >= @max THEN NULL ELSE @lease END,
-                LeaseUntil = CASE WHEN Attempts >= @max THEN NULL ELSE DATEADD(second, @seconds, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) END,
-                LastFailureCode = CASE WHEN Attempts >= @max THEN 'attempts_exhausted' ELSE LastFailureCode END,
-                LastAttemptAt = CASE WHEN Attempts >= @max THEN LastAttemptAt ELSE TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') END,
-                Attempts = Attempts + CASE WHEN Attempts >= @max THEN 0 ELSE 1 END
-            OUTPUT inserted.MessageId, inserted.MessageType, inserted.Payload, inserted.State;
+            UPDATE candidate SET State = 1, LeaseId = @lease,
+                LeaseUntil = DATEADD(second, @seconds, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')),
+                LastAttemptAt = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'),
+                Attempts = CASE WHEN Attempts = 2147483647 THEN Attempts
+                    WHEN Attempts >= @max AND MessageType COLLATE Latin1_General_100_BIN2 NOT IN
+                        (SELECT [value] COLLATE Latin1_General_100_BIN2 FROM OPENJSON(@keepRetryingTypes)) THEN Attempts
+                    ELSE Attempts + 1 END
+            OUTPUT inserted.MessageId, inserted.MessageType, inserted.Payload, deleted.Attempts;
             """;
         command.Parameters.Add("@lease", SqlDbType.UniqueIdentifier).Value = leaseId;
         command.Parameters.Add("@seconds", SqlDbType.Int).Value = LeaseSeconds;
         command.Parameters.Add("@max", SqlDbType.Int).Value = MaxAttempts;
+        command.Parameters.Add("@keepRetryingTypes", SqlDbType.NVarChar, -1).Value =
+            JsonSerializer.Serialize(handlersByType.Values.Where(handler => handler.KeepRetrying).Select(handler => handler.MessageType));
         await using var reader = await command.ExecuteReaderAsync(token);
         return await reader.ReadAsync(token)
-            ? (new OutboxMessage(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)), reader.GetInt32(3) == 3)
+            ? (new OutboxMessage(reader.GetGuid(0), reader.GetString(1), reader.GetString(2)), reader.GetInt32(3))
             : null;
     }
 
@@ -113,14 +121,14 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
         await transaction.CommitAsync(token);
     }
 
-    private async Task FailAsync(Guid messageId, Guid leaseId, string code, bool terminal, CancellationToken token)
+    private async Task FailAsync(Guid messageId, Guid leaseId, string code, bool terminal, bool keepRetrying, CancellationToken token)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(token);
         await using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE scheduling.Outbox
-            SET State = CASE WHEN @terminal = 1 OR Attempts >= @max THEN 3 ELSE 0 END,
+            SET State = CASE WHEN @terminal = 1 OR (Attempts >= @max AND @keepRetrying = 0) THEN 3 ELSE 0 END,
                 AvailableAt = DATEADD(second, CONVERT(int, CASE WHEN Attempts >= 10 THEN 3600
                     ELSE IIF(10 * POWER(CAST(2 AS float), Attempts - 1) > 3600, 3600,
                              10 * POWER(CAST(2 AS float), Attempts - 1)) END), TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')),
@@ -131,6 +139,7 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
         command.Parameters.Add("@id", SqlDbType.UniqueIdentifier).Value = messageId;
         command.Parameters.Add("@lease", SqlDbType.UniqueIdentifier).Value = leaseId;
         command.Parameters.Add("@terminal", SqlDbType.Bit).Value = terminal;
+        command.Parameters.Add("@keepRetrying", SqlDbType.Bit).Value = keepRetrying;
         command.Parameters.Add("@max", SqlDbType.Int).Value = MaxAttempts;
         command.Parameters.Add("@code", SqlDbType.NVarChar, 128).Value = code;
         await command.ExecuteNonQueryAsync(token);
