@@ -234,6 +234,8 @@ public sealed class DeviceChangeMessagingTests
                     {
                         var publicDevice = await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().DeviceAsync(id, token);
                         Assert.AreEqual("Public host", publicDevice?.Name);
+                        Assert.AreEqual("host.example", publicDevice?.Target);
+                        Assert.IsTrue(publicDevice?.Enabled);
                         Assert.IsTrue(publicDevice?.ShowLatency);
                         Assert.IsFalse(publicDevice?.ShowObservedAt);
                         Assert.IsNotNull(publicDevice?.PublicSince);

@@ -33,7 +33,7 @@ public sealed class PublishedPolicies(IDbContextFactory<ResourcesDbContext> cont
             if (template is null || template.Id != templateId) return null;
         }
         else if (device.PublicPolicyVersion != PublicationPolicy.BaselineVersion || device.PublicTemplateId is not null) return null;
-        return new(device.Id, name, template?.ShowLatency ?? true, template?.ShowObservedAt ?? true,
+        return new(device.Id, name, device.Address, device.IsEnabled, template?.ShowLatency ?? true, template?.ShowObservedAt ?? true,
             device.PublicSince == Device.PendingPublicSince ? null : device.PublicSince, template?.HistoryDays ?? 0,
             template?.HistorySince == PublicTemplate.PendingHistorySince ? null : template?.HistorySince,
             Convert.ToBase64String(device.Version), template is null ? null : Convert.ToBase64String(template.Version));
