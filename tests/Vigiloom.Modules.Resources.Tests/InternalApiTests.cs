@@ -167,6 +167,8 @@ public sealed class InternalApiTests
                 Assert.AreEqual(HttpStatusCode.OK, readerCookie.StatusCode);
                 using var deniedAgentManagement = await cookieClient.GetAsync($"/api/v1/agent-management/devices/{active.Id:D}", token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, deniedAgentManagement.StatusCode);
+                using var deniedTemplates = await cookieClient.GetAsync("/api/v1/admin/publications/templates", token);
+                Assert.AreEqual(HttpStatusCode.Forbidden, deniedTemplates.StatusCode);
                 identityHandler.Revoked = true;
                 using var revokedCookie = await cookieClient.GetAsync("/api/v1/devices/", token);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, revokedCookie.StatusCode);

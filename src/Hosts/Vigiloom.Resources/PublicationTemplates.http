@@ -1,0 +1,32 @@
+@resources = http://localhost:5055
+@cookie = replace-with-administrator-cookie
+@token = replace-with-antiforgery-token
+@template = 01912345-6789-7abc-8def-123456789abc
+
+### List templates
+GET {{resources}}/api/v1/admin/publications/templates
+Cookie: {{cookie}}
+
+### Read the default template
+GET {{resources}}/api/v1/admin/publications/templates/default
+Cookie: {{cookie}}
+
+### Read one template
+GET {{resources}}/api/v1/admin/publications/templates/{{template}}
+Cookie: {{cookie}}
+
+### Create a template
+POST {{resources}}/api/v1/admin/publications/templates
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "name": "Network status", "showLatency": true, "showObservedAt": true, "historyDays": 0 }
+
+### Select a default using the current row version
+PUT {{resources}}/api/v1/admin/publications/templates/{{template}}/default
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "version": "replace-with-version" }
