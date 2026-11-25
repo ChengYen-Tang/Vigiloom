@@ -53,6 +53,7 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
+internalApi.MapInternalDeviceManagement();
 app.MapDeviceManagement();
 app.Run();
 

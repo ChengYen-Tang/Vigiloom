@@ -14,7 +14,7 @@ using Vigiloom.Web.Groups;
 namespace Vigiloom.Web.Workspace;
 
 /// <summary>Combines independent source states without transferring an unbounded inventory to the browser.</summary>
-internal sealed class WorkspaceOverviewReader(DeviceManagement devices, PingStore ping, AgentMonitoring agents,
+internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, PingStore ping, AgentMonitoring agents,
     IDbContextFactory<ResourcesDbContext> resources, GroupManagement groups, ServiceMembership services,
     HealthStatusReader health, TimeProvider clock, ILogger<WorkspaceOverviewReader> logger)
 {
