@@ -6,10 +6,12 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Infrastructure.Messaging;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Application.AgentPackages;
+using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -52,6 +54,7 @@ public sealed class DeviceChangeMessagingTests
                 builder.Services.AddScoped<ApplicationApproval>();
                 builder.Services.AddScoped<SelfServiceRegistration>();
                 builder.Services.AddScoped<AgentAssignments>();
+                builder.Services.AddScoped<PublicTemplates>();
                 builder.Services.AddSingleton<IPackageLibraryTransport, CachedPackages>();
                 builder.UseWolverine(options =>
                 {
@@ -61,6 +64,7 @@ public sealed class DeviceChangeMessagingTests
                     options.PublishReliablyTo<AgentDeviceChanged>(agentQueue);
                     options.PublishReliablyTo<AgentAssignmentChanged>(agentQueue);
                     options.PublishReliablyTo<AgentVersionAssignmentAudit>(auditQueue);
+                    options.PublishReliablyTo<PublicTemplateAuditRecorded>(auditQueue);
                     options.PublishReliablyTo<GroupAuditRecorded>(auditQueue);
                     options.PublishReliablyTo<ApplicationApprovalAudit>(auditQueue);
                     options.PublishReliablyTo<ApplicationApproved>(observabilityQueue);
@@ -178,6 +182,34 @@ public sealed class DeviceChangeMessagingTests
                         while ((assignmentAudit = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: notificationTimeout.Token)) is null)
                             await Task.Delay(100, notificationTimeout.Token);
                         Assert.Contains(agentId.ToString("D"), System.Text.Encoding.UTF8.GetString(assignmentAudit.Body.Span));
+                    }
+                    var actor = Guid.CreateVersion7();
+                    PublicationTemplateItem template;
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var created = await scope.ServiceProvider.GetRequiredService<PublicTemplates>().CreateAsync(new CreatePublicationTemplate("Default", true, false, 3), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, created.Status);
+                        Assert.IsNotNull(created.Value);
+                        template = created.Value;
+                        Assert.IsTrue(template.HistoryReady);
+                    }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                    {
+                        var templates = scope.ServiceProvider.GetRequiredService<PublicTemplates>();
+                        var result = await templates.SetDefaultAsync(template.Id, new SetDefaultPublicationTemplate(template.Version), actor, token);
+                        Assert.AreEqual(TemplateOperationStatus.Success, result.Status);
+                        Assert.IsTrue((await templates.GetAsync(null, true, token))?.IsDefault);
+                    }
+                    using (var auditTimeout = CancellationTokenSource.CreateLinkedTokenSource(token))
+                    {
+                        auditTimeout.CancelAfter(TimeSpan.FromSeconds(20));
+                        for (var i = 0; i < 2; i++)
+                        {
+                            BasicGetResult? message;
+                            while ((message = await channel.BasicGetAsync(auditQueue, autoAck: true, cancellationToken: auditTimeout.Token)) is null)
+                                await Task.Delay(100, auditTimeout.Token);
+                            Assert.Contains(template.Id.ToString("D"), System.Text.Encoding.UTF8.GetString(message.Body.Span));
+                        }
                     }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())

@@ -14,6 +14,8 @@ using Vigiloom.Modules.Resources.Application.AgentPackages;
 using Vigiloom.Resources.AgentPackages;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.Resources.Application.AgentIdentity;
+using Vigiloom.Modules.Resources.Application.Publishing;
+using Vigiloom.Resources.Publication;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -44,6 +46,7 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.PublishReliablyTo<AgentRegistrationChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
     options.PublishReliablyTo<AgentRegistrationAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<AgentVersionAssignmentAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
+    options.PublishReliablyTo<PublicTemplateAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
@@ -69,6 +72,7 @@ builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigureP
 builder.Services.AddScoped<AgentAssignments>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentRegistration>();
+builder.Services.AddScoped<PublicTemplates>();
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
@@ -112,6 +116,7 @@ internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id,
     Results.Ok(await approval.ApproveAsync(id, request.ActorId, token)));
 app.MapDeviceManagement();
 app.MapAgentManagement();
+app.MapPublicTemplateManagement();
 app.Run();
 
 public partial class Program;
