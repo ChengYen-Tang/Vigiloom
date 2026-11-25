@@ -148,7 +148,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<EventEvidenceAccessed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -158,7 +158,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<EventTimelineAccessed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -168,7 +168,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AuditRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -178,7 +178,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HostMetricRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -188,7 +188,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<TelemetryRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -208,7 +208,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<BaselineExceptionRecorded>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -254,7 +254,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AdvisoryImportAbandoned>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -264,7 +264,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<IntelligenceRevisionActivated>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -274,7 +274,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<IntelligencePolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -284,7 +284,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -294,7 +294,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -304,7 +304,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentInboxSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -314,7 +314,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageSourceChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -324,7 +324,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageCatalogueRefreshed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -334,7 +334,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageTrustInitialized>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -344,7 +344,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentInboxCleanupActivated>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -354,7 +354,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<CollectorChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -364,7 +364,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HealthTargetChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -374,7 +374,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HealthNetworkPolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -384,7 +384,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PingSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -394,7 +394,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentReplayPolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -424,7 +424,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PublicationChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -434,7 +434,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PublicationTemplateChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -444,7 +444,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<GroupChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -454,7 +454,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<InstancePolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -464,7 +464,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceInstanceChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -474,7 +474,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<DeploymentLinkChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -484,7 +484,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceCollectionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -494,7 +494,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<LogQuotaChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -504,7 +504,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<TraceQuotaChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }

@@ -1,15 +1,19 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
-using Vigiloom.Operations.Notifications;
+using Vigiloom.Operations.Work;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -32,7 +36,7 @@ public sealed class NotificationWorkTests(TestContext context)
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
-            var handler = new NotificationWorkHandler(config, new NotificationWriter());
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter());
             var notification = new NotificationRequest(Guid.CreateVersion7(), "ping", DateTimeOffset.UtcNow, "Ping unreachable", "Device: Router");
             var work = new ServiceWork(NotificationWork.Kind, JsonSerializer.Serialize(notification), Guid.CreateVersion7().ToString("D"));
             await handler.ExecuteAsync(work, token);
@@ -43,5 +47,48 @@ public sealed class NotificationWorkTests(TestContext context)
             var stored = await result.Set<Notification>().SingleAsync(token);
             Assert.AreEqual(notification.MessageId, stored.MessageId);
             Assert.AreEqual(notification.Detail, stored.Detail);
+
+            var audit = new OperationAudit(Guid.CreateVersion7(), Guid.CreateVersion7(), DateTimeOffset.UtcNow,
+                new GroupChanged(GroupAction.Created, 0, 0));
+            var writer = new TemporalAuditWriter(new OutboxWriter([new TemporalType()]), config);
+            await using (var source = await factory.CreateDbContextAsync(token))
+            {
+                await using var transaction = await source.Database.BeginTransactionAsync(token);
+                Assert.Throws<ArgumentException>(() =>
+                {
+                    _ = writer.AppendAsync(source.Database.GetDbConnection(), transaction.GetDbTransaction(),
+                        audit with { Details = new GroupChanged((GroupAction)999, 0, 0) }, token);
+                });
+                await writer.AppendAsync(source.Database.GetDbConnection(), transaction.GetDbTransaction(), audit, token);
+                await transaction.RollbackAsync(token);
+            }
+            await using (var source = await factory.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(0, await source.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+                await using var transaction = await source.Database.BeginTransactionAsync(token);
+                await writer.AppendAsync(source.Database.GetDbConnection(), transaction.GetDbTransaction(), audit, token);
+                await transaction.CommitAsync(token);
+            }
+            await using (var source = await factory.CreateDbContextAsync(token))
+            {
+                var id = await source.Database.SqlQuery<Guid>($"SELECT MessageId AS [Value] FROM scheduling.Outbox").SingleAsync(token);
+                var payload = await source.Database.SqlQuery<string>($"SELECT Payload AS [Value] FROM scheduling.Outbox").SingleAsync(token);
+                var outgoing = JsonSerializer.Deserialize<TemporalWorkRequest>(payload);
+                Assert.IsNotNull(outgoing);
+                Assert.AreEqual(OperationsWork.Queue, outgoing.TaskQueue);
+                var delivery = outgoing.Work with { DeliveryId = id.ToString("D") };
+                await handler.ExecuteAsync(delivery, token);
+                await handler.ExecuteAsync(delivery, token);
+            }
+            var query = new OperationAuditQuery(audit.OccurredAt.AddMinutes(-1), audit.OccurredAt.AddMinutes(1));
+            var auditPage = await new OperationAuditQueryService(factory).QueryGroupsAsync(query, token);
+            Assert.AreEqual(audit.ActorId, auditPage.Items.Single().ActorId);
         }, context.CancellationToken);
+
+    private sealed class TemporalType : IOutboxHandler
+    {
+        public string MessageType => TemporalOutboxHandler.Type;
+        public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
 }

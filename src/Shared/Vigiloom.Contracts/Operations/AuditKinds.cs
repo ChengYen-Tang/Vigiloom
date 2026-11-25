@@ -1,7 +1,7 @@
-namespace Vigiloom.Modules.AlertingOperations.Application;
+namespace Vigiloom.Contracts.Operations;
 
 // Stored kind values are durable wire formats; add a new value for incompatible changes.
-internal static class AuditKinds
+public static class AuditKinds
 {
     public const short SpeedSettingsChangedV1 = 1;
     public const short PingSettingsChangedV1 = 2;
