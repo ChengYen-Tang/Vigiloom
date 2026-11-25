@@ -9,3 +9,6 @@ public sealed record PublishedServicePolicy(Guid Id, string Name, string PolicyV
 
 /// <summary>Current public group identity and publication version.</summary>
 public sealed record PublishedGroupPolicy(Guid Id, string Name, string Version);
+
+/// <summary>Internal public group snapshot with counts of its published members.</summary>
+public sealed record PublishedGroupSummary(Guid Id, string Name, int DeviceCount, int ServiceCount, string Version);

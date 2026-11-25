@@ -333,12 +333,23 @@ public sealed class DeviceChangeMessagingTests
                             new PublicationChange(true, "Billing status", PublicationPolicy.BaselineVersion, current.Version), actor, token);
                         Assert.AreEqual(PublicationSaveStatus.Updated, result.Status);
                     }
+                    await using (var db = await host.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var group = await db.Groups.SingleAsync(g => g.Id == publicGroup.Id, token);
+                        group.SetPublication(true, "Billing group", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
+                        db.ServiceGroups.Add(new ServiceGroup(group.Id, applicationService.Id));
+                        await db.SaveChangesAsync(token);
+                    }
                     await using (var scope = host.Services.CreateAsyncScope())
                     {
                         var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
                         Assert.AreEqual("Billing status", (await policies.ServiceAsync(applicationService.Id, token))?.Name);
                         Assert.AreEqual(applicationService.Id, (await policies.ServicesAsync("Billing", 1, null, token)).Items.Single().Id);
-                        Assert.IsEmpty((await policies.ServicesAsync(null, 1, publicGroup.Id, token)).Items);
+                        Assert.AreEqual(applicationService.Id, (await policies.ServicesAsync(null, 1, publicGroup.Id, token)).Items.Single().Id);
+                        var group = (await policies.GroupsAsync("Billing", 1, token)).Items.Single();
+                        Assert.AreEqual(publicGroup.Id, group.Id);
+                        Assert.AreEqual(0, group.DeviceCount);
+                        Assert.AreEqual(1, group.ServiceCount);
                     }
                     await using (var scope = host.Services.CreateAsyncScope())
                     {
@@ -350,7 +361,11 @@ public sealed class DeviceChangeMessagingTests
                                 new PublicationChange(false, null, null, current.Version), actor, token)).Status);
                     }
                     await using (var scope = host.Services.CreateAsyncScope())
-                        Assert.IsNull(await scope.ServiceProvider.GetRequiredService<PublishedPolicies>().ServiceAsync(applicationService.Id, token));
+                    {
+                        var policies = scope.ServiceProvider.GetRequiredService<PublishedPolicies>();
+                        Assert.IsNull(await policies.ServiceAsync(applicationService.Id, token));
+                        Assert.IsEmpty((await policies.GroupsAsync("Billing", 1, token)).Items);
+                    }
                     var rolledBack = new Device("Rollback", "rollback.example", true, DateTimeOffset.UtcNow);
                     await using (var scope = host.Services.CreateAsyncScope())
                     await using (var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))

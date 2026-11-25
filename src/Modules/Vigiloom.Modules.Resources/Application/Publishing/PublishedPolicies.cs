@@ -10,6 +10,31 @@ public sealed class PublishedPolicies(IDbContextFactory<ResourcesDbContext> cont
 {
     private const int PageSize = 50;
 
+    public async Task<PublicPage<PublishedGroupSummary>> GroupsAsync(string? search, int page, CancellationToken token)
+    {
+        ValidatePage(page);
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var groups = db.Groups.AsNoTracking().Where(g => g.IsPublic && g.PublicDisplayName != null &&
+            g.PublicPolicyVersion == PublicationPolicy.BaselineVersion);
+        if (!string.IsNullOrWhiteSpace(search)) groups = groups.Where(g => g.PublicDisplayName!.Contains(search));
+        var query = groups.Select(g => new
+        {
+            Group = g,
+            DeviceCount = db.DeviceGroups.Count(m => m.GroupId == g.Id && db.Devices.Any(d => d.Id == m.DeviceId && d.IsPublic && !d.IsArchived &&
+                d.PublicDisplayName != null && ((d.PublicTemplateId == null && d.PublicPolicyVersion == PublicationPolicy.BaselineVersion) ||
+                (d.PublicPolicyVersion == PublicationPolicy.TemplateVersion && db.PublicTemplates.Any(t => t.Id == d.PublicTemplateId && !t.IsRetired))))),
+            ServiceCount = db.ServiceGroups.Count(m => m.GroupId == g.Id && db.ApplicationServices.Any(s => s.Id == m.ServiceId && s.IsPublic &&
+                s.ArchivedAt == null && s.PublicDisplayName != null && (s.PublicPolicyVersion == PublicationPolicy.BaselineVersion ||
+                s.PublicPolicyVersion == PublicationPolicy.ServiceHistoryVersion || s.PublicPolicyVersion == PublicationPolicy.ServiceHistoryDetailsVersion)))
+        }).Where(x => x.DeviceCount > 0 || x.ServiceCount > 0).OrderBy(x => x.Group.PublicDisplayName).ThenBy(x => x.Group.RowId);
+        var rows = await query.Skip((page - 1) * PageSize).Take(PageSize + 1).ToArrayAsync(token);
+        var items = rows.Where(x => x.Group.PublicPolicyVersion == PublicationPolicy.BaselineVersion &&
+                PublicationPolicy.TryValidateName(x.Group.PublicDisplayName, out _))
+            .Take(PageSize).Select(x => new PublishedGroupSummary(x.Group.Id, x.Group.PublicDisplayName!.Trim(), x.DeviceCount, x.ServiceCount,
+                Convert.ToBase64String(x.Group.Version))).ToArray();
+        return new(items, page, rows.Length > PageSize);
+    }
+
     public async Task<PublicPage<PublishedDevicePolicy>> DevicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
     {
         ValidatePage(page);
