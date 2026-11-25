@@ -40,7 +40,7 @@ public partial class ServiceDeployments
         try
         {
             var token = HttpContext.RequestAborted;
-            selected = await Instances.GetServiceAsync(id, token);
+            selected = await Applications.GetServiceAsync(id, token);
             if (selected is null) { error = "找不到選取的服務。"; return; }
             links = await Links.ListAsync(id, linkPage, token);
             instances = await Instances.ListAsync(id, instancePage, token);

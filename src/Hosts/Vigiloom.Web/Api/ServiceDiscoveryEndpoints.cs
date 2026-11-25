@@ -1,6 +1,7 @@
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Services;
 
 namespace Vigiloom.Web.Api;
 
@@ -40,14 +41,14 @@ internal static class ServiceDiscoveryEndpoints
             .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         var admin = app.MapGroup("/api/v1/service-discovery/candidates")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/", async (HttpContext context, CandidateDiscovery candidates, CancellationToken token, int page = 1) =>
+        admin.MapGet("/", async (HttpContext context, ICandidateAdministration candidates, CancellationToken token, int page = 1) =>
         {
             if (page is < 1 or > 200) return Results.ValidationProblem(new Dictionary<string, string[]> { ["page"] = ["Use a page from 1 to 200."] });
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(await candidates.ListAsync(page, token));
         }).Produces<IReadOnlyList<CandidateSummary>>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
 
-        admin.MapPost("/{candidateId:guid}/approve", async (Guid candidateId, HttpContext context, ServiceApproval approval, CancellationToken token) =>
+        admin.MapPost("/{candidateId:guid}/approve", async (Guid candidateId, HttpContext context, ICandidateAdministration approval, CancellationToken token) =>
         {
             if (candidateId.Version != 7) return Results.ValidationProblem(new Dictionary<string, string[]> { ["candidateId"] = ["Use a version 7 candidate ID."] });
             return await ApiMutation.ExecuteAsync(context, async actor =>
@@ -66,7 +67,7 @@ internal static class ServiceDiscoveryEndpoints
         var services = app.MapGroup("/api/v1/service-discovery/services").RequireAuthorization(AccessPolicies.Administrator)
             .RequireRateLimiting("api-client");
         services.MapPost("/{serviceId:guid}/{action}", async (Guid serviceId, string action, ServiceInstanceUpdate request,
-            HttpContext context, ServiceCollectionAdministration management, CancellationToken token) =>
+            HttpContext context, IApplicationManagement management, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 if (serviceId.Version != 7 || action is not ("stop" or "resume" or "archive" or "restore")) return Results.BadRequest();

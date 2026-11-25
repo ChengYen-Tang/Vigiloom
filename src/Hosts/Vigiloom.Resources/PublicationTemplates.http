@@ -1,0 +1,86 @@
+@resources = http://localhost:5055
+@cookie = replace-with-administrator-cookie
+@token = replace-with-antiforgery-token
+@template = 01912345-6789-7abc-8def-123456789abc
+
+### List templates
+GET {{resources}}/api/v1/admin/publications/templates
+Cookie: {{cookie}}
+
+### Read the default template
+GET {{resources}}/api/v1/admin/publications/templates/default
+Cookie: {{cookie}}
+
+### Read one template
+GET {{resources}}/api/v1/admin/publications/templates/{{template}}
+Cookie: {{cookie}}
+
+### Create a template
+POST {{resources}}/api/v1/admin/publications/templates
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "name": "Network status", "showLatency": true, "showObservedAt": true, "historyDays": 0 }
+
+### Select a default using the current row version
+PUT {{resources}}/api/v1/admin/publications/templates/{{template}}/default
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "version": "replace-with-version" }
+
+### Inspect affected devices
+GET {{resources}}/api/v1/admin/publications/templates/{{template}}/impact?page=1
+Cookie: {{cookie}}
+
+### Preview an update
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/update-preview
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "name": "Network status", "showLatency": true, "showObservedAt": false, "historyDays": 0 }
+
+### Confirm an update using its preview confirmation
+PUT {{resources}}/api/v1/admin/publications/templates/{{template}}
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "confirmation": "replace-with-preview-confirmation" }
+
+### Read publication settings for a device
+GET {{resources}}/api/v1/admin/publications/devices/01912345-6789-7abc-8def-123456789abd
+Cookie: {{cookie}}
+
+### Apply a template using current device and template versions
+PUT {{resources}}/api/v1/admin/publications/devices/01912345-6789-7abc-8def-123456789abd
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "public": true, "displayName": "Network", "policyVersion": "template-v1", "version": "replace-with-device-version", "templateId": "{{template}}", "templateVersion": "replace-with-template-version" }
+
+### Check current public authorization from the internal network
+GET {{resources}}/internal/v1/publications/devices/01912345-6789-7abc-8def-123456789abd
+
+### Check current public application authorization
+GET {{resources}}/internal/v1/publications/services/01912345-6789-7abc-8def-123456789abe
+
+### Preview retirement
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/retirement-preview
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "replacementDefaultId": null, "replacementDefaultVersion": null }
+
+### Confirm retirement using its preview confirmation
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/retire
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "confirmation": "replace-with-preview-confirmation" }

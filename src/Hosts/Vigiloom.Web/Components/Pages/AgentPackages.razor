@@ -3,7 +3,8 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Modules.AgentManagement.Application
-@inject AgentPackageQuery Packages
+@using Vigiloom.UpdateSecurity.AgentPackages
+@inject IAgentPackageQuery Packages
 @inject GitHubAgentReleases Releases
 @inject ILogger<AgentPackages> Logger
 

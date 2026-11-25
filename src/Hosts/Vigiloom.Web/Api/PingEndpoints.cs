@@ -11,7 +11,7 @@ internal static class PingEndpoints
     public static void MapPingEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{id:guid}/ping/history", async (Guid id, DateTimeOffset from, DateTimeOffset to,
-            string location, DeviceManagement devices, PingHistoryReader history, HttpContext context, CancellationToken token,
+            string location, IDeviceManagement devices, PingHistoryReader history, HttpContext context, CancellationToken token,
             string? target = null, int page = 1, bool descending = true) =>
         {
             var query = new PingHistoryQuery(id, from, to, target, location, page, descending);
@@ -22,7 +22,7 @@ internal static class PingEndpoints
         }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<PingHistoryPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
             .WithSummary("Query authorized Ping samples and five-minute statistics");
-        app.MapGet("/api/v1/devices/{id:guid}/ping", async (Guid id, DeviceManagement devices, PingStore store, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{id:guid}/ping", async (Guid id, IDeviceManagement devices, PingStore store, CancellationToken token) =>
         {
             var device = await devices.GetAsync(id, token);
             if (device is null) return Results.NotFound();

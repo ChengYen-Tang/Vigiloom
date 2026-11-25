@@ -2,12 +2,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
-using Vigiloom.Web.Authentication;
-using Vigiloom.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace Vigiloom.Web.Api;
+namespace Vigiloom.Infrastructure.Authentication;
 
-internal static class ApiMutation
+public static class ApiMutation
 {
     public static async Task<IResult> ExecuteAsync(HttpContext context, Func<Guid, Task<IResult>> operation, bool allowApiCredential = true)
     {

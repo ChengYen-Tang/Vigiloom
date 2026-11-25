@@ -13,3 +13,6 @@ public sealed record DevicePage(IReadOnlyList<DeviceDetails> Items, int Page, in
 
 /// <summary>Field-level validation failures for a device operation.</summary>
 public sealed record DeviceValidationError(IReadOnlyDictionary<string, string[]> Errors);
+
+/// <summary>The rowversion returned by the most recent device read.</summary>
+public sealed record DeviceVersionRequest(string? Version);

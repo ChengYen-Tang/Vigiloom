@@ -4,8 +4,8 @@
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Contracts.Devices
-@inject DeviceManagement Devices
-@inject AgentIdentity Agents
+@inject IDeviceManagement Devices
+@inject IAgentRegistration Agents
 @inject AgentMonitoring Monitoring
 @inject ILogger<AgentVersionPage> Logger
 

@@ -8,7 +8,8 @@ using Vigiloom.Modules.Resources.Persistence;
 namespace Vigiloom.Web.Publishing;
 
 /// <summary>Reads only history explicitly authorized by the current device and template.</summary>
-internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<NetworkDbContext> network)
+internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<NetworkDbContext> network,
+    IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
     public static bool Valid(DateTimeOffset from, DateTimeOffset to) => from.Offset == TimeSpan.Zero && to.Offset == TimeSpan.Zero &&
         from < to && to - from <= TimeSpan.FromDays(7);
@@ -17,6 +18,8 @@ internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbCon
     {
         if (id.Version != 7) return null;
         if (!Valid(from, to)) throw new ArgumentException("A UTC history window of at most seven days is required.");
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]))
+            return await ReadRemoteAsync(id, from, to, provider!.GetRequiredService<RemotePublicReader>(), token);
         await using var db = await resources.CreateDbContextAsync(token);
         var before = await AuthorizationAsync(db, id, token);
         if (before is null || before.DeviceSince == Device.PendingPublicSince || before.HistorySince == PublicationTemplate.PendingHistorySince ||
@@ -32,6 +35,22 @@ internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbCon
         var after = await AuthorizationAsync(db, id, token);
         return after is not null && before.TemplateId == after.TemplateId && before.DeviceSince == after.DeviceSince && before.HistorySince == after.HistorySince &&
             before.DeviceVersion.AsSpan().SequenceEqual(after.DeviceVersion) && before.TemplateVersion.AsSpan().SequenceEqual(after.TemplateVersion) ? result : null;
+    }
+
+    private async Task<PublicDeviceHistory?> ReadRemoteAsync(Guid id, DateTimeOffset from, DateTimeOffset to, RemotePublicReader remote, CancellationToken token)
+    {
+        var before = await remote.DevicePolicyAsync(id, token);
+        if (before?.PublicSince is not { } publicSince || before.HistorySince is not { } historySince || before.HistoryDays is < 1 or > 7) return null;
+        await using var db = await resources.CreateDbContextAsync(token);
+        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var start = from;
+        if (start < publicSince) start = publicSince;
+        if (start < historySince) start = historySince;
+        var oldest = now.AddDays(-before.HistoryDays);
+        if (start < oldest) start = oldest;
+        var end = to < now ? to : now;
+        var result = (await DeviceHistoryBuckets.ReadAsync(network, id, before.Target, start, end, token)) with { AsOf = now };
+        return before == await remote.DevicePolicyAsync(id, token) ? result : null;
     }
 
     private static Task<Authorization?> AuthorizationAsync(ResourcesDbContext db, Guid id, CancellationToken token) =>

@@ -13,13 +13,15 @@ namespace Vigiloom.Web.Publishing;
 
 /// <summary>Projects explicitly published information without disclosing internal resource DTOs.</summary>
 internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<ServiceObservabilityDbContext> services,
-    PingStore ping, HealthStatusReader health)
+    PingStore ping, HealthStatusReader health, IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
+    private RemotePublicReader? Remote => string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]) ? null : provider!.GetRequiredService<RemotePublicReader>();
     public const int PageSize = 50;
     public const int MaximumPage = 1000;
 
     public async Task<PublicPage<PublicGroup>> GroupsAsync(string? search, int page, CancellationToken token)
     {
+        if (Remote is { } remote) return await remote.GroupsAsync(search, page, token);
         await using var db = await resources.CreateDbContextAsync(token);
         var query = GroupQuery(db);
         if (!string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.Name.Contains(search));
@@ -36,6 +38,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     public async Task<PublicGroup?> GroupAsync(Guid id, CancellationToken token)
     {
         if (id.Version != 7) return null;
+        if (Remote is { } remote) return await remote.GroupAsync(id, token);
         await using var db = await resources.CreateDbContextAsync(token);
         var row = await GroupQuery(db).Where(x => x.Id == id).SingleOrDefaultAsync(token);
         if (row is null || !PublicationPolicy.TryValidateName(row.Name, out _)) return null;
@@ -79,6 +82,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
 
     public async Task<PublicPage<PublicDevice>> DevicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
     {
+        if (Remote is { } remote) return await remote.DevicesAsync(search, page, groupId, token);
         await using var db = await resources.CreateDbContextAsync(token);
         var groupVersion = groupId is { } requestedGroup ? await GroupVersionAsync(requestedGroup, token) : null;
         if (groupId is not null && groupVersion is null) return new([], page, false);
@@ -102,6 +106,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     public async Task<PublicDevice?> DeviceAsync(Guid id, CancellationToken token)
     {
         if (id.Version != 7) return null;
+        if (Remote is { } remote) return await remote.DeviceAsync(id, token);
         await using var db = await resources.CreateDbContextAsync(token);
         var row = await VisibleDevices(db).SingleOrDefaultAsync(x => x.Id == id, token);
         if (row is null || !PublicationPolicy.TryValidateName(row.Name, out _)) return null;
@@ -121,6 +126,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
 
     public async Task<PublicPage<PublicService>> ServicesAsync(string? search, int page, Guid? groupId, CancellationToken token)
     {
+        if (Remote is { } remote) return await remote.ServicesAsync(search, page, groupId, token);
         await using var db = await services.CreateDbContextAsync(token);
         var groupVersion = groupId is { } requestedGroup ? await GroupVersionAsync(requestedGroup, token) : null;
         if (groupId is not null && groupVersion is null) return new([], page, false);
@@ -163,6 +169,7 @@ internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resourc
     public async Task<PublicService?> ServiceAsync(Guid id, CancellationToken token)
     {
         if (id.Version != 7) return null;
+        if (Remote is { } remote) return await remote.ServiceAsync(id, token);
         await using var db = await services.CreateDbContextAsync(token);
         var row = await (from service in VisibleServices(db)
                          join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id

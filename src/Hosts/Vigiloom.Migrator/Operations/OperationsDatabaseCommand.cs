@@ -10,13 +10,14 @@ namespace Vigiloom.Migrator.Operations;
 
 internal static class OperationsDatabaseCommand
 {
-    public static async Task RunAsync(CancellationToken token = default)
+    public static async Task RunAsync(bool copyExisting, CancellationToken token = default)
     {
         var target = Environment.GetEnvironmentVariable("VIGILOOM_OPERATIONS_SQL_CONNECTION")
             ?? throw new InvalidOperationException("Set VIGILOOM_OPERATIONS_SQL_CONNECTION to an existing operations database.");
-        var database = new SqlConnectionStringBuilder(target).InitialCatalog;
-        if (string.IsNullOrWhiteSpace(database) || new[] { "master", "model", "msdb", "tempdb" }.Contains(database, StringComparer.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Specify an existing non-system operations database.");
+        SqlTableDataMigration.ValidateTarget(target);
+        var source = copyExisting ? Environment.GetEnvironmentVariable("VIGILOOM_MIGRATION_SQL_CONNECTION")
+            ?? throw new InvalidOperationException("Set VIGILOOM_MIGRATION_SQL_CONNECTION to the existing platform database.") : null;
+        if (source is not null) SqlTableDataMigration.ValidateConnections(source, target);
         await using (var connection = new SqlConnection(target)) await connection.OpenAsync(token);
         var services = new ServiceCollection();
         services.AddModuleSqlServer<OperationsDbContext>(target, "operations");
@@ -32,6 +33,7 @@ internal static class OperationsDatabaseCommand
             await db.Database.MigrateAsync(token);
         await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
-        Console.WriteLine("Operations schema initialized successfully.");
+        if (source is not null) await OperationsDataMigration.CopyAsync(source, target, token);
+        Console.WriteLine(copyExisting ? "Operations data copied successfully." : "Operations schema initialized successfully.");
     }
 }
