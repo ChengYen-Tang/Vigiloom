@@ -2,6 +2,7 @@ extern alias IdentityHost;
 
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Globalization;
@@ -17,6 +18,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Application;
+using Vigiloom.Contracts.Identity;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Web.Authentication;
@@ -38,6 +40,7 @@ public sealed class RemoteIdentityHttpTests
             var sessionRequests = 0;
             var cookieRequests = 0;
             var revocationRequests = 0;
+            var passwordRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -60,6 +63,8 @@ public sealed class RemoteIdentityHttpTests
                         Interlocked.Increment(ref cookieRequests);
                         if (request.RequestUri?.AbsolutePath == "/internal/identity/sessions/revoke") Interlocked.Increment(ref revocationRequests);
                     })));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePasswordLogin))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref passwordRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -96,6 +101,15 @@ public sealed class RemoteIdentityHttpTests
             var form = document.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
             var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
             fields["Input.UserName"] = "remote-reader";
+            fields["Input.Password"] = "wrong-password";
+            using (var failedLogin = await browser.PostAsync("/account/login", new FormUrlEncodedContent(fields), token))
+                Assert.AreEqual(HttpStatusCode.OK, failedLogin.StatusCode);
+            await using (var verifyFailure = web.Services.CreateAsyncScope())
+            {
+                var failedUsers = verifyFailure.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var failedAccount = await failedUsers.FindByIdAsync(user.Id.ToString("D"));
+                Assert.AreEqual(1, await failedUsers.GetAccessFailedCountAsync(failedAccount!));
+            }
             fields["Input.Password"] = "Reader-Password-123";
             using (var login = await browser.PostAsync("/account/login", new FormUrlEncodedContent(fields), token))
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
@@ -105,6 +119,7 @@ public sealed class RemoteIdentityHttpTests
                 Assert.IsTrue(authorized.Headers.Contains("Set-Cookie"));
             }
             Assert.IsGreaterThan(0, cookieRequests);
+            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>().Value;
             var principal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim(options.ClaimsIdentity.UserIdClaimType, user.Id.ToString("D")),
@@ -155,6 +170,7 @@ public sealed class RemoteIdentityHttpTests
             loginFields["Input.Password"] = "Reader-Password-123";
             using var twoFactorLogin = await twoFactorBrowser.PostAsync("/account/login", new FormUrlEncodedContent(loginFields), token);
             Assert.AreEqual(HttpStatusCode.Redirect, twoFactorLogin.StatusCode);
+            Assert.AreEqual(3, passwordRequests);
             var challengePath = twoFactorLogin.Headers.Location!.PathAndQuery;
             Assert.Contains("/account/two-factor", challengePath);
             var callsBeforeChallenge = cookieRequests;
@@ -164,6 +180,17 @@ public sealed class RemoteIdentityHttpTests
             Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
             using var invalidChallenge = await twoFactorBrowser.GetAsync(challengePath, token);
             Assert.AreEqual(HttpStatusCode.Redirect, invalidChallenge.StatusCode);
+
+            var locked = new Account { UserName = "remote-locked" };
+            Assert.IsTrue((await users.CreateAsync(locked, "Reader-Password-123")).Succeeded);
+            using var identityClient = identity.CreateClient();
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                using var failed = await identityClient.PostAsJsonAsync("/internal/identity/password-login", new PasswordLoginRequest("remote-locked", "wrong-password"), token);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, failed.StatusCode);
+            }
+            using var lockedLogin = await identityClient.PostAsJsonAsync("/internal/identity/password-login", new PasswordLoginRequest("remote-locked", "Reader-Password-123"), token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, lockedLogin.StatusCode);
         }, TestContext.CancellationToken);
 
     private sealed class CountingHandler(HttpMessageHandler inner, Action<HttpRequestMessage> count) : DelegatingHandler(inner)

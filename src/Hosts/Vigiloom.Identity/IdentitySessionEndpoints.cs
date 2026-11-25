@@ -72,5 +72,30 @@ internal static class IdentitySessionEndpoints
             ]);
             return await revocation.RevokeAsync(new ClaimsPrincipal(identity), token) ? Results.NoContent() : Results.Conflict();
         });
+        app.MapPost("/internal/identity/password-login", async (
+            PasswordLoginRequest request, HttpContext context, IdentityAccessDbContext db,
+            UserManager<Account> users, SignInManager<Account> signIn, IUserClaimsPrincipalFactory<Account> factory, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            await using var transaction = await AccountMutationLock.AcquireAsync(db, token);
+            var account = await users.FindByNameAsync(request.UserName);
+            if (account is null)
+            {
+                await transaction.CommitAsync(token);
+                return Results.Unauthorized();
+            }
+            var result = await signIn.CheckPasswordSignInAsync(account, request.Password, lockoutOnFailure: true);
+            if (!result.Succeeded)
+            {
+                await transaction.CommitAsync(token);
+                return Results.Unauthorized();
+            }
+            var stamp = await users.GetSecurityStampAsync(account);
+            var twoFactor = await signIn.IsTwoFactorEnabledAsync(account);
+            var claims = twoFactor ? [] : (await factory.CreateAsync(account)).Claims.Select(claim =>
+                new IdentityClaim(claim.Type, claim.Value, claim.ValueType, claim.Issuer, claim.OriginalIssuer)).ToArray();
+            await transaction.CommitAsync(token);
+            return Results.Ok(new PasswordLoginResponse(account.Id, stamp, twoFactor, claims));
+        });
     }
 }

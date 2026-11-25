@@ -7,7 +7,7 @@
 @using Microsoft.AspNetCore.Http.HttpResults
 @using Microsoft.AspNetCore.Identity
 @using Vigiloom.Modules.IdentityAccess.Domain
-@inject SignInManager<Account> SignInManager
+@inject Vigiloom.Web.Authentication.AccountLogin AccountLogin
 @inject NavigationManager Navigation
 
 <PageTitle>登入 - Vigiloom</PageTitle>
@@ -41,6 +41,7 @@
 </section>
 
 @code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
     private string? error;
     [SupplyParameterFromForm] private LoginInput Input { get; set; } = default!;
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
@@ -51,7 +52,7 @@
 
     private async Task LoginAsync()
     {
-        var result = await SignInManager.PasswordSignInAsync(Input.UserName, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        var result = await AccountLogin.PasswordAsync(HttpContext, Input.UserName, Input.Password, Input.RememberMe, HttpContext.RequestAborted);
         Input.Password = string.Empty;
         if (result.RequiresTwoFactor)
         {

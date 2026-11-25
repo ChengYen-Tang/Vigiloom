@@ -4,6 +4,8 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Identity;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Infrastructure.Security;
+using Microsoft.AspNetCore.Identity;
+using Vigiloom.Modules.IdentityAccess.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -12,6 +14,9 @@ builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(
     _ => builder.Configuration.GetConnectionString("VigiloomIdentity")
         ?? throw new InvalidOperationException("ConnectionStrings:VigiloomIdentity is required."), "identity");
 builder.Services.AddIdentityAccessOperations();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddAuthentication().AddIdentityCookies();
+builder.Services.AddIdentityCore<Account>().AddSignInManager();
 
 var app = builder.Build();
 app.MapIdentitySessionEndpoints();
