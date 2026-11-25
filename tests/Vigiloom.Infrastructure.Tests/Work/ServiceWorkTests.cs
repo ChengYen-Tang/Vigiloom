@@ -232,10 +232,20 @@ public sealed class ServiceWorkTests
         {
             await worker.ExecuteAsync(async () =>
             {
-                var workflow = await new ServiceWorkClient(client).StartAsync(id, queue, new("test", ""), TestContext.CancellationToken);
-                await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
-                await workflow.CancelAsync();
-                await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+                try
+                {
+                    var workflow = await new ServiceWorkClient(client).StartAsync(id, queue, new("test", ""), TestContext.CancellationToken);
+                    await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+                    await workflow.CancelAsync();
+                    await handler.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken);
+                    var status = (await workflow.DescribeAsync()).Status;
+                    Assert.AreEqual(Temporalio.Api.Enums.V1.WorkflowExecutionStatus.Running, status);
+                    handler.AllowCompletion.TrySetResult();
+                    await Assert.ThrowsAsync<Temporalio.Exceptions.WorkflowFailedException>(async () =>
+                        await workflow.GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.CancellationToken));
+                    Assert.AreEqual(Temporalio.Api.Enums.V1.WorkflowExecutionStatus.Canceled, (await workflow.DescribeAsync()).Status);
+                }
+                finally { handler.AllowCompletion.TrySetResult(); }
             }, TestContext.CancellationToken);
         }
         finally
@@ -257,6 +267,7 @@ public sealed class ServiceWorkTests
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource AllowCompletion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
         {
@@ -265,6 +276,7 @@ public sealed class ServiceWorkTests
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 Cancelled.TrySetResult();
+                await AllowCompletion.Task;
                 throw;
             }
             return null;
