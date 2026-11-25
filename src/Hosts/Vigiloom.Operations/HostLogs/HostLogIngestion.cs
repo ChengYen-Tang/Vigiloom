@@ -3,16 +3,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Domain.Logs;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Admission = Vigiloom.Infrastructure.LogAdmission.LogAdmission;
 
 namespace Vigiloom.Operations.HostLogs;
 
 /// <summary>Stores authenticated host Logs, shared quota usage and security work atomically.</summary>
-public sealed class HostLogIngestion(IDbContextFactory<CentralLogsDbContext> contexts, TemporalWorkWriter work, IConfiguration configuration)
+public sealed class HostLogIngestion(IDbContextFactory<CentralLogsDbContext> contexts, TemporalWorkWriter work, IConfiguration configuration, TimelineWriter timeline)
 {
     public async Task<LogReceipt> ReceiveAsync(HostLogSubmission submission, CancellationToken token)
     {
@@ -40,12 +42,18 @@ public sealed class HostLogIngestion(IDbContextFactory<CentralLogsDbContext> con
             if (existing.TryGetValue(item.MessageId, out var previous) && !previous.Matches(batch, item))
                 return new(LogReceiptStatus.Conflict);
         var newIds = new List<Guid>(batch.Items.Count - existing.Count);
+        var entries = new List<EventTimelineEntry>(batch.Items.Count - existing.Count);
         var receivedAt = DateTimeOffset.UtcNow;
         for (var i = 0; i < batch.Items.Count; i++)
         {
             if (existing.ContainsKey(batch.Items[i].MessageId)) continue;
             newIds.Add(batch.Items[i].MessageId);
             db.HostLogs.Add(new HostLog(submission.AgentId, batch, i, receivedAt));
+            var item = batch.Items[i];
+            entries.Add(new("host-log", receivedAt, submission.DeviceId, "device",
+                item.Gap is null ? $"主機日誌：{batch.SourceName}" : $"主機日誌採集缺口：{batch.SourceName}",
+                $"解析版本 {batch.ParserVersion}；{submission.AgentId:D}/{item.MessageId:D}；原文：{(item.Content.Length > 512 ? item.Content[..512] + "…" : item.Content)}",
+                $"/devices/{submission.DeviceId:D}/host-logs/{submission.AgentId:D}/{item.MessageId:D}"));
         }
         if (newIds.Count == 0) return new(LogReceiptStatus.Accepted);
         await db.SaveChangesAsync(token);
@@ -58,6 +66,7 @@ public sealed class HostLogIngestion(IDbContextFactory<CentralLogsDbContext> con
                 LogAdmissionStatus.BatchTooLarge => LogReceiptStatus.BatchTooLarge,
                 _ => LogReceiptStatus.Busy
             }, admission.RetryAfter);
+        await timeline.AppendLocalAsync(entries, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
         var dispatch = new HostLogDispatch(submission.AgentId, submission.DeviceId, submission.DeviceGeneration, newIds);
         await work.WriteAsync(db, configuration["Work:SecurityLogQueue"] ?? "vigiloom.security.logs",
             new ServiceWork(HostLogDispatch.MessageType, JsonSerializer.Serialize(dispatch)), token);

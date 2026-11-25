@@ -16,6 +16,7 @@ using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -31,9 +32,11 @@ public sealed class HostLogTests(TestContext context)
         {
             var services = new ServiceCollection();
             services.AddModuleSqlServer<LogAdmissionDbContext>(database.ConnectionString, "logquota");
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
             services.AddModuleSqlServer<CentralLogsDbContext>(database.ConnectionString, "logs", migrationHistory: "__EFMigrationsHistory_CentralLogs");
             services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
             using var provider = services.BuildServiceProvider();
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
@@ -73,6 +76,10 @@ public sealed class HostLogTests(TestContext context)
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
             Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
+            await using var timeline = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(1, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "host-log" && x.ResourceId == input.DeviceId, token));
+            Assert.Contains("login", (await timeline.Set<TimelineRecord>().SingleAsync(x => x.Source == "host-log", token)).Evidence);
+            Assert.AreEqual(2, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "service-log" && x.ResourceId == appLog.ServiceId, token));
             await using var scheduling = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await scheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
         }, context.CancellationToken);
