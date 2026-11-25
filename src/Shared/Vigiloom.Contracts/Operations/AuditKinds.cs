@@ -40,4 +40,6 @@ public static class AuditKinds
     public const short TelemetryRetentionChangedV1 = 35;
     public const short EventTimelineAccessedV1 = 36;
     public const short EventEvidenceAccessedV1 = 37;
+    public const short AgentRegistrationRecordedV1 = 38;
+    public const short AgentVersionAssignedV1 = 39;
 }

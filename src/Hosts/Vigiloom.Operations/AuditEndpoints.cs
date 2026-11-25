@@ -23,6 +23,7 @@ internal static class AuditEndpoints
                 "agent-replay" => audit.QueryAgentReplayAsync(query, token),
                 "agent-inbox" => audit.QueryAgentInboxAsync(query, token),
                 "agent-packages" => audit.QueryAgentPackagesAsync(query, token),
+                "agent-registration" => audit.QueryAgentRegistrationAsync(query, token),
                 "service-approvals" => audit.QueryServiceApprovalsAsync(query, token),
                 "service-sources" => audit.QueryServiceSourcesAsync(query, token),
                 "groups" => audit.QueryGroupsAsync(query, token),

@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -23,6 +25,56 @@ namespace Vigiloom.Operations.Tests;
 [TestCategory("Database")]
 public sealed class NotificationWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task ResourceServiceAuditWorkIsRecordedAndQueryable() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var services = new ServiceCollection();
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
+            services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
+            using var provider = services.BuildServiceProvider();
+            var factory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            await using (var db = await factory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter());
+            var actor = Guid.CreateVersion7();
+            var device = Guid.CreateVersion7();
+            var agent = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            object[] events =
+            [
+                new GroupAuditRecorded(actor, Guid.CreateVersion7(), now, GroupAction.Created, 0, 0),
+                new PublicTemplateAuditRecorded(actor, Guid.CreateVersion7(), now, PublicationTemplateAction.Created, 0),
+                new PublicationSettingAudit(actor, device, now, PublicationResourceKind.Device, false, true, true, false, false),
+                new ApplicationApprovalAudit(actor, Guid.CreateVersion7(), Guid.CreateVersion7(), now),
+                new ApplicationStateAudit(actor, Guid.CreateVersion7(), "stop", now),
+                new AgentRegistrationAudit(device, agent, null, "AgentEnrolled", now),
+                new AgentVersionAssignmentAudit(device, agent, actor, null, Guid.CreateVersion7(), now)
+            ];
+            foreach (var entry in events)
+            {
+                var delivery = new ServiceWork(entry.GetType().Name, JsonSerializer.Serialize(entry, entry.GetType()), Guid.CreateVersion7().ToString("D"));
+                await handler.ExecuteAsync(delivery, token);
+                await handler.ExecuteAsync(delivery, token);
+            }
+            var query = new OperationAuditQuery(now.AddMinutes(-1), now.AddMinutes(1));
+            var reader = new OperationAuditQueryService(factory);
+            Assert.HasCount(1, (await reader.QueryGroupsAsync(query, token)).Items);
+            Assert.HasCount(2, (await reader.QueryPublicationsAsync(query, token)).Items);
+            Assert.HasCount(1, (await reader.QueryServiceApprovalsAsync(query, token)).Items);
+            Assert.HasCount(1, (await reader.QueryServiceCollectionsAsync(query, token)).Items);
+            var registrations = (await reader.QueryAgentRegistrationAsync(query, token)).Items;
+            Assert.HasCount(2, registrations);
+            var enrolled = registrations.Single(item => item.AgentRegistration is not null);
+            Assert.AreEqual(agent, enrolled.ActorId);
+            Assert.IsTrue(enrolled.AgentRegistration!.AgentActor);
+            var assignment = registrations.Single(item => item.AgentAssignment is not null);
+            Assert.AreEqual(actor, assignment.ActorId);
+            Assert.AreEqual(agent, assignment.AgentAssignment!.AgentId);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task RetryDoesNotDuplicateNotificationAndChangedDeliveryIsRejected() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

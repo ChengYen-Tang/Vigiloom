@@ -27,7 +27,7 @@ public sealed class OperationsWorkHandler(IConfiguration configuration, Notifica
                     ?? throw new InvalidOperationException("Audit work is empty.");
                 await audits.AppendAsync(db, transaction, audit, token);
             }
-            else throw new InvalidOperationException("Unsupported operations work type.");
+            else await audits.AppendAsync(db, transaction, ResourceAudit.Convert(item), token);
             return null;
         });
         return handler.ExecuteAsync(work, cancellationToken);

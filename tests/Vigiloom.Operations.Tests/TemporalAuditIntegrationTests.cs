@@ -7,12 +7,15 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Temporalio.Client;
 using Temporalio.Exceptions;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Operations.Work;
 using Vigiloom.Testing.SqlServer;
 
@@ -44,16 +47,19 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 await db.Database.MigrateAsync(token);
 
             var queue = "vigiloom-operations-test-" + Guid.CreateVersion7().ToString("N");
+            var resourceQueue = "vigiloom-audit-test-" + Guid.CreateVersion7().ToString("N");
             var builder = Host.CreateApplicationBuilder();
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            { ["ConnectionStrings:Operations"] = target.ConnectionString, ["Work:OperationsQueue"] = queue });
+            { ["ConnectionStrings:Operations"] = target.ConnectionString, ["Work:OperationsQueue"] = queue, ["Work:AuditQueue"] = resourceQueue });
             builder.Services.AddVigiloomTemporalClient(address, "default");
             builder.Services.AddScoped<NotificationWriter>();
             builder.Services.AddScoped<OperationAuditWriter>();
+            builder.Services.AddScoped<ResourceWork>();
             builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(queue);
+            builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(resourceQueue);
             using var host = builder.Build();
             await host.StartAsync(token);
-            var deliveryId = Guid.Empty;
+            var deliveryIds = new List<Guid>();
             try
             {
                 using var scope = host.Services.CreateScope();
@@ -69,33 +75,46 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 }
                 await using var select = connection.CreateCommand();
                 select.CommandText = "SELECT MessageId FROM scheduling.Outbox";
-                deliveryId = (Guid)(await select.ExecuteScalarAsync(token))!;
+                deliveryIds.Add((Guid)(await select.ExecuteScalarAsync(token))!);
+                await using (var resources = new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
+                    .UseSqlServer(source.ConnectionString).Options))
+                {
+                    await using var transaction = await resources.Database.BeginTransactionAsync(token);
+                    var resourceAudit = new GroupAuditRecorded(audit.ActorId, Guid.CreateVersion7(), audit.OccurredAt, GroupAction.Created, 0, 0);
+                    deliveryIds.Add(await scope.ServiceProvider.GetRequiredService<ResourceWork>().PublishAsync(resources, resourceAudit, token));
+                    await transaction.CommitAsync(token);
+                }
                 var outbox = new OutboxDispatcher(source.ConnectionString, scope.ServiceProvider.GetServices<IOutboxHandler>(),
                     NullLogger<OutboxDispatcher>.Instance);
                 await outbox.DispatchAsync(token);
-                await scope.ServiceProvider.GetRequiredService<ServiceWorkClient>().Get(deliveryId.ToString("D"))
-                    .GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
+                foreach (var id in deliveryIds)
+                    await scope.ServiceProvider.GetRequiredService<ServiceWorkClient>().Get(id.ToString("D"))
+                        .GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
                 var query = new OperationAuditQuery(audit.OccurredAt.AddMinutes(-1), audit.OccurredAt.AddMinutes(1));
                 var page = await new OperationAuditQueryService(targetFactory).QueryGroupsAsync(query, token);
-                Assert.AreEqual(audit.ActorId, page.Items.Single().ActorId);
+                Assert.HasCount(2, page.Items);
+                Assert.IsTrue(page.Items.All(item => item.ActorId == audit.ActorId));
             }
             finally
             {
                 try { await host.StopAsync(CancellationToken.None); }
                 finally
                 {
-                    if (deliveryId != Guid.Empty)
+                    if (deliveryIds.Count != 0)
                     {
                         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                         using var scope = host.Services.CreateScope();
-                        try
+                        foreach (var id in deliveryIds)
                         {
-                            await scope.ServiceProvider.GetRequiredService<ITemporalClient>().WorkflowService.DeleteWorkflowExecutionAsync(new()
+                            try
                             {
-                                Namespace = "default", WorkflowExecution = new() { WorkflowId = deliveryId.ToString("D") }
-                            }, new RpcOptions { CancellationToken = cleanup.Token });
+                                await scope.ServiceProvider.GetRequiredService<ITemporalClient>().WorkflowService.DeleteWorkflowExecutionAsync(new()
+                                {
+                                    Namespace = "default", WorkflowExecution = new() { WorkflowId = id.ToString("D") }
+                                }, new RpcOptions { CancellationToken = cleanup.Token });
+                            }
+                            catch (RpcException error) when (error.Code == RpcException.StatusCode.NotFound) { }
                         }
-                        catch (RpcException error) when (error.Code == RpcException.StatusCode.NotFound) { }
                     }
                 }
             }
