@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -65,6 +66,28 @@ public sealed class InternalApiTests
             CollectionAssert.AreEquivalent(new[] { serviceId }, members.ServiceIds.ToArray());
             using var missingGroup = await client.GetAsync($"/internal/v1/groups/{Guid.CreateVersion7():D}/members", token);
             Assert.AreEqual(HttpStatusCode.NotFound, missingGroup.StatusCode);
+
+            var actor = Guid.CreateVersion7();
+            using var create = await client.PostAsJsonAsync("/internal/v1/devices/",
+                new DeviceChangeCommand(actor, new DeviceInput("Managed", "managed.example", [], true)), token);
+            Assert.AreEqual(HttpStatusCode.Created, create.StatusCode);
+            var created = await create.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
+            Assert.IsNotNull(created);
+            using var update = await client.PutAsJsonAsync($"/internal/v1/devices/{created.Id:D}",
+                new DeviceChangeCommand(actor, new DeviceInput("Managed", "changed.example", [], true, Version: created.Version)), token);
+            Assert.AreEqual(HttpStatusCode.OK, update.StatusCode);
+            var updated = await update.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
+            Assert.IsNotNull(updated);
+            Assert.AreEqual("changed.example", updated.Address);
+            using var archive = await client.PostAsJsonAsync($"/internal/v1/devices/{created.Id:D}/archive",
+                new DeviceArchiveCommand(actor, updated.Version), token);
+            Assert.AreEqual(HttpStatusCode.OK, archive.StatusCode);
+            var archived = await archive.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
+            Assert.IsNotNull(archived);
+            Assert.IsTrue(archived.Archived);
+            var archivedAgent = await client.GetFromJsonAsync<DeviceAgentState>($"/internal/v1/devices/{created.Id:D}/agent", token);
+            Assert.IsFalse(archivedAgent?.Eligible);
+            Assert.AreEqual(1L, archivedAgent?.Generation);
         }, TestContext.CancellationToken);
 
     [AssemblyCleanup]
