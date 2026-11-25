@@ -12,6 +12,7 @@ using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Operations;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Application.Retention;
@@ -116,9 +117,8 @@ builder.Services.AddScoped<AccountManagement>();
 builder.Services.AddScoped<AccountPasswordOperations>();
 builder.Services.AddScoped<TwoFactorSettings>();
 builder.Services.AddScoped<LocalApiCredentialValidation>();
-builder.Services.AddHttpClient<RemoteApiCredentialValidation>((services, client) =>
-    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddVigiloomIdentityCookieClient();
 builder.Services.AddHttpClient<RemoteWorkspaceIdentity>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });

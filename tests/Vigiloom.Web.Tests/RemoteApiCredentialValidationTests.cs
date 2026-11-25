@@ -2,12 +2,29 @@ using System.Net;
 using System.Net.Http.Json;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Infrastructure.Authentication;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class RemoteApiCredentialValidationTests
 {
+    [TestMethod]
+    public void Registration_ProvidesVerifierForAnotherService()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Services:Identity:Url"] = "http://identity" }).Build());
+        services.AddLogging();
+        services.AddVigiloomIdentityCredentialClient();
+        services.AddAuthentication().AddVigiloomApiCredentials();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        Assert.IsInstanceOfType<RemoteApiCredentialValidation>(scope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
+    }
+
     [TestMethod]
     public async Task Verification_UsesIdentityServiceAndReflectsRevocation()
     {

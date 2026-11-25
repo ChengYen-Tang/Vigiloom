@@ -135,7 +135,7 @@ public sealed class ProjectBoundaryTests
     private static string[]? AllowedReferences(string name, string[] modules) => name switch
     {
         "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
-        "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks"],
+        "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
         "Vigiloom.Web.Client" => ["Vigiloom.Contracts"],
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],

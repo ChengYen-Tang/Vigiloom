@@ -25,6 +25,14 @@ unchanged. Create and initialize the Identity database before starting it.
 The Identity EF design-time factory uses the same development database by
 default; `VIGILOOM_DESIGN_SQL_CONNECTION` overrides it when required.
 
+Other ASP.NET Core services can register the shared API-credential client and
+authentication scheme with `AddVigiloomIdentityCredentialClient()` and
+`AddVigiloomApiCredentials()`, then apply `AddVigiloomAccessPolicies()` to their
+authorization options. A service accepting the browser's Identity cookie must
+also register the Identity cookie schemes, share the configured key ring and
+application name, and use `IdentityCookieValidator` during cookie validation.
+Business authorization remains the responsibility of each service.
+
 To copy an existing installation to a separate Identity database, stop the
 platform and other writers first. Create an empty destination database, set
 `VIGILOOM_MIGRATION_SQL_CONNECTION` to the existing platform database and

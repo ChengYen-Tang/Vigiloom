@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Infrastructure.Authentication;
 
 namespace Vigiloom.Web.Authentication;
 
@@ -31,30 +32,18 @@ internal static class IdentityRegistration
                     ? PublicAssetAuthentication.AssetScheme : IdentityConstants.ApplicationScheme)
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, PublicAssetAuthentication>(
                 PublicAssetAuthentication.AssetScheme, _ => { })
-            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiCredentialHandler>(
-                ApiCredentialHandler.SchemeName, _ => { })
+            .AddVigiloomApiCredentials()
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, AgentCredentialHandler>(
                 AgentCredentialHandler.SchemeName, _ => { })
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ServiceSourceCredentialHandler>(
                 ServiceSourceCredentialHandler.SchemeName, _ => { });
         services.AddAuthorization(options =>
         {
-            options.AddPolicy(AccessPolicies.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator));
-            options.AddPolicy(AccessPolicies.MonitoringRead, policy => policy.RequireRole(BuiltInRoles.Administrator, BuiltInRoles.ReadOnly));
-            options.AddPolicy("ApiClientRead", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
-                .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.read"));
-            options.AddPolicy("ApiClientWrite", policy => policy.AddAuthenticationSchemes(ApiCredentialHandler.SchemeName)
-                .RequireAuthenticatedUser().RequireClaim("scope", "monitoring.write"));
+            options.AddVigiloomAccessPolicies();
             options.AddPolicy("Agent", policy => policy.AddAuthenticationSchemes(AgentCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireClaim("vigiloom:principal-type", "agent"));
             options.AddPolicy("ServiceSource", policy => policy.AddAuthenticationSchemes(ServiceSourceCredentialHandler.SchemeName)
                 .RequireAuthenticatedUser().RequireClaim("vigiloom:principal-type", "service-source"));
-            options.AddPolicy("MonitoringApiRead", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
-                .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
-                    context.User.IsInRole(BuiltInRoles.ReadOnly) || context.User.HasClaim("scope", "monitoring.read")));
-            options.AddPolicy("DeviceWrite", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme, ApiCredentialHandler.SchemeName)
-                .RequireAuthenticatedUser().RequireAssertion(context => context.User.IsInRole(BuiltInRoles.Administrator) ||
-                    context.User.HasClaim("scope", "monitoring.write")));
         });
         services.AddIdentityCore<Account>().AddSignInManager<BoundSignInManager>();
         services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
@@ -93,7 +82,7 @@ internal static class IdentityRegistration
                 if (string.IsNullOrWhiteSpace(context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Services:Identity:Url"]))
                     await SecurityStampValidator.ValidatePrincipalAsync(context);
                 else
-                    await context.HttpContext.RequestServices.GetRequiredService<RemoteCookieValidator>().ValidateAsync(context);
+                    await context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
                 if (context.Principal?.Identity is not ClaimsIdentity identity || context.Properties.ExpiresUtc is not { } expires) return;
                 foreach (var claim in identity.FindAll(SessionLifetime.ExpirationClaim).ToArray()) identity.RemoveClaim(claim);
                 identity.AddClaim(new Claim(SessionLifetime.ExpirationClaim, expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));

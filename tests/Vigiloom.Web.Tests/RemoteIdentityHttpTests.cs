@@ -20,10 +20,12 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Diagnostics;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Web.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
 
@@ -74,6 +76,8 @@ public sealed class RemoteIdentityHttpTests
                         Interlocked.Increment(ref cookieRequests);
                         if (request.RequestUri?.AbsolutePath == "/internal/identity/sessions/revoke") Interlocked.Increment(ref revocationRequests);
                     })));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(IdentityCookieValidator))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref cookieRequests))));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePasswordLogin))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), request =>
                     {
@@ -103,9 +107,14 @@ public sealed class RemoteIdentityHttpTests
                 await db.SaveChangesAsync(token);
             }
             using var client = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+            using (var anonymous = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+            using (var denied = await anonymous.GetAsync("/api/v1/devices/", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(secret)}");
             using (var valid = await client.GetAsync("/api/v1/access", token))
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
+            using (var created = await client.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("remote auth device", "example.org", [], false), token))
+                Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             await using (var db = await contexts.CreateDbContextAsync(token))
             {
                 var stored = await db.ApiCredentials.SingleAsync(x => x.Id == credential.Id, token);
@@ -145,6 +154,10 @@ public sealed class RemoteIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, authorized.StatusCode);
                 Assert.IsTrue(authorized.Headers.Contains("Set-Cookie"));
             }
+            using (var readerDevices = await browser.GetAsync("/api/v1/devices/", token))
+                Assert.AreEqual(HttpStatusCode.OK, readerDevices.StatusCode);
+            using (var readerWrite = await browser.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("denied", "example.org", [], false), token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, readerWrite.StatusCode);
             Assert.IsGreaterThan(0, cookieRequests);
             await identityScope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>().Value;
@@ -198,7 +211,15 @@ public sealed class RemoteIdentityHttpTests
             var issuedId = Guid.Parse(issued.Secret!.Substring(4, 36));
             var listed = await management.ListAsync(adminPrincipal, 1, token);
             Assert.IsTrue(listed.Credentials.Any(item => item.Id == issuedId));
+            using var apiReader = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+            apiReader.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Secret);
+            using (var apiReaderDevices = await apiReader.GetAsync("/api/v1/devices/", token))
+                Assert.AreEqual(HttpStatusCode.OK, apiReaderDevices.StatusCode);
+            using (var apiReaderWrite = await apiReader.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("denied", "example.org", [], false), token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, apiReaderWrite.StatusCode);
             Assert.AreEqual(ApiCredentialStatus.Success, await management.RevokeAsync(adminPrincipal, issuedId, "Admin-Password-123", token));
+            using (var apiReaderRevoked = await apiReader.GetAsync("/api/v1/devices/", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, apiReaderRevoked.StatusCode);
             Assert.AreEqual(4, credentialManagementRequests);
             using var adminBrowser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
             using var adminLoginPage = await adminBrowser.GetAsync("/account/login", token);
@@ -296,7 +317,7 @@ public sealed class RemoteIdentityHttpTests
                     ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
                     ["Services:Identity:Url"] = "http://identity"
                 }));
-                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCookieValidator))
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(IdentityCookieValidator))
                     .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteWorkspaceIdentity))
                     .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
