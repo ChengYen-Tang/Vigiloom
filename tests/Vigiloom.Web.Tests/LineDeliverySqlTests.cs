@@ -38,6 +38,9 @@ public sealed class LineDeliverySqlTests(TestContext context)
             db.Set<Notification>().AddRange(
                 new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", OccurredAt = DateTimeOffset.UtcNow, Title = "First", Detail = "Host A" },
                 new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", OccurredAt = DateTimeOffset.UtcNow, Title = "Second", Detail = "Host B" });
+            for (var i = 0; i < 99; i++)
+                db.Set<Notification>().Add(new Notification { MessageId = Guid.CreateVersion7(), Source = "ping",
+                    OccurredAt = DateTimeOffset.UtcNow, Title = $"Additional {i}", Detail = "Unavailable" });
             await db.SaveChangesAsync(token);
         }
         var clock = new MutableClock();
@@ -51,9 +54,13 @@ public sealed class LineDeliverySqlTests(TestContext context)
         await new LineDeliveryQueue(contexts, scope.ServiceProvider.GetRequiredService<OutboxWriter>(), clock).EnqueueNewAsync(token);
         await queue.EnqueueNewAsync(token);
         await using var result = await contexts.CreateDbContextAsync(token);
-        var delivery = await result.Set<LineDelivery>().SingleAsync(token);
-        Assert.Contains("First\nHost A", delivery.Text);
-        Assert.Contains("Second\nHost B", delivery.Text);
+        var deliveries = await result.Set<LineDelivery>().OrderBy(item => item.RowId).ToArrayAsync(token);
+        Assert.HasCount(2, deliveries);
+        var entries = deliveries.SelectMany(item => item.Text.Split("\n\n")).ToArray();
+        Assert.HasCount(101, entries);
+        Assert.Contains("First\nHost A", entries);
+        Assert.Contains("Second\nHost B", entries);
+        for (var i = 0; i < 99; i++) Assert.Contains($"Additional {i}\nUnavailable", entries);
     }, context.CancellationToken);
 
     [TestMethod]

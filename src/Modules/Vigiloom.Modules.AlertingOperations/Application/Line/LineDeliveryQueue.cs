@@ -37,8 +37,9 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
         if (settings is not { Enabled: true }) return;
 
         var notifications = await db.Notifications.AsNoTracking().Where(x => x.RowId > settings.LastNotificationRowId)
-            .OrderBy(x => x.RowId).Take(100).ToArrayAsync(token);
+            .OrderBy(x => x.RowId).Take(101).ToArrayAsync(token);
         if (notifications.Length == 0) return;
+        var count = Math.Min(notifications.Length, 100);
         var now = clock.GetUtcNow();
         if (settings.AggregationStartedAt is null)
         {
@@ -64,8 +65,9 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
                     Recipient = group.ExternalId, Text = message, CreatedAt = now });
             text.Clear();
         }
-        foreach (var notification in notifications)
+        for (var i = 0; i < count; i++)
         {
+            var notification = notifications[i];
             var entry = $"{notification.Title}\n{notification.Detail}";
             if (entry.Length > 5000)
             {
@@ -79,8 +81,9 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
         }
         Flush();
         db.LineDeliveries.AddRange(deliveries);
-        settings.LastNotificationRowId = notifications[^1].RowId;
-        settings.AggregationStartedAt = null;
+        settings.LastNotificationRowId = notifications[count - 1].RowId;
+        // Continue an already elapsed window on the next poll when there is backlog.
+        if (notifications.Length <= count) settings.AggregationStartedAt = null;
         await db.SaveChangesAsync(token);
         var connection = (SqlConnection)db.Database.GetDbConnection();
         var sqlTransaction = (SqlTransaction)transaction.GetDbTransaction();
