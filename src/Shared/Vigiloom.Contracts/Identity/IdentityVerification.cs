@@ -9,3 +9,7 @@ public sealed record ValidatedCookieResponse(IdentityClaim[] Claims);
 public sealed record PasswordLoginRequest(string UserName, string Password);
 public sealed record PasswordLoginResponse(Guid AccountId, string SecurityStamp, bool RequiresTwoFactor, IdentityClaim[] Claims);
 public sealed record CompleteTwoFactorRequest(Guid AccountId, string SecurityStamp, string Code, bool Recovery);
+public sealed record IdentityActor(Guid AccountId, string SecurityStamp);
+public sealed record CredentialListRequest(IdentityActor Actor, int Page);
+public sealed record CredentialIssueRequest(IdentityActor Actor, string Name, bool CanWrite, int Days, string Password);
+public sealed record CredentialRevokeRequest(IdentityActor Actor, Guid Id, string Password);

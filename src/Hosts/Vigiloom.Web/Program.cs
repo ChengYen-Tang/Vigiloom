@@ -103,6 +103,7 @@ builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryStatus>();
 builder.Services.AddVigiloomIdentity();
 builder.Services.AddScoped<AccountLogin>();
+builder.Services.AddScoped<CredentialManagement>();
 builder.Services.AddScoped<LocalApiCredentialValidation>();
 builder.Services.AddHttpClient<RemoteApiCredentialValidation>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
@@ -114,6 +115,9 @@ builder.Services.AddHttpClient<RemoteCookieValidator>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<RemotePasswordLogin>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<RemoteCredentialManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IApiCredentialValidation>(services =>

@@ -42,6 +42,7 @@ public sealed class RemoteIdentityHttpTests
             var revocationRequests = 0;
             var passwordRequests = 0;
             var twoFactorCompletions = 0;
+            var credentialManagementRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -70,6 +71,8 @@ public sealed class RemoteIdentityHttpTests
                         if (request.RequestUri?.AbsolutePath == "/internal/identity/password-login") Interlocked.Increment(ref passwordRequests);
                         if (request.RequestUri?.AbsolutePath == "/internal/identity/two-factor/complete") Interlocked.Increment(ref twoFactorCompletions);
                     })));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCredentialManagement))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref credentialManagementRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -131,6 +134,48 @@ public sealed class RemoteIdentityHttpTests
                 new Claim(options.ClaimsIdentity.SecurityStampClaimType, (await users.GetSecurityStampAsync(user))!),
                 new Claim(SessionLifetime.ExpirationClaim, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
             ], "test"));
+            var management = scope.ServiceProvider.GetRequiredService<CredentialManagement>();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await management.ListAsync(principal, 1, token));
+            var administrator = new Account { UserName = "remote-admin" };
+            Assert.IsTrue((await users.CreateAsync(administrator, "Admin-Password-123")).Succeeded);
+            Assert.IsTrue((await users.AddToRoleAsync(administrator, BuiltInRoles.Administrator)).Succeeded);
+            var adminPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(options.ClaimsIdentity.UserIdClaimType, administrator.Id.ToString("D")),
+                new Claim(options.ClaimsIdentity.SecurityStampClaimType, (await users.GetSecurityStampAsync(administrator))!),
+                new Claim(SessionLifetime.ExpirationClaim, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture))
+            ], "test"));
+            var issued = await management.IssueAsync(adminPrincipal, "remote-managed", false, 30, "Admin-Password-123", token);
+            Assert.AreEqual(ApiCredentialStatus.Success, issued.Status);
+            Assert.IsFalse(string.IsNullOrEmpty(issued.Secret));
+            var issuedId = Guid.Parse(issued.Secret!.Substring(4, 36));
+            var listed = await management.ListAsync(adminPrincipal, 1, token);
+            Assert.IsTrue(listed.Credentials.Any(item => item.Id == issuedId));
+            Assert.AreEqual(ApiCredentialStatus.Success, await management.RevokeAsync(adminPrincipal, issuedId, "Admin-Password-123", token));
+            Assert.AreEqual(4, credentialManagementRequests);
+            using var adminBrowser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            using var adminLoginPage = await adminBrowser.GetAsync("/account/login", token);
+            var adminLoginDocument = await new HtmlParser().ParseDocumentAsync(await adminLoginPage.Content.ReadAsStringAsync(token), token);
+            var adminLoginForm = adminLoginDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+            var adminLoginFields = adminLoginForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            adminLoginFields["Input.UserName"] = "remote-admin";
+            adminLoginFields["Input.Password"] = "Admin-Password-123";
+            using (var adminLogin = await adminBrowser.PostAsync("/account/login", new FormUrlEncodedContent(adminLoginFields), token))
+                Assert.AreEqual(HttpStatusCode.Redirect, adminLogin.StatusCode);
+            using var managementPage = await adminBrowser.GetAsync("/account/api-credentials", token);
+            Assert.AreEqual(HttpStatusCode.OK, managementPage.StatusCode);
+            var managementDocument = await new HtmlParser().ParseDocumentAsync(await managementPage.Content.ReadAsStringAsync(token), token);
+            var issueForm = managementDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "issue-api-credential");
+            var issueFields = issueForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            issueFields["IssueInput.Name"] = "remote-from-ui";
+            issueFields["IssueInput.Days"] = "30";
+            issueFields["IssueInput.Password"] = "Admin-Password-123";
+            using (var issueResponse = await adminBrowser.PostAsync("/account/api-credentials", new FormUrlEncodedContent(issueFields), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, issueResponse.StatusCode);
+                var issueDocument = await new HtmlParser().ParseDocumentAsync(await issueResponse.Content.ReadAsStringAsync(token), token);
+                Assert.IsNotNull(issueDocument.QuerySelector("textarea[aria-label='一次性 API 憑證']"));
+            }
+            Assert.IsGreaterThan(4, credentialManagementRequests);
             var workspace = scope.ServiceProvider.GetRequiredService<WorkspaceIdentityService>();
             var revalidation = (IdentityRevalidatingAuthenticationStateProvider)scope.ServiceProvider.GetRequiredService<AuthenticationStateProvider>();
             var validSession = await workspace.GetAsync(principal, token);
@@ -175,7 +220,7 @@ public sealed class RemoteIdentityHttpTests
             loginFields["Input.Password"] = "Reader-Password-123";
             using var twoFactorLogin = await twoFactorBrowser.PostAsync("/account/login", new FormUrlEncodedContent(loginFields), token);
             Assert.AreEqual(HttpStatusCode.Redirect, twoFactorLogin.StatusCode);
-            Assert.AreEqual(3, passwordRequests);
+            Assert.AreEqual(4, passwordRequests);
             var challengePath = twoFactorLogin.Headers.Location!.PathAndQuery;
             Assert.Contains("/account/two-factor", challengePath);
             var callsBeforeChallenge = cookieRequests;
