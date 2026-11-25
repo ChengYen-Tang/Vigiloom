@@ -339,6 +339,47 @@ public sealed class ProxyTests
         Assert.IsFalse(string.IsNullOrEmpty(Google.Rpc.Status.Parser.ParseFrom(await response.Content.ReadAsByteArrayAsync(TestContext.CancellationToken)).Message));
     }
 
+    [TestMethod]
+    public async Task PublicStatusStreamForwardsEventsWithoutBuffering()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var web = builder.Build();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        web.MapGet("/api/v1/public/devices/{id}/events", async (HttpContext context) =>
+        {
+            context.Response.ContentType = "text/event-stream";
+            await context.Response.WriteAsync("data: first\n\n", context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+            await release.Task.WaitAsync(context.RequestAborted);
+            await context.Response.WriteAsync("data: second\n\n", context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+        });
+        await web.StartAsync(TestContext.CancellationToken);
+        var address = web.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:web:Destinations:web:Address"] = address
+            })));
+        using var client = factory.CreateClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            using var response = await client.GetAsync($"/api/v1/public/devices/{Guid.CreateVersion7():D}/events", HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+            using var reader = new StreamReader(stream);
+            Assert.AreEqual("data: first", await reader.ReadLineAsync(timeout.Token));
+            Assert.AreEqual("", await reader.ReadLineAsync(timeout.Token));
+            release.TrySetResult();
+            Assert.AreEqual("data: second", await reader.ReadLineAsync(timeout.Token));
+        }
+        finally { release.TrySetResult(); }
+    }
+
     private static async Task<WebApplication> StartUpstreamAsync(string name, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();
