@@ -21,6 +21,12 @@ GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assign
 ### Read the target to deliver to an authenticated Agent
 GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/target
 
+### Retrieve the assigned manifest and archive using the authenticated Agent ID
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/update/targets/replace-with-manifest-sha256.json
+
+### Archive name is its assigned SHA-256
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/update/packages/replace-with-package-sha256
+
 ### Assign an available package to an Agent
 PUT {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
 Content-Type: application/json

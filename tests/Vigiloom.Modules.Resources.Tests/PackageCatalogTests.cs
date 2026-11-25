@@ -35,7 +35,8 @@ public sealed class PackageCatalogTests
                 var sha = Convert.ToHexStringLower(SHA256.HashData(contents));
                 using var client = new HttpClient(new ReleaseHandler(contents, sha)) { BaseAddress = new Uri("https://api.github.com/") };
                 var usage = new PackageUsage { InUse = true };
-                var catalog = new PackageCatalog(contexts, new GitHubAgentReleases(client), new PackageLibraryTransport(path), usage);
+                var files = new PackageLibraryTransport(path);
+                var catalog = new PackageCatalog(contexts, new GitHubAgentReleases(client), files, usage);
                 Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
                 Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
                 var item = (await catalog.ListAsync(1, token)).Items.Single();
@@ -56,12 +57,26 @@ public sealed class PackageCatalogTests
                     await db.SaveChangesAsync(token);
                 }
                 Assert.AreEqual(AgentPackageRemovalResult.InUse, await catalog.RemoveAsync(item.Id, token));
+                var assignments = new AgentAssignments(contexts, files, null!, TimeProvider.System);
+                var access = new AgentPackageAccess(assignments, files, contexts);
+                var target = await assignments.GetTargetAsync(agent.Id, token);
+                Assert.IsNotNull(target);
+                Assert.IsNotNull(await access.ReadManifestAsync(agent.Id, target.ManifestSha256 + ".json", token));
+                Assert.IsNull(await access.OpenArchiveAsync(agent.Id, new string('f', 64), token));
+                await using (var archive = await access.OpenArchiveAsync(agent.Id, sha, token))
+                {
+                    Assert.IsNotNull(archive);
+                    using var copied = new MemoryStream();
+                    await archive.CopyToAsync(copied, token);
+                    CollectionAssert.AreEqual(contents, copied.ToArray());
+                }
                 await using (var db = await contexts.CreateDbContextAsync(token))
                 {
                     db.AgentVersionAssignments.Remove(await db.AgentVersionAssignments.SingleAsync(a => a.AgentId == agent.Id, token));
                     await db.SaveChangesAsync(token);
                 }
                 Assert.AreEqual(AgentPackageRemovalResult.Removed, await catalog.RemoveAsync(item.Id, token));
+                Assert.IsNull(await access.OpenArchiveAsync(agent.Id, sha, token));
                 Assert.IsFalse((await catalog.ListAsync(1, token)).Items.Single().Cached);
             }
             finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
