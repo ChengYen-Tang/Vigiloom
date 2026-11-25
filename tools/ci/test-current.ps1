@@ -25,5 +25,5 @@ try {
     & dotnet test (Join-Path $root 'tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~MessagingTests'
     if ($LASTEXITCODE -ne 0) { throw "Messaging tests failed with exit code $LASTEXITCODE." }
 } finally {
-    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -ErrorAction Stop }
+    if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction Stop }
 }
