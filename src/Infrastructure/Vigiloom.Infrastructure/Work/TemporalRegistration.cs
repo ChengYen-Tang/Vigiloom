@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Temporalio.Extensions.Hosting;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 
@@ -11,6 +12,8 @@ public static class TemporalRegistration
     {
         services.AddTemporalClient(address, temporalNamespace);
         services.AddScoped<ServiceWorkClient>();
+        services.TryAddScoped<OutboxWriter>();
+        services.AddScoped<TemporalWorkWriter>();
         services.AddScoped<IOutboxHandler, TemporalOutboxHandler>();
         return services;
     }
