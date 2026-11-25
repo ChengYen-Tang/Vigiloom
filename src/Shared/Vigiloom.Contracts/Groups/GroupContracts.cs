@@ -11,3 +11,5 @@ public sealed record GroupService(Guid Id, string Name, string Environment, bool
 public sealed record GroupServicePage(IReadOnlyList<GroupService> Items, int Page, int PageSize, int Total);
 public sealed record GroupMembershipChange(string? Version, Guid[]? Add, Guid[]? Remove);
 public sealed record GroupVersionRequest(string? Version);
+public sealed record ServiceGroupLink(Guid Id, string Name);
+public sealed record ServiceGroupLinkPage(IReadOnlyList<ServiceGroupLink> Items, bool HasMore);

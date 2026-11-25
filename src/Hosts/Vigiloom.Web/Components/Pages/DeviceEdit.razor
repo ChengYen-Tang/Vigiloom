@@ -6,8 +6,8 @@
 @using DeviceDto = Vigiloom.Contracts.Devices.DeviceDetails
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.Resources.Domain
-@inject DeviceManagement DevicesService
-@inject GroupManagement GroupsService
+@inject IDeviceManagement DevicesService
+@inject IGroupManagement GroupsService
 @inject NavigationManager Navigation
 @inject ILogger<DeviceEdit> Logger
 

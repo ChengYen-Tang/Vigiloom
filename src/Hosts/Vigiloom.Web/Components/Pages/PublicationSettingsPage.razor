@@ -3,9 +3,9 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.ServiceObservability.Application
-@inject DeviceManagement Devices
-@inject GroupManagement Groups
-@inject ServiceInstanceAdministration Services
+@inject IDeviceManagement Devices
+@inject IGroupManagement Groups
+@inject Vigiloom.Web.Services.IApplicationManagement Services
 @inject ILogger<PublicationSettingsPage> Logger
 
 <PageTitle>公開設定 - Vigiloom</PageTitle>

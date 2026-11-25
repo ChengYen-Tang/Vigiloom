@@ -196,7 +196,7 @@ public sealed class ReceptionRejectionTests(TestContext context)
             metadata.Request.ContentType = "application/json";
             metadata.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"serviceKey\":\"orders\",\"environment\":\"prod\",\"displayName\":\"Orders\"}"));
             metadata.Response.Body = new MemoryStream();
-            var result = await ServiceObservationEndpoint.ReceiveAsync(metadata, scope.ServiceProvider.GetRequiredService<CandidateDiscovery>(), token, diagnostics);
+            var result = await ServiceObservationEndpoint.ReceiveAsync(metadata, scope.ServiceProvider.GetRequiredService<Vigiloom.Web.Services.ICandidateAdministration>(), token, diagnostics);
             await result.ExecuteAsync(metadata);
             Assert.AreEqual(StatusCodes.Status401Unauthorized, metadata.Response.StatusCode);
 

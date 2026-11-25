@@ -1,3 +1,4 @@
+using Vigiloom.UpdateSecurity.AgentPackages;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;

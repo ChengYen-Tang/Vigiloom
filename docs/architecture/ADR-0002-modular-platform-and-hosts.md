@@ -47,7 +47,7 @@ flowchart TB
 
 每個模組目前只建立一個 class library 與對應 MSTest 專案，隨需求在專案內建立有用途的資料夾。避免每個模組先拆四層空專案。
 
-- 模組可以參考 BuildingBlocks、Contracts、Infrastructure；不能直接參考另一個模組實作或 Host。
+- 模組可以參考 BuildingBlocks、Contracts、Infrastructure；Agent 套件管理所需的 Resources 與 AgentManagement 另可參考 UpdateSecurity。模組不能直接參考另一個模組實作或 Host。
 - `Vigiloom.UpdateSecurity` 是中央套件庫與獨立 Updater 共用的套件驗證邊界，隔離更新驗證相依套件；不包含資料庫、主機或產品 UI。
 - 跨模組協作使用明確應用契約；目前 Contracts 不含虛構 DTO 或事件。需要更細的公開契約邊界時，先更新設計及架構測試。
 - 模組各自擁有 DbContext／schema／migration；不建立一個包辦所有表的共用 DbContext，也不跨模組直接修改表。跨模組交易、Outbox 與 FK 由後續 ERD／契約設計定義。
@@ -83,7 +83,7 @@ Agent.Core 保留跨平台採集／傳輸邊界，Windows／Linux 適配只依�
 | Vigiloom.Contracts | 無 | Vigiloom.Contracts.Tests |
 | Vigiloom.Infrastructure | Vigiloom.BuildingBlocks、Vigiloom.Contracts | Vigiloom.Infrastructure.Tests |
 | Vigiloom.Modules.IdentityAccess | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.IdentityAccess.Tests |
-| Vigiloom.Modules.Resources | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.Resources.Tests |
+| Vigiloom.Modules.Resources | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure、Vigiloom.UpdateSecurity | Vigiloom.Modules.Resources.Tests |
 | Vigiloom.Modules.NetworkMonitoring | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.NetworkMonitoring.Tests |
 | Vigiloom.Modules.AgentManagement | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.AgentManagement.Tests |
 | Vigiloom.Modules.ServiceObservability | Vigiloom.BuildingBlocks、Vigiloom.Contracts、Vigiloom.Infrastructure | Vigiloom.Modules.ServiceObservability.Tests |

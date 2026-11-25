@@ -1,0 +1,47 @@
+@resources = http://localhost:5055
+
+### List cached and previously known Agent packages (internal network only)
+GET {{resources}}/internal/v1/agent-packages?page=1
+
+### Look up cached packages for release versions
+POST {{resources}}/internal/v1/agent-packages/versions
+Content-Type: application/json
+
+["1.2.3"]
+
+### Download one published Agent package (internal network only)
+POST {{resources}}/internal/v1/agent-packages/download
+Content-Type: application/json
+
+{
+  "version": "1.2.3",
+  "runtimeIdentifier": "win-x64"
+}
+
+### Remove an unused cached package
+DELETE {{resources}}/internal/v1/agent-packages/01912345-6789-7abc-8def-123456789abd/cache
+
+### Read the desired version for an Agent
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
+
+### Read the target to deliver to an authenticated Agent
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/target
+
+### Look up a previously assigned target for result validation
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/update-targets/01912345-6789-7abc-8def-123456789abf
+
+### Retrieve the assigned manifest and archive using the authenticated Agent ID
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/update/targets/replace-with-manifest-sha256.json
+
+### Archive name is its assigned SHA-256
+GET {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/update/packages/replace-with-package-sha256
+
+### Assign an available package to an Agent
+PUT {{resources}}/internal/v1/agents/01912345-6789-7abc-8def-123456789abc/assignment
+Content-Type: application/json
+
+{
+  "packageId": "01912345-6789-7abc-8def-123456789abd",
+  "revision": "",
+  "actorId": "01912345-6789-7abc-8def-123456789abe"
+}
