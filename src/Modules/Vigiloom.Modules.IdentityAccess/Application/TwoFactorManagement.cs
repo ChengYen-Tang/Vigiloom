@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 public sealed class TwoFactorManagement(IdentityAccessDbContext db, UserManager<Account> users, IOptions<IdentityOptions> options)
 {

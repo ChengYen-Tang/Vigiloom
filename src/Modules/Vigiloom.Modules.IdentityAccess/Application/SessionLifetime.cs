@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Security.Claims;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
-internal static class SessionLifetime
+public static class SessionLifetime
 {
     public const string ExpirationClaim = "Vigiloom.SessionExpiresUnixMs";
 
