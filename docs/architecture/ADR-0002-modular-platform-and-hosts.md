@@ -106,7 +106,7 @@ Agent.Core 保留跨平台採集／傳輸邊界，Windows／Linux 適配只依�
 
 - Windows 本機開發與測試都用 LocalDB，共用同一個 instance，以不同資料庫隔離；開發資料保留，必須清除每次測試建立的臨時 DB，且保護開發／正式／系統資料與共用 instance。完整規範見 [開發／測試資料庫隔離](development-and-test-databases.md)；目前未建立 DB 或 fixture，不改變 ADR-0001。
 
-- 全部專案 net10.0、C# 14；global.json 固定已驗證 SDK 10.0.403，僅允許同 feature band 的 patch roll-forward。
+- 全部專案以 net10.0、C# 14 為目標；開發環境可使用 .NET 10 或更新的相容 SDK。
 - NuGet 套件集中在 Directory.Packages.props；MSTest 4.0.2 使用範本的 VSTest runner，並啟用 Recommended analyzers。不混用 xUnit／NUnit／TUnit。
 - 使用 MSTest metapackage，測試套件不進入產品 ProjectReference。新增測試專案須繼承 tests/Directory.Build.props。
 - SDK 範本的 .NET 套件採 10.0.14；SqlClient 6.1.7 遞移要求 Pkcs 9.0.11，Infrastructure 顯式固定已修補的 9.0.22，保留 NuGet audit 與 warnings-as-errors，不以關閉警告解決。
