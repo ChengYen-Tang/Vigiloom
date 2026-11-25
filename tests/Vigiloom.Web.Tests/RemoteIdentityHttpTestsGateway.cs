@@ -1,0 +1,158 @@
+extern alias GatewayHost;
+extern alias IdentityHost;
+extern alias ResourcesHost;
+
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.Json;
+using AngleSharp.Html.Parser;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Modules.IdentityAccess.Application;
+using Vigiloom.Modules.IdentityAccess.Domain;
+using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Testing.SqlServer;
+using Vigiloom.Web.Authentication;
+using Vigiloom.Web.Tests.Fixtures;
+
+namespace Vigiloom.Web.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
+{
+    [TestMethod]
+    public Task GatewayUsesRealIdentityAndResourcesForAuthorization() =>
+        ReusableWebDatabase.ExecuteAsync(async (webDb, outerToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (identityDb, innerToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (resourceDb, token) =>
+        {
+            var keys = new EphemeralDataProtectionProvider();
+            using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseUrls("http://127.0.0.1:0");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ConnectionStrings:VigiloomIdentity"] = identityDb.ConnectionString }));
+            });
+            identity.UseKestrel(0);
+            identity.StartServer();
+            var identityAddress = Address(identity.Services);
+            var identityFactory = identity.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
+            await using (var db = await identityFactory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await RoleInitializer.InitializeAsync(identityFactory, token);
+            await using var identityScope = identity.Services.CreateAsyncScope();
+            var users = identityScope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+            var reader = new Account { UserName = "gateway-reader" };
+            var admin = new Account { UserName = "gateway-admin" };
+            Assert.IsTrue((await users.CreateAsync(reader, "Reader-Password-123")).Succeeded);
+            Assert.IsTrue((await users.AddToRoleAsync(reader, BuiltInRoles.ReadOnly)).Succeeded);
+            Assert.IsTrue((await users.CreateAsync(admin, "Admin-Password-123")).Succeeded);
+            Assert.IsTrue((await users.AddToRoleAsync(admin, BuiltInRoles.Administrator)).Succeeded);
+            var secret = RandomNumberGenerator.GetBytes(32);
+            var credential = new ApiCredential("gateway", SHA256.HashData(secret), true, DateTimeOffset.UtcNow.AddDays(1), admin.Id);
+            await using (var db = await identityFactory.CreateDbContextAsync(token)) { db.ApiCredentials.Add(credential); await db.SaveChangesAsync(token); }
+
+            using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseUrls("http://127.0.0.1:0");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ConnectionStrings:Resources"] = resourceDb.ConnectionString, ["Services:Identity:Url"] = identityAddress }));
+                builder.ConfigureTestServices(services =>
+                {
+                    var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
+                    if (dispatcher is not null) services.Remove(dispatcher);
+                });
+            });
+            resources.UseKestrel(0);
+            resources.StartServer();
+            var resourcesAddress = Address(resources.Services);
+            await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var scheduleOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(resourceDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(scheduleOptions)) await db.Database.MigrateAsync(token);
+
+            using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseUrls("http://127.0.0.1:0");
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ConnectionStrings:Vigiloom"] = webDb.ConnectionString, ["Services:Identity:Url"] = identityAddress, ["Services:Resources:Url"] = resourcesAddress }));
+                builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
+            });
+            web.UseKestrel(0);
+            web.StartServer();
+            using var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress }));
+                builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
+            });
+            var options = new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false };
+            using var anonymous = gateway.CreateClient(options);
+            using (var denied = await anonymous.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var readClient = gateway.CreateClient(options);
+            var readerCookie = await LoginAsync(readClient, "gateway-reader", "Reader-Password-123", token);
+            using (var read = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+            using var secondGateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress }));
+                builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
+            });
+            using var secondInstance = secondGateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = options.BaseAddress, AllowAutoRedirect = false, HandleCookies = false });
+            secondInstance.DefaultRequestHeaders.Add("Cookie", readerCookie);
+            using (var read = await secondInstance.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+            using (var forbidden = await readClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("denied", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Forbidden, forbidden.StatusCode);
+            using var adminClient = gateway.CreateClient(options);
+            await LoginAsync(adminClient, "gateway-admin", "Admin-Password-123", token);
+            using (var anti = await adminClient.GetAsync("/api/v1/session/antiforgery", token))
+            {
+                using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
+                adminClient.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
+            }
+            using (var created = await adminClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("gateway device", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+            await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                Assert.IsTrue(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
+            var webResourcesOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(webDb.ConnectionString).Options;
+            await using (var db = new ResourcesDbContext(webResourcesOptions))
+                Assert.IsFalse(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
+            using var api = gateway.CreateClient(options);
+            api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(secret)}");
+            using (var valid = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
+            await using (var db = await identityFactory.CreateDbContextAsync(token))
+            { var stored = await db.ApiCredentials.SingleAsync(x => x.Id == credential.Id, token); stored.Revoke(DateTimeOffset.UtcNow); await db.SaveChangesAsync(token); }
+            using (var revoked = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            Assert.IsTrue((await users.UpdateSecurityStampAsync(reader)).Succeeded);
+            using (var revoked = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            using (var revoked = await secondInstance.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        }, innerToken), outerToken), context.CancellationToken);
+
+    private static string Address(IServiceProvider services) => services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+
+    private static async Task<string> LoginAsync(HttpClient client, string username, string password, CancellationToken token)
+    {
+        using var page = await client.GetAsync("/account/login", token);
+        var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+        var form = document.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+        var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+        fields["Input.UserName"] = username; fields["Input.Password"] = password;
+        using var login = await client.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
+        Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
+        return string.Join("; ", login.Headers.GetValues("Set-Cookie").Select(value => value.Split(';', 2)[0]));
+    }
+}
