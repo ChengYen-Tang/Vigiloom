@@ -69,13 +69,29 @@ public sealed class AgentRegistrationTests
                     Assert.AreEqual(AgentRegistrationStatus.Success, result.Status);
                     Assert.IsNotNull(result.AgentId);
                     var credential = AgentCredentials.Encode("vla", result.AgentId.Value, machineSecret);
+                    Assert.IsTrue(AgentCredentials.TryDecode(issue.Secret, "vle", out var enrollmentId, out var enrollmentBytes));
+                    CryptographicOperations.ZeroMemory(enrollmentBytes);
+                    var proof = AgentCredentials.Encode("vlr", enrollmentId, machineSecret);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(result.AgentId, (await scope.ServiceProvider.GetRequiredService<AgentRegistration>().RecoverAsync(issue.Secret, proof, token)).AgentId);
+                    var replacementSecret = RandomNumberGenerator.GetBytes(32);
+                    var replacement = AgentCredentials.Encode("vla", result.AgentId.Value, replacementSecret);
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(AgentRegistrationStatus.Success, await scope.ServiceProvider.GetRequiredService<AgentRegistration>()
+                            .BeginRotationAsync(credential, SHA256.HashData(replacementSecret), token));
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(AgentRegistrationStatus.Success, await scope.ServiceProvider.GetRequiredService<AgentRegistration>().FinishRotationAsync(replacement, token));
                     await using (var scope = host.Services.CreateAsyncScope())
                     {
                         var agents = scope.ServiceProvider.GetRequiredService<AgentRegistration>();
-                        Assert.AreEqual(device.Id, (await agents.AuthenticateAsync(credential, token))?.DeviceId);
-                        Assert.AreEqual(AgentRegistrationStatus.Success, await agents.RevokeAsync(result.AgentId.Value, Guid.CreateVersion7(), token));
                         Assert.IsNull(await agents.AuthenticateAsync(credential, token));
+                        Assert.AreEqual(device.Id, (await agents.AuthenticateAsync(replacement, token))?.DeviceId);
+                        Assert.AreEqual(AgentRegistrationStatus.Success, await agents.RevokeAsync(result.AgentId.Value, Guid.CreateVersion7(), token));
+                        Assert.IsNull(await agents.AuthenticateAsync(replacement, token));
                     }
+                    await using (var scope = host.Services.CreateAsyncScope())
+                        Assert.AreEqual(AgentRegistrationStatus.Success, await scope.ServiceProvider.GetRequiredService<AgentRegistration>()
+                            .RevokeEnrollmentAsync(enrollmentId, Guid.CreateVersion7(), token));
                 }
                 finally { await host.StopAsync(CancellationToken.None); }
             }, TestContext.CancellationToken);

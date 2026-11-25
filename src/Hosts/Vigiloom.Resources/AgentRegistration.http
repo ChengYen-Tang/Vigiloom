@@ -2,6 +2,10 @@
 @device = 01912345-6789-7abc-8def-123456789abc
 @agent = 01912345-6789-7abc-8def-123456789abd
 @actor = 01912345-6789-7abc-8def-123456789abe
+@enrollment = 01912345-6789-7abc-8def-123456789abf
+
+### List Agent registrations for a device
+GET {{resources}}/internal/v1/devices/{{device}}/agents
 
 ### Issue an enrollment credential on the trusted internal network
 POST {{resources}}/internal/v1/devices/{{device}}/agent-enrollments
@@ -20,6 +24,30 @@ POST {{resources}}/internal/v1/agents/authenticate
 Content-Type: application/json
 
 { "credential": "replace-with-agent-credential" }
+
+### Recover a previously enrolled identity
+POST {{resources}}/internal/v1/agent-enrollments/recover
+Content-Type: application/json
+
+{ "enrollmentSecret": "replace-with-enrollment-secret", "machineProof": "replace-with-machine-proof" }
+
+### Begin a machine credential rotation
+POST {{resources}}/internal/v1/agents/rotation/start
+Content-Type: application/json
+
+{ "credential": "replace-with-agent-credential", "machineVerifier": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+
+### Complete a machine credential rotation
+POST {{resources}}/internal/v1/agents/rotation/finish
+Content-Type: application/json
+
+{ "credential": "replace-with-new-agent-credential" }
+
+### Revoke an enrollment credential
+POST {{resources}}/internal/v1/agent-enrollments/{{enrollment}}/revoke
+Content-Type: application/json
+
+{ "actorId": "{{actor}}" }
 
 ### Revoke an Agent
 POST {{resources}}/internal/v1/agents/{{agent}}/revoke

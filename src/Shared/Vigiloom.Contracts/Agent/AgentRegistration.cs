@@ -9,6 +9,11 @@ public sealed record RegisteredAgentIdentity(Guid AgentId, Guid DeviceId, long D
 public sealed record AgentEnrollmentCommand(Guid ActorId);
 public sealed record AgentRedeemCommand(string? Secret, byte[]? MachineVerifier);
 public sealed record AgentCredentialCommand(string? Credential);
+public sealed record AgentRecoveryCommand(string? EnrollmentSecret, string? MachineProof);
+public sealed record AgentRotationCommand(string? Credential, byte[]? MachineVerifier);
 public sealed record AgentRevokeCommand(Guid ActorId);
+public sealed record AgentRegistrationSummary(Guid Id, long DeviceGeneration, DateTimeOffset CreatedAt, DateTimeOffset? RevokedAt);
+public sealed record AgentEnrollmentSummary(Guid Id, long DeviceGeneration, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt, bool Consumed);
+public sealed record DeviceAgentRegistrations(IReadOnlyList<AgentRegistrationSummary> Agents, IReadOnlyList<AgentEnrollmentSummary> Enrollments, long CurrentGeneration);
 public sealed record AgentRegistrationChanged(Guid AgentId, Guid DeviceId, bool Revoked);
 public sealed record AgentRegistrationAudit(Guid DeviceId, Guid? AgentId, Guid? ActorId, string Action, DateTimeOffset OccurredAt);
