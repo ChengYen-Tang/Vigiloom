@@ -62,6 +62,18 @@ public sealed class HostLogTests(TestContext context)
                 Guid.CreateVersion7(), AgentLogSourceKind.TextFile, "auth", 1, [item]);
             var input = new HostLogSubmission(Guid.CreateVersion7(), Guid.CreateVersion7(), 0, batch);
             using (var first = await client.PostAsJsonAsync("/internal/v1/host-logs", input, token)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+            using (var read = await client.PostAsJsonAsync("/internal/v1/host-logs/read", new HostLogReadRequest(input.AgentId, [item.MessageId]), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+                var records = await read.Content.ReadFromJsonAsync<HostLogEntry[]>(cancellationToken: token);
+                Assert.HasCount(1, records!);
+                Assert.AreEqual("login", records![0].Content);
+                Assert.AreEqual(item.MessageId, records[0].MessageId);
+            }
+            using (var other = await client.PostAsJsonAsync("/internal/v1/host-logs/read", new HostLogReadRequest(Guid.CreateVersion7(), [item.MessageId]), token))
+                Assert.IsEmpty((await other.Content.ReadFromJsonAsync<HostLogEntry[]>(cancellationToken: token))!);
+            using (var invalid = await client.PostAsJsonAsync("/internal/v1/host-logs/read", new HostLogReadRequest(Guid.Empty, [item.MessageId]), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             await using var quota = await provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token);
             var remaining = await quota.Database.SqlQuery<long>($"SELECT Microtokens AS [Value] FROM logquota.Buckets WHERE Kind = 0").SingleAsync(token);
             using (var repeated = await client.PostAsJsonAsync("/internal/v1/host-logs", input, token)) Assert.AreEqual(HttpStatusCode.OK, repeated.StatusCode);

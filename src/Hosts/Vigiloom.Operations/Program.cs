@@ -97,6 +97,7 @@ builder.Services.AddScoped(provider => new OutboxDispatcher(
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."),
     provider.GetServices<IOutboxHandler>(), provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddScoped<HostLogIngestion>();
+builder.Services.AddScoped<HostLogReader>();
 builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
@@ -116,6 +117,12 @@ app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationTo
 app.MapPost("/internal/v1/host-logs", async (HostLogSubmission input, HostLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2 * 1024 * 1024));
+app.MapPost("/internal/v1/host-logs/read", async (HostLogReadRequest input, HostLogReader reader, CancellationToken token) =>
+{
+    if (input.AgentId.Version != 7 || input.MessageIds is null || input.MessageIds.Count > Vigiloom.Contracts.Agent.AgentLogBatchCodec.MaximumItems)
+        return Results.BadRequest();
+    return Results.Ok(await reader.ReadAsync(input.AgentId, input.MessageIds, token));
+});
 app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
