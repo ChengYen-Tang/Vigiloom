@@ -13,6 +13,7 @@ using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Modules.Resources.Application.AgentPackages;
 using Vigiloom.Resources.AgentPackages;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Modules.Resources.Application.AgentIdentity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -40,6 +41,8 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
     options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
     options.PublishReliablyTo<AgentAssignmentChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+    options.PublishReliablyTo<AgentRegistrationChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
+    options.PublishReliablyTo<AgentRegistrationAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<AgentVersionAssignmentAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
     options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
@@ -62,6 +65,7 @@ builder.Services.AddScoped<ApplicationApproval>();
 builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddScoped<PackageCatalog>();
 builder.Services.AddScoped<AgentAssignments>();
+builder.Services.AddScoped<AgentRegistration>();
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");
@@ -94,6 +98,7 @@ internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersRead
 internalApi.MapInternalDeviceManagement();
 internalApi.MapInternalGroupManagement();
 internalApi.MapInternalPackages();
+internalApi.MapInternalAgentRegistration();
 internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
     Results.Ok(await discovery.ObserveAsync(request, token)));
 internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>
