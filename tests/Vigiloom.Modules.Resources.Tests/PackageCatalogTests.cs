@@ -57,10 +57,13 @@ public sealed class PackageCatalogTests
                     await db.SaveChangesAsync(token);
                 }
                 Assert.AreEqual(AgentPackageRemovalResult.InUse, await catalog.RemoveAsync(item.Id, token));
-                var assignments = new AgentAssignments(contexts, files, null!, TimeProvider.System);
+                var assignments = new AgentAssignments(contexts, files, null!, TimeProvider.System, new HostVersion());
                 var access = new AgentPackageAccess(assignments, files, contexts);
                 var target = await assignments.GetTargetAsync(agent.Id, token);
                 Assert.IsNotNull(target);
+                var view = await assignments.GetAsync(agent.Id, token);
+                Assert.AreEqual("1.0.0", view?.ReportedVersion);
+                Assert.AreEqual("1.2.3", view?.PackageVersion);
                 Assert.IsNotNull(await access.ReadManifestAsync(agent.Id, target.ManifestSha256 + ".json", token));
                 Assert.IsNull(await access.OpenArchiveAsync(agent.Id, new string('f', 64), token));
                 await using (var archive = await access.OpenArchiveAsync(agent.Id, sha, token))
@@ -107,5 +110,11 @@ public sealed class PackageCatalogTests
     {
         public bool InUse { get; set; }
         public Task<bool> IsInstalledAsync(string version, string runtimeIdentifier, CancellationToken token) => Task.FromResult(InUse);
+    }
+
+    private sealed class HostVersion : IHostAgentVersion
+    {
+        public Task<AgentVersionObservation?> GetAsync(Guid agentId, CancellationToken token) =>
+            Task.FromResult<AgentVersionObservation?>(new("1.0.0", "win-x64", DateTimeOffset.UtcNow, null));
     }
 }

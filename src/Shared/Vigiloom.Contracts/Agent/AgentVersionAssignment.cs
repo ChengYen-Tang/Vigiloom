@@ -35,6 +35,10 @@ public enum VersionAssignmentResult { Saved, NotFound, Conflict }
 public sealed record RecordedAgentUpdateTarget(Guid UpdateId, Guid AgentId, Guid PackageId, string PackageVersion,
     string RuntimeIdentifier, string ManifestSha256, DateTimeOffset AssignedAt);
 
+/// <summary>Agent-reported version and latest update result from host monitoring.</summary>
+public sealed record AgentVersionObservation(string? ReportedVersion, string? ReportedRuntimeIdentifier,
+    DateTimeOffset? ReportedAt, AgentUpdateResultView? LatestResult);
+
 public interface IAgentVersionClient
 {
     Task<AgentVersionAssignmentView?> GetAsync(Guid agentId, CancellationToken token);
