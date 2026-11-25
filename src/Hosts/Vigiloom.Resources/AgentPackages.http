@@ -1,0 +1,13 @@
+@resources = http://localhost:5055
+
+### List cached and previously known Agent packages (internal network only)
+GET {{resources}}/internal/v1/agent-packages?page=1
+
+### Download one published Agent package (internal network only)
+POST {{resources}}/internal/v1/agent-packages/download
+Content-Type: application/json
+
+{
+  "version": "1.2.3",
+  "runtimeIdentifier": "win-x64"
+}

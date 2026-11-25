@@ -1,4 +1,4 @@
-using Vigiloom.Infrastructure.AgentPackages;
+using Vigiloom.UpdateSecurity.AgentPackages;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Persistence;

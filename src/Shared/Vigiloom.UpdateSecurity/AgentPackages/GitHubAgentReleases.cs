@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using Vigiloom.UpdateSecurity;
 
-namespace Vigiloom.Infrastructure.AgentPackages;
+namespace Vigiloom.UpdateSecurity.AgentPackages;
 
 /// <summary>Reads Agent releases and their asset hashes from the public Vigiloom repository.</summary>
 public sealed class GitHubAgentReleases(HttpClient client)
