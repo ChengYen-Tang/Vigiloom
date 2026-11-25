@@ -1,6 +1,7 @@
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDataProtection();
@@ -11,6 +12,7 @@ builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(
 builder.Services.AddIdentityAccessOperations();
 
 var app = builder.Build();
+app.MapIdentitySessionEndpoints();
 
 // This endpoint is for trusted internal service traffic and must not be exposed by the gateway.
 app.MapPost("/internal/identity/api-credentials/validate", async (
