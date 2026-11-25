@@ -44,14 +44,10 @@ public sealed class LineEndpointTests(TestContext context)
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Operations"] = database.ConnectionString, ["Temporal:EnableNotificationWorker"] = "false" }));
+                { ["ConnectionStrings:Operations"] = database.ConnectionString }));
                 web.ConfigureTestServices(s =>
                 {
-                    foreach (var name in new[] { "WorkDispatcher", "LineAggregationWorker" })
-                    {
-                        var worker = s.SingleOrDefault(item => item.ImplementationType?.Name == name);
-                        if (worker is not null) s.Remove(worker);
-                    }
+                    HostWorkers.RemoveBackgroundWork(s);
                     s.RemoveAll<IDataProtectionProvider>();
                     s.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
                 });

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Migrator.Operations;
@@ -33,6 +34,7 @@ internal static class OperationsDatabaseCommand
             await db.Database.MigrateAsync(token);
         await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
+        await HangfireSchemaInstaller.InstallAsync(target, token);
         if (source is not null) await OperationsDataMigration.CopyAsync(source, target, token);
         Console.WriteLine(copyExisting ? "Operations data copied successfully." : "Operations schema initialized successfully.");
     }

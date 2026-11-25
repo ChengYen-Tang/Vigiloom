@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,8 +41,11 @@ public sealed class LogQuotaTests(TestContext context)
                 Assert.AreEqual(3, tables);
             }
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+            {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Operations"] = database.ConnectionString, ["Temporal:EnableNotificationWorker"] = "false" })));
+                { ["ConnectionStrings:Operations"] = database.ConnectionString }));
+                web.ConfigureTestServices(HostWorkers.RemoveBackgroundWork);
+            });
             using var client = host.CreateClient();
             var initial = await client.GetFromJsonAsync<LogQuotaSettings>("/internal/v1/log-quota", token);
             Assert.IsNotNull(initial);

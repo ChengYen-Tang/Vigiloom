@@ -40,11 +40,10 @@ public sealed class HostLogTests(TestContext context)
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Operations"] = database.ConnectionString, ["Temporal:EnableNotificationWorker"] = "false" }));
+                { ["ConnectionStrings:Operations"] = database.ConnectionString }));
                 web.ConfigureTestServices(services =>
                 {
-                    var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
-                    if (dispatcher is not null) services.Remove(dispatcher);
+                    HostWorkers.RemoveBackgroundWork(services);
                     services.RemoveAll<IOutboxHandler>();
                     services.AddScoped<IOutboxHandler, TestOutboxHandler>();
                 });
