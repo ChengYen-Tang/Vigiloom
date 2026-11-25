@@ -86,8 +86,11 @@ public sealed class RemoteDeviceManagementTests
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicReader))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicationManagement))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
                 web = webHost;
+                await PingTestSite.InitializeAsync(webHost, token, schemaInitialized: true);
                 await using var scope = webHost.Services.CreateAsyncScope();
                 var devices = scope.ServiceProvider.GetRequiredService<IDeviceManagement>();
                 Assert.IsInstanceOfType<RemoteDeviceManagement>(devices);
@@ -110,21 +113,57 @@ public sealed class RemoteDeviceManagementTests
                 Assert.HasCount(1, (await groups.ListDevicesAsync(group.Group.Id, false, true, null, 1, token)).Items);
                 await using (var db = new ResourcesDbContext(options))
                 {
-                    (await db.Devices.SingleAsync(x => x.Id == id, token)).SetPublication(true, "Public router", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
                     (await db.Groups.SingleAsync(x => x.Id == group.Group.Id, token)).SetPublication(true, "Public group", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
                     await db.SaveChangesAsync(token);
                 }
-                using var anonymous = webHost.CreateClient();
+                using var anonymous = PingTestSite.Client(webHost);
+                using var administrator = PingTestSite.Client(webHost);
+                using var reader = PingTestSite.Client(webHost);
+                await PingTestSite.LoginAsync(administrator, "admin", token);
+                await PingTestSite.LoginAsync(reader, "reader", token);
+                using (var denied = await reader.GetAsync($"/api/v1/admin/publications/devices/{id:D}", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+                using (var denied = await anonymous.GetAsync($"/api/v1/admin/publications/devices/{id:D}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                var csrf = (await administrator.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/v1/session/antiforgery", token)).GetProperty("requestToken").GetString();
+                PublicationTemplateItem template;
+                using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/admin/publications/templates")
+                    { Content = JsonContent.Create(new CreatePublicationTemplate("Public router template", true, false)) })
+                {
+                    request.Headers.Add("RequestVerificationToken", csrf);
+                    using var response = await administrator.SendAsync(request, token);
+                    Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                    template = (await response.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token))!;
+                }
+                using (var request = new HttpRequestMessage(HttpMethod.Put, $"/api/v1/admin/publications/templates/{template.Id:D}/default")
+                    { Content = JsonContent.Create(new SetDefaultPublicationTemplate(template.Version)) })
+                {
+                    request.Headers.Add("RequestVerificationToken", csrf);
+                    using var response = await administrator.SendAsync(request, token);
+                    Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                    template = (await response.Content.ReadFromJsonAsync<PublicationTemplateItem>(cancellationToken: token))!;
+                    Assert.IsTrue(template.IsDefault);
+                }
+                var settings = await administrator.GetFromJsonAsync<PublicationSettings>($"/api/v1/admin/publications/devices/{id:D}", token);
+                Assert.IsNotNull(settings);
+                using (var request = new HttpRequestMessage(HttpMethod.Put, $"/api/v1/admin/publications/devices/{id:D}")
+                    { Content = JsonContent.Create(new PublicationChange(true, "Public router", PublicationPolicy.TemplateVersion, settings.Version, template.Id, template.Version)) })
+                {
+                    request.Headers.Add("RequestVerificationToken", csrf);
+                    using var response = await administrator.SendAsync(request, token);
+                    Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                }
                 var publicDevices = await anonymous.GetFromJsonAsync<PublicPage<PublicDevice>>("/api/v1/public/devices", token);
                 Assert.AreEqual("Public router", publicDevices?.Items.Single().Name);
                 var publicGroups = await anonymous.GetFromJsonAsync<PublicPage<PublicGroup>>("/api/v1/public/groups", token);
                 Assert.AreEqual(1, publicGroups?.Items.Single().DeviceCount);
                 var body = await anonymous.GetStringAsync($"/api/v1/public/devices/{id:D}", token);
                 Assert.DoesNotContain("changed.example", body);
-                await using (var db = new ResourcesDbContext(options))
+                settings = await administrator.GetFromJsonAsync<PublicationSettings>($"/api/v1/admin/publications/devices/{id:D}", token);
+                using (var request = new HttpRequestMessage(HttpMethod.Put, $"/api/v1/admin/publications/devices/{id:D}")
+                    { Content = JsonContent.Create(new PublicationChange(false, null, null, settings!.Version)) })
                 {
-                    (await db.Devices.SingleAsync(x => x.Id == id, token)).SetPublication(false, null, null, DateTimeOffset.UtcNow);
-                    await db.SaveChangesAsync(token);
+                    request.Headers.Add("RequestVerificationToken", csrf);
+                    using var response = await administrator.SendAsync(request, token);
+                    Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 }
                 using var revoked = await anonymous.GetAsync($"/api/v1/public/devices/{id:D}", token);
                 Assert.AreEqual(HttpStatusCode.NotFound, revoked.StatusCode);
