@@ -1,8 +1,47 @@
+using System.Text.Json.Serialization;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Contracts.Operations;
 
 /// <summary>Versioned, allow-listed audit details; only explicitly approved fields are recorded.</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(EventTimelineAccessed), "EventTimelineAccessed.v1")]
+[JsonDerivedType(typeof(EventEvidenceAccessed), "EventEvidenceAccessed.v1")]
+[JsonDerivedType(typeof(SpeedSettingsChanged), "SpeedSettingsChanged.v1")]
+[JsonDerivedType(typeof(SpeedRetentionChanged), "SpeedRetentionChanged.v1")]
+[JsonDerivedType(typeof(AuditRetentionChanged), "AuditRetentionChanged.v1")]
+[JsonDerivedType(typeof(HostMetricRetentionChanged), "HostMetricRetentionChanged.v1")]
+[JsonDerivedType(typeof(TelemetryRetentionChanged), "TelemetryRetentionChanged.v1")]
+[JsonDerivedType(typeof(PingSettingsChanged), "PingSettingsChanged.v1")]
+[JsonDerivedType(typeof(AgentReplayPolicyChanged), "AgentReplayPolicyChanged.v1")]
+[JsonDerivedType(typeof(AgentInboxSettingsChanged), "AgentInboxSettingsChanged.v1")]
+[JsonDerivedType(typeof(AgentInboxCleanupActivated), "AgentInboxCleanupActivated.v1")]
+[JsonDerivedType(typeof(AgentPackageSourceChanged), "AgentPackageSourceChanged.v1")]
+[JsonDerivedType(typeof(AgentPackageCatalogueRefreshed), "AgentPackageCatalogueRefreshed.v1")]
+[JsonDerivedType(typeof(AgentPackageTrustInitialized), "AgentPackageTrustInitialized.v1")]
+[JsonDerivedType(typeof(IntelligenceRevisionActivated), "IntelligenceRevisionActivated.v1")]
+[JsonDerivedType(typeof(IntelligenceRevisionRevoked), "IntelligenceRevisionRevoked.v1")]
+[JsonDerivedType(typeof(BaselineExceptionRecorded), "BaselineExceptionRecorded.v1")]
+[JsonDerivedType(typeof(SigmaRuleStateChanged), "SigmaRuleStateChanged.v1")]
+[JsonDerivedType(typeof(IntelligenceOfflineImported), "IntelligenceOfflineImported.v1")]
+[JsonDerivedType(typeof(IntelligencePolicyChanged), "IntelligencePolicyChanged.v1")]
+[JsonDerivedType(typeof(AdvisoryImportAbandoned), "AdvisoryImportAbandoned.v1")]
+[JsonDerivedType(typeof(AdvisoryCredentialChanged), "AdvisoryCredentialChanged.v1")]
+[JsonDerivedType(typeof(LineSettingsChanged), "LineSettingsChanged.v1")]
+[JsonDerivedType(typeof(ServiceApproved), "ServiceApproved.v1")]
+[JsonDerivedType(typeof(ServiceSourceChanged), "ServiceSourceChanged.v1")]
+[JsonDerivedType(typeof(InstancePolicyChanged), "InstancePolicyChanged.v1")]
+[JsonDerivedType(typeof(LogQuotaChanged), "LogQuotaChanged.v1")]
+[JsonDerivedType(typeof(TraceQuotaChanged), "TraceQuotaChanged.v1")]
+[JsonDerivedType(typeof(ServiceInstanceChanged), "ServiceInstanceChanged.v1")]
+[JsonDerivedType(typeof(DeploymentLinkChanged), "DeploymentLinkChanged.v1")]
+[JsonDerivedType(typeof(ServiceCollectionChanged), "ServiceCollectionChanged.v1")]
+[JsonDerivedType(typeof(CollectorChanged), "CollectorChanged.v1")]
+[JsonDerivedType(typeof(HealthTargetChanged), "HealthTargetChanged.v1")]
+[JsonDerivedType(typeof(HealthNetworkPolicyChanged), "HealthNetworkPolicyChanged.v1")]
+[JsonDerivedType(typeof(GroupChanged), "GroupChanged.v1")]
+[JsonDerivedType(typeof(PublicationChanged), "PublicationChanged.v1")]
+[JsonDerivedType(typeof(PublicationTemplateChanged), "PublicationTemplateChanged.v1")]
 public abstract record OperationAuditDetails;
 
 /// <summary>Records event timeline access without copying event payloads.</summary>
@@ -132,6 +171,18 @@ public sealed record PublicationTemplateChanged(PublicationTemplateAction Action
 
 /// <summary>Trusted producer metadata and allow-listed details for one operation.</summary>
 public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffset OccurredAt, OperationAuditDetails Details);
+
+/// <summary>Stable work type for forwarding a committed operation audit event.</summary>
+public static class OperationAuditWork
+{
+    public const string Kind = "operation-audit.write.v1";
+}
+
+/// <summary>Default destination queue for Operations work.</summary>
+public static class OperationsWork
+{
+    public const string Queue = "vigiloom.operations";
+}
 
 /// <summary>A bounded Administrator query of non-secret operation audit events.</summary>
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
