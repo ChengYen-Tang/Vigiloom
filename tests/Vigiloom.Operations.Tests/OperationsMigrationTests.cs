@@ -103,7 +103,15 @@ public sealed class OperationsMigrationTests(TestContext context)
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, Guid.CreateVersion7(),
                 AgentLogSourceKind.TextFile, "system", 1, [record]);
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
-            { db.Agents.Add(agent); db.HostLogs.Add(new OldHostLog(agent.Id, batch, 0, now)); await db.SaveChangesAsync(token); }
+            {
+                db.Agents.Add(agent); db.HostLogs.Add(new OldHostLog(agent.Id, batch, 0, now));
+                db.Set<Vigiloom.Modules.AgentManagement.Domain.YaraScan>().AddRange(
+                    new() { Id = Guid.CreateVersion7(), AgentId = agent.Id, DeviceId = device.Id, RequestedBy = Guid.CreateVersion7(),
+                        FilePath = "C:/sample", Rules = "rule", MaximumBytes = 100, TimeoutSeconds = 10, RequestedAt = now, CompletedAt = now, Outcome = 1 },
+                    new() { Id = Guid.CreateVersion7(), AgentId = agent.Id, DeviceId = device.Id, RequestedBy = Guid.CreateVersion7(),
+                        FilePath = "C:/pending", Rules = "rule", MaximumBytes = 100, TimeoutSeconds = 10, RequestedAt = now });
+                await db.SaveChangesAsync(token);
+            }
             var telemetrySource = new ServiceSource("source", new byte[32], now);
             var application = new MonitoredService(new ServiceCandidate(telemetrySource.Id, "orders", "production", "Orders", now), now);
             var logContext = new OldContext { ServiceId = application.Id, ResourcePayload = [1], ScopePayload = [2], ResourceSchemaUrl = "resource", ScopeSchemaUrl = "scope" };
@@ -128,9 +136,10 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
-                Assert.HasCount(2, timeline);
+                Assert.HasCount(3, timeline);
                 Assert.IsTrue(timeline.Any(x => x.Source == "host-log" && x.ResourceId == device.Id && x.LocalLogRowId != null && x.Evidence.Contains("host event")));
                 Assert.IsTrue(timeline.Any(x => x.Source == "service-log" && x.ResourceId == application.Id && x.LocalLogRowId == copied.RowId));
+                Assert.IsTrue(timeline.Any(x => x.Source == "yara" && x.ResourceId == device.Id && x.Summary == "YARA 掃描：C:/sample" && x.Evidence.EndsWith("結果 1")));
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {

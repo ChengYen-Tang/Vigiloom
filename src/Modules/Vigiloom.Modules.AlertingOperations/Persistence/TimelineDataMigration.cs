@@ -1,6 +1,9 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application.Timeline;
+using Vigiloom.Modules.AlertingOperations.Domain;
 
 namespace Vigiloom.Modules.AlertingOperations.Persistence;
 
@@ -48,6 +51,32 @@ internal static class TimelineDataMigration
             }
         }
         await FlushAsync();
+        await using (var command = new SqlCommand("""
+            SELECT Id, DeviceId, CompletedAt, FilePath, Outcome FROM agent.YaraScans
+            WHERE CompletedAt IS NOT NULL ORDER BY RowId
+            """, source))
+        await using (var reader = await command.ExecuteReaderAsync(token))
+        {
+            var options = new DbContextOptionsBuilder<OperationsDbContext>()
+                .UseSqlServer(target, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using var db = new OperationsDbContext(options);
+            await db.Database.UseTransactionAsync(transaction, token);
+            var count = 0;
+            while (await reader.ReadAsync(token))
+            {
+                var id = reader.GetGuid(0); var device = reader.GetGuid(1);
+                var outcome = reader.IsDBNull(4) ? "" : reader.GetInt32(4).ToString();
+                db.Set<TimelineRecord>().Add(new TimelineRecord
+                {
+                    MessageId = Guid.CreateVersion7(), Source = "yara", Time = reader.GetDateTimeOffset(2).ToUniversalTime(),
+                    ResourceId = device, ResourceKind = "device", Summary = $"YARA 掃描：{reader.GetString(3)}",
+                    Evidence = $"掃描 {id:D}；結果 {outcome}", Link = $"/devices/{device:D}/yara-scans?scan={id:D}"
+                });
+                if (++count % 500 == 0) { await db.SaveChangesAsync(token); db.ChangeTracker.Clear(); }
+            }
+            if (count % 500 != 0) await db.SaveChangesAsync(token);
+        }
         return;
 
         async Task FlushAsync()
