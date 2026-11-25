@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using System.Net;
 using System.Text;
 using Vigiloom.Modules.AgentManagement.Application;

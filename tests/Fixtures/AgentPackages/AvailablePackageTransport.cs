@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using Vigiloom.Modules.AgentManagement.Application;
 
 namespace Vigiloom.Tests.Fixtures;

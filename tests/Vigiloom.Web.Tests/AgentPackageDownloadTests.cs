@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -52,7 +53,7 @@ public sealed class AgentPackageDownloadTests(TestContext context)
         var packageId = Guid.CreateVersion7();
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
-            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = archive.Length,
+            db.Packages.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentPackage { Id = packageId, Version = "1.0.0", RuntimeIdentifier = "win-x64", Size = archive.Length,
                 Sha256 = hash, ManifestSha256 = digest });
             await db.SaveChangesAsync(token);
         }

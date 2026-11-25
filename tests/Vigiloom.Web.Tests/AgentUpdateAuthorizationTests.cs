@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;
@@ -65,7 +66,7 @@ public sealed class AgentUpdateAuthorizationTests(TestContext context)
         var packageId = Guid.CreateVersion7();
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
-            db.Packages.Add(new AgentPackage { Id = packageId, Version = manifest.Version, RuntimeIdentifier = manifest.RuntimeIdentifier,
+            db.Packages.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentPackage { Id = packageId, Version = manifest.Version, RuntimeIdentifier = manifest.RuntimeIdentifier,
                 Sha256 = manifest.Sha256, ManifestSha256 = manifest.ManifestSha256, Size = manifest.Size });
             await db.SaveChangesAsync(token);
         }

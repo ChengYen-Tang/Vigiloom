@@ -1,3 +1,4 @@
+using AgentPackage = Vigiloom.Modules.AgentManagement.Domain.AgentPackage;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.AgentManagement.Tests.Fixtures;
