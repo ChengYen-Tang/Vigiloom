@@ -13,6 +13,7 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Operations.Work;
@@ -38,7 +39,7 @@ public sealed class NotificationWorkTests(TestContext context)
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
-            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter());
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
             var actor = Guid.CreateVersion7();
             var device = Guid.CreateVersion7();
             var agent = Guid.CreateVersion7();
@@ -88,7 +89,7 @@ public sealed class NotificationWorkTests(TestContext context)
             await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
-            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter());
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
             var notification = new NotificationRequest(Guid.CreateVersion7(), "ping", DateTimeOffset.UtcNow, "Ping unreachable", "Device: Router");
             var work = new ServiceWork(NotificationWork.Kind, JsonSerializer.Serialize(notification), Guid.CreateVersion7().ToString("D"));
             await handler.ExecuteAsync(work, token);

@@ -13,6 +13,7 @@ using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
@@ -54,6 +55,7 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
             builder.Services.AddVigiloomTemporalClient(address, "default");
             builder.Services.AddScoped<NotificationWriter>();
             builder.Services.AddScoped<OperationAuditWriter>();
+            builder.Services.AddScoped<TimelineWriter>();
             builder.Services.AddScoped<ResourceWork>();
             builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(queue);
             builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(resourceQueue);

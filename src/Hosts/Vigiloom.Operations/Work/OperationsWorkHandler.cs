@@ -1,13 +1,15 @@
 using System.Text.Json;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 
 namespace Vigiloom.Operations.Work;
 
 /// <summary>Persists Operations work and its Temporal delivery receipt in one transaction.</summary>
-public sealed class OperationsWorkHandler(IConfiguration configuration, NotificationWriter notifications, OperationAuditWriter audits) : IServiceWorkHandler
+public sealed class OperationsWorkHandler(IConfiguration configuration, NotificationWriter notifications, OperationAuditWriter audits, TimelineWriter timeline) : IServiceWorkHandler
 {
     public Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
@@ -26,6 +28,12 @@ public sealed class OperationsWorkHandler(IConfiguration configuration, Notifica
                 var audit = JsonSerializer.Deserialize<OperationAudit>(item.Payload)
                     ?? throw new InvalidOperationException("Audit work is empty.");
                 await audits.AppendAsync(db, transaction, audit, token);
+            }
+            else if (item.Kind == EventTimelineWork.Kind)
+            {
+                var delivery = JsonSerializer.Deserialize<EventTimelineDelivery>(item.Payload)
+                    ?? throw new InvalidOperationException("Timeline work is empty.");
+                await timeline.AppendAsync(delivery, db, transaction, token);
             }
             else await audits.AppendAsync(db, transaction, ResourceAudit.Convert(item), token);
             return null;
