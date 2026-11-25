@@ -114,6 +114,7 @@ builder.Services.AddScoped<HostLogReader>();
 builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddScoped<ApplicationLogHistory>();
+builder.Services.AddScoped<ApplicationLogCleanup>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
@@ -163,6 +164,11 @@ app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid service
 {
     try { return Results.Ok(await history.GetAsync(serviceId, from, to, page ?? 1, traceId, token)); }
     catch (ArgumentException) { return Results.BadRequest(); }
+});
+app.MapPost("/internal/v1/application-logs/cleanup", async (ApplicationLogCleanupRequest input, ApplicationLogCleanup cleanup, CancellationToken token) =>
+{
+    if (input.RetentionDays is < 1 or > 3650) return Results.BadRequest();
+    return Results.Ok(await cleanup.RunAsync(input.RetentionDays, token));
 });
 app.MapPut("/internal/v1/log-quota", async (LogQuotaUpdate input, SharedLogQuota quota, CancellationToken token) =>
 {

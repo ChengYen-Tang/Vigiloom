@@ -151,6 +151,24 @@ public sealed class HostLogTests(TestContext context)
             Assert.HasCount(2, hostSecond!.Items);
             Assert.IsNull(hostSecond.NextCursor);
             Assert.AreEqual(27, hostFirst.Items.Concat(hostSecond.Items).Select(x => x.MessageId).Distinct().Count());
+            var oldTime = DateTimeOffset.UtcNow.AddDays(-30);
+            var oldContext = new Vigiloom.Modules.AlertingOperations.Domain.Logs.LogContext
+            { ServiceId = appLog.ServiceId, ResourcePayload = [], ScopePayload = [], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+            logs.LogRecords.Add(new Vigiloom.Modules.AlertingOperations.Domain.Logs.LogRecord
+            { ServiceId = appLog.ServiceId, Context = oldContext, OccurredAt = oldTime, ReceivedAt = oldTime, RecordPayload = payload });
+            await logs.SaveChangesAsync(token);
+            using (var invalidRetention = await client.PostAsJsonAsync("/internal/v1/application-logs/cleanup", new ApplicationLogCleanupRequest(0), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidRetention.StatusCode);
+            using (var cleanup = await client.PostAsJsonAsync("/internal/v1/application-logs/cleanup", new ApplicationLogCleanupRequest(14), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, cleanup.StatusCode);
+                var result = await cleanup.Content.ReadFromJsonAsync<ApplicationLogCleanupResult>(cancellationToken: token);
+                Assert.AreEqual(1, result!.Logs);
+                Assert.AreEqual(1, result.Contexts);
+                Assert.IsFalse(result.HasMore);
+            }
+            Assert.AreEqual(27, await logs.LogRecords.CountAsync(token));
+            Assert.AreEqual(2, await logs.LogContexts.CountAsync(token));
             await logs.LogRecords.ExecuteDeleteAsync(token);
             await using (var scope = host.Services.CreateAsyncScope())
                 Assert.AreEqual(2L, await scope.ServiceProvider.GetRequiredService<TimelineLogCleanup>().RunAsync(token));
