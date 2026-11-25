@@ -73,6 +73,7 @@ builder.Services.AddScoped<AgentAssignments>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentRegistration>();
 builder.Services.AddScoped<PublicTemplates>();
+builder.Services.AddScoped<TemplateChanges>();
 builder.Services.AddHttpClient<GitHubAgentReleases>(client =>
 {
     client.BaseAddress = new Uri("https://api.github.com/");

@@ -35,11 +35,44 @@ internal static class TemplateEndpoints
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => Response(await templates.SetDefaultAsync(id, input, actor, token)), allowApiCredential: false);
         });
+        api.MapGet("/{id:guid}/impact", async (Guid id, int? page, TemplateChanges changes, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return Response(await changes.ImpactAsync(id, page ?? 1, token));
+        });
+        api.MapPost("/{id:guid}/update-preview", async (Guid id, PublicationTemplateUpdate input, TemplateChanges changes, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => Response(await changes.PreviewUpdateAsync(id, input, actor, token)), allowApiCredential: false);
+        });
+        api.MapPut("/{id:guid}", async (Guid id, ConfirmPublicationTemplateUpdate input, TemplateChanges changes, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => Response(await changes.ConfirmUpdateAsync(id, input, actor, token)), allowApiCredential: false);
+        });
+        api.MapPost("/{id:guid}/retirement-preview", async (Guid id, PublicationTemplateRetirement input, TemplateChanges changes, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => Response(await changes.PreviewRetireAsync(id, input, actor, token)), allowApiCredential: false);
+        });
+        api.MapPost("/{id:guid}/retire", async (Guid id, ConfirmPublicationTemplateRetirement input, TemplateChanges changes, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor => Status(await changes.ConfirmRetireAsync(id, input, actor, token)), allowApiCredential: false);
+        });
     }
 
-    private static IResult Response(TemplateOperationResult<PublicationTemplateItem> result) => result.Status switch
+    private static IResult Response<T>(TemplateOperationResult<T> result) => result.Status switch
     {
         TemplateOperationStatus.Success => Results.Ok(result.Value),
+        TemplateOperationStatus.Invalid => Results.BadRequest(),
+        TemplateOperationStatus.NotFound => Results.NotFound(),
+        _ => Results.Conflict()
+    };
+
+    private static IResult Status(TemplateOperationStatus status) => status switch
+    {
+        TemplateOperationStatus.Success => Results.NoContent(),
         TemplateOperationStatus.Invalid => Results.BadRequest(),
         TemplateOperationStatus.NotFound => Results.NotFound(),
         _ => Results.Conflict()

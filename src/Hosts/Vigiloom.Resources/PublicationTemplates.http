@@ -30,3 +30,39 @@ RequestVerificationToken: {{token}}
 Content-Type: application/json
 
 { "version": "replace-with-version" }
+
+### Inspect affected devices
+GET {{resources}}/api/v1/admin/publications/templates/{{template}}/impact?page=1
+Cookie: {{cookie}}
+
+### Preview an update
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/update-preview
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "name": "Network status", "showLatency": true, "showObservedAt": false, "historyDays": 0 }
+
+### Confirm an update using its preview confirmation
+PUT {{resources}}/api/v1/admin/publications/templates/{{template}}
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "confirmation": "replace-with-preview-confirmation" }
+
+### Preview retirement
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/retirement-preview
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "replacementDefaultId": null, "replacementDefaultVersion": null }
+
+### Confirm retirement using its preview confirmation
+POST {{resources}}/api/v1/admin/publications/templates/{{template}}/retire
+Cookie: {{cookie}}
+RequestVerificationToken: {{token}}
+Content-Type: application/json
+
+{ "confirmation": "replace-with-preview-confirmation" }

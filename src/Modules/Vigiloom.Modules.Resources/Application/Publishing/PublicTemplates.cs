@@ -86,7 +86,7 @@ public sealed class PublicTemplates(IDbContextFactory<ResourcesDbContext> contex
         return new(TemplateOperationStatus.Success, Map(row));
     }
 
-    private async Task ConfirmHistoryAsync(Guid id, byte[] version, CancellationToken token)
+    internal async Task ConfirmHistoryAsync(Guid id, byte[] version, CancellationToken token)
     {
         try
         {
