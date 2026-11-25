@@ -1,11 +1,14 @@
 extern alias ResourcesHost;
 
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
 using System.Net;
+using System.Security.Claims;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
@@ -16,6 +19,8 @@ using Vigiloom.Contracts.Publishing;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.IdentityAccess.Application;
+using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Application;
@@ -57,6 +62,7 @@ public sealed class RemoteDeviceManagementTests
                 var application = new ApplicationService(candidate, DateTimeOffset.UtcNow);
                 await using (var db = new ResourcesDbContext(options)) { db.ApplicationServices.Add(application); await db.SaveChangesAsync(token); }
                 WebApplicationFactory<Program>? web = null;
+                ClaimsPrincipal circuitPrincipal = new(new ClaimsIdentity());
                 using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
@@ -88,10 +94,17 @@ public sealed class RemoteDeviceManagementTests
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePublicationManagement))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddScoped<AuthenticationStateProvider>(_ => new TestCircuitAuthentication(() => circuitPrincipal)));
                 });
                 web = webHost;
                 await PingTestSite.InitializeAsync(webHost, token, schemaInitialized: true);
                 await using var scope = webHost.Services.CreateAsyncScope();
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var signIn = scope.ServiceProvider.GetRequiredService<SignInManager<Account>>();
+                var administratorAccount = (await users.FindByNameAsync("admin"))!;
+                circuitPrincipal = await signIn.CreateUserPrincipalAsync(administratorAccount);
+                ((ClaimsIdentity)circuitPrincipal.Identity!).AddClaim(new Claim(SessionLifetime.ExpirationClaim,
+                    DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 var devices = scope.ServiceProvider.GetRequiredService<IDeviceManagement>();
                 Assert.IsInstanceOfType<RemoteDeviceManagement>(devices);
                 var result = await devices.CreateAsync(new DeviceInput("Remote", "remote.example", [], true), Guid.CreateVersion7(), token);
@@ -158,6 +171,14 @@ public sealed class RemoteDeviceManagementTests
                 var body = await anonymous.GetStringAsync($"/api/v1/public/devices/{id:D}", token);
                 Assert.DoesNotContain("changed.example", body);
                 settings = await administrator.GetFromJsonAsync<PublicationSettings>($"/api/v1/admin/publications/devices/{id:D}", token);
+                var serverClient = scope.ServiceProvider.GetRequiredService<IPublicationClient>();
+                Assert.AreEqual(template.Id, (await serverClient.DefaultTemplateAsync(token))?.Id);
+                Assert.AreEqual(settings!.Version, (await serverClient.GetAsync("devices", id, token))?.Version);
+                var serverSave = await serverClient.SaveAsync("devices", id,
+                    new PublicationChange(true, "Public router updated", PublicationPolicy.TemplateVersion, settings.Version, template.Id, template.Version), token);
+                Assert.AreEqual(PublicationSaveStatus.Updated, serverSave.Status);
+                Assert.AreEqual("Public router updated", (await anonymous.GetFromJsonAsync<PublicDevice>($"/api/v1/public/devices/{id:D}", token))?.Name);
+                settings = serverSave.Settings;
                 using (var request = new HttpRequestMessage(HttpMethod.Put, $"/api/v1/admin/publications/devices/{id:D}")
                     { Content = JsonContent.Create(new PublicationChange(false, null, null, settings!.Version)) })
                 {
@@ -217,5 +238,10 @@ public sealed class RemoteDeviceManagementTests
             await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
         }
+    }
+
+    private sealed class TestCircuitAuthentication(Func<ClaimsPrincipal> principal) : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(new AuthenticationState(principal()));
     }
 }
