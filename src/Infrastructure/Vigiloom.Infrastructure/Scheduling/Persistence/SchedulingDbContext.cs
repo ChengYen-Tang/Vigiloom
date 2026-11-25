@@ -5,6 +5,7 @@ namespace Vigiloom.Infrastructure.Scheduling.Persistence;
 public sealed class SchedulingDbContext(DbContextOptions<SchedulingDbContext> options) : DbContext(options)
 {
     internal DbSet<OutboxRecord> Outbox => Set<OutboxRecord>();
+    internal DbSet<WorkReceipt> WorkReceipts => Set<WorkReceipt>();
     internal DbSet<DashboardAuditRecord> DashboardAudit => Set<DashboardAuditRecord>();
     internal DbSet<ScheduleSetting> ScheduleSettings => Set<ScheduleSetting>();
 
@@ -21,6 +22,14 @@ public sealed class SchedulingDbContext(DbContextOptions<SchedulingDbContext> op
         outbox.Property(record => record.Payload).HasMaxLength(16384).IsRequired();
         outbox.Property(record => record.LastFailureCode).HasMaxLength(128);
         outbox.HasIndex(record => new { record.State, record.AvailableAt, record.RowId });
+
+        var receipt = modelBuilder.Entity<WorkReceipt>();
+        receipt.ToTable("WorkReceipts");
+        receipt.HasKey(record => record.RowId).IsClustered();
+        receipt.Property(record => record.RowId).UseIdentityColumn();
+        receipt.Property(record => record.MessageId).ValueGeneratedNever();
+        receipt.HasIndex(record => record.MessageId).IsUnique();
+        receipt.Property(record => record.PayloadHash).HasMaxLength(32).IsFixedLength().IsRequired();
 
         var audit = modelBuilder.Entity<DashboardAuditRecord>();
         audit.ToTable("DashboardAudit");
@@ -41,6 +50,15 @@ public sealed class SchedulingDbContext(DbContextOptions<SchedulingDbContext> op
         setting.HasIndex(record => record.Name).IsUnique();
         setting.Property(record => record.Version).IsRowVersion();
     }
+}
+
+internal sealed class WorkReceipt
+{
+    public long RowId { get; set; }
+    public Guid MessageId { get; set; }
+    public byte[] PayloadHash { get; set; } = [];
+    public string? Result { get; set; }
+    public DateTimeOffset CompletedAt { get; set; }
 }
 
 internal sealed class ScheduleSetting
