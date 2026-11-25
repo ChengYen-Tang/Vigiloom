@@ -36,6 +36,8 @@ builder.Host.ConfigureServices((context, services) => services.AddWolverine(opti
     options.PublishReliablyTo<NetworkDeviceChanged>(context.Configuration["Messaging:NetworkQueue"] ?? "vigiloom.network.resources");
     options.PublishReliablyTo<AgentDeviceChanged>(context.Configuration["Messaging:AgentQueue"] ?? "vigiloom.agent.resources");
     options.PublishReliablyTo<GroupAuditRecorded>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
+    options.PublishReliablyTo<ApplicationApprovalAudit>(context.Configuration["Messaging:AuditQueue"] ?? "vigiloom.operations.audit");
+    options.PublishReliablyTo<ApplicationApproved>(context.Configuration["Messaging:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
 }));
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
@@ -50,6 +52,11 @@ builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<GroupAuditOutbox>();
 builder.Services.AddScoped<ServiceGroupManagement>();
 builder.Services.AddScoped<ApplicationDiscovery>();
+builder.Services.AddScoped<ApplicationApproval>();
+builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Observability:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
@@ -64,6 +71,8 @@ internalApi.MapPost("/application-candidates/observe", async (ApplicationObserva
     Results.Ok(await discovery.ObserveAsync(request, token)));
 internalApi.MapGet("/application-candidates", async (int? page, ApplicationDiscovery discovery, CancellationToken token) =>
     page is < 1 ? Results.BadRequest() : Results.Ok(await discovery.ListAsync(page ?? 1, token)));
+internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id, ApplicationApprovalRequest request, ApplicationApproval approval, CancellationToken token) =>
+    Results.Ok(await approval.ApproveAsync(id, request.ActorId, token)));
 app.MapDeviceManagement();
 app.Run();
 

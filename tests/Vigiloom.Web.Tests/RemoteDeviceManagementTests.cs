@@ -4,14 +4,18 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
+using Vigiloom.Modules.ServiceObservability.Domain;
+using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
@@ -35,6 +39,7 @@ public sealed class RemoteDeviceManagementTests
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
+        var observabilityQueue = "vigiloom-test-observation-" + suffix;
         try
         {
             await ReusableWebDatabase.ExecuteAsync(async (webDb, outerToken) =>
@@ -46,6 +51,7 @@ public sealed class RemoteDeviceManagementTests
                 var candidate = new ApplicationCandidate(Guid.CreateVersion7(), "orders", "production", "Orders", "", DateTimeOffset.UtcNow);
                 var application = new ApplicationService(candidate, DateTimeOffset.UtcNow);
                 await using (var db = new ResourcesDbContext(options)) { db.ApplicationServices.Add(application); await db.SaveChangesAsync(token); }
+                WebApplicationFactory<Program>? web = null;
                 using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseEnvironment("Development");
@@ -54,8 +60,11 @@ public sealed class RemoteDeviceManagementTests
                     builder.UseSetting("Messaging:NetworkQueue", networkQueue);
                     builder.UseSetting("Messaging:AgentQueue", agentQueue);
                     builder.UseSetting("Messaging:AuditQueue", auditQueue);
+                    builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
+                    builder.ConfigureTestServices(services => services.AddHttpClient("ObservationSourceVerifier")
+                        .ConfigurePrimaryHttpMessageHandler(() => web!.Server.CreateHandler()));
                 });
-                using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+                using var webHost = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
                     builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
@@ -69,7 +78,8 @@ public sealed class RemoteDeviceManagementTests
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteServiceMembership))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
-                await using var scope = web.Services.CreateAsyncScope();
+                web = webHost;
+                await using var scope = webHost.Services.CreateAsyncScope();
                 var devices = scope.ServiceProvider.GetRequiredService<IDeviceManagement>();
                 Assert.IsInstanceOfType<RemoteDeviceManagement>(devices);
                 var result = await devices.CreateAsync(new DeviceInput("Remote", "remote.example", [], true), Guid.CreateVersion7(), token);
@@ -96,6 +106,36 @@ public sealed class RemoteDeviceManagementTests
                 Assert.AreEqual(GroupResultStatus.Success, serviceMembership.Status);
                 Assert.HasCount(1, (await services.ListAsync(group.Group.Id, false, true, null, 1, token)).Items);
                 Assert.HasCount(1, (await services.ListGroupsAsync(application.Id, 1, token)).Items);
+                var telemetrySource = new ServiceSource("Receiver", new byte[32], DateTimeOffset.UtcNow);
+                var sourceContexts = webHost.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
+                await using (var db = await sourceContexts.CreateDbContextAsync(token))
+                {
+                    db.Sources.Add(telemetrySource);
+                    await db.SaveChangesAsync(token);
+                }
+                using var resourceClient = resources.CreateClient();
+                using (var observe = await resourceClient.PostAsJsonAsync("/internal/v1/application-candidates/observe",
+                    new ApplicationObservation(telemetrySource.Id, "new-api", "production", "New API", ""), token))
+                    observe.EnsureSuccessStatusCode();
+                var candidates = await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token);
+                Assert.IsNotNull(candidates);
+                Assert.HasCount(1, candidates);
+                using var approve = await resourceClient.PostAsJsonAsync($"/internal/v1/application-candidates/{candidates[0].Id:D}/approve",
+                    new ApplicationApprovalRequest(Guid.CreateVersion7()), token);
+                Assert.AreEqual(ApplicationApprovalStatus.Approved, (await approve.Content.ReadFromJsonAsync<ApplicationApprovalResult>(cancellationToken: token))!.Status);
+                using (var observe = await resourceClient.PostAsJsonAsync("/internal/v1/application-candidates/observe",
+                    new ApplicationObservation(telemetrySource.Id, "other-api", "production", "Other API", ""), token))
+                    observe.EnsureSuccessStatusCode();
+                var other = (await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token))!.Single();
+                await using (var db = await sourceContexts.CreateDbContextAsync(token))
+                {
+                    (await db.Sources.SingleAsync(s => s.Id == telemetrySource.Id, token)).Revoke(DateTimeOffset.UtcNow);
+                    await db.SaveChangesAsync(token);
+                }
+                Assert.IsEmpty((await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token))!);
+                using var reject = await resourceClient.PostAsJsonAsync($"/internal/v1/application-candidates/{other.Id:D}/approve",
+                    new ApplicationApprovalRequest(Guid.CreateVersion7()), token);
+                Assert.AreEqual(ApplicationApprovalStatus.SourceUnavailable, (await reject.Content.ReadFromJsonAsync<ApplicationApprovalResult>(cancellationToken: token))!.Status);
                 var archived = await devices.SetArchivedAsync(id, true, updated.Device!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);
@@ -112,6 +152,7 @@ public sealed class RemoteDeviceManagementTests
             await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
         }
     }
 }

@@ -41,6 +41,7 @@ public sealed class InternalApiTests
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
         var auditQueue = "vigiloom-test-audit-" + suffix;
+        var observabilityQueue = "vigiloom-test-observation-" + suffix;
         var identityHandler = new TestIdentityHandler();
         try
         {
@@ -54,6 +55,7 @@ public sealed class InternalApiTests
                 builder.UseSetting("Messaging:NetworkQueue", networkQueue);
                 builder.UseSetting("Messaging:AgentQueue", agentQueue);
                 builder.UseSetting("Messaging:AuditQueue", auditQueue);
+                builder.UseSetting("Messaging:ObservabilityQueue", observabilityQueue);
                 builder.ConfigureTestServices(services =>
                 {
                     services.RemoveAll<IApiCredentialValidation>();
@@ -152,6 +154,7 @@ public sealed class InternalApiTests
             await channel.QueueDeleteAsync(networkQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(agentQueue, cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(auditQueue, cancellationToken: CancellationToken.None);
+            await channel.QueueDeleteAsync(observabilityQueue, cancellationToken: CancellationToken.None);
         }
     }
 

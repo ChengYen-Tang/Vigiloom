@@ -23,7 +23,7 @@ public sealed class ApplicationDiscoveryTests
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
             await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
             var factory = new PooledDbContextFactory<ResourcesDbContext>(options);
-            var discovery = new ApplicationDiscovery(factory);
+            var discovery = new ApplicationDiscovery(factory, new ActiveSources());
             var observation = new ApplicationObservation(Guid.CreateVersion7(), "orders", "production", "Orders", "company");
             Assert.AreEqual(ApplicationObservationStatus.Recorded, await discovery.ObserveAsync(observation, token));
             var first = (await discovery.ListAsync(1, token)).Single();
@@ -47,4 +47,9 @@ public sealed class ApplicationDiscoveryTests
             Assert.AreEqual(ApplicationObservationStatus.AlreadyApproved, await discovery.ObserveAsync(observation, token));
             Assert.IsEmpty(await discovery.ListAsync(1, token));
         }, TestContext.CancellationToken);
+
+    private sealed class ActiveSources : IApplicationSourceVerifier
+    {
+        public Task<bool> IsActiveAsync(Guid sourceId, CancellationToken token) => Task.FromResult(true);
+    }
 }
