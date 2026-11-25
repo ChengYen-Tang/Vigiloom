@@ -115,11 +115,16 @@ public sealed class ServiceWorkTests
         }
         finally
         {
-            await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
             {
-                Namespace = "default",
-                WorkflowExecution = new() { WorkflowId = id }
-            });
+                await client.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                {
+                    Namespace = "default",
+                    WorkflowExecution = new() { WorkflowId = id }
+                }, new Temporalio.Client.RpcOptions { CancellationToken = cleanup.Token });
+            }
+            catch (Temporalio.Exceptions.RpcException error) when (error.Code == Temporalio.Exceptions.RpcException.StatusCode.NotFound) { }
         }
     }
 
