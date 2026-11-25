@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;

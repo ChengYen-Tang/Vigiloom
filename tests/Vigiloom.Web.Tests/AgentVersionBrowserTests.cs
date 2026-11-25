@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -54,7 +55,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         var packageId = Guid.CreateVersion7();
         await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
         {
-            db.Packages.Add(new AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
+            db.Packages.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentPackage { Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
                 Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64) });
             await db.SaveChangesAsync(token);
         }

@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.AgentPackages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
