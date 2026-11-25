@@ -1,19 +1,17 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
-using Vigiloom.Modules.IdentityAccess.Domain;
-using Vigiloom.Modules.IdentityAccess.Persistence;
 
 namespace Vigiloom.Web.Authentication;
 
-public sealed class AccountLogout(IdentityAccessDbContext db, UserManager<Account> users, IOptions<IdentityOptions> options)
+public sealed class AccountLogout(IServiceProvider services, IConfiguration configuration, IOptions<IdentityOptions> options)
 {
     public async Task<bool> RevokeSessionsAsync(ClaimsPrincipal principal, CancellationToken token)
     {
-        await using var transaction = await AccountMutationLock.AcquireAsync(db, token);
-        var account = await CurrentAccount.FindValidAsync(db, users, principal, options, allowLockedOut: true);
-        if (account is not null && !(await users.UpdateSecurityStampAsync(account)).Succeeded) return false;
-        await transaction.CommitAsync(token);
-        return true;
+        if (string.IsNullOrWhiteSpace(configuration["Services:Identity:Url"])) return await services.GetRequiredService<AccountSessionRevocation>().RevokeAsync(principal, token);
+        if (principal.HasClaim(claim => claim.Type == SessionLifetime.ExpirationClaim) && !SessionLifetime.IsCurrent(principal)) return true;
+        var id = principal.FindFirstValue(options.Value.ClaimsIdentity.UserIdClaimType);
+        var stamp = principal.FindFirstValue(options.Value.ClaimsIdentity.SecurityStampClaimType);
+        return await services.GetRequiredService<RemoteCookieValidator>().RevokeSessionsAsync(id, stamp, token);
     }
 }

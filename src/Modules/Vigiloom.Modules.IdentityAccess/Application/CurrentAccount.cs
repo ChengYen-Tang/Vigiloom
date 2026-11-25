@@ -5,9 +5,9 @@ using Vigiloom.Modules.IdentityAccess.Persistence;
 using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Domain;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
-internal static class CurrentAccount
+public static class CurrentAccount
 {
     public static async Task<Account?> FindValidAsync(IdentityAccessDbContext db, UserManager<Account> users, ClaimsPrincipal principal, IOptions<IdentityOptions> options, bool allowLockedOut = false)
     {

@@ -2,10 +2,11 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 
-namespace Vigiloom.Web.Authentication;
+namespace Vigiloom.Modules.IdentityAccess.Application;
 
 /// <summary>Creates the first administrator once, after validating the host-provided bootstrap secret.</summary>
 public sealed class InitialAdministrator(

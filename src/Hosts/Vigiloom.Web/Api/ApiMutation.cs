@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Infrastructure.Authentication;
 
 namespace Vigiloom.Web.Api;
 
