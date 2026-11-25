@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Vigiloom.Modules.AlertingOperations.Domain;
@@ -51,32 +52,31 @@ internal static class TimelineDataMigration
             }
         }
         await FlushAsync();
-        await using (var command = new SqlCommand("""
+        await CopyEventsAsync("""
             SELECT Id, DeviceId, CompletedAt, FilePath, Outcome FROM agent.YaraScans
             WHERE CompletedAt IS NOT NULL ORDER BY RowId
-            """, source))
-        await using (var reader = await command.ExecuteReaderAsync(token))
+            """, reader =>
         {
-            var options = new DbContextOptionsBuilder<OperationsDbContext>()
-                .UseSqlServer(target, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
-                    .MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-            await using var db = new OperationsDbContext(options);
-            await db.Database.UseTransactionAsync(transaction, token);
-            var count = 0;
-            while (await reader.ReadAsync(token))
-            {
-                var id = reader.GetGuid(0); var device = reader.GetGuid(1);
-                var outcome = reader.IsDBNull(4) ? "" : reader.GetInt32(4).ToString();
-                db.Set<TimelineRecord>().Add(new TimelineRecord
-                {
-                    MessageId = Guid.CreateVersion7(), Source = "yara", Time = reader.GetDateTimeOffset(2).ToUniversalTime(),
-                    ResourceId = device, ResourceKind = "device", Summary = $"YARA 掃描：{reader.GetString(3)}",
-                    Evidence = $"掃描 {id:D}；結果 {outcome}", Link = $"/devices/{device:D}/yara-scans?scan={id:D}"
-                });
-                if (++count % 500 == 0) { await db.SaveChangesAsync(token); db.ChangeTracker.Clear(); }
-            }
-            if (count % 500 != 0) await db.SaveChangesAsync(token);
-        }
+            var id = reader.GetGuid(0); var device = reader.GetGuid(1);
+            var outcome = reader.IsDBNull(4) ? "" : reader.GetInt32(4).ToString();
+            return new("yara", reader.GetDateTimeOffset(2), device, "device", $"YARA 掃描：{reader.GetString(3)}",
+                $"掃描 {id:D}；結果 {outcome}", $"/devices/{device:D}/yara-scans?scan={id:D}");
+        });
+        await CopyEventsAsync("SELECT ServiceId, StartedAt, TraceId, SpanId FROM service.TraceSpans ORDER BY RowId", reader =>
+        {
+            var service = reader.GetGuid(0);
+            return new("service-trace", reader.GetDateTimeOffset(1), service, "service", "應用程式追蹤",
+                $"Trace {Convert.ToHexStringLower((byte[])reader.GetValue(2))}；Span {Convert.ToHexStringLower((byte[])reader.GetValue(3))}", $"/services/{service:D}");
+        });
+        await CopyEventsAsync("""
+            SELECT t.ServiceId, o.ReceivedAt, o.TargetId, o.Kind FROM service.HealthObservations AS o
+            INNER JOIN service.HealthTargets AS t ON o.TargetId = t.Id ORDER BY o.RowId
+            """, reader =>
+        {
+            var service = reader.GetGuid(0); var targetId = reader.GetGuid(2);
+            return new("service-health", reader.GetDateTimeOffset(1), service, "service",
+                $"服務健康檢查：{(HealthCheckObservationKind)reader.GetByte(3)}", $"檢查 {targetId:D}", $"/services/{service:D}");
+        });
         return;
 
         async Task FlushAsync()
@@ -84,6 +84,27 @@ internal static class TimelineDataMigration
             if (batch.Count == 0) return;
             await writer.AppendLocalAsync(batch, target, transaction, token);
             batch.Clear();
+        }
+
+        async Task CopyEventsAsync(string sql, Func<SqlDataReader, EventTimelineEntry> map)
+        {
+            var options = new DbContextOptionsBuilder<OperationsDbContext>()
+                .UseSqlServer(target, settings => settings.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                    .MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using var db = new OperationsDbContext(options);
+            await db.Database.UseTransactionAsync(transaction, token);
+            await using var command = new SqlCommand(sql, source);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            var count = 0;
+            while (await reader.ReadAsync(token))
+            {
+                var entry = map(reader);
+                db.Set<TimelineRecord>().Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = entry.Source,
+                    Time = entry.Time.ToUniversalTime(), ResourceId = entry.ResourceId, ResourceKind = entry.ResourceKind,
+                    Summary = entry.Summary, Evidence = entry.Evidence, Link = entry.Link, RuleLink = entry.RuleLink });
+                if (++count % 500 == 0) { await db.SaveChangesAsync(token); db.ChangeTracker.Clear(); }
+            }
+            if (count % 500 != 0) await db.SaveChangesAsync(token);
         }
     }
 }

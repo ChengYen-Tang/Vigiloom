@@ -115,11 +115,19 @@ public sealed class OperationsMigrationTests(TestContext context)
             var telemetrySource = new ServiceSource("source", new byte[32], now);
             var application = new MonitoredService(new ServiceCandidate(telemetrySource.Id, "orders", "production", "Orders", now), now);
             var logContext = new OldContext { ServiceId = application.Id, ResourcePayload = [1], ScopePayload = [2], ResourceSchemaUrl = "resource", ScopeSchemaUrl = "scope" };
+            var healthTarget = new Vigiloom.Modules.ServiceObservability.Domain.Health.HealthTarget(application.Id, null, "https://example.com/health", 30, 5, 1, 1, now);
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
             {
                 db.Sources.Add(telemetrySource); db.Services.Add(application);
                 db.LogRecords.Add(new OldRecord { ServiceId = application.Id, Context = logContext, OccurredAt = now, ReceivedAt = now, RecordPayload = [3] });
+                var traceContext = new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceContext
+                    { ServiceId = application.Id, ResourcePayload = [1], ScopePayload = [2], ResourceSchemaUrl = "resource", ScopeSchemaUrl = "scope" };
+                db.TraceSpans.Add(new Vigiloom.Modules.ServiceObservability.Domain.Telemetry.TraceSpan
+                    { ServiceId = application.Id, Context = traceContext, StartedAt = now, EndedAt = now, ReceivedAt = now,
+                        TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [1] });
+                db.HealthTargets.Add(healthTarget);
                 await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO service.HealthObservations (TargetId, LeaseGeneration, NetworkGeneration, SourceVersion, ServiceVersion, TargetVersion, NetworkVersion, Kind, ObservedAt, ReceivedAt) VALUES ({healthTarget.Id}, 1, 1, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 2, {now}, {now})", token);
             }
             await OperationsDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
             await using var logs = await targetProvider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
@@ -136,10 +144,12 @@ public sealed class OperationsMigrationTests(TestContext context)
                 Assert.IsTrue(await db.Set<LineDelivery>().AnyAsync(x => x.Id == delivery.Id && x.CompletedAt == null, token));
                 Assert.AreEqual(10, (await db.Set<LineSettings>().SingleAsync(token)).AggregationSeconds);
                 var timeline = await db.Set<TimelineRecord>().ToListAsync(token);
-                Assert.HasCount(3, timeline);
+                Assert.HasCount(5, timeline);
                 Assert.IsTrue(timeline.Any(x => x.Source == "host-log" && x.ResourceId == device.Id && x.LocalLogRowId != null && x.Evidence.Contains("host event")));
                 Assert.IsTrue(timeline.Any(x => x.Source == "service-log" && x.ResourceId == application.Id && x.LocalLogRowId == copied.RowId));
                 Assert.IsTrue(timeline.Any(x => x.Source == "yara" && x.ResourceId == device.Id && x.Summary == "YARA 掃描：C:/sample" && x.Evidence.EndsWith("結果 1")));
+                Assert.IsTrue(timeline.Any(x => x.Source == "service-trace" && x.ResourceId == application.Id && x.Evidence.Contains("01010101") && x.Evidence.Contains("02020202")));
+                Assert.IsTrue(timeline.Any(x => x.Source == "service-health" && x.ResourceId == application.Id && x.Summary == "服務健康檢查：Degraded" && x.Evidence.Contains(healthTarget.Id.ToString("D"))));
             }
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
