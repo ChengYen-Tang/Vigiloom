@@ -20,6 +20,6 @@ internal static class ResourcesDatabaseCommand
             sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
         await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
         if (source is not null) await ResourcesDataMigration.CopyAsync(source, target, token);
-        Console.WriteLine(copyExisting ? "Device and group data copied successfully." : "Resource schema initialized successfully.");
+        Console.WriteLine(copyExisting ? "Resource data copied successfully." : "Resource schema initialized successfully.");
     }
 }
