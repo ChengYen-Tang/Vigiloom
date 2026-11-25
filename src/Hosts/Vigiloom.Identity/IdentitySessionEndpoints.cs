@@ -97,5 +97,39 @@ internal static class IdentitySessionEndpoints
             await transaction.CommitAsync(token);
             return Results.Ok(new PasswordLoginResponse(account.Id, stamp, twoFactor, claims));
         });
+        app.MapPost("/internal/identity/two-factor/complete", async (
+            CompleteTwoFactorRequest request, HttpContext context, IdentityAccessDbContext db,
+            UserManager<Account> users, SignInManager<Account> signIn, IOptions<IdentityOptions> options,
+            IUserClaimsPrincipalFactory<Account> factory, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (request.AccountId == Guid.Empty || string.IsNullOrEmpty(request.SecurityStamp)) return Results.Unauthorized();
+            await using var transaction = await AccountMutationLock.AcquireAsync(db, token);
+            var identity = new ClaimsIdentity([
+                new Claim(options.Value.ClaimsIdentity.UserIdClaimType, request.AccountId.ToString("D")),
+                new Claim(options.Value.ClaimsIdentity.SecurityStampClaimType, request.SecurityStamp)
+            ]);
+            var account = await CurrentAccount.FindValidAsync(db, users, new ClaimsPrincipal(identity), options);
+            if (account is null || !await users.GetTwoFactorEnabledAsync(account)) return Results.Unauthorized();
+            if (!request.Recovery && !await signIn.CanSignInAsync(account)) return Results.Conflict();
+            var valid = request.Recovery
+                ? (await users.RedeemTwoFactorRecoveryCodeAsync(account, request.Code)).Succeeded
+                : await users.VerifyTwoFactorTokenAsync(account, options.Value.Tokens.AuthenticatorTokenProvider, request.Code);
+            if (!valid)
+            {
+                if (users.SupportsUserLockout) await users.AccessFailedAsync(account);
+                await transaction.CommitAsync(token);
+                return Results.Conflict();
+            }
+            if (users.SupportsUserLockout && !(await users.ResetAccessFailedCountAsync(account)).Succeeded)
+            {
+                await transaction.CommitAsync(token);
+                return Results.Conflict();
+            }
+            var claims = (await factory.CreateAsync(account)).Claims.Select(claim =>
+                new IdentityClaim(claim.Type, claim.Value, claim.ValueType, claim.Issuer, claim.OriginalIssuer)).ToArray();
+            await transaction.CommitAsync(token);
+            return Results.Ok(new ValidatedCookieResponse(claims));
+        });
     }
 }

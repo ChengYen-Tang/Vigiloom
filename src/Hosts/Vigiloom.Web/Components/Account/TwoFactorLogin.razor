@@ -41,7 +41,7 @@
     protected override async Task OnInitializedAsync()
     {
         TotpInput ??= new(); RecoveryInput ??= new();
-        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        if (!await Challenge.HasPendingAsync(HttpContext))
             Navigation.NavigateTo("/account/login", forceLoad: true);
     }
     private async Task LoginWithAuthenticatorAsync()

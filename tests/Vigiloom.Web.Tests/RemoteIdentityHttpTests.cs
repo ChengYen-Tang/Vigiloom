@@ -41,6 +41,7 @@ public sealed class RemoteIdentityHttpTests
             var cookieRequests = 0;
             var revocationRequests = 0;
             var passwordRequests = 0;
+            var twoFactorCompletions = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -64,7 +65,11 @@ public sealed class RemoteIdentityHttpTests
                         if (request.RequestUri?.AbsolutePath == "/internal/identity/sessions/revoke") Interlocked.Increment(ref revocationRequests);
                     })));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemotePasswordLogin))
-                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref passwordRequests))));
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), request =>
+                    {
+                        if (request.RequestUri?.AbsolutePath == "/internal/identity/password-login") Interlocked.Increment(ref passwordRequests);
+                        if (request.RequestUri?.AbsolutePath == "/internal/identity/two-factor/complete") Interlocked.Increment(ref twoFactorCompletions);
+                    })));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -174,16 +179,53 @@ public sealed class RemoteIdentityHttpTests
             var challengePath = twoFactorLogin.Headers.Location!.PathAndQuery;
             Assert.Contains("/account/two-factor", challengePath);
             var callsBeforeChallenge = cookieRequests;
-            using (var challenge = await twoFactorBrowser.GetAsync(challengePath, token))
+            using var challenge = await twoFactorBrowser.GetAsync(challengePath, token);
+            {
                 Assert.AreEqual(HttpStatusCode.OK, challenge.StatusCode);
+                var challengeDocument = await new HtmlParser().ParseDocumentAsync(await challenge.Content.ReadAsStringAsync(token), token);
+                var challengeForm = challengeDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "totp-login");
+                var challengeFields = challengeForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+                challengeFields["TotpInput.Code"] = new OtpNet.Totp(OtpNet.Base32Encoding.ToBytes(authenticatorKey!)).ComputeTotp();
+                using var completed = await twoFactorBrowser.PostAsync(challengePath, new FormUrlEncodedContent(challengeFields), token);
+                Assert.AreEqual(HttpStatusCode.Redirect, completed.StatusCode);
+            }
+            Assert.AreEqual(1, twoFactorCompletions);
+            using (var authenticated = await twoFactorBrowser.GetAsync("/api/v1/workspace/identity", token))
+                Assert.AreEqual(HttpStatusCode.OK, authenticated.StatusCode);
             Assert.IsGreaterThan(callsBeforeChallenge, cookieRequests);
+            using var pendingBrowser = web.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            using var pendingPage = await pendingBrowser.GetAsync("/account/login", token);
+            var pendingDocument = await new HtmlParser().ParseDocumentAsync(await pendingPage.Content.ReadAsStringAsync(token), token);
+            var pendingForm = pendingDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "login");
+            var pendingFields = pendingForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            pendingFields["Input.UserName"] = "remote-reader";
+            pendingFields["Input.Password"] = "Reader-Password-123";
+            using var pendingLogin = await pendingBrowser.PostAsync("/account/login", new FormUrlEncodedContent(pendingFields), token);
+            Assert.AreEqual(HttpStatusCode.Redirect, pendingLogin.StatusCode);
+            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
-            using var invalidChallenge = await twoFactorBrowser.GetAsync(challengePath, token);
+            using var invalidChallenge = await pendingBrowser.GetAsync(challengePath, token);
             Assert.AreEqual(HttpStatusCode.Redirect, invalidChallenge.StatusCode);
+
+            var recoveryCodes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.ToArray();
+            var recoveryStamp = await users.GetSecurityStampAsync(user);
+            using var identityClient = identity.CreateClient();
+            var recoveryRequest = new CompleteTwoFactorRequest(user.Id, recoveryStamp, recoveryCodes[0], true);
+            using (var invalidRecovery = await identityClient.PostAsJsonAsync("/internal/identity/two-factor/complete", recoveryRequest with { Code = "invalid" }, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, invalidRecovery.StatusCode);
+            using (var validRecovery = await identityClient.PostAsJsonAsync("/internal/identity/two-factor/complete", recoveryRequest, token))
+                Assert.AreEqual(HttpStatusCode.OK, validRecovery.StatusCode);
+            using (var replayedRecovery = await identityClient.PostAsJsonAsync("/internal/identity/two-factor/complete", recoveryRequest, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, replayedRecovery.StatusCode);
+            await using (var verifyRecovery = identity.Services.CreateAsyncScope())
+            {
+                var identityUsers = verifyRecovery.ServiceProvider.GetRequiredService<UserManager<Account>>();
+                var identityUser = await identityUsers.FindByIdAsync(user.Id.ToString("D"));
+                Assert.AreEqual(1, await identityUsers.GetAccessFailedCountAsync(identityUser!));
+            }
 
             var locked = new Account { UserName = "remote-locked" };
             Assert.IsTrue((await users.CreateAsync(locked, "Reader-Password-123")).Succeeded);
-            using var identityClient = identity.CreateClient();
             for (var attempt = 0; attempt < 5; attempt++)
             {
                 using var failed = await identityClient.PostAsJsonAsync("/internal/identity/password-login", new PasswordLoginRequest("remote-locked", "wrong-password"), token);

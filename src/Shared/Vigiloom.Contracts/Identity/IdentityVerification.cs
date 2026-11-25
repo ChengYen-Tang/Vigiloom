@@ -8,3 +8,4 @@ public sealed record IdentityClaim(string Type, string Value, string ValueType, 
 public sealed record ValidatedCookieResponse(IdentityClaim[] Claims);
 public sealed record PasswordLoginRequest(string UserName, string Password);
 public sealed record PasswordLoginResponse(Guid AccountId, string SecurityStamp, bool RequiresTwoFactor, IdentityClaim[] Claims);
+public sealed record CompleteTwoFactorRequest(Guid AccountId, string SecurityStamp, string Code, bool Recovery);

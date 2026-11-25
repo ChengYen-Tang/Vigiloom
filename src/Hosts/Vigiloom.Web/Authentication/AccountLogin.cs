@@ -19,6 +19,33 @@ internal sealed class AccountLogin(IServiceProvider services, IConfiguration con
 
 internal sealed class RemotePasswordLogin(HttpClient client, IOptions<IdentityOptions> options)
 {
+    public async Task<SignInResult> CompleteTwoFactorAsync(HttpContext context, string code, bool recovery, bool persistent, CancellationToken token)
+    {
+        var challenge = await context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
+        var id = challenge.Principal?.FindFirstValue(ClaimTypes.Name);
+        var stamp = challenge.Principal?.FindFirstValue(BoundSignInManager.StampClaim);
+        if (!Guid.TryParse(id, out var accountId) || string.IsNullOrEmpty(stamp)) return SignInResult.Failed;
+        using var response = await client.PostAsJsonAsync("internal/identity/two-factor/complete",
+            new CompleteTwoFactorRequest(accountId, stamp, code, recovery), token);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+            return SignInResult.Failed;
+        }
+        if (response.StatusCode == HttpStatusCode.Conflict) return SignInResult.Failed;
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ValidatedCookieResponse>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Identity service returned an empty two-factor response.");
+        var claims = result.Claims.Select(claim => new Claim(claim.Type, claim.Value, claim.ValueType, claim.Issuer, claim.OriginalIssuer)).ToList();
+        claims.Add(new Claim("amr", "mfa"));
+        var identity = new ClaimsIdentity(claims, IdentityConstants.ApplicationScheme,
+            options.Value.ClaimsIdentity.UserNameClaimType, options.Value.ClaimsIdentity.RoleClaimType);
+        await context.SignOutAsync(IdentityConstants.ExternalScheme);
+        await context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+        await context.SignInAsync(IdentityConstants.ApplicationScheme, new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = persistent });
+        return SignInResult.Success;
+    }
+
     public async Task<SignInResult> PasswordAsync(HttpContext context, string userName, string password, bool remember, CancellationToken token)
     {
         using var response = await client.PostAsJsonAsync("internal/identity/password-login", new PasswordLoginRequest(userName, password), token);
