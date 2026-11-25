@@ -29,9 +29,11 @@ public static class ApiCredentialClientRegistration
 {
     public static IServiceCollection AddVigiloomIdentityCredentialClient(this IServiceCollection services)
     {
+        services.AddServiceDiscovery();
         services.AddHttpClient<RemoteApiCredentialValidation>((provider, client) =>
             client.BaseAddress = new Uri(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddServiceDiscovery();
         services.TryAddScoped<IApiCredentialValidation>(provider => provider.GetRequiredService<RemoteApiCredentialValidation>());
         return services;
     }

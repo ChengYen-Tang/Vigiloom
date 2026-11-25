@@ -10,6 +10,7 @@
     <Project Path="src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
   </Folder>
   <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" />
     <Project Path="src/Hosts/Vigiloom.Identity/Vigiloom.Identity.csproj" />
     <Project Path="src/Hosts/Vigiloom.Migrator/Vigiloom.Migrator.csproj" />
     <Project Path="src/Hosts/Vigiloom.Resources/Vigiloom.Resources.csproj" />
@@ -45,6 +46,7 @@
     <Project Path="tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Vigiloom.Gateway.Tests/Vigiloom.Gateway.Tests.csproj" />
     <Project Path="tests/Vigiloom.Agent.Core.Tests/Vigiloom.Agent.Core.Tests.csproj" />
     <Project Path="tests/Vigiloom.Agent.Platforms.Linux.Tests/Vigiloom.Agent.Platforms.Linux.Tests.csproj" />
     <Project Path="tests/Vigiloom.Agent.Platforms.Windows.Tests/Vigiloom.Agent.Platforms.Windows.Tests.csproj" />

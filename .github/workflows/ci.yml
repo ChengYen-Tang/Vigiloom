@@ -242,7 +242,7 @@ jobs:
         shell: pwsh
         run: ./tools/ci/test-current.ps1
       - name: Test migrated service integration
-        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests|FullyQualifiedName~TemporalPublicationTests'
+        run: dotnet test tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~RemoteIdentityHttpTests|FullyQualifiedName~RemoteDeviceManagementTests|FullyQualifiedName~IndependentIdentityRetentionTests|FullyQualifiedName~RemoteApiCredentialValidationTests|FullyQualifiedName~TemporalPublicationTests|FullyQualifiedName~GatewayAgentIntegrationTests|FullyQualifiedName~GatewaySourceIntegrationTests|FullyQualifiedName~TrustedProxyForwardingTests'
       - name: Verify recovery requires local administrator privileges
         shell: bash
         run: |
