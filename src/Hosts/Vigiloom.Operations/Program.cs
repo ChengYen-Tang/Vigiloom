@@ -35,6 +35,7 @@ builder.Services.AddHttpClient<LinePushClient>();
 builder.Services.AddScoped<IOutboxHandler, LineDeliveryHandler>();
 builder.Services.AddScoped<LineDeliveryQueue>();
 builder.Services.AddScoped<LineChannel>();
+builder.Services.AddScoped<LineDeliveryStatus>();
 builder.Services.AddScoped(provider => new OutboxDispatcher(
     provider.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
         ?? throw new InvalidOperationException("ConnectionStrings:Operations is required."),
@@ -44,6 +45,7 @@ builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
+app.MapLineEndpoints();
 
 // The deployment exposes this endpoint only to the trusted service network.
 app.MapGet("/internal/v1/log-quota", async (SharedLogQuota quota, CancellationToken token) =>
