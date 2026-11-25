@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using OpenTelemetry.Proto.Common.V1;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
+using Vigiloom.Otlp;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests;
 

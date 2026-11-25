@@ -466,6 +466,9 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("LocalLogRowId")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("MessageId")
                         .HasColumnType("uniqueidentifier");
 

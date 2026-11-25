@@ -45,6 +45,7 @@ builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<OperationAuditWriter>();
 builder.Services.AddScoped<TimelineWriter>();
 builder.Services.AddScoped<TimelineReader>();
+builder.Services.AddScoped<TimelineLogCleanup>();
 builder.Services.AddServiceDiscovery();
 builder.Services.AddHttpClient("Resources", (services, client) =>
 {

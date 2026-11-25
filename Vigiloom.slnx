@@ -38,6 +38,7 @@
   <Folder Name="/src/Shared/">
     <Project Path="src/Shared/Vigiloom.BuildingBlocks/Vigiloom.BuildingBlocks.csproj" />
     <Project Path="src/Shared/Vigiloom.Contracts/Vigiloom.Contracts.csproj" />
+    <Project Path="src/Shared/Vigiloom.Otlp/Vigiloom.Otlp.csproj" />
     <Project Path="src/Shared/Vigiloom.UpdateSecurity/Vigiloom.UpdateSecurity.csproj" />
   </Folder>
   <Folder Name="/src/Updater/">

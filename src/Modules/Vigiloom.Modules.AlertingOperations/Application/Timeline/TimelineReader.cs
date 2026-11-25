@@ -2,10 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Events;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Otlp;
+using OtlpLog = OpenTelemetry.Proto.Logs.V1.LogRecord;
 
 namespace Vigiloom.Modules.AlertingOperations.Application.Timeline;
 
-public sealed class TimelineReader(IDbContextFactory<OperationsDbContext> contexts)
+public sealed class TimelineReader(IDbContextFactory<OperationsDbContext> contexts, IDbContextFactory<CentralLogsDbContext> logs)
 {
     private static readonly string[] Sources = ["host-log", "service-log", "service-trace", "service-health", "inventory", "integrity", "sigma", "vulnerability", "baseline", "ioc", "yara"];
 
@@ -35,9 +37,28 @@ public sealed class TimelineReader(IDbContextFactory<OperationsDbContext> contex
         }
         var rows = await selected.OrderByDescending(x => x.Time).ThenBy(x => x.Source).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * 50).Take(51)
-            .Select(x => new EventTimelineEntry(x.Source, x.Time, x.ResourceId, x.ResourceKind, x.Summary, x.Evidence, x.Link, x.RuleLink))
+            .Select(x => new { Entry = new EventTimelineEntry(x.Source, x.Time, x.ResourceId, x.ResourceKind, x.Summary, x.Evidence, x.Link, x.RuleLink), x.LocalLogRowId })
             .ToArrayAsync(token);
         var more = rows.Length > 50;
-        return new(rows.Take(50).ToArray(), query.Page, more && query.Page < 20, more && query.Page == 20);
+        var page = rows.Take(50).ToArray();
+        var ids = page.Where(x => x.Entry.Source == "service-log" && x.LocalLogRowId is not null).Select(x => x.LocalLogRowId!.Value).ToArray();
+        var items = page.Select(x => x.Entry).ToArray();
+        if (ids.Length > 0)
+        {
+            await using var logDb = await logs.CreateDbContextAsync(token);
+            var payloads = await logDb.LogRecords.AsNoTracking().Where(x => ids.Contains(x.RowId))
+                .Select(x => new { x.RowId, x.RecordPayload }).ToDictionaryAsync(x => x.RowId, x => x.RecordPayload, token);
+            for (var i = 0; i < page.Length; i++)
+            {
+                if (page[i].Entry.Source != "service-log" || page[i].LocalLogRowId is not { } id || !payloads.TryGetValue(id, out var payload)) continue;
+                try
+                {
+                    var (body, truncated) = LogBodyFormatter.Format(OtlpLog.Parser.ParseFrom(payload).Body);
+                    items[i] = items[i] with { Summary = $"應用程式日誌：{body}{(truncated ? "…" : "")}" };
+                }
+                catch (Google.Protobuf.InvalidProtocolBufferException) { }
+            }
+        }
+        return new(items, query.Page, more && query.Page < 20, more && query.Page == 20);
     }
 }
