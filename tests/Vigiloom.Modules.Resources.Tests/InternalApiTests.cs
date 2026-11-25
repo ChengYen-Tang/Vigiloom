@@ -1,13 +1,24 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Workspace;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -29,6 +40,7 @@ public sealed class InternalApiTests
         var suffix = Guid.CreateVersion7().ToString("N");
         var networkQueue = "vigiloom-test-network-" + suffix;
         var agentQueue = "vigiloom-test-agent-" + suffix;
+        var identityHandler = new TestIdentityHandler();
         try
         {
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
@@ -40,6 +52,12 @@ public sealed class InternalApiTests
                 builder.UseSetting("ConnectionStrings:Messaging", broker);
                 builder.UseSetting("Messaging:NetworkQueue", networkQueue);
                 builder.UseSetting("Messaging:AgentQueue", agentQueue);
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IApiCredentialValidation>();
+                    services.AddSingleton<IApiCredentialValidation, TestCredentialValidation>();
+                    services.AddHttpClient(nameof(IdentityCookieValidator)).ConfigurePrimaryHttpMessageHandler(() => identityHandler);
+                });
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
                     new Dictionary<string, string?> { ["ConnectionStrings:Resources"] = database.ConnectionString, ["ConnectionStrings:Messaging"] = broker,
                         ["Messaging:NetworkQueue"] = networkQueue, ["Messaging:AgentQueue"] = agentQueue }));
@@ -62,7 +80,7 @@ public sealed class InternalApiTests
                 await db.SaveChangesAsync(token);
             }
 
-            using var client = host.CreateClient();
+            using var client = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
             var targets = await client.GetFromJsonAsync<PingDeviceSnapshot[]>("/internal/v1/ping-targets", token);
             Assert.IsNotNull(targets);
             Assert.HasCount(1, targets);
@@ -81,20 +99,40 @@ public sealed class InternalApiTests
             using var missingGroup = await client.GetAsync($"/internal/v1/groups/{Guid.CreateVersion7():D}/members", token);
             Assert.AreEqual(HttpStatusCode.NotFound, missingGroup.StatusCode);
 
-            var actor = Guid.CreateVersion7();
-            using var create = await client.PostAsJsonAsync("/internal/v1/devices/",
-                new DeviceChangeCommand(actor, new DeviceInput("Managed", "managed.example", [], true)), token);
+            using (var anonymous = await client.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            var cookieOptions = host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+            var identityOptions = host.Services.GetRequiredService<IOptions<IdentityOptions>>().Value;
+            var claims = new[] { new Claim(identityOptions.ClaimsIdentity.UserIdClaimType, Guid.CreateVersion7().ToString("D")),
+                new Claim(identityOptions.ClaimsIdentity.SecurityStampClaimType, "test-stamp") };
+            var ticket = new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, IdentityConstants.ApplicationScheme)),
+                new AuthenticationProperties { ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5) }, IdentityConstants.ApplicationScheme);
+            using (var cookieClient = host.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false }))
+            {
+                cookieClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookieOptions.TicketDataFormat.Protect(ticket)}");
+                using var readerCookie = await cookieClient.GetAsync("/api/v1/devices/", token);
+                Assert.AreEqual(HttpStatusCode.OK, readerCookie.StatusCode);
+                identityHandler.Revoked = true;
+                using var revokedCookie = await cookieClient.GetAsync("/api/v1/devices/", token);
+                Assert.AreEqual(HttpStatusCode.Unauthorized, revokedCookie.StatusCode);
+            }
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
+            using (var readerList = await client.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, readerList.StatusCode);
+            using (var reader = await client.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("Denied", "denied.example", [], true), token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, reader.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_write");
+            using var create = await client.PostAsJsonAsync("/api/v1/devices/",
+                new DeviceInput("Managed", "managed.example", [], true), token);
             Assert.AreEqual(HttpStatusCode.Created, create.StatusCode);
             var created = await create.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
             Assert.IsNotNull(created);
-            using var update = await client.PutAsJsonAsync($"/internal/v1/devices/{created.Id:D}",
-                new DeviceChangeCommand(actor, new DeviceInput("Managed", "changed.example", [], true, Version: created.Version)), token);
+            using var update = await client.PutAsJsonAsync($"/api/v1/devices/{created.Id:D}",
+                new DeviceInput("Managed", "changed.example", [], true, Version: created.Version), token);
             Assert.AreEqual(HttpStatusCode.OK, update.StatusCode);
             var updated = await update.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
             Assert.IsNotNull(updated);
             Assert.AreEqual("changed.example", updated.Address);
-            using var archive = await client.PostAsJsonAsync($"/internal/v1/devices/{created.Id:D}/archive",
-                new DeviceArchiveCommand(actor, updated.Version), token);
+            using var archive = await client.PostAsJsonAsync($"/api/v1/devices/{created.Id:D}/archive",
+                new DeviceVersionRequest(updated.Version), token);
             Assert.AreEqual(HttpStatusCode.OK, archive.StatusCode);
             var archived = await archive.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
             Assert.IsNotNull(archived);
@@ -116,4 +154,21 @@ public sealed class InternalApiTests
 
     [AssemblyCleanup]
     public static void Cleanup() => SqlTestDatabase.CompleteRun();
+
+    private sealed class TestCredentialValidation : IApiCredentialValidation
+    {
+        public Task<VerifiedApiCredentialResponse?> VerifyAsync(string value, CancellationToken token) =>
+            Task.FromResult(value is "read" or "write" ? new VerifiedApiCredentialResponse(Guid.CreateVersion7(), value, value == "write") : null);
+    }
+
+    private sealed class TestIdentityHandler : HttpMessageHandler
+    {
+        public bool Revoked { get; set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (Revoked) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            var role = new IdentityClaim(ClaimTypes.Role, WorkspaceAccess.ReadOnly, ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new ValidatedCookieResponse([role])) });
+        }
+    }
 }
