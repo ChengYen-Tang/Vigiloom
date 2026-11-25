@@ -102,6 +102,15 @@ public sealed class HostLogTests(TestContext context)
             Assert.AreEqual(2, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "service-log" && x.ResourceId == appLog.ServiceId, token));
             var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
             var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
+            var hostHistory = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
+            Assert.HasCount(1, hostHistory!.Items);
+            Assert.AreEqual(item.MessageId, hostHistory.Items[0].MessageId);
+            var otherHost = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{Guid.CreateVersion7():D}?from={from}&until={until}", token);
+            Assert.IsEmpty(otherHost!.Items);
+            var wrongSource = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}&sourceId={Guid.CreateVersion7():D}", token);
+            Assert.IsEmpty(wrongSource!.Items);
+            using (var badCursor = await client.GetAsync($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}&cursor=invalid", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, badCursor.StatusCode);
             var history = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}", token);
             Assert.HasCount(2, history!.Items);
             Assert.HasCount(2, history.Contexts);
@@ -131,12 +140,23 @@ public sealed class HostLogTests(TestContext context)
             Assert.IsTrue(firstPage.HasMore);
             Assert.HasCount(2, secondPage!.Items);
             Assert.IsFalse(secondPage.HasMore);
+            await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 1000000000000 WHERE Kind = 0", token);
+            var moreItems = Enumerable.Range(0, 26).Select(i => item with { MessageId = Guid.CreateVersion7(), Content = $"event {i}" }).ToArray();
+            using (var more = await client.PostAsJsonAsync("/internal/v1/host-logs", input with { Batch = batch with { BatchId = Guid.CreateVersion7(), Items = moreItems } }, token))
+                Assert.AreEqual(HttpStatusCode.OK, more.StatusCode);
+            var hostFirst = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
+            Assert.HasCount(25, hostFirst!.Items);
+            Assert.IsNotNull(hostFirst.NextCursor);
+            var hostSecond = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}&cursor={Uri.EscapeDataString(hostFirst.NextCursor)}", token);
+            Assert.HasCount(2, hostSecond!.Items);
+            Assert.IsNull(hostSecond.NextCursor);
+            Assert.AreEqual(27, hostFirst.Items.Concat(hostSecond.Items).Select(x => x.MessageId).Distinct().Count());
             await logs.LogRecords.ExecuteDeleteAsync(token);
             await using (var scope = host.Services.CreateAsyncScope())
                 Assert.AreEqual(2L, await scope.ServiceProvider.GetRequiredService<TimelineLogCleanup>().RunAsync(token));
-            Assert.AreEqual(1, await timeline.Set<TimelineRecord>().CountAsync(token));
+            Assert.AreEqual(27, await timeline.Set<TimelineRecord>().CountAsync(token));
             await using var scheduling = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token);
-            Assert.AreEqual(1, await scheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+            Assert.AreEqual(2, await scheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
         }, context.CancellationToken);
 
     private sealed class TestOutboxHandler : IOutboxHandler

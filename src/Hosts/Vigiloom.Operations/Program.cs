@@ -98,6 +98,7 @@ builder.Services.AddScoped(provider => new OutboxDispatcher(
     provider.GetServices<IOutboxHandler>(), provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddScoped<HostLogIngestion>();
 builder.Services.AddScoped<HostLogReader>();
+builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddScoped<ApplicationLogIngestion>();
 builder.Services.AddScoped<ApplicationLogHistory>();
 builder.Services.AddHostedService<WorkDispatcher>();
@@ -123,6 +124,12 @@ app.MapPost("/internal/v1/host-logs/read", async (HostLogReadRequest input, Host
     if (input.AgentId.Version != 7 || input.MessageIds is null || input.MessageIds.Count > Vigiloom.Contracts.Agent.AgentLogBatchCodec.MaximumItems)
         return Results.BadRequest();
     return Results.Ok(await reader.ReadAsync(input.AgentId, input.MessageIds, token));
+});
+app.MapGet("/internal/v1/host-logs/{deviceId:guid}", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until,
+    string? cursor, Guid? sourceId, HostLogHistory history, CancellationToken token) =>
+{
+    try { return Results.Ok(await history.GetAsync(deviceId, from, until, cursor, sourceId, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
 });
 app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
