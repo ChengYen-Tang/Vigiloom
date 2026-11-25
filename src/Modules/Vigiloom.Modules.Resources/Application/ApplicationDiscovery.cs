@@ -46,20 +46,21 @@ public sealed class ApplicationDiscovery(IDbContextFactory<ResourcesDbContext> c
             .OrderByDescending(c => c.LastSeen).ThenByDescending(c => c.RowId)
             .Select(c => new ApplicationCandidateInfo(c.Id, c.SourceId, c.ServiceKey, c.Environment, c.DisplayName, c.ServiceNamespace, c.FirstSeen, c.LastSeen));
         var result = new List<ApplicationCandidateInfo>(50);
-        var sourceStates = new Dictionary<Guid, bool>();
+        var sourceStates = new Dictionary<Guid, ApplicationSourceStatus>();
         var skip = (page - 1) * 50;
         for (var offset = 0; ; offset += 100)
         {
             var candidates = await query.Skip(offset).Take(100).ToArrayAsync(token);
             if (candidates.Length == 0) break;
             var sourceIds = candidates.Select(c => c.SourceId).Distinct().Where(id => !sourceStates.ContainsKey(id)).ToArray();
-            var active = await Task.WhenAll(sourceIds.Select(id => sources.IsActiveAsync(id, token)));
+            var active = await Task.WhenAll(sourceIds.Select(id => sources.GetAsync(id, token)));
             for (var i = 0; i < sourceIds.Length; i++) sourceStates.Add(sourceIds[i], active[i]);
             foreach (var candidate in candidates)
             {
-                if (!sourceStates[candidate.SourceId]) continue;
+                var source = sourceStates[candidate.SourceId];
+                if (!source.Active) continue;
                 if (skip > 0) { skip--; continue; }
-                result.Add(candidate);
+                result.Add(candidate with { SourceName = source.Name ?? "" });
                 if (result.Count == 50) return result;
             }
         }

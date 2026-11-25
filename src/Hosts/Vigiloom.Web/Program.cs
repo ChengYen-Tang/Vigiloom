@@ -198,6 +198,14 @@ builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
 builder.Services.AddScoped<ServiceApproval>();
+builder.Services.AddScoped<Vigiloom.Web.Services.LocalCandidateAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteCandidateAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Vigiloom.Web.Services.ICandidateAdministration>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<Vigiloom.Web.Services.LocalCandidateAdministration>()
+        : services.GetRequiredService<Vigiloom.Web.Services.RemoteCandidateAdministration>());
 builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
@@ -516,7 +524,9 @@ app.MapLineSettingsEndpoints();
 app.MapGet("/internal/v1/observation-sources/{id:guid}/active", async (Guid id, IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
 {
     await using var db = await contexts.CreateDbContextAsync(token);
-    return Results.Ok(await db.Sources.AsNoTracking().AnyAsync(source => source.Id == id && source.RevokedAt == null, token));
+    var source = await db.Sources.AsNoTracking().Where(source => source.Id == id)
+        .Select(source => new Vigiloom.Contracts.Resources.ApplicationSourceStatus(source.RevokedAt == null, source.Name)).SingleOrDefaultAsync(token);
+    return Results.Ok(source ?? new Vigiloom.Contracts.Resources.ApplicationSourceStatus(false, null));
 });
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();

@@ -16,9 +16,11 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
+using Vigiloom.Web.Services;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -77,6 +79,8 @@ public sealed class RemoteDeviceManagementTests
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                     builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteServiceMembership))
                         .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
+                    builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCandidateAdministration))
+                        .ConfigurePrimaryHttpMessageHandler(() => resources.Server.CreateHandler()));
                 });
                 web = webHost;
                 await using var scope = webHost.Services.CreateAsyncScope();
@@ -113,29 +117,23 @@ public sealed class RemoteDeviceManagementTests
                     db.Sources.Add(telemetrySource);
                     await db.SaveChangesAsync(token);
                 }
-                using var resourceClient = resources.CreateClient();
-                using (var observe = await resourceClient.PostAsJsonAsync("/internal/v1/application-candidates/observe",
-                    new ApplicationObservation(telemetrySource.Id, "new-api", "production", "New API", ""), token))
-                    observe.EnsureSuccessStatusCode();
-                var candidates = await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token);
-                Assert.IsNotNull(candidates);
+                var candidatesApi = scope.ServiceProvider.GetRequiredService<ICandidateAdministration>();
+                Assert.IsInstanceOfType<RemoteCandidateAdministration>(candidatesApi);
+                var authenticated = new AuthenticatedSource(telemetrySource.Id, telemetrySource.Version);
+                Assert.AreEqual(CandidateObservation.Recorded, await candidatesApi.ObserveAsync(authenticated, "new-api", "production", "New API", token, ""));
+                var candidates = await candidatesApi.ListAsync(1, token);
                 Assert.HasCount(1, candidates);
-                using var approve = await resourceClient.PostAsJsonAsync($"/internal/v1/application-candidates/{candidates[0].Id:D}/approve",
-                    new ApplicationApprovalRequest(Guid.CreateVersion7()), token);
-                Assert.AreEqual(ApplicationApprovalStatus.Approved, (await approve.Content.ReadFromJsonAsync<ApplicationApprovalResult>(cancellationToken: token))!.Status);
-                using (var observe = await resourceClient.PostAsJsonAsync("/internal/v1/application-candidates/observe",
-                    new ApplicationObservation(telemetrySource.Id, "other-api", "production", "Other API", ""), token))
-                    observe.EnsureSuccessStatusCode();
-                var other = (await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token))!.Single();
+                Assert.AreEqual("Receiver", candidates[0].SourceName);
+                Assert.AreEqual(ApprovalStatus.Approved, (await candidatesApi.ApproveAsync(candidates[0].Id, Guid.CreateVersion7(), token)).Status);
+                Assert.AreEqual(CandidateObservation.Recorded, await candidatesApi.ObserveAsync(authenticated, "other-api", "production", "Other API", token, ""));
+                var other = (await candidatesApi.ListAsync(1, token)).Single();
                 await using (var db = await sourceContexts.CreateDbContextAsync(token))
                 {
                     (await db.Sources.SingleAsync(s => s.Id == telemetrySource.Id, token)).Revoke(DateTimeOffset.UtcNow);
                     await db.SaveChangesAsync(token);
                 }
-                Assert.IsEmpty((await resourceClient.GetFromJsonAsync<ApplicationCandidateInfo[]>("/internal/v1/application-candidates?page=1", token))!);
-                using var reject = await resourceClient.PostAsJsonAsync($"/internal/v1/application-candidates/{other.Id:D}/approve",
-                    new ApplicationApprovalRequest(Guid.CreateVersion7()), token);
-                Assert.AreEqual(ApplicationApprovalStatus.SourceUnavailable, (await reject.Content.ReadFromJsonAsync<ApplicationApprovalResult>(cancellationToken: token))!.Status);
+                Assert.IsEmpty(await candidatesApi.ListAsync(1, token));
+                Assert.AreEqual(ApprovalStatus.SourceUnavailable, (await candidatesApi.ApproveAsync(other.Id, Guid.CreateVersion7(), token)).Status);
                 var archived = await devices.SetArchivedAsync(id, true, updated.Device!.Version, Guid.CreateVersion7(), token);
                 Assert.AreEqual(DeviceResultStatus.Success, archived.Status);
                 Assert.IsTrue((await devices.GetAsync(id, token))!.Archived);
