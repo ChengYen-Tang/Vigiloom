@@ -10,6 +10,23 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Timeline;
 /// <summary>Stores a source event summary in the caller's transaction.</summary>
 public sealed class TimelineWriter
 {
+    /// <summary>Stores summaries for locally committed log records in the same transaction.</summary>
+    public async Task AppendLocalAsync(IEnumerable<EventTimelineEntry> entries, DbConnection connection, DbTransaction transaction, CancellationToken token)
+    {
+        var options = Options(connection);
+        await using var db = new OperationsDbContext(options);
+        await db.Database.UseTransactionAsync(transaction, token);
+        foreach (var batch in entries.Chunk(500))
+        {
+            foreach (var entry in batch)
+                db.TimelineRecords.Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = entry.Source,
+                    Time = entry.Time.ToUniversalTime(), ResourceId = entry.ResourceId, ResourceKind = entry.ResourceKind,
+                    Summary = entry.Summary, Evidence = entry.Evidence, Link = entry.Link, RuleLink = entry.RuleLink });
+            await db.SaveChangesAsync(token);
+            db.ChangeTracker.Clear();
+        }
+    }
+
     public async Task AppendAsync(EventTimelineDelivery delivery, DbConnection connection, DbTransaction transaction, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(delivery);
@@ -18,10 +35,7 @@ public sealed class TimelineWriter
             !TimelineReader.ValidSourceKind(entry.Source, entry.ResourceKind) ||
             entry.Summary is null || entry.Evidence is null || entry.Link is null)
             throw new ArgumentException("Invalid timeline event.", nameof(delivery));
-        var options = new DbContextOptionsBuilder<OperationsDbContext>()
-            .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
-                .MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
-        await using var db = new OperationsDbContext(options);
+        await using var db = new OperationsDbContext(Options(connection));
         await db.Database.UseTransactionAsync(transaction, token);
         var existing = await db.TimelineRecords.FromSqlInterpolated($"SELECT * FROM [operations].[TimelineRecords] WITH (UPDLOCK, HOLDLOCK) WHERE [MessageId] = {delivery.MessageId}")
             .SingleOrDefaultAsync(token);
@@ -38,4 +52,8 @@ public sealed class TimelineWriter
             Link = entry.Link, RuleLink = entry.RuleLink });
         await db.SaveChangesAsync(token);
     }
+
+    private static DbContextOptions<OperationsDbContext> Options(DbConnection connection) => new DbContextOptionsBuilder<OperationsDbContext>()
+        .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+            .MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
 }

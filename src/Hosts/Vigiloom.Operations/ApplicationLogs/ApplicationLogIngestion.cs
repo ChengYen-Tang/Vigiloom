@@ -1,15 +1,17 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Modules.AlertingOperations.Domain.Logs;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Admission = Vigiloom.Infrastructure.LogAdmission.LogAdmission;
 
 namespace Vigiloom.Operations.ApplicationLogs;
 
 /// <summary>Stores an authorized application Log scope and charges the shared quota atomically.</summary>
-public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbContext> contexts)
+public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbContext> contexts, TimelineWriter timeline)
 {
     public async Task<LogReceipt> ReceiveAsync(ApplicationLogSubmission submission, CancellationToken token)
     {
@@ -52,6 +54,10 @@ public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbConte
                 LogAdmissionStatus.BatchTooLarge => LogReceiptStatus.BatchTooLarge,
                 _ => LogReceiptStatus.Busy
             }, admission.RetryAfter);
+        var entries = submission.Items.Select(item => new EventTimelineEntry("service-log", item.OccurredAt, submission.ServiceId, "service",
+            "應用程式日誌", item.TraceId is { Length: > 0 } ? $"Trace {Convert.ToHexStringLower(item.TraceId)}" :
+                $"服務實例 {submission.InstanceId?.ToString("D") ?? "未指定"}", $"/services/{submission.ServiceId:D}"));
+        await timeline.AppendLocalAsync(entries, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
         await transaction.CommitAsync(token);
         return new(LogReceiptStatus.Accepted);
     }
