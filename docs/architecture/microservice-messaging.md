@@ -1,13 +1,9 @@
-# Microservice messaging
+# Microservice work delivery
 
-Each service configures `UseVigiloomMessaging` with its own SQL Server connection and the shared RabbitMQ connection. The SQL database stores that service's Wolverine inbox, outbox, deduplication claims, and failed messages. RabbitMQ transfers messages between services; each service configures only its own routes and listeners.
+Temporal Server, backed by PostgreSQL, coordinates durable work between services. Each destination service runs a worker on its own task queue. Task queues distribute work among workers; delivery to multiple services requires a separate work request per destination.
 
-Use separate queues for reliable and replaceable messages. `PublishReliablyTo<T>` and `ListenReliablyOn` enable durable outbox and inbox processing. `PublishBestEffortTo<T>` and `ListenBestEffortOn` buffer in memory; use them only when a later update can replace a lost message. They do not provide delivery guarantees during a process failure.
+For a business change requiring reliable delivery, write a `TemporalWorkRequest` through `OutboxWriter` in the same SQL Server transaction as the source change. `OutboxDispatcher` retries delivery to Temporal using the message ID as the workflow ID. A receiver can use `TransactionalWorkHandler` to commit its SQL business change and delivery receipt in one transaction. Each participating service must register its own worker and handler, apply the scheduling migrations, and run its dispatcher. These integrations are completed by the owning service requirements.
 
-For a business change that must be delivered, enroll the same EF Core context in `IDbContextOutbox` before publishing, then call `SaveChangesAndFlushMessagesAsync`. Do not commit the business update separately from the outbox. Preserve a stable logical message identifier and pass it in `DeliveryOptions.DeduplicationId`. On the receiving side use `[Deduplicated]` and `[Transactional]` with the service's business context. Each service owns its handler and decides how to ignore stale state versions.
+Workflow state and results are available from Temporal; an accepted request is not proof of a completed operation. Workflows and receiver receipts have distinct retention concerns. Send references to large data rather than the data itself. Replaceable periodic updates need not use durable delivery when their owning service can tolerate loss.
 
-The shared logical deduplication window is seven days. It is not a permanent exactly-once guarantee and does not compare payloads. Where an existing business contract requires a longer window, payload conflict detection, or durable uniqueness, the owning service must implement and retain those rules separately.
-
-Handling failures retry after one, five, and fifteen seconds. Exhausted messages are stored in the receiver's Wolverine SQL dead-letter storage; the platform management service can query Wolverine's `IMessageStore.DeadLetters` without exposing message payloads or secrets to unauthorized users. The management UI and any replay operation belong to REQ-50.
-
-For local integration tests start an isolated RabbitMQ broker and set `VIGILOOM_TEST_RABBITMQ` to its AMQP URI. Tests use the isolated SQL test fixture and delete their own queues. Ubuntu CI provisions disposable SQL Server and RabbitMQ containers. Windows tests without an explicitly configured RabbitMQ report these integration cases as inconclusive.
+For local development and integration tests, see [Temporal for local development](../../packaging/temporal/README.md). The SQL Server integration fixture remains separate.

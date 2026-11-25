@@ -253,21 +253,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Start isolated RabbitMQ
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run -d --name vigiloom-test-rabbit -p 127.0.0.1:5678:5672 rabbitmq:4.1-alpine > /dev/null
-          for attempt in $(seq 1 45); do
-            if docker exec --user rabbitmq vigiloom-test-rabbit rabbitmq-diagnostics -q ping > /dev/null 2>&1; then
-              echo 'VIGILOOM_TEST_RABBITMQ=amqp://guest:guest@localhost:5678' >> "$GITHUB_ENV"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo 'The isolated RabbitMQ did not become ready.' >&2
-          docker logs vigiloom-test-rabbit >&2 || true
-          exit 1
       - name: Start isolated Temporal
         shell: bash
         run: |
@@ -298,9 +283,6 @@ jobs:
       - name: Remove isolated SQL Server
         if: always()
         run: docker rm -f vigiloom-test-sql > /dev/null 2>&1 || true
-      - name: Remove isolated RabbitMQ
-        if: always()
-        run: docker rm -f vigiloom-test-rabbit > /dev/null 2>&1 || true
       - name: Remove isolated Temporal
         if: always()
         run: docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci down -v
