@@ -37,7 +37,10 @@ public sealed class MessagingTests
             var factory = new ConnectionFactory { Uri = new Uri(broker!) };
             await using (var connection = await factory.CreateConnectionAsync(TestContext.CancellationToken))
             await using (var channel = await connection.CreateChannelAsync(cancellationToken: TestContext.CancellationToken))
+            {
                 await channel.QueueDeclareAsync(otherQueue, durable: true, exclusive: false, autoDelete: false, cancellationToken: TestContext.CancellationToken);
+                await channel.BasicPublishAsync("", otherQueue, mandatory: false, body: new byte[] { 42 }, cancellationToken: TestContext.CancellationToken);
+            }
             await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
             {
                 var builder = Host.CreateApplicationBuilder();
@@ -63,7 +66,8 @@ public sealed class MessagingTests
                     await using var verifyConnection = await factory.CreateConnectionAsync(timeout.Token);
                     await using var verifyChannel = await verifyConnection.CreateChannelAsync(cancellationToken: timeout.Token);
                     var other = await verifyChannel.QueueDeclarePassiveAsync(otherQueue, timeout.Token);
-                    Assert.AreEqual(0U, other.MessageCount);
+                    Assert.AreEqual(1U, other.MessageCount);
+                    Assert.AreEqual(0U, other.ConsumerCount);
                 }
                 finally { await host.StopAsync(CancellationToken.None); }
             }, TestContext.CancellationToken);
