@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using Vigiloom.Infrastructure.Messaging;
+using Vigiloom.MessagingProbe;
 using Vigiloom.Testing.SqlServer;
 using Wolverine;
 using Wolverine.Attributes;
@@ -19,6 +21,81 @@ namespace Vigiloom.Infrastructure.Tests.Database;
 public sealed class MessagingTests
 {
     public TestContext TestContext { get; set; } = null!;
+
+    [TestMethod]
+    public async Task SeparateProcess_ReceivesCommittedMessage()
+    {
+        var broker = Environment.GetEnvironmentVariable("VIGILOOM_TEST_RABBITMQ");
+        if (string.IsNullOrWhiteSpace(broker))
+            Assert.Inconclusive("Set VIGILOOM_TEST_RABBITMQ to run the isolated RabbitMQ integration test.");
+        var queue = "vigiloom-test-" + Guid.CreateVersion7().ToString("N");
+        var id = Guid.CreateVersion7();
+        Exception? failure = null;
+        try
+        {
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (senderDb, token) =>
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (receiverDb, innerToken) =>
+            {
+                await using (var setup = new ProbeContext(new DbContextOptionsBuilder<ProbeContext>().UseSqlServer(senderDb.ConnectionString).Options))
+                    await setup.Database.EnsureCreatedAsync(innerToken);
+                await using (var setup = new ProbeContext(new DbContextOptionsBuilder<ProbeContext>().UseSqlServer(receiverDb.ConnectionString).Options))
+                    await setup.Database.EnsureCreatedAsync(innerToken);
+                var builder = Host.CreateApplicationBuilder();
+                builder.Services.AddDbContext<ProbeContext>(x => x.UseSqlServer(senderDb.ConnectionString));
+                builder.UseWolverine(options =>
+                {
+                    options.UseVigiloomMessaging(senderDb.ConnectionString, broker!);
+                    options.Discovery.DisableConventionalDiscovery();
+                    options.PublishReliablyTo<ProbeMessage>(queue);
+                });
+                using var sender = builder.Build();
+                await sender.StartAsync(innerToken);
+                try
+                {
+                    await using (var scope = sender.Services.CreateAsyncScope())
+                    {
+                        var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox>();
+                        var context = scope.ServiceProvider.GetRequiredService<ProbeContext>();
+                        outbox.Enroll(context);
+                        context.Receipts.Add(new ProbeReceipt { Id = id });
+                        await outbox.PublishAsync(new ProbeMessage(id), new DeliveryOptions { DeduplicationId = id.ToString("N") });
+                        await outbox.SaveChangesAndFlushMessagesAsync(innerToken);
+                    }
+                    var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+                    var probe = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../Vigiloom.MessagingProbe/bin", configuration, "net10.0/Vigiloom.MessagingProbe.dll"));
+                    var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true };
+                    start.ArgumentList.Add(probe);
+                    start.Environment["VIGILOOM_PROBE_DATABASE"] = receiverDb.ConnectionString;
+                    start.Environment["VIGILOOM_PROBE_QUEUE"] = queue;
+                    start.Environment["VIGILOOM_PROBE_MESSAGE"] = id.ToString("D");
+                    start.Environment["VIGILOOM_TEST_RABBITMQ"] = broker!;
+                    using var child = Process.Start(start) ?? throw new InvalidOperationException("Could not start messaging probe.");
+                    try
+                    {
+                        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(innerToken);
+                        timeout.CancelAfter(TimeSpan.FromSeconds(75));
+                        await child.WaitForExitAsync(timeout.Token);
+                        Assert.AreEqual(0, child.ExitCode);
+                        await using var verify = new ProbeContext(new DbContextOptionsBuilder<ProbeContext>().UseSqlServer(receiverDb.ConnectionString).Options);
+                        Assert.IsTrue(await verify.Receipts.AnyAsync(x => x.Id == id, timeout.Token));
+                    }
+                    finally
+                    {
+                        if (!child.HasExited)
+                        {
+                            child.Kill(entireProcessTree: true);
+                            using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                            await child.WaitForExitAsync(cleanupTimeout.Token);
+                        }
+                    }
+                }
+                finally { await sender.StopAsync(CancellationToken.None); }
+            }, token), TestContext.CancellationToken);
+        }
+        catch (Exception exception) { failure = exception; }
+        await DeleteQueueAsync(broker!, queue, failure);
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
 
     [TestMethod]
     public async Task CommittedMessage_IsDeliveredAfterReceiverStarts()
@@ -112,9 +189,15 @@ public sealed class MessagingTests
         {
             failure = exception;
         }
+        await DeleteQueueAsync(broker!, queue, failure);
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static async Task DeleteQueueAsync(string broker, string queue, Exception? failure)
+    {
         try
         {
-            var factory = new ConnectionFactory { Uri = new Uri(broker!) };
+            var factory = new ConnectionFactory { Uri = new Uri(broker) };
             await using var connection = await factory.CreateConnectionAsync(CancellationToken.None);
             await using var channel = await connection.CreateChannelAsync(cancellationToken: CancellationToken.None);
             await channel.QueueDeleteAsync(queue, cancellationToken: CancellationToken.None);
@@ -124,7 +207,6 @@ public sealed class MessagingTests
             throw new AggregateException($"Failed to delete test queue {queue}.",
                 failure is null ? [cleanupFailure] : [failure, cleanupFailure]);
         }
-        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
     private static async Task<int> CountIncomingAsync(string database, CancellationToken token)
