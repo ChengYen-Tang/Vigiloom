@@ -37,6 +37,7 @@ public sealed class RemoteIdentityHttpTests
         {
             var sessionRequests = 0;
             var cookieRequests = 0;
+            var revocationRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -52,9 +53,13 @@ public sealed class RemoteIdentityHttpTests
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteApiCredentialValidation))
                     .ConfigurePrimaryHttpMessageHandler(() => identity.Server.CreateHandler()));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteWorkspaceIdentity))
-                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), () => Interlocked.Increment(ref sessionRequests))));
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref sessionRequests))));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteCookieValidator))
-                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), () => Interlocked.Increment(ref cookieRequests))));
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), request =>
+                    {
+                        Interlocked.Increment(ref cookieRequests);
+                        if (request.RequestUri?.AbsolutePath == "/internal/identity/sessions/revoke") Interlocked.Increment(ref revocationRequests);
+                    })));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -116,7 +121,15 @@ public sealed class RemoteIdentityHttpTests
             Assert.IsNull(await workspace.GetAsync(principal, token));
             Assert.IsTrue(await revalidation.RevalidateAsync(principal, token));
             Assert.IsTrue((await users.SetLockoutEndDateAsync(user, null)).Succeeded);
-            Assert.IsTrue((await users.UpdateSecurityStampAsync(user)).Succeeded);
+            using var logoutPage = await browser.GetAsync("/account/logout", token);
+            Assert.AreEqual(HttpStatusCode.OK, logoutPage.StatusCode);
+            var logoutDocument = await new HtmlParser().ParseDocumentAsync(await logoutPage.Content.ReadAsStringAsync(token), token);
+            var logoutForm = logoutDocument.QuerySelectorAll("form").Single(element => element.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "logout");
+            var logoutFields = logoutForm.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+            using (var logout = await browser.PostAsync("/account/logout", new FormUrlEncodedContent(logoutFields), token))
+                Assert.AreEqual(HttpStatusCode.Redirect, logout.StatusCode);
+            Assert.AreEqual(1, revocationRequests);
+            await scope.ServiceProvider.GetRequiredService<IdentityAccessDbContext>().Entry(user).ReloadAsync(token);
             using (var expiredCookie = await browser.GetAsync("/api/v1/workspace/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, expiredCookie.StatusCode);
             Assert.IsNull(await workspace.GetAsync(principal, token));
@@ -145,11 +158,11 @@ public sealed class RemoteIdentityHttpTests
             Assert.AreEqual(HttpStatusCode.Redirect, invalidChallenge.StatusCode);
         }, TestContext.CancellationToken);
 
-    private sealed class CountingHandler(HttpMessageHandler inner, Action count) : DelegatingHandler(inner)
+    private sealed class CountingHandler(HttpMessageHandler inner, Action<HttpRequestMessage> count) : DelegatingHandler(inner)
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            count();
+            count(request);
             return base.SendAsync(request, cancellationToken);
         }
     }

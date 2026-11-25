@@ -16,6 +16,7 @@ public static class IdentityAccessRegistration
         services.AddScoped<TwoFactorManagement>();
         services.AddScoped<ApiCredentials>();
         services.AddScoped<ApiCredentialVerifier>();
+        services.AddScoped<AccountSessionRevocation>();
         services.AddIdentityCore<Account>(options =>
         {
             options.Password.RequiredLength = 12;

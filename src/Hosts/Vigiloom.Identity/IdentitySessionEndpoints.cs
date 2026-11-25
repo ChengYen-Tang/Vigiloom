@@ -61,5 +61,16 @@ internal static class IdentitySessionEndpoints
             return account is not null && await users.GetTwoFactorEnabledAsync(account)
                 ? Results.NoContent() : Results.Unauthorized();
         });
+        app.MapPost("/internal/identity/sessions/revoke", async (
+            ValidateSessionRequest request, HttpContext context, IOptions<IdentityOptions> options, AccountSessionRevocation revocation, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (request.AccountId == Guid.Empty || string.IsNullOrEmpty(request.SecurityStamp)) return Results.NoContent();
+            var identity = new ClaimsIdentity([
+                new Claim(options.Value.ClaimsIdentity.UserIdClaimType, request.AccountId.ToString("D")),
+                new Claim(options.Value.ClaimsIdentity.SecurityStampClaimType, request.SecurityStamp)
+            ]);
+            return await revocation.RevokeAsync(new ClaimsPrincipal(identity), token) ? Results.NoContent() : Results.Conflict();
+        });
     }
 }
