@@ -4,7 +4,7 @@ Create the target SQL Server database before running the migrator. Set `VIGILOOM
 
 The migrator applies the existing EF Core resource migrations and then copies the listed data in a single target transaction. The target tables must be empty. Stop writes to the source during migration. Resource IDs and relationships are preserved; SQL Server assigns new rowversion values, so clients must refresh any previously loaded edit forms.
 
-This command covers the data listed above. Publication templates, other Agent data, and deployment links require the remaining REQ-45 migration work. Agent identity, assignment, and package management and the application observation service still need to be switched to the resource-owned records before the migration is complete.
+This command also copies publication templates, retaining device references. Other Agent data and deployment links require the remaining REQ-45 migration work. Publication management, Agent identity, assignment, and package management and the application observation service still need to be switched to the resource-owned records before the migration is complete.
 
 For package removal, configure the resource service's `Services:Host:Url` to the internal host-monitoring endpoint. During the transition, the existing Web host supplies the internal package-usage check. The shared `Vigiloom:AgentPackages:CachePath` must be accessible to each resource-service instance that serves packages.
 

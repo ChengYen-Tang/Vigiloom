@@ -13,6 +13,7 @@ public static class ResourcesDataMigration
         new("resources", "DeviceAudits", "resources", "DeviceAudits"),
         new("resources", "DeviceGroups", "resources", "DeviceGroups"),
         new("resources", "ServiceGroups", "resources", "ServiceGroups"),
+        new("publishing", "Templates", "resources", "PublicTemplates"),
         new("service", "Candidates", "resources", "ApplicationCandidates"),
         new("service", "Services", "resources", "ApplicationServices"),
         new("agent", "Packages", "resources", "AgentPackages"),
