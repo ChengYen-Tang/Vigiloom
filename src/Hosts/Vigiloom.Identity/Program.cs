@@ -2,6 +2,7 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Identity;
+using Vigiloom.Contracts.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDataProtection();
@@ -28,11 +29,5 @@ app.MapPost("/internal/identity/api-credentials/validate", async (
 });
 
 app.Run();
-
-/// <summary>API credential supplied by an internal service.</summary>
-public sealed record VerifyApiCredentialRequest(string? Value);
-
-/// <summary>Validated API credential identity and access scope.</summary>
-public sealed record VerifiedApiCredentialResponse(Guid Id, string Name, bool CanWrite);
 
 public partial class Program;

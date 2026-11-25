@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
+using Vigiloom.Contracts.Identity;
 
 namespace Vigiloom.Identity;
 
@@ -30,6 +31,3 @@ internal static class IdentitySessionEndpoints
         });
     }
 }
-
-public sealed record ValidateSessionRequest(Guid AccountId, string? SecurityStamp);
-public sealed record ValidatedSessionResponse(Guid AccountId, string UserName, string[] Roles);

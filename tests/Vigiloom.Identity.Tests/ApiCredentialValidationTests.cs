@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Contracts.Identity;
 
 namespace Vigiloom.Identity.Tests;
 
