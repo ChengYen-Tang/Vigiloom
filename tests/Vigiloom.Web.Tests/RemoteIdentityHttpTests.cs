@@ -44,10 +44,12 @@ public sealed class RemoteIdentityHttpTests
             var twoFactorCompletions = 0;
             var credentialManagementRequests = 0;
             var accountManagementRequests = 0;
+            var passwordOperationRequests = 0;
             using var identity = new WebApplicationFactory<IdentityHost::Program>().WithWebHostBuilder(builder =>
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:VigiloomIdentity"] = database.ConnectionString
+                    ["ConnectionStrings:VigiloomIdentity"] = database.ConnectionString,
+                    ["Vigiloom:SetupToken"] = "test-only-bootstrap-secret-with-adequate-length"
                 })));
             using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
@@ -76,6 +78,8 @@ public sealed class RemoteIdentityHttpTests
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref credentialManagementRequests))));
                 builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteAccountManagement))
                     .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref accountManagementRequests))));
+                builder.ConfigureTestServices(services => services.AddHttpClient(nameof(RemoteAccountPasswordOperations))
+                    .ConfigurePrimaryHttpMessageHandler(() => new CountingHandler(identity.Server.CreateHandler(), _ => Interlocked.Increment(ref passwordOperationRequests))));
             });
             using (var registrationScope = web.Services.CreateScope())
                 Assert.IsInstanceOfType<RemoteApiCredentialValidation>(registrationScope.ServiceProvider.GetRequiredService<IApiCredentialValidation>());
@@ -159,7 +163,21 @@ public sealed class RemoteIdentityHttpTests
             Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.SetRoleAsync(adminPrincipal, managedId, BuiltInRoles.ReadOnly, token)).Status);
             Assert.AreEqual(AccountOperationStatus.InvalidCredentials, (await accountManagement.ResetTwoFactorAsync(adminPrincipal, managedId, "wrong-password", token)).Status);
             Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.ResetTwoFactorAsync(adminPrincipal, managedId, "Admin-Password-123", token)).Status);
-            Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.IssuePasswordResetAsync(adminPrincipal, managedId, token)).Result.Status);
+            var passwordOperations = scope.ServiceProvider.GetRequiredService<AccountPasswordOperations>();
+            Assert.AreEqual(InitialAdministratorStatus.InvalidSetupToken, (await passwordOperations.CreateAsync("bad", "another-admin", "Admin-Password-123", token)).Status);
+            Assert.AreEqual(InitialAdministratorStatus.AlreadyInitialized, (await passwordOperations.CreateAsync("test-only-bootstrap-secret-with-adequate-length", "another-admin", "Admin-Password-123", token)).Status);
+            var reset = await accountManagement.IssuePasswordResetAsync(adminPrincipal, managedId, token);
+            Assert.AreEqual(AccountOperationStatus.Success, reset.Result.Status);
+            Assert.IsFalse(await passwordOperations.RedeemAsync("renamed-reader", "bad", "Initial-Password-123", token));
+            Assert.IsTrue(await passwordOperations.RedeemAsync("renamed-reader", reset.Code!, "Initial-Password-123", token));
+            var managedUser = await users.FindByIdAsync(managedId.ToString("D"));
+            var managedPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(options.ClaimsIdentity.UserIdClaimType, managedId.ToString("D")),
+                new Claim(options.ClaimsIdentity.SecurityStampClaimType, (await users.GetSecurityStampAsync(managedUser!))!)
+            ], "test"));
+            Assert.AreEqual(AccountOperationStatus.Success, (await passwordOperations.ChangeAsync(managedPrincipal, "Initial-Password-123", "Changed-Password-456", token)).Status);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(async () => await passwordOperations.ChangeAsync(managedPrincipal, "Changed-Password-456", "Another-Password-789", token));
+            Assert.AreEqual(6, passwordOperationRequests);
             Assert.AreEqual(AccountOperationStatus.Success, (await accountManagement.DeleteAsync(adminPrincipal, managedId, token)).Status);
             Assert.IsNull(await accountManagement.GetAsync(adminPrincipal, managedId, token));
             var issued = await management.IssueAsync(adminPrincipal, "remote-managed", false, 30, "Admin-Password-123", token);

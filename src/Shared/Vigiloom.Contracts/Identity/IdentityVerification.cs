@@ -14,3 +14,6 @@ public sealed record CredentialListRequest(IdentityActor Actor, int Page);
 public sealed record CredentialIssueRequest(IdentityActor Actor, string Name, bool CanWrite, int Days, string Password);
 public sealed record CredentialRevokeRequest(IdentityActor Actor, Guid Id, string Password);
 public sealed record AccountManagementRequest(IdentityActor Actor, Guid Id = default, int Page = 1, string? UserName = null, string? Role = null, string? Password = null);
+public sealed record InitialAdministratorRequest(string? SetupToken, string UserName, string Password);
+public sealed record RedeemPasswordRequest(string UserName, string Code, string Password);
+public sealed record ChangePasswordRequest(IdentityActor Actor, string CurrentPassword, string NewPassword);

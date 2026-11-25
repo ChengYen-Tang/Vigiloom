@@ -9,3 +9,5 @@ cannot decrypt previously stored two-factor secrets.
 
 The Identity service and its `/internal/identity` endpoints are for the
 restricted internal network and must not be exposed by the public gateway.
+For initial setup, configure `Vigiloom:SetupToken` on the Identity service;
+the Web host forwards the administrator's submitted value for verification.
