@@ -437,4 +437,17 @@
   <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>设置已被其他操作变更，请刷新后再试。</value></data>
   <data name="保存設定已儲存。" xml:space="preserve"><value>保存设置已保存。</value></data>
   <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>预览已过期或天数已变更，请重新预览。</value></data>
+  <data name="{0} 收集配額" xml:space="preserve"><value>{0} 收集配额</value></data>
+  <data name="設定各來源與平台共同使用的收集速率。" xml:space="preserve"><value>设置各来源与平台共同使用的收集速率。</value></data>
+  <data name="{0} 接收功能尚未完成；設定會在接收功能啟用後套用。" xml:space="preserve"><value>{0} 接收功能尚未完成；设置会在接收功能启用后应用。</value></data>
+  <data name="收集上限" xml:space="preserve"><value>收集上限</value></data>
+  <data name="每來源指經認證的應用來源與服務組合；" xml:space="preserve"><value>每来源指经认证的应用来源与服务组合；</value></data>
+  <data name="來源是經認證的主機或應用來源；" xml:space="preserve"><value>来源是经认证的主机或应用来源；</value></data>
+  <data name="平台上限由所有來源共用。突發上限是短時間可接收的最大筆數。" xml:space="preserve"><value>平台上限由所有来源共用。突发上限是短时间可接收的最大笔数。</value></data>
+  <data name="每來源速率（筆／秒）" xml:space="preserve"><value>每来源速率（笔／秒）</value></data>
+  <data name="每來源突發上限（筆）" xml:space="preserve"><value>每来源突发上限（笔）</value></data>
+  <data name="全平台速率（筆／秒）" xml:space="preserve"><value>全平台速率（笔／秒）</value></data>
+  <data name="全平台突發上限（筆）" xml:space="preserve"><value>全平台突发上限（笔）</value></data>
+  <data name="請輸入大於零的數值。" xml:space="preserve"><value>请输入大于零的数值。</value></data>
+  <data name="{0} 配額設定已儲存。" xml:space="preserve"><value>{0} 配额设置已保存。</value></data>
 </root>

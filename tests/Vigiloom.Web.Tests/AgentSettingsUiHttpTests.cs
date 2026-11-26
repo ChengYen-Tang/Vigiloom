@@ -558,6 +558,24 @@ public sealed class AgentSettingsUiHttpTests
             Assert.IsNotNull(initial);
             Assert.AreEqual(20, initial.SourceRate);
             using (var denied = await admin.PutAsJsonAsync("/api/v1/log-quota/", initial, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishLog = await admin.GetAsync("/settings/log-quota", token))
+            {
+                var englishText = await BodyTextAsync(englishLog, token);
+                Assert.Contains("Log ingestion quota", englishText);
+                Assert.Contains("authenticated host or application source", englishText);
+            }
+            using (var englishTrace = await admin.GetAsync("/settings/trace-quota", token))
+            {
+                var englishText = await BodyTextAsync(englishTrace, token);
+                Assert.Contains("Trace ingestion quota", englishText);
+                Assert.Contains("authenticated application source and service pair", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync("/settings/log-quota", token))
+                Assert.Contains("Log 收集配额", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await admin.GetAsync("/settings/log-quota", token);
             var fields = await FieldsAsync(page, token, "log-quota");
             fields["Form.SourceRate"] = "35";
