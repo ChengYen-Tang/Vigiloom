@@ -337,6 +337,11 @@ builder.Services.AddScoped<AgentMetricConfiguration>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentMetricSettings>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentMetricConfiguration>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentSettings>());
 builder.Services.AddScoped<HostLogConfiguration>();
+builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteHostLogSettings>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IHostLogConfiguration>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<HostLogConfiguration>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteHostLogSettings>());
 builder.Services.AddScoped<AgentPackageQuery>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
@@ -394,6 +399,11 @@ builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
     return new PackageLibraryTransport(directory);
 });
 builder.Services.AddScoped<HostLogMonitoring>();
+builder.Services.AddScoped<IHostLogMonitoring>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<HostLogMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
+builder.Services.AddHttpClient<Vigiloom.Web.LogQuota.LogQuotaReader>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteHostLogs>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))

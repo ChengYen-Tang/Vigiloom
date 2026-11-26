@@ -70,6 +70,7 @@ builder.Services.AddScoped<HostQueueCapacity>();
 builder.Services.AddScoped<HostMetricConfiguration>();
 builder.Services.AddScoped<HostMonitoringThresholds>();
 builder.Services.AddScoped<HostAuditFeed>();
+builder.Services.AddScoped<HostMonitoringLogConfiguration>();
 builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostMetricReader>();
 builder.Services.AddScoped<HostOwnedMetricRetentionSettings>();
@@ -95,6 +96,11 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
 builder.Services.AddHttpClient("resources", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient("operations", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<IRecordedAgentTargetReader, RecordedAgentTargets>((services, client) =>
@@ -128,7 +134,8 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
-    context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings"), agent => agent.UseMiddleware<AgentAccess>());
+    context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
@@ -136,6 +143,7 @@ app.MapHostQueueCapacityEndpoints();
 app.MapHostMetricSettingsEndpoints();
 app.MapHostThresholdEndpoints();
 app.MapHostAuditEndpoints();
+app.MapHostLogSettingsEndpoints();
 app.MapHostAgentStatusEndpoints();
 app.MapHostMetricEndpoints();
 app.MapHostMetricRetentionEndpoints();

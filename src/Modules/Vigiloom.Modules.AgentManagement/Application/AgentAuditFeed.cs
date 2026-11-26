@@ -20,7 +20,7 @@ public sealed class HostAuditFeed(IDbContextFactory<HostMonitoringDbContext> con
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
-        if (source is not (AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds))
+        if (source is not (AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds or AuditFeedSource.HostLogSources))
             throw new ArgumentException("Unsupported host audit source.");
         await using var db = await contexts.CreateDbContextAsync(token);
         return await AgentAuditFeedCore.QueryAsync(db, source, query, token);
