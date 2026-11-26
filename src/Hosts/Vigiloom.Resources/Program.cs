@@ -46,6 +46,7 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(
 builder.Services.AddScoped<DevicePingSource>();
 builder.Services.AddScoped<DeviceAgentSource>();
 builder.Services.AddScoped<GroupMembersReader>();
+builder.Services.AddScoped<ServiceGroupsReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
@@ -99,6 +100,8 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
+internalApi.MapGet("/application-services/{id:guid}/groups", (Guid id, ServiceGroupsReader source, CancellationToken token) =>
+    source.ReadAsync(id, token));
 internalApi.MapGet("/publications/groups/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
     await policies.GroupAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapGet("/publications/groups/{id:guid}/summary", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
