@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在載入公開設定…" xml:space="preserve"><value>Loading publication settings…</value></data>
+  <data name="找不到資源或已無法存取。" xml:space="preserve"><value>Resource not found or no longer accessible.</value></data>
+  <data name="目前狀態：" xml:space="preserve"><value>Current status: </value></data>
+  <data name="改為不公開後，訪客之後將無法取得此資源。" xml:space="preserve"><value>Visitors cannot access this resource after it is made private.</value></data>
+  <data name="公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。" xml:space="preserve"><value>Public history is not ready. Visitors cannot view it yet; save the settings again later.</value></data>
+  <data name="公開狀態" xml:space="preserve"><value>Visibility</value></data>
+  <data name="不公開（僅登入後可查看）" xml:space="preserve"><value>Private (visible after sign-in)</value></data>
+  <data name="公開（允許訪客查看）" xml:space="preserve"><value>Public (visible to visitors)</value></data>
+  <data name="公開顯示名稱" xml:space="preserve"><value>Public display name</value></data>
+  <data name="名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。" xml:space="preserve"><value>The name cannot contain an IP address or overly complex symbol combinations. Make sure it is suitable for public display.</value></data>
+  <data name="公開顯示內容" xml:space="preserve"><value>Public content</value></data>
+  <data name="僅顯示簡易狀態" xml:space="preserve"><value>Simple status only</value></data>
+  <data name="訪客可查看目前的服務狀態。" xml:space="preserve"><value>Visitors can view the current service status.</value></data>
+  <data name="包含簡易每日狀態歷史" xml:space="preserve"><value>Include daily status history</value></data>
+  <data name="顯示啟用後最多 90 天的狀態與可用率。" xml:space="preserve"><value>Show up to 90 days of status and uptime after enabling.</value></data>
+  <data name="包含狀態變更時間" xml:space="preserve"><value>Include status change times</value></data>
+  <data name="除每日摘要外，也公開簡易狀態變更的時間。" xml:space="preserve"><value>Also publish status change times alongside daily summaries.</value></data>
+  <data name="切換公開歷史選項後，從設定生效時重新累積，不公開之前的歷史；IP、日誌與追蹤等進階資訊不會公開。" xml:space="preserve"><value>Changing public history options starts a new history from the effective time. Earlier history, IP addresses, logs and traces are not published.</value></data>
+  <data name="公開範本" xml:space="preserve"><value>Publication template</value></data>
+  <data name="請選擇公開範本" xml:space="preserve"><value>Select a publication template</value></data>
+  <data name="基礎公開設定" xml:space="preserve"><value>Basic publication settings</value></data>
+  <data name="（預設）" xml:space="preserve"><value> (default)</value></data>
+  <data name="原範本已無法使用，請重新選擇" xml:space="preserve"><value>The previous template is unavailable. Select another.</value></data>
+  <data name="載入更多範本" xml:space="preserve"><value>Load more templates</value></data>
+  <data name="重試載入" xml:space="preserve"><value>Retry</value></data>
+  <data name="公開預覽" xml:space="preserve"><value>Public preview</value></data>
+  <data name="目前選擇不公開，訪客不會看到此資源。" xml:space="preserve"><value>Private is selected; visitors will not see this resource.</value></data>
+  <data name="請選擇可用的公開範本後查看預覽。" xml:space="preserve"><value>Select an available publication template to preview.</value></data>
+  <data name="請輸入公開名稱" xml:space="preserve"><value>Enter a public name</value></data>
+  <data name="每日狀態歷史（最多 90 天）" xml:space="preserve"><value>Daily status history (up to 90 days)</value></data>
+  <data name="也公開簡易狀態的變更時間。" xml:space="preserve"><value>Status change times are also public.</value></data>
+  <data name="公開頁顯示啟用後的每日摘要。" xml:space="preserve"><value>The public page shows daily summaries after enabling.</value></data>
+  <data name="此範本的歷史尚未就緒；請至範本管理重新預覽並確認設定。" xml:space="preserve"><value>History for this template is not ready. Preview and confirm it again in template management.</value></data>
+  <data name="套用後從設定生效時開始累積可公開的歷史。" xml:space="preserve"><value>Public history starts accumulating when the settings take effect.</value></data>
+  <data name="目前無法取得可公開的歷史預覽。" xml:space="preserve"><value>Public history preview is currently unavailable.</value></data>
+  <data name="目前沒有可顯示的歷史資料。" xml:space="preserve"><value>No history is available to display.</value></data>
+  <data name="最新歷史：" xml:space="preserve"><value>Latest history: </value></data>
+  <data name="無延遲資料" xml:space="preserve"><value>No latency data</value></data>
+  <data name="歷史為已結束的五分鐘平均延遲，資料可能持續彙整。" xml:space="preserve"><value>History shows completed five-minute average latency; data may still be aggregating.</value></data>
+  <data name="只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。" xml:space="preserve"><value>Only public devices, services and their counts are shown. Groups do not change members’ publication settings.</value></data>
+  <data name="儲存中…" xml:space="preserve"><value>Saving…</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="返回" xml:space="preserve"><value>Back</value></data>
+  <data name="不公開" xml:space="preserve"><value>Private</value></data>
+  <data name="已設定公開，範本狀態暫時無法確認" xml:space="preserve"><value>Public is configured, but template status cannot currently be verified</value></data>
+  <data name="已設定公開，但範本失效，目前訪客不可見" xml:space="preserve"><value>Public is configured, but the template is invalid and visitors cannot see it</value></data>
+  <data name="公開中" xml:space="preserve"><value>Public</value></data>
+  <data name="已設定公開，但政策無效，目前訪客不可見" xml:space="preserve"><value>Public is configured, but the policy is invalid and visitors cannot see it</value></data>
+  <data name="範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。" xml:space="preserve"><value>Templates are unavailable. You can still make the resource private or select basic settings.</value></data>
+  <data name="預覽暫時無法讀取，仍可變更公開設定。" xml:space="preserve"><value>Preview is unavailable. You can still change publication settings.</value></data>
+  <data name="登入已過期或權限已變更，請重新登入。" xml:space="preserve"><value>Your session expired or permissions changed. Please sign in again.</value></data>
+  <data name="無法載入公開設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load publication settings. Refresh and try again.</value></data>
+  <data name="請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。" xml:space="preserve"><value>Enter a public name without an IP address or overly complex symbols, and select a publication template.</value></data>
+  <data name="公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。" xml:space="preserve"><value>Settings saved, but history is not ready. Save again later.</value></data>
+  <data name="公開設定已儲存。" xml:space="preserve"><value>Publication settings saved.</value></data>
+  <data name="公開設定已儲存，預覽暫時無法更新。" xml:space="preserve"><value>Settings saved, but preview cannot currently be refreshed.</value></data>
+  <data name="設定已變更或資源已封存，請重新整理後再試。" xml:space="preserve"><value>Settings changed or the resource was archived. Refresh and try again.</value></data>
+  <data name="公開名稱或範本無效，請檢查後再試。" xml:space="preserve"><value>Invalid public name or template. Check and try again.</value></data>
+  <data name="資源不存在或無法儲存，請重新整理。" xml:space="preserve"><value>The resource does not exist or could not be saved. Please refresh.</value></data>
+  <data name="無法確認儲存結果，請重新整理後再試。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and try again.</value></data>
+  <data name="可達" xml:space="preserve"><value>Reachable</value></data>
+  <data name="不可達" xml:space="preserve"><value>Unreachable</value></data>
+  <data name="正常" xml:space="preserve"><value>Healthy</value></data>
+  <data name="降級" xml:space="preserve"><value>Degraded</value></data>
+  <data name="異常" xml:space="preserve"><value>Unhealthy</value></data>
+  <data name="未知或尚無資料" xml:space="preserve"><value>Unknown or no data</value></data>
+  <data name="名稱與狀態會公開" xml:space="preserve"><value>Name and status will be public</value></data>
+  <data name="，包含目前延遲" xml:space="preserve"><value>, including current latency</value></data>
+  <data name="及觀測時間" xml:space="preserve"><value> and observation time</value></data>
+  <data name="；" xml:space="preserve"><value>; </value></data>
+  <data name="歷史平均延遲最多公開 {0} 天。" xml:space="preserve"><value>Average latency history is public for up to {0} days.</value></data>
+  <data name="不公開歷史。" xml:space="preserve"><value>History is private.</value></data>
+  <data name=" IP 和主機進階資料不會公開。" xml:space="preserve"><value> IP addresses and advanced host data are private.</value></data>
+  <data name="名稱與簡易狀態會公開；" xml:space="preserve"><value>Name and simple status will be public; </value></data>
+  <data name="啟用後的每日歷史及狀態變更時間也會公開，最多 90 天。" xml:space="preserve"><value>Daily history and status change times after enabling are public for up to 90 days.</value></data>
+  <data name="啟用後的每日狀態歷史也會公開，最多 90 天。" xml:space="preserve"><value>Daily status history after enabling is public for up to 90 days.</value></data>
+  <data name="不公開狀態歷史。" xml:space="preserve"><value>Status history is private.</value></data>
+  <data name=" IP、日誌與追蹤等進階資訊不會公開。" xml:space="preserve"><value> IP addresses, logs, traces and other advanced data are private.</value></data>
+</root>
