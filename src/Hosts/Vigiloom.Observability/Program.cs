@@ -4,15 +4,28 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Observability;
+using Vigiloom.Observability.Authentication;
+using Vigiloom.Observability.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 var database = builder.Configuration.GetConnectionString("Observability")
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required.");
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => database, "service", pooled: true);
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<SourceCredentials>();
+builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
+    () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
+    provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
+builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
+builder.Services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ServiceSourceCredentialHandler>(
+    ServiceSourceCredentialHandler.SchemeName, _ => { });
+builder.Services.AddAuthorization(options => options.AddPolicy("ServiceSource", policy =>
+    policy.AddAuthenticationSchemes(ServiceSourceCredentialHandler.SchemeName).RequireAuthenticatedUser()));
 builder.Services.AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
@@ -31,6 +44,15 @@ builder.Services.AddHostedService<HealthPolicyWorker>();
 builder.Services.AddHostedService<HealthExpiryWorker>();
 builder.Services.AddHostedService<WorkDispatcher>();
 var app = builder.Build();
+var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwarded is not null) app.UseForwardedHeaders(forwarded);
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(new { SourceId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value });
+}).RequireAuthorization("ServiceSource");
 var internalApi = app.MapGroup("/internal/v1");
 internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
     IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
