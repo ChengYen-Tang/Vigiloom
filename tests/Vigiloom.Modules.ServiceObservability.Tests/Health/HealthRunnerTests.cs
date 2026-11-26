@@ -29,6 +29,42 @@ namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 public sealed class HealthRunnerTests(TestContext context)
 {
     [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task MigrationPreservesHealthEvidenceAndPolicyInvalidation() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (source, outer) =>
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+            {
+                var sourceOptions = Options(source.ConnectionString);
+                var targetOptions = Options(target.ConnectionString);
+                var id = await SeedAsync(sourceOptions, 12345, token);
+                await using (var targetDb = new ServiceObservabilityDbContext(targetOptions)) await targetDb.Database.MigrateAsync(token);
+                await using (var db = new ServiceObservabilityDbContext(sourceOptions))
+                {
+                    var sourceRow = await db.Sources.SingleAsync(token);
+                    var service = await db.Services.SingleAsync(token);
+                    var check = await db.HealthTargets.SingleAsync(token);
+                    var policy = await db.HealthNetworkPolicies.SingleAsync(token);
+                    var schedule = await db.HealthSchedules.SingleAsync(token);
+                    var observed = DateTimeOffset.UtcNow.AddSeconds(-10);
+                    schedule.SetEvaluation(1, observed, 1, 1, observed, observed);
+                    schedule.SetVersions(sourceRow.Version, service.Version, null, check.Version, policy.Version);
+                    policy.ReplaceNetworks(["10.0.0.0/8"], observed.AddSeconds(1));
+                    await db.SaveChangesAsync(token);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthSchedules SET Generation = 42, LeaseUntil = SYSDATETIMEOFFSET() WHERE TargetId = {id}", token);
+                }
+                await ObservabilityDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
+                await using var verify = new ServiceObservabilityDbContext(targetOptions);
+                var result = await verify.HealthSchedules.SingleAsync(token);
+                CollectionAssert.AreEqual((await verify.Sources.SingleAsync(token)).Version, result.SourceVersion);
+                CollectionAssert.AreEqual((await verify.Services.SingleAsync(token)).Version, result.ServiceVersion);
+                CollectionAssert.AreEqual((await verify.HealthTargets.SingleAsync(token)).Version, result.TargetVersion);
+                CollectionAssert.AreEqual(new byte[8], result.NetworkVersion);
+                Assert.AreEqual(42L, result.LastTransitionGeneration);
+                Assert.IsNull(result.LeaseUntil);
+                Assert.AreEqual(1, await verify.HealthStateIntervals.CountAsync(token));
+            }, outer), context.CancellationToken);
+
+    [TestMethod]
     public Task ConfirmedHealthChanges_CreateAlertsWithoutTreatingUnknownAsRecovery() =>
         ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
