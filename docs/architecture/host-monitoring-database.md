@@ -10,4 +10,4 @@ Configure Host Monitoring with `ConnectionStrings:HostMonitoring`, the shared `C
 
 Multiple Host instances use the same Host database and Hangfire storage. They also need a shared persistent Data Protection key ring for settings previews; see [identity and access](identity-and-access.md). When SignalR uses multiple instances, configure `ConnectionStrings:SignalR` for the shared backplane so a notification can reach an Agent connected to another instance.
 
-The complete Agent batch cutover and security consumer depend on the remaining REQ-47 and REQ-49 work; initializing or copying the database alone does not complete that cutover.
+The Gateway keeps Agent batches on the existing receiver until REQ-49 supplies the security consumer and the end-to-end flow is verified. After that, set `ReverseProxy:Routes:agent-batches:ClusterId` to `host-monitoring` to route batches to Host. Initializing or copying the database alone does not complete the cutover.

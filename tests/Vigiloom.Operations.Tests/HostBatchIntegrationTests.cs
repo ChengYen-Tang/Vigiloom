@@ -1,9 +1,12 @@
 extern alias HostMonitoring;
+extern alias GatewayHost;
 
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -304,6 +307,27 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             }
             using (var response = await proxyClient.GetAsync("/api/v1/agent-management/settings/platform", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+
+            var identityBuilder = WebApplication.CreateBuilder();
+            identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+            await using var identityService = identityBuilder.Build();
+            identityService.MapGet("/api/v1/agent/identity", (HttpContext ctx) => ctx.Request.Headers.Authorization == "Bearer valid"
+                ? Results.Ok(new { identity.AgentId, identity.DeviceId }) : Results.Unauthorized());
+            await identityService.StartAsync(token);
+            var identityAddress = identityService.Urls.Single();
+            using var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(web =>
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = proxyClient.BaseAddress!.ToString(),
+                    ["ReverseProxy:Routes:agent-batches:ClusterId"] = "host-monitoring",
+                    ["Vigiloom:Gateway:AgentIdentityAddress"] = identityAddress
+                })));
+            using var gatewayClient = gateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+            var forwardedPoint = new AgentMetricPoint(Guid.CreateVersion7(), nowUtc, AgentMetricKind.CpuTotalPercent, "gateway", null, 33);
+            var forwardedBatch = AgentMetricBatchCodec.Serialize(new(AgentMetricBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc, [forwardedPoint]));
+            using (var forwarded = await SendAsync(gatewayClient, forwardedBatch, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, forwarded.StatusCode);
+            await using var verifyForwarded = new HostMonitoringDbContext(hostOptions);
+            Assert.IsTrue(await verifyForwarded.HostMetrics.AnyAsync(x => x.MessageId == forwardedPoint.MessageId && x.Value == 33, token));
         }, outerToken), context.CancellationToken);
 
     private static async Task MigrateAsync<T>(IDbContextFactory<T> factory, CancellationToken token) where T : DbContext
