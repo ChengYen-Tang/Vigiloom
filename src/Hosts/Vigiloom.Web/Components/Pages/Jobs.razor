@@ -6,11 +6,12 @@
 @using Vigiloom.Web.Authentication
 @using Vigiloom.Web.Diagnostics
 @using Vigiloom.Modules.AlertingOperations.Application
-@inject SchedulingOverview Overview
+@inject JobOverview Overview
 @inject OutboxScheduleManager Schedule
 @inject DashboardAuditStore Audit
 @inject ILogger<Jobs> Logger
 @inject PlatformStatus Platform
+@inject IConfiguration Configuration
 
 <PageTitle>背景工作 - Vigiloom</PageTitle>
 <main class="jobs-page">
@@ -28,7 +29,7 @@
         {
             <p>觀察時間：@FormatTime(platform.ObservedAt)；各項狀態彼此獨立。</p>
             <dl class="platform-status">
-                <div><dt>資料庫連線</dt><dd>@StateText(platform.Database)</dd></div>
+                <div><dt>@(string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]) ? "資料庫連線" : "Operations 資料庫連線")</dt><dd>@StateText(platform.Database)</dd></div>
                 <div><dt>排程服務心跳</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
                 <div><dt>Agent 批次接收</dt><dd>@AgentBatchText(platform)</dd></div>
                 <div><dt>應用遙測接收</dt><dd>
@@ -106,7 +107,10 @@
         </section>
         <section class="jobs-panel jobs-settings" aria-labelledby="schedule-title">
             <h2 id="schedule-title">背景工作檢查頻率</h2>
-            <p>設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。</p>
+            @if (string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]))
+            { <p>設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。</p> }
+            else
+            { <p>此設定適用於原平台的背景資料處理排程，不影響 Operations 服務的工作檢查或設備 Ping 頻率。</p> }
             @if (!scheduleApplied && !refreshRequired) { <p role="status">目前排程尚未套用；背景服務啟動後會自動同步。</p> }
             <EditForm Model="Input" FormName="job-schedule" method="post" OnValidSubmit="SaveAsync">
                 <InputHidden @bind-Value="Input.Version" />

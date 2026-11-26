@@ -1,3 +1,5 @@
+extern alias WorkerHostAssembly;
+
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -10,6 +12,7 @@ using Temporalio.Client;
 using Temporalio.Exceptions;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Persistence;
@@ -95,6 +98,7 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 var device = Guid.CreateVersion7(); var service = Guid.CreateVersion7(); var targetId = Guid.CreateVersion7();
                 var ping = new PingTransition(device, "router.example", 5, audit.OccurredAt, Reachability.Reachable, Reachability.Unreachable, new("Router", []));
                 var health = new HealthTransition(targetId, service, null, 6, ServiceHealthState.Unhealthy, audit.OccurredAt, "Orders", "production");
+                var securityNotification = new NotificationRequest(Guid.CreateVersion7(), "sigma", audit.OccurredAt, "Security alert", new string('測', 25000), device);
                 await using (var resources = new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
                     .UseSqlServer(source.ConnectionString).Options))
                 {
@@ -102,6 +106,10 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                     var work = scope.ServiceProvider.GetRequiredService<TemporalWorkWriter>();
                     var sink = new TemporalPingTransitionSink(scope.ServiceProvider.GetRequiredService<OutboxWriter>(), host.Services.GetRequiredService<IConfiguration>());
                     await sink.RecordAsync(ping, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+                    var writerType = typeof(WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost).Assembly.GetType("Vigiloom.Worker.Hosting.TemporalNotificationWriter", throwOnError: true)!;
+                    var temporalHandler = scope.ServiceProvider.GetServices<IOutboxHandler>().Single(handler => handler.MessageType == TemporalOutboxHandler.Type);
+                    var notificationWriter = (INotificationWriter)Activator.CreateInstance(writerType, new OutboxWriter([temporalHandler], maxPayloadLength: null), host.Services.GetRequiredService<IConfiguration>())!;
+                    await notificationWriter.WriteAsync(securityNotification, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
                     deliveryIds.Add(await work.WriteAsync(resources, queue, new(HealthTransitionDelivery.Kind, JsonSerializer.Serialize(new HealthTransitionDelivery(health, 0, []))), token));
                     await transaction.CommitAsync(token);
                 }
@@ -128,7 +136,8 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 await using var operations = await targetFactory.CreateDbContextAsync(token);
                 Assert.IsTrue(await operations.Set<PingAlert>().AnyAsync(item => item.DeviceId == device && item.RecoveredAt == null, token));
                 Assert.IsTrue(await operations.Set<ServiceHealthAlert>().AnyAsync(item => item.ServiceId == service && item.RecoveredAt == null, token));
-                Assert.AreEqual(2, await operations.Set<Notification>().CountAsync(token));
+                Assert.AreEqual(3, await operations.Set<Notification>().CountAsync(token));
+                Assert.IsTrue(await operations.Set<Notification>().AnyAsync(item => item.MessageId == securityNotification.MessageId, token));
             }
             finally
             {

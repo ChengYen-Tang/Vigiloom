@@ -33,9 +33,11 @@ public sealed class LineSettingsBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
         await page.GetByLabel("Channel access token").FillAsync("private-access-token");
         await page.GetByLabel("Channel secret").FillAsync("private-channel-secret");
+        await page.Locator("#line-aggregation").FillAsync("25");
         await page.GetByLabel("啟用 LINE 通知").CheckAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定", Exact = true }).ClickAsync();
         await page.GetByText("設定已儲存。").WaitForAsync();
+        Assert.AreEqual("25", await page.Locator("#line-aggregation").InputValueAsync());
         Assert.AreEqual("", await page.GetByLabel("Channel access token").InputValueAsync());
         Assert.DoesNotContain("private-access-token", await page.Locator("body").InnerTextAsync());
         await page.GetByLabel("群組名稱").FillAsync("維運群組");
