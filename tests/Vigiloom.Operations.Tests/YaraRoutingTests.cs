@@ -22,6 +22,7 @@ using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -39,6 +40,13 @@ public sealed class YaraRoutingTests(TestContext context)
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using (var db = new SecurityAnalysisDbContext(options)) await db.Database.MigrateAsync(token);
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var anotherDevice = Guid.CreateVersion7();
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                db.InventorySources.Add(new InventorySourceState(new(identity.AgentId, identity.DeviceId, 1), InventorySource.HostSystem));
+                db.InventorySources.Add(new InventorySourceState(new(Guid.CreateVersion7(), anotherDevice, 1), InventorySource.LinuxDpkg));
+                await db.SaveChangesAsync(token);
+            }
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Temporal:Enabled", "false");
@@ -52,6 +60,11 @@ public sealed class YaraRoutingTests(TestContext context)
             var inventoryPath = $"/internal/v1/devices/{identity.DeviceId:D}/inventory/";
             var inventoryView = await securityClient.GetFromJsonAsync<DeviceInventoryView>(inventoryPath + $"?agentId={identity.AgentId:D}", token);
             Assert.AreEqual(identity.AgentId, inventoryView!.AgentId);
+            Assert.HasCount(1, inventoryView.Sources);
+            Assert.AreEqual(InventorySource.HostSystem, inventoryView.Sources[0].Source);
+            var otherInventory = await securityClient.GetFromJsonAsync<DeviceInventoryView>(
+                $"/internal/v1/devices/{anotherDevice:D}/inventory/?agentId={identity.AgentId:D}", token);
+            Assert.IsEmpty(otherInventory!.Sources);
             var until = DateTimeOffset.UtcNow;
             var query = $"from={Uri.EscapeDataString(until.AddDays(-1).ToString("O"))}&until={Uri.EscapeDataString(until.ToString("O"))}";
             var detectionPath = $"/internal/v1/devices/{identity.DeviceId:D}/detections/";
