@@ -298,6 +298,19 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             var saved = await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token);
             Assert.IsNotNull(saved);
+            var scopePage = $"/devices/{first.Id:D}/integrity-scopes";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(scopePage, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Integrity monitoring settings", text);
+                Assert.Contains("/srv/app", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(scopePage, token))
+                Assert.Contains("完整性监控设置", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
             using var firstResponse = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
             Assert.AreEqual(HttpStatusCode.OK, firstResponse.StatusCode);

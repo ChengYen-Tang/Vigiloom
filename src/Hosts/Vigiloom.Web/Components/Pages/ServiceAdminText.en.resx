@@ -1063,4 +1063,38 @@
   <data name="基準版本已變更，請回設備頁重新選擇。" xml:space="preserve"><value>The baseline version changed. Return to the device page and select again.</value></data>
   <data name="無法儲存說明，請檢查內容後再試。" xml:space="preserve"><value>Unable to save the note. Check its contents and try again.</value></data>
   <data name="無法儲存說明，請稍後再試。" xml:space="preserve"><value>Unable to save the note. Try again later.</value></data>
+  <data name="完整性監控設定" xml:space="preserve"><value>Integrity monitoring settings</value></data>
+  <data name="管理 Agent 要掃描的目錄與 Windows 登錄範圍；設定由 Agent 定期同步。" xml:space="preserve"><value>Manage directories and Windows registry scopes scanned by the Agent; settings synchronize periodically.</value></data>
+  <data name="無法載入設定，請稍後重試。" xml:space="preserve"><value>Unable to load settings. Try again later.</value></data>
+  <data name="找不到設備或監控範圍。" xml:space="preserve"><value>Device or monitoring scope not found.</value></data>
+  <data name="已設定的範圍" xml:space="preserve"><value>Configured scopes</value></data>
+  <data name="尚未設定監控範圍。" xml:space="preserve"><value>No monitoring scopes configured.</value></data>
+  <data name="新增範圍" xml:space="preserve"><value>Add scope</value></data>
+  <data name="新增監控範圍" xml:space="preserve"><value>Add monitoring scope</value></data>
+  <data name="編輯監控範圍" xml:space="preserve"><value>Edit monitoring scope</value></data>
+  <data name="僅保存路徑與雜湊，不收集檔案內容。請確認 Agent 對目標有讀取權限。" xml:space="preserve"><value>Only paths and hashes are stored; file contents are not collected. Ensure the Agent can read the target.</value></data>
+  <data name="目錄" xml:space="preserve"><value>Directory</value></data>
+  <data name="Windows 登錄" xml:space="preserve"><value>Windows registry</value></data>
+  <data name="完整路徑" xml:space="preserve"><value>Full path</value></data>
+  <data name="登錄檢視（僅 Windows 登錄）" xml:space="preserve"><value>Registry view (Windows registry only)</value></data>
+  <data name="64 位元" xml:space="preserve"><value>64-bit</value></data>
+  <data name="32 位元" xml:space="preserve"><value>32-bit</value></data>
+  <data name="排除項目（每行一個相對路徑樣式）" xml:space="preserve"><value>Exclusions (one relative path pattern per line)</value></data>
+  <data name="掃描間隔（秒，60–604800）" xml:space="preserve"><value>Scan interval (seconds, 60–604800)</value></data>
+  <data name="最多項目（1–20000）" xml:space="preserve"><value>Maximum entries (1–20000)</value></data>
+  <data name="單一檔案最大位元組（1–1073741824）" xml:space="preserve"><value>Maximum bytes per file (1–1073741824)</value></data>
+  <data name="單次掃描最大位元組（1–17179869184）" xml:space="preserve"><value>Maximum bytes per scan (1–17179869184)</value></data>
+  <data name="最大深度（1–64）" xml:space="preserve"><value>Maximum depth (1–64)</value></data>
+  <data name="啟用" xml:space="preserve"><value>Enable</value></data>
+  <data name="移除監控範圍" xml:space="preserve"><value>Remove monitoring scope</value></data>
+  <data name="停止後續掃描；過往紀錄依保存政策保留。" xml:space="preserve"><value>Stop future scans; past records are retained according to policy.</value></data>
+  <data name="我了解以上影響" xml:space="preserve"><value>I understand the effects above</value></data>
+  <data name="確認移除" xml:space="preserve"><value>Confirm removal</value></data>
+  <data name="設定已變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed. Refresh and try again.</value></data>
+  <data name="已達監控範圍數量上限。" xml:space="preserve"><value>The monitoring scope limit has been reached.</value></data>
+  <data name="設定無效，請檢查路徑、排除項目與各項範圍限制。" xml:space="preserve"><value>Invalid settings. Check paths, exclusions and limits.</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查設定。" xml:space="preserve"><value>Unable to confirm the save. Refresh and check settings.</value></data>
+  <data name="請先確認操作影響。" xml:space="preserve"><value>First confirm the effects of this action.</value></data>
+  <data name="設定已變更或找不到範圍，請重新整理後再試。" xml:space="preserve"><value>Settings changed or the scope was not found. Refresh and try again.</value></data>
+  <data name="無法確認移除結果，請重新整理並檢查設定。" xml:space="preserve"><value>Unable to confirm removal. Refresh and check settings.</value></data>
 </root>
