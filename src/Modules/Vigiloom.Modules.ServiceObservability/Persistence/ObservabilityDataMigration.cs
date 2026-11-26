@@ -9,6 +9,7 @@ public static class ObservabilityDataMigration
     private static readonly SqlTableDataMigration.TableMapping[] Tables =
     [
         new("service", "Sources", "service", "Sources", OptionalSourceColumns: ["IsSelf"]),
+        new("logquota", "TracePolicies", "logquota", "TracePolicies"),
         new("service", "Candidates", "service", "Candidates"),
         new("service", "Services", "service", "Services"),
         new("service", "Instances", "service", "Instances"),

@@ -93,6 +93,9 @@ builder.Services.AddScoped<PolicyAdministration>();
 builder.Services.AddScoped<TracePolicyAdministration>();
 builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
 builder.Services.AddScoped<TraceQuotaSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.LogQuota.TraceQuotaAccess>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<IdentityAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource>(provider =>
