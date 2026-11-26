@@ -9,6 +9,7 @@ namespace Vigiloom.Web.Publishing;
 internal sealed class RemoteNetworkPublicClient(HttpClient client)
 {
     public Task<PublicDevice?> DeviceAsync(Guid id, CancellationToken token) => GetAsync<PublicDevice>($"api/v1/public/devices/{id:D}/ping", token);
+    public Task<PublicDeviceHistory?> PreviewAsync(Guid id, CancellationToken token) => GetAsync<PublicDeviceHistory>($"internal/v1/ping/{id:D}/publication-preview", token);
     public async Task<PublicDevice[]> DevicesAsync(Guid[] ids, CancellationToken token)
     {
         using var response = await client.PostAsJsonAsync("internal/v1/public-ping", ids, token);
