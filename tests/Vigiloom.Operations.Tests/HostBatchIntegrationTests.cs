@@ -180,6 +180,20 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, savedThreshold.StatusCode);
             using (var evaluated = await client.PostAsJsonAsync("/internal/v1/host-threshold/query", series, token))
                 Assert.AreEqual(HostMetricThresholdState.Exceeded, (await evaluated.Content.ReadFromJsonAsync<HostMetricThresholdStatus>(cancellationToken: token))!.State);
+            var auditQuery = new OperationAuditQuery(nowUtc.AddMinutes(-5), nowUtc.AddMinutes(5));
+            foreach (var (source, action) in new[]
+            {
+                (AuditFeedSource.AgentSettings, AuditFeedAction.AgentSettingsChanged),
+                (AuditFeedSource.AgentQueueCapacity, AuditFeedAction.AgentQueueCapacityChanged),
+                (AuditFeedSource.AgentMetricSettings, AuditFeedAction.AgentMetricSettingsChanged),
+                (AuditFeedSource.HostMetricThresholds, AuditFeedAction.HostMetricThresholdChanged)
+            })
+            {
+                using var auditResponse = await client.PostAsJsonAsync("/internal/v1/audit/query", new AuditFeedRequest(source, auditQuery), token);
+                Assert.AreEqual(HttpStatusCode.OK, auditResponse.StatusCode);
+                var audit = await auditResponse.Content.ReadFromJsonAsync<AuditFeedPage>(cancellationToken: token);
+                Assert.IsTrue(audit!.Items.Any(x => x.Action == action && x.SubjectId == identity.DeviceId));
+            }
             var item = new AgentLogRecord(Guid.CreateVersion7(), nowUtc, "host event", null, null, null, null, null);
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc,
                 Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [item]);

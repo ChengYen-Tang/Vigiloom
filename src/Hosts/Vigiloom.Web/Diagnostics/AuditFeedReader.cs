@@ -9,7 +9,7 @@ using System.Security.Claims;
 namespace Vigiloom.Web.Diagnostics;
 
 /// <summary>Routes one source at a time to its owning module; existing audit API stays unchanged.</summary>
-internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditFeed devices, AgentAuditFeed agent, SchedulingAuditFeed scheduling, InventoryAuditFeed inventory)
+internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditFeed devices, AgentAuditFeed agent, SchedulingAuditFeed scheduling, InventoryAuditFeed inventory, IConfiguration configuration, IServiceProvider services)
 {
     public static AuditFeedSource? Parse(string? value) => value switch
     {
@@ -34,7 +34,11 @@ internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditF
         {
             AuditFeedSource.Accounts or AuditFeedSource.ApiCredentials => await identity.QueryAsync(principal, source, query, token),
             AuditFeedSource.Devices => await devices.QueryAsync(query, token),
-            AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources or AuditFeedSource.HostMetricThresholds => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.AgentIdentity or AuditFeedSource.HostLogSources => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds =>
+                string.IsNullOrWhiteSpace(configuration["Services:HostMonitoring:Url"])
+                    ? await agent.QueryAsync(source, query, token)
+                    : await services.GetRequiredService<RemoteHostAuditFeed>().QueryAsync(source, query, token),
             AuditFeedSource.Scheduling => Map(await scheduling.QueryAsync(query.From, query.To, query.Page, token)),
             AuditFeedSource.InventorySettings => await inventory.QueryAsync(query, token),
             _ => throw new ArgumentException("Unsupported audit source.", nameof(source))

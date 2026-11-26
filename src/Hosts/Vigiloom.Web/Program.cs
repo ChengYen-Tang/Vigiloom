@@ -117,6 +117,9 @@ builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Reten
 builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddScoped<DeviceAuditFeed>();
 builder.Services.AddScoped<AgentAuditFeed>();
+builder.Services.AddHttpClient<RemoteHostAuditFeed>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<InventoryAuditFeed>();
 builder.Services.AddScoped<AuditFeedReader>();
 builder.Services.AddScoped<IdentityAuditReader>();
