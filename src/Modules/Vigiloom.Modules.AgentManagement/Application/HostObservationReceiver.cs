@@ -3,13 +3,17 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Stores runtime or metric batches with their durable receipt.</summary>
-public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock, IHostLogSink? logs = null)
+public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock,
+    IHostLogSink? logs = null, IHostSecurityWorkWriter? security = null)
 {
     public async Task<BatchReceiptStatus> ReceiveAsync(RegisteredAgentIdentity identity, ReadOnlyMemory<byte> payload, CancellationToken token) =>
         (await ReceiveDetailedAsync(identity, payload, token)).Status;
@@ -21,6 +25,8 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         IReadOnlyList<AgentRuntimeMessage>? runtimeItems = null;
         IReadOnlyList<AgentMetricPoint>? metricItems = null;
         AgentLogBatch? logBatch = null;
+        string? securityKind = null;
+        var securityItems = 0;
         Guid batchId;
         DateTimeOffset enqueuedAt;
         if (AgentBatchCodec.TryRead(payload.Span, out var runtime))
@@ -40,6 +46,30 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             if (logs is null) return BatchReceiptStatus.CapacityExceeded;
             batchId = logBatch!.BatchId;
             enqueuedAt = logBatch.EnqueuedAt;
+        }
+        else if (InventoryChunkCodec.TryRead(payload.Span, out var inventory))
+        {
+            if (security is null) return BatchReceiptStatus.CapacityExceeded;
+            batchId = inventory!.BatchId;
+            enqueuedAt = inventory.EnqueuedAt;
+            securityItems = Math.Max(1, inventory.Items.Count);
+            securityKind = "inventory";
+        }
+        else if (IntegrityChunkCodec.TryRead(payload.Span, out var integrity))
+        {
+            if (security is null) return BatchReceiptStatus.CapacityExceeded;
+            batchId = integrity!.BatchId;
+            enqueuedAt = integrity.EnqueuedAt;
+            securityItems = Math.Max(1, integrity.Items.Count);
+            securityKind = "integrity";
+        }
+        else if (BaselineBatchCodec.TryRead(payload.Span, out var baseline))
+        {
+            if (security is null) return BatchReceiptStatus.CapacityExceeded;
+            batchId = baseline!.BatchId;
+            enqueuedAt = baseline.EnqueuedAt;
+            securityItems = baseline.Items.Count;
+            securityKind = "baseline";
         }
         else return BatchReceiptStatus.Invalid;
 
@@ -94,7 +124,8 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         }
 
         var ids = runtimeItems is not null ? runtimeItems.Select(item => item.MessageId).ToArray() :
-            metricItems is not null ? metricItems.Select(item => item.MessageId).ToArray() : logBatch!.Items.Select(item => item.MessageId).ToArray();
+            metricItems is not null ? metricItems.Select(item => item.MessageId).ToArray() :
+            logBatch is not null ? logBatch.Items.Select(item => item.MessageId).ToArray() : [];
         var runtimes = await db.RuntimeObservations.AsNoTracking().Where(x => x.AgentId == agentId && ids.Contains(x.MessageId))
             .ToDictionaryAsync(x => x.MessageId, token);
         var points = await db.HostMetrics.AsNoTracking().Where(x => x.AgentId == agentId && ids.Contains(x.MessageId))
@@ -113,7 +144,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
                 if (runtimes.ContainsKey(item.MessageId) || logIds.Contains(item.MessageId) || points.TryGetValue(item.MessageId, out var found) && !found.Matches(item))
                     return BatchReceiptStatus.Conflict;
         }
-        else if (runtimes.Count != 0 || points.Count != 0) return BatchReceiptStatus.Conflict;
+        else if (logBatch is not null && (runtimes.Count != 0 || points.Count != 0)) return BatchReceiptStatus.Conflict;
 
         long receiptCount;
         long receiptBytes;
@@ -135,7 +166,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         state.ReplayClockFloor = policyTime;
         state.LastReplayIssue = null;
         state.LastReplayIssueAt = null;
-        var receipt = new ReceivedBatch(agentId, batchId, digest, enqueuedAt, now, ids.Length, payload.Length,
+        var receipt = new ReceivedBatch(agentId, batchId, digest, enqueuedAt, now, securityKind is null ? ids.Length : securityItems, payload.Length,
             policyTime, policyTime.AddDays(policy.ReceiptRetentionDays));
         db.ReceivedBatches.Add(receipt);
         if (logBatch is not null) db.Entry(receipt).Property("PendingDelivery").CurrentValue = true;
@@ -149,10 +180,15 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             for (var i = 0; i < metricItems!.Count; i++)
                 if (!points.ContainsKey(metricItems[i].MessageId)) db.HostMetrics.Add(new HostMetric(agentId, batchId, i, metricItems[i], now));
         }
+        else if (logBatch is not null)
+        {
+            foreach (var item in logBatch.Items)
+                if (!logIds.Contains(item.MessageId)) db.HostLogMessageIds.Add(new HostLogMessageId { AgentId = agentId, MessageId = item.MessageId, ReceivedAt = now });
+        }
         else
         {
-            foreach (var item in logBatch!.Items)
-                if (!logIds.Contains(item.MessageId)) db.HostLogMessageIds.Add(new HostLogMessageId { AgentId = agentId, MessageId = item.MessageId, ReceivedAt = now });
+            db.HostSecurityBatches.Add(new HostSecurityBatch { AgentId = agentId, BatchId = batchId, DeviceId = identity.DeviceId,
+                DeviceGeneration = identity.DeviceGeneration, Kind = securityKind!, Payload = payload.ToArray(), ReceivedAt = now });
         }
         await db.SaveChangesAsync(token);
         if (logBatch is null) state.RecordCommittedBatch(receipt);
@@ -162,6 +198,8 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             state.InboxReceiptPayloadBytes = checked(receiptBytes + payload.Length);
         }
         await db.SaveChangesAsync(token);
+        if (securityKind is not null)
+            await security!.WriteAsync(db, new HostSecurityBatchReady(agentId, batchId, identity.DeviceId, identity.DeviceGeneration, securityKind), token);
         await transaction.CommitAsync(token);
         return logBatch is null ? BatchReceiptStatus.Accepted : await DeliverLogAsync(identity, logBatch, digest, token);
     }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Infrastructure.Scheduling.Persistence;
 
 namespace Vigiloom.Migrator.HostMonitoring;
 
@@ -26,6 +27,10 @@ internal static class HostMonitoringDatabaseCommand
             sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
                 .MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
         await using (var db = new HostMonitoringDbContext(options)) await db.Database.MigrateAsync(token);
+        var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(target,
+            sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
+                .MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+        await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
         if (source is not null)
         {
             string[] tables = ["ReplayPolicies", "ReplayGenerations", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
