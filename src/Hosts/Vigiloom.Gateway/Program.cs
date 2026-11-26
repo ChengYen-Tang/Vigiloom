@@ -49,6 +49,7 @@ builder.Services.AddAuthorization(options =>
     options.AddVigiloomAccessPolicies();
     options.AddPolicy("GatewaySource", policy => policy.AddAuthenticationSchemes(SourceAuthentication.SchemeName).RequireAuthenticatedUser());
     options.AddPolicy("GatewayAgent", policy => policy.AddAuthenticationSchemes(AgentAuthentication.SchemeName).RequireAuthenticatedUser());
+    options.AddPolicy("AgentChannelHttps", policy => policy.RequireAssertion(context => context.Resource is HttpContext http && http.Request.IsHttps));
     options.AddPolicy("GatewayAdministrator", policy => policy.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme)
         .RequireAuthenticatedUser().RequireRole(WorkspaceAccess.Administrator));
     options.AddPolicy("DenyUnmappedDeviceMethod", policy => policy.RequireAssertion(_ => false));

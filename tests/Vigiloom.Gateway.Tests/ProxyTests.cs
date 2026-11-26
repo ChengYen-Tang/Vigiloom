@@ -24,6 +24,22 @@ public sealed class ProxyTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
+    public async Task RoutesAgentChannelOnlyOverHttps()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+            web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address
+            })));
+        using var https = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        Assert.AreEqual("host-monitoring", await https.GetStringAsync("/api/v1/agent/channel", TestContext.CancellationToken));
+        using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("http://localhost") });
+        using var denied = await http.GetAsync("/api/v1/agent/channel", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+    }
+    [TestMethod]
     public async Task RoutesNetworkReadsWithoutExposingInternalOrAdministrativeEndpoints()
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
