@@ -428,6 +428,32 @@ public sealed class PingSqlTests
     });
 
     [TestMethod]
+    public Task RunnerRefillsSlotsWithoutWaitingForSlowTargets() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        await using (var db = resources.CreateDbContext())
+        {
+            for (var i = 1; i <= 10; i++) db.Devices.Add(new Device($"Device {i}", $"127.0.0.{i}", false, clock.Now));
+            await db.SaveChangesAsync(token);
+        }
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new PingSettingsInput(policy.IntervalSeconds, policy.TimeoutSeconds,
+            policy.FailureThreshold, policy.SuccessThreshold, 8, policy.Version), Guid.CreateVersion7(), token));
+        policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(policy, token);
+        await DueAsync(network, token);
+        var probe = new SlowFirstProbe();
+        var run = new PingRunner(settings, store, probe, clock).RunOnceAsync(token);
+        try { await probe.NinthStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), token); }
+        finally { probe.Release.TrySetResult(); }
+        await run;
+        Assert.AreEqual(10, probe.Calls);
+    });
+
+    [TestMethod]
     public Task RunnerSamplesEachConfiguredTargetExactlyOnce() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
@@ -958,6 +984,20 @@ public sealed class PingSqlTests
         {
             Interlocked.Increment(ref calls);
             return Task.FromResult(new PingMeasurement(PingOutcome.Success, target, 1));
+        }
+    }
+    private sealed class SlowFirstProbe : IPingProbe
+    {
+        private int calls;
+        public int Calls => calls;
+        public TaskCompletionSource NinthStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<PingMeasurement> MeasureAsync(string target, int timeoutSeconds, CancellationToken token)
+        {
+            var index = Interlocked.Increment(ref calls);
+            if (index == 1) await Release.Task.WaitAsync(token);
+            if (index == 9) NinthStarted.TrySetResult();
+            return new(PingOutcome.Success, target, 1);
         }
     }
 }
