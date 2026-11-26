@@ -733,4 +733,55 @@
   <data name="已刪除套件。" xml:space="preserve"><value>Package deleted.</value></data>
   <data name="此版本仍在使用或已被指派，無法刪除。" xml:space="preserve"><value>This version is in use or assigned and cannot be deleted.</value></data>
   <data name="無法刪除套件，請稍後重試。" xml:space="preserve"><value>Unable to delete the package. Try again later.</value></data>
+  <data name="Agent 身分" xml:space="preserve"><value>Agent identity</value></data>
+  <data name="無法載入設備" xml:space="preserve"><value>Unable to load device</value></data>
+  <data name="設備可能不存在或暫時無法讀取。" xml:space="preserve"><value>The device may not exist or may be temporarily unavailable.</value></data>
+  <data name="管理 Agent 身分" xml:space="preserve"><value>Manage Agent identity</value></data>
+  <data name="{0} · Agent 身分與 Ping 狀態分開" xml:space="preserve"><value>{0} · Agent identity is separate from Ping status</value></data>
+  <data name="立即保存加入資料" xml:space="preserve"><value>Save enrollment information now</value></data>
+  <data name="只顯示這一次，有效至 {0}。請安全交給此設備的安裝程序，不要貼在網址或公開紀錄。" xml:space="preserve"><value>Shown only once, valid until {0}. Provide it securely to the device installer; do not place it in URLs or public records.</value></data>
+  <data name="Agent 加入資料" xml:space="preserve"><value>Agent enrollment information</value></data>
+  <data name="加入這台設備" xml:space="preserve"><value>Enroll this device</value></data>
+  <data name="建立短效加入資料後，在這台設備執行 Agent 註冊。重新建立會撤銷先前的加入資料；每台設備一次只能有一個有效 Agent 身分。" xml:space="preserve"><value>Create short-lived enrollment information and register the Agent on this device. Creating new information revokes the previous one; each device can have only one valid Agent identity at a time.</value></data>
+  <data name="安裝包會同時建立 Agent 與負責更新的 Updater 兩個系統服務，並設定為開機啟動；不需另外安裝更新程式。" xml:space="preserve"><value>The installer creates Agent and Updater system services and enables startup at boot; a separate updater installation is unnecessary.</value></data>
+  <data name="設備 ID：" xml:space="preserve"><value>Device ID: </value></data>
+  <data name="前往 " xml:space="preserve"><value>Go to the </value></data>
+  <data name="Vigiloom 官方版本下載頁" xml:space="preserve"><value>official Vigiloom releases page</value></data>
+  <data name="，下載符合設備的安裝包：Windows x64、Windows x86 或 Linux x64。若尚無對應檔案，表示該版本尚未發布。" xml:space="preserve"><value> and download the installer for the device: Windows x64, Windows x86, or Linux x64. A missing file means that version has not been released.</value></data>
+  <data name="建立下方的短效加入資料，並以安全方式交給設備管理員。" xml:space="preserve"><value>Create the short-lived enrollment information below and securely provide it to the device administrator.</value></data>
+  <data name="在設備上解壓安裝包。Windows 請以系統管理員身分開啟 Windows PowerShell 5.1 並執行 " xml:space="preserve"><value>Extract the installer on the device. On Windows, open Windows PowerShell 5.1 as administrator and run </value></data>
+  <data name="；Linux 請以 root 執行 " xml:space="preserve"><value>; on Linux, run as root </value></data>
+  <data name="。" xml:space="preserve"><value>.</value></data>
+  <data name="依安裝程式提示輸入平台 HTTPS 網址、上述設備 ID、由可信管道獨立確認的發布者信任根 SHA-256 指紋及加入資料。安裝完成後回到設備詳情查看 Agent 狀態。" xml:space="preserve"><value>Enter the platform HTTPS URL, device ID, publisher root SHA-256 fingerprint independently verified through a trusted channel, and enrollment information when prompted. Return to device details to view Agent status after installation.</value></data>
+  <data name="如需修復已安裝的 Updater，請使用可信的同架構安裝包：Windows 以系統管理員執行 " xml:space="preserve"><value>To repair an installed Updater, use a trusted installer for the same architecture. On Windows, run as administrator </value></data>
+  <data name="；Linux 以 root 執行 " xml:space="preserve"><value>; on Linux, run as root </value></data>
+  <data name="。此操作保留 Agent 身分及待傳資料。" xml:space="preserve"><value>. This preserves the Agent identity and pending data.</value></data>
+  <data name="請先將設備設定為已啟用的深入監控模式。" xml:space="preserve"><value>First enable deep monitoring for this device.</value></data>
+  <data name="我了解加入資料會授權註冊此設備" xml:space="preserve"><value>I understand this information authorizes enrollment of this device</value></data>
+  <data name="建立加入資料" xml:space="preserve"><value>Create enrollment information</value></data>
+  <data name="撤銷會立即拒絕該身分；設備封存後恢復，也不會重新啟用舊身分。最多顯示最近 50 筆。" xml:space="preserve"><value>Revocation immediately rejects the identity; restoring an archived device does not reactivate old identities. Up to the latest 50 are shown.</value></data>
+  <data name="尚無 Agent 身分。" xml:space="preserve"><value>No Agent identities.</value></data>
+  <data name="建立：{0} · {1}" xml:space="preserve"><value>Created: {0} · {1}</value></data>
+  <data name="識別碼：{0}" xml:space="preserve"><value>ID: {0}</value></data>
+  <data name="我了解這會立即中斷該 Agent 的授權" xml:space="preserve"><value>I understand this immediately revokes the Agent’s authorization</value></data>
+  <data name="撤銷此 Agent" xml:space="preserve"><value>Revoke this Agent</value></data>
+  <data name="最近加入資料" xml:space="preserve"><value>Recent enrollment information</value></data>
+  <data name="不會再次顯示完整加入資料。若遺失或外洩，請撤銷後重新建立。" xml:space="preserve"><value>Full enrollment information is not shown again. If lost or exposed, revoke and create it again.</value></data>
+  <data name="尚無加入資料。" xml:space="preserve"><value>No enrollment information.</value></data>
+  <data name="建立：{0} · 到期：{1} · {2}" xml:space="preserve"><value>Created: {0} · Expires: {1} · {2}</value></data>
+  <data name="我了解此加入資料將無法再使用" xml:space="preserve"><value>I understand this enrollment information can no longer be used</value></data>
+  <data name="撤銷加入資料" xml:space="preserve"><value>Revoke enrollment information</value></data>
+  <data name="無法載入 Agent 身分，請稍後重試。" xml:space="preserve"><value>Unable to load Agent identities. Try again later.</value></data>
+  <data name="請先確認加入資料的影響。" xml:space="preserve"><value>First confirm the effects of enrollment information.</value></data>
+  <data name="無法建立加入資料，請確認設備狀態與現有 Agent 身分。" xml:space="preserve"><value>Unable to create enrollment information. Check the device status and existing Agent identities.</value></data>
+  <data name="無法確認建立結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm creation. Refresh and check.</value></data>
+  <data name="請先確認撤銷影響。" xml:space="preserve"><value>First confirm the effects of revocation.</value></data>
+  <data name="找不到該筆資料，請重新整理。" xml:space="preserve"><value>The item was not found. Refresh the page.</value></data>
+  <data name="無法撤銷，請重新整理後再試。" xml:space="preserve"><value>Unable to revoke. Refresh and try again.</value></data>
+  <data name="已撤銷。" xml:space="preserve"><value>Revoked.</value></data>
+  <data name="因設備封存而失效" xml:space="preserve"><value>Invalidated by device archival</value></data>
+  <data name="已註冊" xml:space="preserve"><value>Registered</value></data>
+  <data name="已到期" xml:space="preserve"><value>Expired</value></data>
+  <data name="已使用，可安全重試" xml:space="preserve"><value>Used; safe to retry</value></data>
+  <data name="等待加入" xml:space="preserve"><value>Awaiting enrollment</value></data>
 </root>

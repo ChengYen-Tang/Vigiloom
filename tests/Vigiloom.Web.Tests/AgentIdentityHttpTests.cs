@@ -1325,6 +1325,21 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotHeartbeat.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Manage Agent identity", text);
+                Assert.Contains(device.Id.ToString(), text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("管理 Agent 身份", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
