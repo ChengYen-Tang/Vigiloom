@@ -11,7 +11,8 @@ internal sealed class DetectionTimelineWriter(TemporalWorkWriter writer, IConfig
 {
     public async Task WriteAsync(SecurityAnalysisDbContext db, IReadOnlyList<EventTimelineEntry> entries, CancellationToken token)
     {
-        foreach (var batch in entries.Chunk(2))
+        // Inventory keys can be 2048 characters; one event fits the nested JSON outbox limit.
+        foreach (var batch in entries.Chunk(1))
         {
             var deliveries = batch.Select(entry => new EventTimelineDelivery(Guid.CreateVersion7(), entry)).ToArray();
             var work = new ServiceWork(EventTimelineWork.BatchKind, JsonSerializer.Serialize(new EventTimelineBatch(deliveries)));

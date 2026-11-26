@@ -234,7 +234,8 @@ public sealed class SecurityWorkTests(TestContext context)
             var config = new ConfigurationBuilder().Build();
             var writer = new DetectionTimelineWriter(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config);
             var device = Guid.CreateVersion7();
-            EventTimelineEntry[] entries = [new("sigma", DateTimeOffset.UtcNow, device, "device", "test", "evidence", $"/devices/{device:D}")];
+            var longKey = new string('測', 2048);
+            EventTimelineEntry[] entries = [new("inventory", DateTimeOffset.UtcNow, device, "device", "資產盤點變更：" + longKey, "evidence", $"/devices/{device:D}")];
             await using (var db = new SecurityAnalysisDbContext(options))
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(token);
@@ -256,7 +257,9 @@ public sealed class SecurityWorkTests(TestContext context)
             var envelope = JsonSerializer.Deserialize<TemporalWorkRequest>((string)(await command.ExecuteScalarAsync(token))!);
             Assert.AreEqual(EventTimelineWork.BatchKind, envelope!.Work.Kind);
             var batch = JsonSerializer.Deserialize<EventTimelineBatch>(envelope.Work.Payload)!;
-            Assert.AreEqual(device, Assert.ContainsSingle(batch.Items).Entry.ResourceId);
+            var entry = Assert.ContainsSingle(batch.Items).Entry;
+            Assert.AreEqual(device, entry.ResourceId);
+            Assert.AreEqual("資產盤點變更：" + longKey, entry.Summary);
         }, context.CancellationToken);
 
     [TestMethod]

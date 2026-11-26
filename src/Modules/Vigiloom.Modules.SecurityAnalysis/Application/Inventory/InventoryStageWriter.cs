@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 
@@ -10,9 +11,11 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 public sealed class InventoryStageWriter : IInventoryStageWriter
 {
     private readonly InventoryPublicationGate gate;
+    private readonly IDetectionTimelineWriter? timeline;
 
-    public InventoryStageWriter() : this(InventoryPublicationGate.Shared) { }
-    internal InventoryStageWriter(InventoryPublicationGate gate) => this.gate = gate;
+    public InventoryStageWriter(IDetectionTimelineWriter? timeline = null) : this(InventoryPublicationGate.Shared, timeline) { }
+    internal InventoryStageWriter(InventoryPublicationGate gate, IDetectionTimelineWriter? timeline = null)
+    { this.gate = gate; this.timeline = timeline; }
 
     public async Task<InventoryStageResult> StageAsync(DbConnection connection, DbTransaction transaction, InventoryOwner owner,
         InventoryChunk chunk, DateTimeOffset databaseNow, CancellationToken cancellationToken)
@@ -36,7 +39,7 @@ public sealed class InventoryStageWriter : IInventoryStageWriter
             // The final chunk can materialize two full snapshots; avoid multiplying that
             // memory cost by the much larger general Agent request concurrency limit.
             if (!gate.TryEnter()) return InventoryStageResult.CapacityExceeded;
-            try { await InventoryPublication.FinishAsync(db, result.State!, result.Snapshot!, databaseNow, cancellationToken); }
+            try { await InventoryPublication.FinishAsync(db, result.State!, result.Snapshot!, databaseNow, cancellationToken, timeline); }
             finally { gate.Exit(); }
         }
         return result.Disposition switch
