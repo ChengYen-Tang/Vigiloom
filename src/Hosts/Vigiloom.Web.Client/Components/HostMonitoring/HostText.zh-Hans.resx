@@ -78,4 +78,49 @@
   <data name="未提供" xml:space="preserve"><value>未提供</value></data>
   <data name="內容雜湊" xml:space="preserve"><value>内容哈希</value></data>
   <data name="安全性雜湊" xml:space="preserve"><value>安全性哈希</value></data>
+  <data name="依中央接收時間排序；記錄來源時間可能未知。" xml:space="preserve"><value>按中央接收时间排序；记录来源时间可能未知。</value></data>
+  <data name="保存期限 {0} 天；安全偵測所需資料可能延長保留。" xml:space="preserve"><value>保留期限 {0} 天；安全检测所需数据可能延长保留。</value></data>
+  <data name="日誌表格，可左右捲動" xml:space="preserve"><value>日志表格，可左右滚动</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>接收时间（UTC）</value></data>
+  <data name="來源" xml:space="preserve"><value>来源</value></data>
+  <data name="內容" xml:space="preserve"><value>内容</value></data>
+  <data name="採集缺口：" xml:space="preserve"><value>采集缺口：</value></data>
+  <data name="這段時間沒有主機日誌。" xml:space="preserve"><value>这段时间没有主机日志。</value></data>
+  <data name="較新紀錄" xml:space="preserve"><value>较新记录</value></data>
+  <data name="較早紀錄" xml:space="preserve"><value>较早记录</value></data>
+  <data name="顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。" xml:space="preserve"><value>显示已启用规则的命中与未评估记录；没有记录不代表设备没有异常。</value></data>
+  <data name="行為偵測紀錄，可左右捲動" xml:space="preserve"><value>行为检测记录，可左右滚动</value></data>
+  <data name="規則" xml:space="preserve"><value>规则</value></data>
+  <data name="結果與證據" xml:space="preserve"><value>结果与证据</value></data>
+  <data name="命中" xml:space="preserve"><value>命中</value></data>
+  <data name="未評估" xml:space="preserve"><value>未评估</value></data>
+  <data name="{0} 筆事件 · {1} 至 {2}（UTC）" xml:space="preserve"><value>{0} 条事件 · {1} 至 {2}（UTC）</value></data>
+  <data name="查看來源與事件識別" xml:space="preserve"><value>查看来源与事件标识</value></data>
+  <data name="來源版本：{0}" xml:space="preserve"><value>来源版本：{0}</value></data>
+  <data name="規則摘要：{0}" xml:space="preserve"><value>规则摘要：{0}</value></data>
+  <data name="事件：{0}" xml:space="preserve"><value>事件：{0}</value></data>
+  <data name="這段時間沒有偵測紀錄。" xml:space="preserve"><value>这段时间没有检测记录。</value></data>
+  <data name="IOC 比對線索" xml:space="preserve"><value>IOC 比对线索</value></data>
+  <data name="查看 YARA 掃描" xml:space="preserve"><value>查看 YARA 扫描</value></data>
+  <data name="僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。" xml:space="preserve"><value>仅显示启用比对后收到的事件；命中需要调查，并不代表已入侵。</value></data>
+  <data name="線索依 Log 政策保存 {0} 天。" xml:space="preserve"><value>线索按日志策略保留 {0} 天。</value></data>
+  <data name="IOC 比對線索，可左右捲動" xml:space="preserve"><value>IOC 比对线索，可左右滚动</value></data>
+  <data name="指標" xml:space="preserve"><value>指标</value></data>
+  <data name="來源與證據" xml:space="preserve"><value>来源与证据</value></data>
+  <data name="事件 {0}" xml:space="preserve"><value>事件 {0}</value></data>
+  <data name="查看來源" xml:space="preserve"><value>查看来源</value></data>
+  <data name="授權" xml:space="preserve"><value>许可</value></data>
+  <data name="這段時間沒有 IOC 命中紀錄。" xml:space="preserve"><value>这段时间没有 IOC 命中记录。</value></data>
+  <data name="較新線索" xml:space="preserve"><value>较新线索</value></data>
+  <data name="較早線索" xml:space="preserve"><value>较早线索</value></data>
+  <data name="資料缺口" xml:space="preserve"><value>数据缺口</value></data>
+  <data name="偵測資料缺口，可左右捲動" xml:space="preserve"><value>检测数据缺口，可左右滚动</value></data>
+  <data name="紀錄時間（UTC）" xml:space="preserve"><value>记录时间（UTC）</value></data>
+  <data name="原因" xml:space="preserve"><value>原因</value></data>
+  <data name="事件" xml:space="preserve"><value>事件</value></data>
+  <data name="原始日誌無法取得" xml:space="preserve"><value>原始日志无法获取</value></data>
+  <data name="規則無法使用" xml:space="preserve"><value>规则无法使用</value></data>
+  <data name="這段時間沒有已記錄的資料缺口。" xml:space="preserve"><value>这段时间没有已记录的数据缺口。</value></data>
+  <data name="較新缺口" xml:space="preserve"><value>较新缺口</value></data>
+  <data name="較早缺口" xml:space="preserve"><value>较早缺口</value></data>
 </root>
