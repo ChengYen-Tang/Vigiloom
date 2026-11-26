@@ -428,6 +428,41 @@ public sealed class PingSqlTests
     });
 
     [TestMethod]
+    public Task DeviceChangeDisablesTargetsAndIgnoresStaleNotifications() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock, [new PingAlertSink()]);
+        await store.ReconcileAsync(policy, token);
+        byte[] oldVersion;
+        await using (var db = resources.CreateDbContext())
+        {
+            var current = await db.Devices.SingleAsync(item => item.Id == device.Id, token);
+            oldVersion = current.Version.ToArray();
+            current.Update(current.Name, current.Address, false, false, clock.Now);
+            await db.SaveChangesAsync(token);
+            device = current;
+        }
+        await using (var db = network.CreateDbContext())
+        {
+            var state = await db.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+            state.State = Reachability.Unreachable;
+            await db.SaveChangesAsync(token);
+        }
+        await store.RefreshDeviceAsync(device.Id, device.Version, policy, token);
+        await store.RefreshDeviceAsync(device.Id, oldVersion, policy, token);
+        await using var result = network.CreateDbContext();
+        var target = await result.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+        Assert.IsFalse(target.Enabled);
+        Assert.AreEqual(Reachability.Unknown, target.State);
+        CollectionAssert.AreEqual(device.Version, target.DeviceVersion);
+        Assert.AreEqual(1, await result.PingStateEvents.CountAsync(item => item.DeviceId == device.Id, token));
+    });
+
+    [TestMethod]
     public Task ReconciliationDetectsConcurrentTransition() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();

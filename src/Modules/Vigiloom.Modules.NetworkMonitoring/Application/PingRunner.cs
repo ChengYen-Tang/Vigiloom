@@ -38,7 +38,11 @@ public sealed class PingRunner(PingSettings settings, PingStore store, IPingProb
 
         async Task MeasureAsync(PingLease lease)
         {
-            if (!await store.IsCurrentAsync(lease, token)) { await store.DeactivateAsync(lease, token); return; }
+            if (!await store.IsCurrentAsync(lease, token))
+            {
+                await store.RefreshDeviceAsync(lease.DeviceId, lease.DeviceVersion, current, token);
+                return;
+            }
             var measuredAt = clock.GetUtcNow();
             var result = await probe.MeasureAsync(lease.Target, current.TimeoutSeconds, token);
             if (!await store.CommitAsync(lease, current, result, measuredAt, "central", token))
