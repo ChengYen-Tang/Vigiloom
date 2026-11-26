@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Security.Claims;
 using Microsoft.AspNetCore.SignalR;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.HostMonitoring;
@@ -58,35 +57,10 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddVigiloomTemporalWorker<AgentChangeHandler>(builder.Configuration["Work:AgentQueue"] ?? "vigiloom.agent.resources");
 }
 var app = builder.Build();
-app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel"), channel =>
-    channel.Use(async (context, next) =>
-    {
-        var header = context.Request.Headers.Authorization.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
-        }
-        var client = context.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient("resources");
-        using var response = await client.PostAsJsonAsync("internal/v1/agents/authenticate",
-            new AgentCredentialCommand(header[7..]), context.RequestAborted);
-        if (!response.IsSuccessStatusCode)
-        {
-            context.Response.StatusCode = response.StatusCode == System.Net.HttpStatusCode.Unauthorized
-                ? StatusCodes.Status401Unauthorized : StatusCodes.Status503ServiceUnavailable;
-            return;
-        }
-        var identity = await response.Content.ReadFromJsonAsync<RegisteredAgentIdentity>(cancellationToken: context.RequestAborted);
-        if (identity is null)
-        {
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            return;
-        }
-        context.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, identity.AgentId.ToString("D"))], "Agent"));
-        await next(context);
-    }));
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/batches"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
+app.MapAgentBatchEndpoints();
 app.MapPost("/internal/v1/agents/{id:guid}/notifications/{kind}", async (Guid id, string kind, IHubContext<AgentChannel> hub, CancellationToken token) =>
 {
     var method = kind switch { "update" => "UpdateAvailable", "scan" => "ScanAvailable", _ => null };
