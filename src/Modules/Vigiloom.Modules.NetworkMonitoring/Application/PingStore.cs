@@ -66,9 +66,16 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     }
 
     public Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, CancellationToken token) =>
-        ClaimAsync(settings, settings.MaxConcurrency, token);
+        ClaimAsync(settings, settings.MaxConcurrency, null, token);
 
-    public async Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, int count, CancellationToken token)
+    public async Task<DateTimeOffset> ClaimCutoffAsync(CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await db.Database.OpenConnectionAsync(token);
+        return await DatabaseNowAsync(db, token);
+    }
+
+    public async Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, int count, DateTimeOffset? dueBefore, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await db.Database.OpenConnectionAsync(token);
@@ -80,6 +87,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                 (
                     SELECT TOP (@count) * FROM network.PingTargets WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
                     WHERE Enabled = 1 AND DueAt <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
+                      AND (@dueBefore IS NULL OR DueAt <= @dueBefore)
                       AND (LeaseUntil IS NULL OR LeaseUntil <= TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
                     ORDER BY DueAt, DeviceId, Target
                 )
@@ -88,6 +96,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                 OUTPUT inserted.DeviceId, inserted.Target, inserted.DeviceVersion, inserted.Generation
                 """;
             Add(command, "@count", SqlDbType.Int, count);
+            Add(command, "@dueBefore", SqlDbType.DateTimeOffset, dueBefore is { } cutoff ? cutoff : DBNull.Value);
             Add(command, "@lease", SqlDbType.Int, 2 * settings.TimeoutSeconds + 30);
             var leases = new List<PingLease>(count);
             await using var reader = await command.ExecuteReaderAsync(token);
@@ -167,9 +176,10 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
             if (transitionSinks is not null && transitionSinks.Any())
             {
                 var context = await devices.GetContextAsync(lease.DeviceId, db.Database.GetDbConnection(), tx.GetDbTransaction(), token);
-                var transition = new PingTransition(lease.DeviceId, lease.Target, lease.Generation, measuredAt.ToUniversalTime(), previous, state.State, context);
+                var transition = new PingTransition(lease.DeviceId, lease.Target, lease.Generation, measuredAt.ToUniversalTime(), previous, state.State, context, state.LastTransitionGeneration);
                 foreach (var sink in transitionSinks)
                     await sink.RecordAsync(transition, db.Database.GetDbConnection(), tx.GetDbTransaction(), token);
+                state.LastTransitionGeneration = lease.Generation;
             }
         }
         await db.SaveChangesAsync(token);
@@ -246,7 +256,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
     private static async Task<DateTimeOffset> DatabaseNowAsync(NetworkDbContext db, CancellationToken token)
     {
         await using var command = db.Database.GetDbConnection().CreateCommand();
-        command.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
+        command.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
         command.CommandText = "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')";
         return (DateTimeOffset)(await command.ExecuteScalarAsync(token))!;
     }

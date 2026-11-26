@@ -448,8 +448,7 @@ public sealed class PingSqlTests
         var probe = new SlowFirstProbe();
         var run = new PingRunner(settings, store, probe, clock).RunOnceAsync(token);
         try { await probe.NinthStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), token); }
-        finally { probe.Release.TrySetResult(); }
-        await run;
+        finally { probe.Release.TrySetResult(); await run; }
         Assert.AreEqual(10, probe.Calls);
     });
 

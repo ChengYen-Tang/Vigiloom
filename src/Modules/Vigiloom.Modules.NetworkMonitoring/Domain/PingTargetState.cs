@@ -11,6 +11,7 @@ public sealed class PingTargetState
     public DateTimeOffset DueAt { get; set; }
     public DateTimeOffset? LeaseUntil { get; set; }
     public long Generation { get; set; }
+    public long LastTransitionGeneration { get; set; }
     public Reachability State { get; set; }
     public int Successes { get; set; }
     public int Failures { get; set; }
