@@ -42,7 +42,11 @@ builder.Services.AddHttpClient<TemporalHealthTransitionSink>((services, client) 
 builder.Services.AddHttpClient<ICandidateObserver, RemoteCandidateObserver>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IApplicationLogDelivery, ApplicationLogDelivery>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<TelemetryExports>();
+builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
 builder.Services.AddSingleton<HealthRunner>();
 builder.Services.AddScoped<HealthStatusReader>();
@@ -56,6 +60,7 @@ builder.Services.AddHostedService<WorkDispatcher>();
 var app = builder.Build();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);
+app.UseMiddleware<OtlpTransportGuard>();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
@@ -64,6 +69,7 @@ app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
     return Results.Ok(new { SourceId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value });
 }).RequireAuthorization("ServiceSource");
 var internalApi = app.MapGroup("/internal/v1");
+app.MapOtlpHttpEndpoints();
 internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
     IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
 {

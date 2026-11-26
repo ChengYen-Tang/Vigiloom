@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Google.Protobuf;
 using OpenTelemetry.Proto.Collector.Logs.V1;
 using OpenTelemetry.Proto.Logs.V1;
 using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Admission = Vigiloom.Infrastructure.LogAdmission.LogAdmission;
 
@@ -12,7 +14,8 @@ public enum ExportStatus { Complete, Partial, Retry, Invalid, BatchTooLarge, Una
 public sealed record ExportResult(ExportStatus Status, long Rejected, TimeSpan? RetryAfter = null, bool ServiceNotAuthorized = false, bool MetricWindowPruned = false);
 
 /// <summary>Atomically commits all accepted groups in an OTLP Log request.</summary>
-internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates)
+internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates,
+    IApplicationLogDelivery? delivery = null)
 {
     private const int MaximumRequestBytes = 4 * 1024 * 1024;
     private const int MaximumGroups = 256;
@@ -67,6 +70,7 @@ internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext>
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var accepted = 0;
         var serviceNotAuthorized = false;
+        var remoteGroups = delivery is null ? null : new Dictionary<ResourceLogs, List<ApplicationLogScope>>(ReferenceEqualityComparer.Instance);
         foreach (var group in groups)
         {
             var key = ServiceKey.From(group.Identity);
@@ -80,11 +84,34 @@ internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext>
             if (instance.Status is InstanceResolutionStatus.Busy or InstanceResolutionStatus.CapacityReached) return new(ExportStatus.Retry, 0);
             if (instance.Status is not (InstanceResolutionStatus.Resolved or InstanceResolutionStatus.Unidentified))
             { rejected += group.Scope.LogRecords.Count; continue; }
-            _ = LogIngestion.Stage(db, group.Resource, group.Scope, instance, received);
+            if (remoteGroups is null) _ = LogIngestion.Stage(db, group.Resource, group.Scope, instance, received);
+            else
+            {
+                if (!remoteGroups.TryGetValue(group.Resource, out var scopes))
+                    remoteGroups.Add(group.Resource, scopes = []);
+                scopes.Add(new ApplicationLogScope(binding.ServiceId, instance.InstanceId, group.Scope.Scope?.ToByteArray() ?? [],
+                    group.Scope.SchemaUrl, group.Scope.LogRecords.Select(log => LogIngestion.ToItem(log, received)).ToArray()));
+            }
             accepted += group.Scope.LogRecords.Count;
         }
         if (accepted > 0)
         {
+            if (remoteGroups is not null)
+            {
+                var resources = remoteGroups.Select(entry => new ApplicationLogResource(entry.Key.Resource.ToByteArray(),
+                    entry.Key.SchemaUrl, entry.Value)).ToArray();
+                var receipt = await delivery!.SendAsync(new ApplicationLogBatch(authenticatedSourceId, resources), token);
+                if (receipt.Status != LogReceiptStatus.Accepted)
+                    return receipt.Status switch
+                    {
+                        LogReceiptStatus.BatchTooLarge => new(ExportStatus.BatchTooLarge, 0),
+                        LogReceiptStatus.Invalid => new(ExportStatus.Invalid, 0),
+                        _ => new(ExportStatus.Retry, 0, receipt.RetryAfter)
+                    };
+                await db.SaveChangesAsync(token);
+                await tx.CommitAsync(token);
+                return new(rejected == 0 ? ExportStatus.Complete : ExportStatus.Partial, rejected, ServiceNotAuthorized: serviceNotAuthorized);
+            }
             var admission = await Admission.AdmitAsync(connection, transaction, new(LogSourceKind.Application, authenticatedSourceId), accepted, token);
             if (admission.Status == LogAdmissionStatus.BatchTooLarge) return new(ExportStatus.BatchTooLarge, 0);
             if (admission.Status != LogAdmissionStatus.Accepted) return new(ExportStatus.Retry, 0, admission.RetryAfter);
