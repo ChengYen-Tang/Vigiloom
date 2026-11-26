@@ -129,6 +129,19 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
             var capacity = await client.GetFromJsonAsync<AgentQueueCapacitySnapshot>("/api/v1/agent/queue-capacity", token);
             Assert.AreEqual(128L * 1024 * 1024, capacity!.Capacity.PayloadBytes);
+            var metricCommand = new AgentMetricSettingsCommand(new AgentMetricSettingsUpdate(new AgentMetricSettingsOverrides(45, null), ""), Guid.CreateVersion7());
+            using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-metric-settings/devices/{identity.DeviceId:D}", metricCommand, token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            using (var metricResponse = await client.GetAsync("/api/v1/agent/metric-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, metricResponse.StatusCode);
+                var snapshot = await metricResponse.Content.ReadFromJsonAsync<AgentMetricSettingsSnapshot>(cancellationToken: token);
+                Assert.AreEqual(45, snapshot!.Settings.HostIntervalSeconds);
+                using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/metric-settings");
+                unchangedRequest.Headers.IfNoneMatch.Add(metricResponse.Headers.ETag!);
+                using var unchanged = await client.SendAsync(unchangedRequest, token);
+                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            }
             var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
             var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, Runtime: new("1.2.3", "win-x64")), token))
@@ -161,6 +174,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var until = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
             var metrics = await client.GetFromJsonAsync<HostMetricPage>($"/internal/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.AreEqual(25d, Assert.ContainsSingle(metrics!.Items).Value);
+            var series = new HostMetricThresholdQuery(identity.DeviceId, identity.AgentId, AgentMetricKind.CpuTotalPercent, "cpu", null);
+            var thresholdCommand = new HostMetricThresholdCommand(series, new(true, HostMetricComparison.AtLeast, 20, 120, ""), Guid.CreateVersion7());
+            using (var savedThreshold = await client.PostAsJsonAsync("/internal/v1/host-threshold/update", thresholdCommand, token))
+                Assert.AreEqual(HttpStatusCode.OK, savedThreshold.StatusCode);
+            using (var evaluated = await client.PostAsJsonAsync("/internal/v1/host-threshold/query", series, token))
+                Assert.AreEqual(HostMetricThresholdState.Exceeded, (await evaluated.Content.ReadFromJsonAsync<HostMetricThresholdStatus>(cancellationToken: token))!.State);
             var item = new AgentLogRecord(Guid.CreateVersion7(), nowUtc, "host event", null, null, null, null, null);
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc,
                 Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [item]);

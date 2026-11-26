@@ -67,6 +67,8 @@ builder.Services.AddScoped<HostObservationReceiver>();
 builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostAgentConfiguration>();
 builder.Services.AddScoped<HostQueueCapacity>();
+builder.Services.AddScoped<HostMetricConfiguration>();
+builder.Services.AddScoped<HostMonitoringThresholds>();
 builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostMetricReader>();
 builder.Services.AddScoped<HostOwnedMetricRetentionSettings>();
@@ -124,11 +126,14 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
-    context.Request.Path.StartsWithSegments("/api/v1/agent/settings"), agent => agent.UseMiddleware<AgentAccess>());
+    context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
 app.MapHostQueueCapacityEndpoints();
+app.MapHostMetricSettingsEndpoints();
+app.MapHostThresholdEndpoints();
 app.MapHostAgentStatusEndpoints();
 app.MapHostMetricEndpoints();
 app.MapHostMetricRetentionEndpoints();

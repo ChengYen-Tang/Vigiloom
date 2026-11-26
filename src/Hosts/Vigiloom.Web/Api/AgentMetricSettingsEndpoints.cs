@@ -11,13 +11,13 @@ internal static class AgentMetricSettingsEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/metric-settings")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (AgentMetricConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
+        admin.MapGet("/platform", (IAgentMetricSettings settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
             .Produces<AgentMetricSettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
-        admin.MapPut("/platform", (AgentMetricSettingsUpdate input, AgentMetricConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
+        admin.MapPut("/platform", (AgentMetricSettingsUpdate input, IAgentMetricSettings settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
             .Produces<AgentMetricSettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(429);
-        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, AgentMetricConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
+        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, IAgentMetricSettings settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
             .Produces<AgentMetricSettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, AgentMetricSettingsUpdate input, AgentMetricConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
+        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, AgentMetricSettingsUpdate input, IAgentMetricSettings settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
             .Produces<AgentMetricSettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
 
         app.MapGet("/api/v1/agent/metric-settings", async (AgentMetricConfiguration settings, HttpContext context, CancellationToken token) =>
@@ -35,13 +35,13 @@ internal static class AgentMetricSettingsEndpoints
             .Produces<AgentMetricSettingsSnapshot>().Produces(StatusCodes.Status304NotModified).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
     }
 
-    private static async Task<IResult> ReadAsync(AgentMetricConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)
+    private static async Task<IResult> ReadAsync(IAgentMetricSettings settings, Guid? deviceId, HttpContext context, CancellationToken token)
     {
         context.Response.Headers.CacheControl = "no-store";
         return await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view) : Results.NotFound();
     }
 
-    private static async Task<IResult> UpdateAsync(AgentMetricConfiguration settings, Guid? deviceId, AgentMetricSettingsUpdate input, HttpContext context, CancellationToken token)
+    private static async Task<IResult> UpdateAsync(IAgentMetricSettings settings, Guid? deviceId, AgentMetricSettingsUpdate input, HttpContext context, CancellationToken token)
     {
         if (!AgentMetricConfiguration.Valid(input?.Overrides)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["interval"] = ["Agent 採集間隔超出允許範圍。"] });
         if (deviceId is not null && await settings.GetAsync(deviceId, token) is null) return Results.NotFound();

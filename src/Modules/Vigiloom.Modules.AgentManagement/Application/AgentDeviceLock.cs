@@ -24,9 +24,9 @@ internal static class AgentDeviceLock
         return true;
     }
 
-    public static async Task AcquireAsync(AgentManagementDbContext db, Guid deviceId, CancellationToken token)
+    public static async Task AcquireAsync(DbContext db, Guid deviceId, CancellationToken token)
     {
-        if (!await TryAcquireAsync(db, deviceId, token)) throw new InvalidOperationException("Agent device lock could not be acquired.");
+        if (!await TryAcquireAsync(db, $"vigiloom.agent.device.{deviceId:D}", token)) throw new InvalidOperationException("Agent device lock could not be acquired.");
     }
 
     public static async Task AcquireReceiptAsync(HostMonitoringDbContext db, Guid agentId, CancellationToken token)
