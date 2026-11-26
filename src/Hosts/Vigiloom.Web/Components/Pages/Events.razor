@@ -11,41 +11,42 @@
 @inject IGroupManagement Groups
 @inject NavigationManager Navigation
 @inject ILogger<Events> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<EventText> L
 
-<PageTitle>事件 - Vigiloom</PageTitle>
+<PageTitle>@L["事件"] - Vigiloom</PageTitle>
 <main class="events-page">
-    <header><h1>事件與證據</h1><p>查看主機、服務與安全監控的時間線。安全比對結果是待調查線索，目前不包含人工判定狀態。</p></header>
-    <section class="panel" aria-label="篩選事件">
+    <header><h1>@L["事件與證據"]</h1><p>@L["查看主機、服務與安全監控的時間線。安全比對結果是待調查線索，目前不包含人工判定狀態。"]</p></header>
+    <section class="panel" aria-label="@L["篩選事件"]">
         <form method="get" action="/events">
-            <label>開始日期（UTC）<input type="date" name="from" value="@fromText" /></label>
-            <label>結束日期（UTC）<input type="date" name="to" value="@toText" /></label>
-            <label>群組<select name="group"><option value="">全部群組</option>@foreach (var group in groups) { <option value="@group.Id" selected="@(Group == group.Id.ToString())">@group.Name</option> }</select></label>
-            <label>來源<select name="source"><option value="">全部來源</option>@foreach (var source in Sources) { <option value="@source.Key" selected="@(Source == source.Key)">@source.Value</option> }</select></label>
-            <button type="submit">查詢</button><a href="/events">清除篩選</a>
+            <label>@L["開始日期（UTC）"]<input type="date" name="from" value="@fromText" /></label>
+            <label>@L["結束日期（UTC）"]<input type="date" name="to" value="@toText" /></label>
+            <label>@L["群組"]<select name="group"><option value="">@L["全部群組"]</option>@foreach (var group in groups) { <option value="@group.Id" selected="@(Group == group.Id.ToString())">@group.Name</option> }</select></label>
+            <label>@L["來源"]<select name="source"><option value="">@L["全部來源"]</option>@foreach (var source in Sources) { <option value="@source.Key" selected="@(Source == source.Key)">@L[source.Value]</option> }</select></label>
+            <button type="submit">@L["查詢"]</button><a href="/events">@L["清除篩選"]</a>
         </form>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
     </section>
     @if (result is not null)
     {
-        <section class="panel" aria-label="事件時間線">
-            <h2>事件時間線</h2>
-            @if (result.Items.Count == 0) { <p>這段時間沒有符合條件的事件。</p> }
+        <section class="panel" aria-label="@L["事件時間線"]">
+            <h2>@L["事件時間線"]</h2>
+            @if (result.Items.Count == 0) { <p>@L["這段時間沒有符合條件的事件。"]</p> }
             else
             {
-                <p class="scroll-hint">左右滑動查看完整事件。</p>
-                <div class="table-wrap" role="region" aria-label="事件時間線，可左右捲動" tabindex="0">
-                    <table><thead><tr><th>時間（UTC）</th><th>來源</th><th>事件</th><th>證據</th><th>相關對象</th></tr></thead><tbody>
+                <p class="scroll-hint">@L["左右滑動查看完整事件。"]</p>
+                <div class="table-wrap" role="region" aria-label="@L["事件時間線，可左右捲動"]" tabindex="0">
+                    <table><thead><tr><th>@L["時間（UTC）"]</th><th>@L["來源"]</th><th>@L["事件"]</th><th>@L["證據"]</th><th>@L["相關對象"]</th></tr></thead><tbody>
                     @foreach (var item in result.Items)
                     {
-                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@Label(item.Source)</span></td><td>@item.Summary</td><td>@item.Evidence</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? "查看原始事件" : item.Source == "yara" ? "查看掃描" : item.ResourceKind == "service" ? "查看服務" : "查看設備")</a>@if (item.RuleLink is { } ruleLink) { <span> · </span><a href="@ruleLink">查看規則依據</a> }</td></tr>
+                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@L[Label(item.Source)]</span></td><td>@item.Summary</td><td>@item.Evidence</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? L["查看原始事件"].Value : item.Source == "yara" ? L["查看掃描"].Value : item.ResourceKind == "service" ? L["查看服務"].Value : L["查看設備"].Value)</a>@if (item.RuleLink is { } ruleLink) { <span> · </span><a href="@ruleLink">@L["查看規則依據"]</a> }</td></tr>
                     }
                     </tbody></table>
                 </div>
-                <p><a href="@ExportUrl()">匯出目前頁 CSV</a></p>
-                @if (result.LimitReached) { <p>結果超過可顯示的範圍，請縮小日期或選擇來源後重新查詢。</p> }
+                <p><a href="@ExportUrl()">@L["匯出目前頁 CSV"]</a></p>
+                @if (result.LimitReached) { <p>@L["結果超過可顯示的範圍，請縮小日期或選擇來源後重新查詢。"]</p> }
                 @if (result.Page > 1 || result.HasMore)
                 {
-                    <nav aria-label="事件分頁" class="pages">@if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }<span>第 @result.Page 頁</span>@if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }</nav>
+                    <nav aria-label="@L["事件分頁"]" class="pages">@if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">@L["上一頁"]</a> }<span>@L["第 {0} 頁", result.Page]</span>@if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">@L["下一頁"]</a> }</nav>
                 }
             }
         </section>
@@ -70,11 +71,11 @@
         fromText = From ?? today.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         toText = To ?? today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (!DateOnly.TryParseExact(fromText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from) ||
-            !DateOnly.TryParseExact(toText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to)) { error = "請選擇有效的日期。"; return; }
-        if (from > to) { error = "開始日期不能晚於結束日期。"; return; }
-        if (to.DayNumber - from.DayNumber >= 31 || to == DateOnly.MaxValue) { error = "每次最多查詢 31 天。"; return; }
+            !DateOnly.TryParseExact(toText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to)) { error = L["請選擇有效的日期。"].Value; return; }
+        if (from > to) { error = L["開始日期不能晚於結束日期。"].Value; return; }
+        if (to.DayNumber - from.DayNumber >= 31 || to == DateOnly.MaxValue) { error = L["每次最多查詢 31 天。"].Value; return; }
         Guid? groupId = null;
-        if (!string.IsNullOrEmpty(Group)) { if (!Guid.TryParse(Group, out var parsed)) { error = "請選擇有效的群組。"; return; } groupId = parsed; }
+        if (!string.IsNullOrEmpty(Group)) { if (!Guid.TryParse(Group, out var parsed)) { error = L["請選擇有效的群組。"].Value; return; } groupId = parsed; }
         try
         {
             var allGroups = new List<(Guid Id, string Name)>();
@@ -85,14 +86,14 @@
                 if (groupPage.Items.Count == 0 || allGroups.Count >= groupPage.Total) break;
             }
             groups = allGroups.ToArray();
-            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) { error = "無法確認登入身分。"; return; }
+            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) { error = L["無法確認登入身分。"].Value; return; }
             var query = new EventTimelineQuery(new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), groupId, Source, Page ?? 1);
             var page = await Reader.GetAsync(query, HttpContext.RequestAborted);
             await Audit.RecordAsync(actor, query, page.Items.Count, false, HttpContext.RequestAborted);
             result = page;
         }
-        catch (ArgumentException) { error = "請確認篩選條件與頁碼。"; }
-        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Event query failed: {ExceptionType}", ex.GetType().Name); error = "無法載入事件，請稍後再試。"; }
+        catch (ArgumentException) { error = L["請確認篩選條件與頁碼。"].Value; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Event query failed: {ExceptionType}", ex.GetType().Name); error = L["無法載入事件，請稍後再試。"].Value; }
     }
     private static string Label(string value) => Sources.FirstOrDefault(x => x.Key == value).Value ?? value;
     private string PageUrl(int page) => Navigation.GetUriWithQueryParameters("/events", new Dictionary<string, object?> { ["from"] = fromText, ["to"] = toText, ["group"] = Group, ["source"] = Source, ["page"] = page });
