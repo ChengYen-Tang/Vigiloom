@@ -10,6 +10,8 @@ public sealed class LineSettings
     public int Slot { get; set; } = 1;
     public bool Enabled { get; set; }
     public long LastNotificationRowId { get; set; }
+    public int AggregationSeconds { get; set; } = 10;
+    public DateTimeOffset? AggregationStartedAt { get; set; }
     public string? ProtectedAccessToken { get; set; }
     public string? ProtectedChannelSecret { get; set; }
 }

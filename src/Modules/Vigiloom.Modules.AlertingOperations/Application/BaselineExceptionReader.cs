@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Modules.AlertingOperations.Application;

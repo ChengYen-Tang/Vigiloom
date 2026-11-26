@@ -19,7 +19,7 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
         var configured = await db.LineSettings.AsNoTracking().AnyAsync(x => x.ProtectedAccessToken != null, token);
         if (group is null || !configured) return null;
         var delivery = new LineDelivery { GroupId = group.Id, Recipient = group.ExternalId,
-            Text = "Vigiloom 測試通知：LINE 通知設定已連線。", CreatedAt = clock.GetUtcNow() };
+            Text = "Vigiloom test notification: LINE notifications are connected.", CreatedAt = clock.GetUtcNow() };
         db.LineDeliveries.Add(delivery);
         await db.SaveChangesAsync(token);
         await outbox.WriteAsync(new(delivery.Id, LineDeliveryHandler.Type, "{}"),
@@ -37,25 +37,53 @@ public sealed class LineDeliveryQueue(IDbContextFactory<OperationsDbContext> con
         if (settings is not { Enabled: true }) return;
 
         var notifications = await db.Notifications.AsNoTracking().Where(x => x.RowId > settings.LastNotificationRowId)
-            .OrderBy(x => x.RowId).Take(100).ToArrayAsync(token);
+            .OrderBy(x => x.RowId).Take(101).ToArrayAsync(token);
         if (notifications.Length == 0) return;
-        var groups = await db.LineGroups.AsNoTracking().Where(x => x.Approved).ToArrayAsync(token);
+        var count = Math.Min(notifications.Length, 100);
         var now = clock.GetUtcNow();
-        var deliveries = new List<LineDelivery>(notifications.Length * groups.Length);
-        foreach (var notification in notifications)
+        if (settings.AggregationStartedAt is null)
         {
-            var text = $"{notification.Title}\n{notification.Detail}";
-            if (text.Length > 5000)
+            settings.AggregationStartedAt = now;
+            if (settings.AggregationSeconds > 0)
             {
-                var length = char.IsHighSurrogate(text[4999]) ? 4999 : 5000;
-                text = text[..length];
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
+                return;
             }
-            foreach (var group in groups)
-                deliveries.Add(new LineDelivery { NotificationId = notification.Id, GroupId = group.Id,
-                    Recipient = group.ExternalId, Text = text, CreatedAt = now });
         }
+        if (now < settings.AggregationStartedAt.Value.AddSeconds(settings.AggregationSeconds)) return;
+        var groups = await db.LineGroups.AsNoTracking().Where(x => x.Approved).ToArrayAsync(token);
+        var deliveries = new List<LineDelivery>();
+        var text = new System.Text.StringBuilder();
+        Guid firstId = default;
+        void Flush()
+        {
+            if (text.Length == 0) return;
+            var message = text.ToString();
+            foreach (var group in groups)
+                deliveries.Add(new LineDelivery { NotificationId = firstId, GroupId = group.Id,
+                    Recipient = group.ExternalId, Text = message, CreatedAt = now });
+            text.Clear();
+        }
+        for (var i = 0; i < count; i++)
+        {
+            var notification = notifications[i];
+            var entry = $"{notification.Title}\n{notification.Detail}";
+            if (entry.Length > 5000)
+            {
+                var length = char.IsHighSurrogate(entry[4999]) ? 4999 : 5000;
+                entry = entry[..length];
+            }
+            if (text.Length > 0 && text.Length + 2 + entry.Length > 5000) Flush();
+            if (text.Length == 0) firstId = notification.Id;
+            else text.Append("\n\n");
+            text.Append(entry);
+        }
+        Flush();
         db.LineDeliveries.AddRange(deliveries);
-        settings.LastNotificationRowId = notifications[^1].RowId;
+        settings.LastNotificationRowId = notifications[count - 1].RowId;
+        // Continue an already elapsed window on the next poll when there is backlog.
+        if (notifications.Length <= count) settings.AggregationStartedAt = null;
         await db.SaveChangesAsync(token);
         var connection = (SqlConnection)db.Database.GetDbConnection();
         var sqlTransaction = (SqlTransaction)transaction.GetDbTransaction();

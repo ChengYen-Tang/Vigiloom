@@ -15,10 +15,24 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     internal DbSet<LineSettings> LineSettings => Set<LineSettings>();
     internal DbSet<LineGroup> LineGroups => Set<LineGroup>();
     internal DbSet<LineDelivery> LineDeliveries => Set<LineDelivery>();
+    internal DbSet<TimelineRecord> TimelineRecords => Set<TimelineRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("operations");
+        var timeline = modelBuilder.Entity<TimelineRecord>();
+        timeline.ToTable("TimelineRecords");
+        timeline.HasKey(x => x.RowId).IsClustered();
+        timeline.Property(x => x.RowId).UseIdentityColumn();
+        timeline.Property(x => x.MessageId).ValueGeneratedNever();
+        timeline.Property(x => x.Source).HasMaxLength(32).IsRequired();
+        timeline.Property(x => x.ResourceKind).HasMaxLength(16).IsRequired();
+        timeline.Property(x => x.Summary).IsRequired();
+        timeline.Property(x => x.Evidence).IsRequired();
+        timeline.Property(x => x.Link).IsRequired();
+        timeline.HasIndex(x => x.MessageId).IsUnique();
+        timeline.HasIndex(x => new { x.Time, x.RowId });
+        timeline.HasIndex(x => new { x.ResourceId, x.Time, x.RowId });
         var audit = modelBuilder.Entity<OperationAuditRecord>();
         audit.ToTable("AuditEvents");
         audit.HasKey(x => x.RowId).IsClustered();
@@ -72,6 +86,19 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         alertEvent.HasIndex(x => new { x.AlertId, x.Generation }).IsUnique();
         alertEvent.HasOne<PingAlert>().WithMany().HasForeignKey(x => x.AlertId).OnDelete(DeleteBehavior.Cascade);
 
+        var pingCursor = modelBuilder.Entity<PingTransitionCursor>();
+        pingCursor.ToTable("PingTransitionCursors");
+        pingCursor.HasKey(x => x.RowId).IsClustered();
+        pingCursor.Property(x => x.RowId).UseIdentityColumn();
+        pingCursor.Property(x => x.Target).HasMaxLength(253).IsRequired();
+        pingCursor.HasIndex(x => new { x.DeviceId, x.Target }).IsUnique();
+
+        var healthCursor = modelBuilder.Entity<HealthTransitionCursor>();
+        healthCursor.ToTable("HealthTransitionCursors");
+        healthCursor.HasKey(x => x.RowId).IsClustered();
+        healthCursor.Property(x => x.RowId).UseIdentityColumn();
+        healthCursor.HasIndex(x => x.TargetId).IsUnique();
+
         var notification = modelBuilder.Entity<Notification>();
         notification.ToTable("Notifications");
         notification.HasKey(x => x.Id).IsClustered(false);
@@ -102,6 +129,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         lineSettings.HasIndex(x => x.RowId).IsUnique().IsClustered();
         lineSettings.HasIndex(x => x.Slot).IsUnique();
         lineSettings.Property(x => x.Slot).ValueGeneratedNever();
+        lineSettings.Property(x => x.AggregationSeconds).HasDefaultValue(10).HasSentinel(-1);
 
         var lineGroup = modelBuilder.Entity<LineGroup>();
         lineGroup.ToTable("LineGroups");

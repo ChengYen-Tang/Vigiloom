@@ -44,6 +44,9 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
     public async Task<OperationAuditPage> QueryAgentPackagesAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.AgentPackageSourceChangedV1, cancellationToken);
 
+    public async Task<OperationAuditPage> QueryAgentRegistrationAsync(OperationAuditQuery query, CancellationToken cancellationToken)
+        => await QueryAsync(query, AuditKinds.AgentRegistrationRecordedV1, cancellationToken);
+
     public async Task<OperationAuditPage> QueryServiceApprovalsAsync(OperationAuditQuery query, CancellationToken cancellationToken)
         => await QueryAsync(query, AuditKinds.ServiceApprovedV1, cancellationToken);
 
@@ -94,10 +97,10 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         if (!Valid(query)) throw new ArgumentException("Use a UTC range of at most 31 days and a valid page.", nameof(query));
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var rows = await db.AuditEvents.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To &&
-                (kind != 0 ? x.Kind == kind || (kind == AuditKinds.EventTimelineAccessedV1 && x.Kind == AuditKinds.EventEvidenceAccessedV1) || (kind == AuditKinds.PublicationChangedV1 && x.Kind == AuditKinds.PublicationTemplateChangedV1) || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
+                (kind != 0 ? x.Kind == kind || (kind == AuditKinds.AgentRegistrationRecordedV1 && x.Kind == AuditKinds.AgentVersionAssignedV1) || (kind == AuditKinds.EventTimelineAccessedV1 && x.Kind == AuditKinds.EventEvidenceAccessedV1) || (kind == AuditKinds.PublicationChangedV1 && x.Kind == AuditKinds.PublicationTemplateChangedV1) || (kind == AuditKinds.AgentInboxSettingsChangedV1 && x.Kind == AuditKinds.AgentInboxCleanupActivatedV1) ||
                     (kind == AuditKinds.AgentPackageSourceChangedV1 && (x.Kind == AuditKinds.AgentPackageCatalogueRefreshedV1 || x.Kind == AuditKinds.AgentPackageTrustInitializedV1)) ||
                     (kind == AuditKinds.IntelligenceRevisionActivatedV1 && (x.Kind == AuditKinds.IntelligencePolicyChangedV1 || x.Kind == AuditKinds.AdvisoryImportAbandonedV1 || x.Kind == AuditKinds.AdvisoryCredentialChangedV1 || x.Kind == AuditKinds.IntelligenceRevisionRevokedV1 || x.Kind == AuditKinds.IntelligenceOfflineImportedV1 || x.Kind == AuditKinds.SigmaRuleStateChangedV1 || x.Kind == AuditKinds.BaselineExceptionRecordedV1)) :
-                    x.Kind != AuditKinds.AuditRetentionChangedV1 && x.Kind != AuditKinds.HostMetricRetentionChangedV1 && x.Kind != AuditKinds.TelemetryRetentionChangedV1 && x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1 && x.Kind != AuditKinds.LineSettingsChangedV1 && x.Kind != AuditKinds.EventTimelineAccessedV1 && x.Kind != AuditKinds.EventEvidenceAccessedV1))
+                    x.Kind != AuditKinds.AgentRegistrationRecordedV1 && x.Kind != AuditKinds.AgentVersionAssignedV1 && x.Kind != AuditKinds.AuditRetentionChangedV1 && x.Kind != AuditKinds.HostMetricRetentionChangedV1 && x.Kind != AuditKinds.TelemetryRetentionChangedV1 && x.Kind != AuditKinds.PingSettingsChangedV1 && x.Kind != AuditKinds.AgentReplayPolicyChangedV1 && x.Kind != AuditKinds.AgentInboxSettingsChangedV1 && x.Kind != AuditKinds.AgentInboxCleanupActivatedV1 && x.Kind != AuditKinds.AgentPackageSourceChangedV1 && x.Kind != AuditKinds.AgentPackageCatalogueRefreshedV1 && x.Kind != AuditKinds.AgentPackageTrustInitializedV1 && x.Kind != AuditKinds.ServiceApprovedV1 && x.Kind != AuditKinds.ServiceSourceChangedV1 && x.Kind != AuditKinds.GroupChangedV1 && x.Kind != AuditKinds.PublicationChangedV1 && x.Kind != AuditKinds.PublicationTemplateChangedV1 && x.Kind != AuditKinds.InstancePolicyChangedV1 && x.Kind != AuditKinds.ServiceInstanceChangedV1 && x.Kind != AuditKinds.ServiceCollectionChangedV1 && x.Kind != AuditKinds.LogQuotaChangedV1 && x.Kind != AuditKinds.TraceQuotaChangedV1 && x.Kind != AuditKinds.CollectorChangedV1 && x.Kind != AuditKinds.HealthTargetChangedV1 && x.Kind != AuditKinds.HealthNetworkPolicyChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionActivatedV1 && x.Kind != AuditKinds.IntelligencePolicyChangedV1 && x.Kind != AuditKinds.AdvisoryImportAbandonedV1 && x.Kind != AuditKinds.AdvisoryCredentialChangedV1 && x.Kind != AuditKinds.IntelligenceRevisionRevokedV1 && x.Kind != AuditKinds.IntelligenceOfflineImportedV1 && x.Kind != AuditKinds.SigmaRuleStateChangedV1 && x.Kind != AuditKinds.BaselineExceptionRecordedV1 && x.Kind != AuditKinds.LineSettingsChangedV1 && x.Kind != AuditKinds.EventTimelineAccessedV1 && x.Kind != AuditKinds.EventEvidenceAccessedV1))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId)
             .Skip((query.Page - 1) * PageSize).Take(PageSize + 1)
             .Select(x => new { x.OccurredAt, x.ActorId, x.ResourceId, x.Kind, x.Details }).ToArrayAsync(cancellationToken);
@@ -138,9 +141,23 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
             x.Kind == AuditKinds.HostMetricRetentionChangedV1 ? ReadHostMetricRetention(x.Details) : null,
             x.Kind == AuditKinds.TelemetryRetentionChangedV1 ? ReadTelemetryRetention(x.Details) : null,
             x.Kind == AuditKinds.EventTimelineAccessedV1 ? ReadEventTimeline(x.Details) : null,
-            x.Kind == AuditKinds.EventEvidenceAccessedV1 ? ReadEventEvidence(x.Details) : null)).ToArray();
+            x.Kind == AuditKinds.EventEvidenceAccessedV1 ? ReadEventEvidence(x.Details) : null,
+            x.Kind == AuditKinds.AgentRegistrationRecordedV1 ? ReadAgentRegistration(x.Details) : null,
+            x.Kind == AuditKinds.AgentVersionAssignedV1 ? ReadAgentAssignment(x.Details) : null)).ToArray();
         var more = rows.Length > PageSize;
         return new(entries, query.Page, more && query.Page < 1000, more && query.Page == 1000);
+    }
+
+    private static AgentRegistrationRecorded? ReadAgentRegistration(string details)
+    {
+        try { var value = JsonSerializer.Deserialize<AgentRegistrationRecorded>(details, Options); return value is not null && OperationAuditValidation.IsValid(value) ? value : null; }
+        catch (JsonException) { return null; }
+    }
+
+    private static AgentVersionAssigned? ReadAgentAssignment(string details)
+    {
+        try { var value = JsonSerializer.Deserialize<AgentVersionAssigned>(details, Options); return value is not null && OperationAuditValidation.IsValid(value) ? value : null; }
+        catch (JsonException) { return null; }
     }
 
     private static EventEvidenceAccessed? ReadEventEvidence(string details)
@@ -148,7 +165,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<EventEvidenceAccessed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -158,7 +175,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<EventTimelineAccessed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -168,7 +185,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AuditRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -178,7 +195,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HostMetricRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -188,7 +205,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<TelemetryRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -208,7 +225,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<BaselineExceptionRecorded>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -254,7 +271,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AdvisoryImportAbandoned>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -264,7 +281,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<IntelligenceRevisionActivated>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -274,7 +291,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<IntelligencePolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -284,7 +301,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -294,7 +311,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<SpeedRetentionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -304,7 +321,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentInboxSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -314,7 +331,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageSourceChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -324,7 +341,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageCatalogueRefreshed>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -334,7 +351,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentPackageTrustInitialized>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -344,7 +361,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentInboxCleanupActivated>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -354,7 +371,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<CollectorChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -364,7 +381,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HealthTargetChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -374,7 +391,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<HealthNetworkPolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -384,7 +401,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PingSettingsChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -394,7 +411,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<AgentReplayPolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -424,7 +441,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PublicationChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -434,7 +451,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<PublicationTemplateChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -444,7 +461,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<GroupChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -454,7 +471,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<InstancePolicyChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -464,7 +481,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceInstanceChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -474,7 +491,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<DeploymentLinkChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -484,7 +501,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<ServiceCollectionChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -494,7 +511,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<LogQuotaChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
@@ -504,7 +521,7 @@ public sealed class OperationAuditQueryService(IDbContextFactory<OperationsDbCon
         try
         {
             var value = JsonSerializer.Deserialize<TraceQuotaChanged>(details, Options);
-            return value is not null && OperationAuditWriter.IsValid(value) ? value : null;
+            return value is not null && OperationAuditValidation.IsValid(value) ? value : null;
         }
         catch (JsonException) { return null; }
     }
