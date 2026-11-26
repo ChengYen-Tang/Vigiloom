@@ -14,6 +14,11 @@ internal static class HostAgentStatusEndpoints
         app.MapGet("/internal/v1/devices/{id:guid}/agent-status", ReadAsync);
         app.MapGet("/internal/v1/devices/{id:guid}/agent-settings-status", ReadSettingsAsync);
         app.MapGet("/internal/v1/devices/{id:guid}/agent-queue-capacity-status", ReadCapacityAsync);
+        app.MapGet("/internal/v1/devices/{id:guid}/agent-security-observation", async (Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring, CancellationToken token) =>
+        {
+            var overview = await ReadDeviceAsync(id, clients, token);
+            return overview is null ? Results.NotFound() : Results.Ok(await monitoring.GetSecurityObservationAsync(overview.Device, overview.Registration, token));
+        });
         app.MapGet("/internal/v1/devices/{id:guid}/agent-log-status", async (Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring, CancellationToken token) =>
         {
             var overview = await ReadDeviceAsync(id, clients, token);

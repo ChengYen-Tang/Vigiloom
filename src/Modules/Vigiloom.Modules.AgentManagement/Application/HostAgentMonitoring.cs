@@ -11,6 +11,22 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 /// <summary>Reads host-owned Agent observations for a current Resources registration.</summary>
 public sealed class HostAgentMonitoring(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
 {
+    public async Task<SecurityObservation> GetSecurityObservationAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
+    {
+        if (!device.Eligible || registration is null || registration.RevokedAt is not null || registration.DeviceGeneration != device.Generation)
+            return new(device, null);
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var status = await db.AgentStatuses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == registration.Id, token);
+        if (status is not null && (status.DeviceId != device.DeviceId || status.DeviceGeneration != device.Generation))
+            throw new InvalidOperationException("Host status does not match the current Agent registration.");
+        var observation = new SecurityAgentObservation(registration.Id, registration.CreatedAt, status?.LastHeartbeatAt,
+            status?.HeartbeatSafetyIntervalSeconds ?? 30, status?.QueueReportEpoch, status?.QueueReportSequence,
+            status?.InventoryConfigurationEpoch, status?.InventoryConfigurationSequence, status?.InventoryConfigurationReportedAt, status?.InventoryConfigurationJson,
+            status?.IntegrityConfigurationEpoch, status?.IntegrityConfigurationSequence, status?.IntegrityConfigurationReportedAt, status?.IntegrityConfigurationJson,
+            status?.BaselineConfigurationReportedAt, status?.BaselineConfigurationJson);
+        return new(device, observation);
+    }
+
     public async Task<HostLogStatusView?> GetLogStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
     {
         if (!device.Eligible || registration is null || registration.RevokedAt is not null || registration.DeviceGeneration != device.Generation) return null;
