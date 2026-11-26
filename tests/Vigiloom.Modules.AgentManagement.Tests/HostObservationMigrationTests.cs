@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -39,6 +41,14 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(epoch, saved.QueueReportEpoch);
             Assert.AreEqual(2L, saved.QueueReportSequence);
             Assert.IsNotNull(saved.LastHeartbeatAt);
+            var monitor = new HostAgentMonitoring(factory, TimeProvider.System);
+            var device = new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true);
+            var registration = new AgentRegistrationSummary(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null);
+            var status = await monitor.GetAsync(device, registration, token);
+            Assert.AreEqual(AgentConnectionState.Online, status.State);
+            Assert.IsNotNull(status.LastHeartbeatAt);
+            Assert.AreEqual(AgentConnectionState.NotRegistered, (await monitor.GetAsync(device, null, token)).State);
+            Assert.AreEqual(AgentConnectionState.Disabled, (await monitor.GetAsync(device with { Eligible = false }, registration, token)).State);
             var settings = new HostAgentConfiguration(factory, heartbeat, TimeProvider.System);
             var actor = Guid.CreateVersion7();
             var platform = await settings.UpdateAsync(null, new AgentSettingsUpdate(new AgentSettingsOverrides(120, null, null), ""), actor, token);

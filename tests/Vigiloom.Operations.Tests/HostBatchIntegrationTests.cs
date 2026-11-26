@@ -15,6 +15,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Identity;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
@@ -172,6 +174,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
             using (var response = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-settings", token))
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var status = await proxyClient.GetFromJsonAsync<AgentConnectionStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-status", token);
+            Assert.AreEqual(AgentConnectionState.Online, status!.State);
             using (var response = await proxyClient.GetAsync("/api/v1/agent-management/settings/platform", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         }, outerToken), context.CancellationToken);
@@ -194,7 +198,13 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
-            if (request.Method == HttpMethod.Get) return new(HttpStatusCode.OK);
+            if (request.Method == HttpMethod.Get)
+            {
+                var payload = request.RequestUri!.AbsolutePath.EndsWith("/agents", StringComparison.Ordinal)
+                    ? JsonContent.Create(new DeviceAgentRegistrations([new(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null)], [], identity.DeviceGeneration))
+                    : JsonContent.Create(new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true));
+                return new(HttpStatusCode.OK) { Content = payload };
+            }
             var command = await request.Content!.ReadFromJsonAsync<AgentCredentialCommand>(cancellationToken: token);
             return command?.Credential == "valid" ? new(HttpStatusCode.OK) { Content = JsonContent.Create(identity) } : new(HttpStatusCode.Unauthorized);
         }

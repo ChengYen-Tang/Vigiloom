@@ -11,7 +11,7 @@ internal static class AgentEndpoints
 {
     public static void MapAgentEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-status", async (Guid deviceId, HttpContext context, AgentMonitoring monitoring, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-status", async (Guid deviceId, HttpContext context, IAgentStatusReader monitoring, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await monitoring.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
