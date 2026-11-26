@@ -292,6 +292,10 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
                 Assert.AreEqual(cachedLogs.Revision, host.Services.GetRequiredService<AgentLogSettingsRuntime>().ForOwner(firstOwner)?.Revision);
                 await heartbeatHandler.First.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                // The first heartbeat may have started before cached settings were loaded.
+                // Advance the default interval so that worker can observe the cached period.
+                clock.Advance(TimeSpan.FromSeconds(30));
+                await clock.HeartbeatPeriodConfigured.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 clock.Advance(TimeSpan.FromSeconds(61));
                 await heartbeatHandler.Second.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 builder.Configuration["Vigiloom:Agent:StateDirectory"] = secondPath;
@@ -1590,6 +1594,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         public TaskCompletionSource SecondSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ThirdSettingsScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ConfiguredBatchScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource HeartbeatPeriodConfigured { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int dailyCount;
         private int settingsCount;
         private int burstCount;
@@ -1625,7 +1630,19 @@ public sealed class HostLifecycleTests(TestContext testContext)
             else if (dueTime == TimeSpan.FromSeconds(60)) RetryScheduled.TrySetResult();
             else if (RetryScheduled.Task.IsCompleted && dueTime >= TimeSpan.FromSeconds(5) && dueTime < TimeSpan.FromSeconds(6)) NormalScheduled.TrySetResult();
             else if (dueTime >= TimeSpan.FromSeconds(5) && dueTime < TimeSpan.FromSeconds(6)) FirstScheduled.TrySetResult();
-            return timer;
+            return period == TimeSpan.FromSeconds(30) ? new HeartbeatTimer(timer, HeartbeatPeriodConfigured) : timer;
+        }
+
+        private sealed class HeartbeatTimer(ITimer inner, TaskCompletionSource configured) : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                var changed = inner.Change(dueTime, period);
+                if (changed && period == TimeSpan.FromSeconds(60)) configured.TrySetResult();
+                return changed;
+            }
+            public void Dispose() => inner.Dispose();
+            public ValueTask DisposeAsync() => inner.DisposeAsync();
         }
     }
 
