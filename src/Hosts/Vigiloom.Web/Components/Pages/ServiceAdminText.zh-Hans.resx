@@ -237,4 +237,63 @@
   <data name="來源授權已失效" xml:space="preserve"><value>来源授权已失效</value></data>
   <data name="服務未核准或已停收" xml:space="preserve"><value>服务未核准或已停止收集</value></data>
   <data name="服務發現" xml:space="preserve"><value>服务发现</value></data>
+  <data name="查看最近三分鐘仍有回報的服務；應用服務不需要綁定設備。" xml:space="preserve"><value>查看最近三分钟仍有回报的服务；应用服务不需要绑定设备。</value></data>
+  <data name="加入後預設為私人。正式遙測接收管線尚未完成，加入不代表已開始收集或服務正常。" xml:space="preserve"><value>加入后默认为私有。正式遥测接收管线尚未完成，加入不代表已开始收集或服务正常。</value></data>
+  <data name="立即保存來源憑證" xml:space="preserve"><value>立即保存来源凭证</value></data>
+  <data name="憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時可再次更換憑證。" xml:space="preserve"><value>凭证只显示这一次。请安全保存，不要贴到网址或公开记录；丢失时可再次更换凭证。</value></data>
+  <data name="來源憑證" xml:space="preserve"><value>来源凭证</value></data>
+  <data name="請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。" xml:space="preserve"><value>请将凭证安全交给负责设置应用来源的人员。来源开始回报后，最近三分钟内有回报的服务会出现在下方清单，供管理员确认加入。</value></data>
+  <data name="目前可用的來源回報資訊" xml:space="preserve"><value>当前可用的来源回报信息</value></data>
+  <data name="使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 " xml:space="preserve"><value>使用 HTTPS 将来源凭证放在 Authorization: Bearer 标头，向此平台的 </value></data>
+  <data name=" 傳送 JSON 欄位 " xml:space="preserve"><value> 传送 JSON 字段 </value></data>
+  <data name="、" xml:space="preserve"><value>、</value></data>
+  <data name=" 及 " xml:space="preserve"><value> 及 </value></data>
+  <data name="。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。" xml:space="preserve"><value>。只传送服务标识数据，不要传送 Log、Metric 或 Trace。</value></data>
+  <data name="這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。" xml:space="preserve"><value>这个入口只建立待加入候选，并非 OpenTelemetry 接收端；完整应用接入指南与正式遥测收集尚未完成。</value></data>
+  <data name="來源憑證可向該來源下所有仍獲授權收集的已加入服務寫入資料。互不信任的應用請使用不同來源；不要將中央來源憑證交給共用 Collector 的應用端。" xml:space="preserve"><value>来源凭证可向该来源下所有仍获授权收集的已加入服务写入数据。互不信任的应用请使用不同来源；不要将中央来源凭证交给共用 Collector 的应用端。</value></data>
+  <data name="服務候選清單" xml:space="preserve"><value>服务候选清单</value></data>
+  <data name="請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。" xml:space="preserve"><value>请先确认服务名称、环境与来源，再加入。停止回报超过三分钟便不再显示；核准前不保存完整遥测。</value></data>
+  <data name="無法讀取清單，請重新整理後再試。" xml:space="preserve"><value>无法读取清单，请刷新后再试。</value></data>
+  <data name="此頁沒有待加入的服務。" xml:space="preserve"><value>此页没有待加入的服务。</value></data>
+  <data name="服務候選清單，可左右滑動" xml:space="preserve"><value>服务候选清单，可左右滑动</value></data>
+  <data name="服務名稱" xml:space="preserve"><value>服务名称</value></data>
+  <data name="環境" xml:space="preserve"><value>环境</value></data>
+  <data name="最後回報（UTC）" xml:space="preserve"><value>最后回报（UTC）</value></data>
+  <data name="服務識別：" xml:space="preserve"><value>服务标识：</value></data>
+  <data name="命名空間：" xml:space="preserve"><value>命名空间：</value></data>
+  <data name="加入服務" xml:space="preserve"><value>加入服务</value></data>
+  <data name="我已確認來源及環境，並了解服務預設為私人" xml:space="preserve"><value>我已确认来源及环境，并了解服务默认为私有</value></data>
+  <data name="候選清單分頁" xml:space="preserve"><value>候选清单分页</value></data>
+  <data name="來源憑證可讓應用來源回報待加入服務的基本資訊。撤銷後，該來源會立即失去回報授權。" xml:space="preserve"><value>来源凭证可让应用来源回报待加入服务的基本信息。撤销后，该来源会立即失去回报授权。</value></data>
+  <data name="來源名稱" xml:space="preserve"><value>来源名称</value></data>
+  <data name="建立來源" xml:space="preserve"><value>建立来源</value></data>
+  <data name="無法讀取來源，請重新整理後再試。" xml:space="preserve"><value>无法读取来源，请刷新后再试。</value></data>
+  <data name="來源清單，可左右滑動" xml:space="preserve"><value>来源清单，可左右滑动</value></data>
+  <data name="可使用" xml:space="preserve"><value>可使用</value></data>
+  <data name="撤銷來源" xml:space="preserve"><value>撤销来源</value></data>
+  <data name="我了解撤銷會立即停止該來源授權" xml:space="preserve"><value>我了解撤销会立即停止该来源授权</value></data>
+  <data name="更換來源憑證" xml:space="preserve"><value>更换来源凭证</value></data>
+  <data name="更換後舊憑證立即失效，請更新使用該來源的 Collector 設定。服務身分與已核准狀態會保留。" xml:space="preserve"><value>更换后旧凭证立即失效，请更新使用该来源的 Collector 设置。服务身份与已核准状态会保留。</value></data>
+  <data name="選擇來源" xml:space="preserve"><value>选择来源</value></data>
+  <data name="請選擇來源" xml:space="preserve"><value>请选择来源</value></data>
+  <data name="我了解舊憑證會立即失效" xml:space="preserve"><value>我了解旧凭证会立即失效</value></data>
+  <data name="更換憑證" xml:space="preserve"><value>更换凭证</value></data>
+  <data name="來源清單分頁" xml:space="preserve"><value>来源清单分页</value></data>
+  <data name="建立憑證需要安全連線（HTTPS）。" xml:space="preserve"><value>建立凭证需要安全连接（HTTPS）。</value></data>
+  <data name="請輸入 1 至 128 字的來源名稱。" xml:space="preserve"><value>请输入 1 至 128 字的来源名称。</value></data>
+  <data name="無法確認建立結果，請重新整理並檢查來源。" xml:space="preserve"><value>无法确认建立结果，请刷新并检查来源。</value></data>
+  <data name="請確認服務來源及環境。" xml:space="preserve"><value>请确认服务来源及环境。</value></data>
+  <data name="服務已加入，預設為私人；正式遙測接收尚未完成。服務識別碼：{0}" xml:space="preserve"><value>服务已加入，默认为私有；正式遥测接收尚未完成。服务标识符：{0}</value></data>
+  <data name="服務已過期或無法加入，請重新整理後確認。" xml:space="preserve"><value>服务已过期或无法加入，请刷新后确认。</value></data>
+  <data name="無法確認加入結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认加入结果，请刷新后检查。</value></data>
+  <data name="請確認撤銷來源的影響。" xml:space="preserve"><value>请确认撤销来源的影响。</value></data>
+  <data name="來源已撤銷。" xml:space="preserve"><value>来源已撤销。</value></data>
+  <data name="找不到來源。" xml:space="preserve"><value>找不到来源。</value></data>
+  <data name="無法確認撤銷結果，請重新整理並檢查。" xml:space="preserve"><value>无法确认撤销结果，请刷新并检查。</value></data>
+  <data name="更換憑證需要安全連線（HTTPS）。" xml:space="preserve"><value>更换凭证需要安全连接（HTTPS）。</value></data>
+  <data name="請選擇來源並確認更換憑證的影響。" xml:space="preserve"><value>请选择来源并确认更换凭证的影响。</value></data>
+  <data name="來源憑證已更換，請立即保存並更新 Collector 設定。" xml:space="preserve"><value>来源凭证已更换，请立即保存并更新 Collector 设置。</value></data>
+  <data name="來源已變更、撤銷或不存在，請重新整理後確認。" xml:space="preserve"><value>来源已变更、撤销或不存在，请刷新后确认。</value></data>
+  <data name="無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。" xml:space="preserve"><value>无法确认更换结果，请刷新并检查；如有需要可再次更换凭证。</value></data>
+  <data name="無法確認撤銷結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认撤销结果，请刷新后检查。</value></data>
 </root>

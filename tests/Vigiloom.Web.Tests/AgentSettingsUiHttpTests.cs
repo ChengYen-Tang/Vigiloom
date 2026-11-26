@@ -814,6 +814,20 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(sourceId, "orders", "prod", "Orders", token));
             var other = await scope.ServiceProvider.GetRequiredService<SourceAdministration>().IssueAsync("billing collector", Guid.CreateVersion7(), token);
             Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(other.SourceId, "billing", "prod", "Billing", token));
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(url, token))
+            {
+                var englishText = await BodyTextAsync(english, token);
+                Assert.Contains("Service candidates", englishText);
+                Assert.Contains("Source credential management", englishText);
+                Assert.Contains("Orders", englishText);
+                Assert.Contains("orders collector", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(url, token))
+                Assert.Contains("服务候选清单", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var candidates = await admin.GetAsync(url, token);
             var text = await candidates.Content.ReadAsStringAsync(token);
             Assert.Contains("orders collector", text);
