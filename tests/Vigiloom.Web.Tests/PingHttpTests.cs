@@ -67,6 +67,23 @@ public sealed class PingHttpTests
         Assert.IsNotNull(initial);
         using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/telemetry/retention/preview", new TelemetryRetentionPreviewRequest(10, 5, initial.Version), token))
             Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/service-reception/retention", token))
+        {
+            Assert.Contains("Application data retention", await TextAsync(english, token));
+            var englishFields = Hidden(await FormAsync(english, "telemetry-retention", token));
+            englishFields["Input.LogDays"] = "10"; englishFields["Input.TraceDays"] = "5";
+            englishFields["Input.MetricRawDays"] = "20"; englishFields["Input.MetricRollupDays"] = "300"; englishFields["Input.HealthDays"] = "180";
+            using var englishPreview = await admin.PostAsync("/settings/service-reception/retention", new FormUrlEncodedContent(englishFields), token);
+            var previewText = await TextAsync(englishPreview, token);
+            Assert.Contains("Confirm save", previewText);
+            Assert.Contains("1 host logs", previewText);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/service-reception/retention", token))
+            Assert.Contains("应用服务数据保存", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var page = await admin.GetAsync("/settings/service-reception/retention", token);
         var fields = Hidden(await FormAsync(page, "telemetry-retention", token));
         fields["Input.LogDays"] = "10"; fields["Input.TraceDays"] = "5"; fields["Input.MetricRawDays"] = "20"; fields["Input.MetricRollupDays"] = "300"; fields["Input.HealthDays"] = "180";

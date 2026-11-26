@@ -6,39 +6,40 @@
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention
 @inject Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess Retention
 @inject ILogger<TelemetryRetentionPage> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>應用服務資料保存 - Vigiloom</PageTitle>
+<PageTitle>@L["應用服務資料保存"] - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>應用服務資料保存</h1><p>設定服務健康、指標、Logs 與 Traces 的保存期限；Logs 期限也適用於主機日誌。</p></div></header>
+    <header class="device-heading"><div><h1>@L["應用服務資料保存"]</h1><p>@L["設定服務健康、指標、Logs 與 Traces 的保存期限；Logs 期限也適用於主機日誌。"]</p></div></header>
     <section class="device-panel">
-        <p>過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。Logs 期限也適用於 IOC 與 Sigma 偵測紀錄；安全偵測所需的主機日誌與 Sigma 紀錄可能延長保留。</p>
-        @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
+        <p>@L["過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。Logs 期限也適用於 IOC 與 Sigma 偵測紀錄；安全偵測所需的主機日誌與 Sigma 紀錄可能延長保留。"]</p>
+        @if (loadError) { <p class="device-alert" role="alert">@L["無法讀取保存設定，請重新整理後再試。"]</p> }
         else if (snapshot is not null)
         {
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="telemetry-retention" method="post" OnValidSubmit="SubmitAsync">
                 <InputHidden @bind-Value="Input.Version" />
                 <InputHidden @bind-Value="Input.ConfirmationToken" />
-                <label for="telemetry-log-days">應用與主機 Logs 保存天數（1～3650 天）</label>
+                <label for="telemetry-log-days">@L["應用與主機 Logs 保存天數（1～3650 天）"]</label>
                 <InputNumber id="telemetry-log-days" @bind-Value="Input.LogDays" min="1" max="3650" required />
-                <label for="telemetry-trace-days">應用 Traces 保存天數（1～3650 天）</label>
+                <label for="telemetry-trace-days">@L["應用 Traces 保存天數（1～3650 天）"]</label>
                 <InputNumber id="telemetry-trace-days" @bind-Value="Input.TraceDays" min="1" max="3650" required />
-                <label for="telemetry-metric-raw-days">應用指標原始資料保存天數（1～3650 天）</label>
+                <label for="telemetry-metric-raw-days">@L["應用指標原始資料保存天數（1～3650 天）"]</label>
                 <InputNumber id="telemetry-metric-raw-days" @bind-Value="Input.MetricRawDays" min="1" max="3650" required />
-                <label for="telemetry-metric-rollup-days">應用指標五分鐘彙總保存天數（不可短於原始資料）</label>
+                <label for="telemetry-metric-rollup-days">@L["應用指標五分鐘彙總保存天數（不可短於原始資料）"]</label>
                 <InputNumber id="telemetry-metric-rollup-days" @bind-Value="Input.MetricRollupDays" min="1" max="3650" required />
-                <label for="telemetry-health-days">服務健康歷史保存天數（1～3650 天）</label>
+                <label for="telemetry-health-days">@L["服務健康歷史保存天數（1～3650 天）"]</label>
                 <InputNumber id="telemetry-health-days" @bind-Value="Input.HealthDays" min="1" max="3650" required />
-                <p>進行中的狀態區間與目前狀態所需的最近檢查會保留。</p>
+                <p>@L["進行中的狀態區間與目前狀態所需的最近檢查會保留。"]</p>
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.Logs 筆應用 Logs、@impact.HostLogs 筆主機日誌、@impact.SecurityDetections 筆安全偵測與關聯資料及 @impact.Spans 筆 Trace spans 符合清理條件。安全偵測紀錄依 Log 期限保存；Sigma 關聯資料依關聯所需時間保存。實際數量會隨時間及資料變動。</p>
-                    <p>有 @impact.MetricPoints 筆原始指標及 @impact.MetricWindows 個指標時段已超過所選期限；實際清理會視彙總狀態進行。</p>
-                    <p>預計清理 @impact.HealthObservations 筆健康檢查和 @impact.HealthIntervals 個已結束的狀態區間。</p>
-                    <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
-                    <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/service-reception/retention">取消</a></div>
+                    <p role="status">@L["以 {0} 為準，預計有 {1} 筆應用 Logs、{2} 筆主機日誌、{3} 筆安全偵測與關聯資料及 {4} 筆 Trace spans 符合清理條件。安全偵測紀錄依 Log 期限保存；Sigma 關聯資料依關聯所需時間保存。實際數量會隨時間及資料變動。", impact.PreviewedAt.ToString("u"), impact.Logs, impact.HostLogs, impact.SecurityDetections, impact.Spans]</p>
+                    <p>@L["有 {0} 筆原始指標及 {1} 個指標時段已超過所選期限；實際清理會視彙總狀態進行。", impact.MetricPoints, impact.MetricWindows]</p>
+                    <p>@L["預計清理 {0} 筆健康檢查和 {1} 個已結束的狀態區間。", impact.HealthObservations, impact.HealthIntervals]</p>
+                    <p>@L["確認後將依排程清理；預覽在 5 分鐘內有效。"]</p>
+                    <div class="device-actions"><button type="submit">@L["確認儲存"]</button><a href="/settings/service-reception/retention">@L["取消"]</a></div>
                 }
-                else { <div class="device-actions"><button type="submit">預覽變更</button><a href="/settings/service-reception">返回管線接入</a></div> }
+                else { <div class="device-actions"><button type="submit">@L["預覽變更"]</button><a href="/settings/service-reception">@L["返回管線接入"]</a></div> }
             </EditForm>
         }
     </section>
@@ -66,25 +67,25 @@
     private async Task SubmitAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!TelemetryRetentionLimits.IsValid(Input.LogDays, Input.TraceDays) || !TelemetryRetentionLimits.IsValidMetrics(Input.MetricRawDays, Input.MetricRollupDays) || !TelemetryRetentionLimits.IsValidHealth(Input.HealthDays) || Input.Version is null) { message = "請輸入有效的保存天數；指標彙總期限不可短於原始資料。"; return; }
+        if (!TelemetryRetentionLimits.IsValid(Input.LogDays, Input.TraceDays) || !TelemetryRetentionLimits.IsValidMetrics(Input.MetricRawDays, Input.MetricRollupDays) || !TelemetryRetentionLimits.IsValidHealth(Input.HealthDays) || Input.Version is null) { message = L["請輸入有效的保存天數；指標彙總期限不可短於原始資料。"].Value; return; }
         try
         {
             if (string.IsNullOrEmpty(Input.ConfirmationToken))
             {
                 preview = await Retention.PreviewAsync(new(Input.LogDays, Input.TraceDays, Input.Version, Input.MetricRawDays, Input.MetricRollupDays, Input.HealthDays), actor, HttpContext.RequestAborted);
-                if (preview is null) { message = "設定已被其他操作變更，請重新整理後再試。"; return; }
+                if (preview is null) { message = L["設定已被其他操作變更，請重新整理後再試。"].Value; return; }
                 Input.ConfirmationToken = preview.ConfirmationToken;
             }
             else if (await Retention.UpdateAsync(new(Input.LogDays, Input.TraceDays, Input.Version, Input.ConfirmationToken, Input.MetricRawDays, Input.MetricRollupDays, Input.HealthDays), actor, HttpContext.RequestAborted) is { } saved)
             {
                 snapshot = saved;
                 Input = new() { LogDays = saved.LogDays, TraceDays = saved.TraceDays, MetricRawDays = saved.MetricRawDays, MetricRollupDays = saved.MetricRollupDays, HealthDays = saved.HealthDays, Version = saved.Version };
-                message = "保存設定已儲存。";
+                message = L["保存設定已儲存。"].Value;
             }
-            else { Input.ConfirmationToken = null; message = "設定已被其他操作變更，請重新整理後再試。"; }
+            else { Input.ConfirmationToken = null; message = L["設定已被其他操作變更，請重新整理後再試。"].Value; }
         }
-        catch (ArgumentException) { Input.ConfirmationToken = null; message = "預覽已過期或天數已變更，請重新預覽。"; }
-        catch (Exception ex) { Logger.LogWarning("Could not update telemetry retention: {ErrorType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+        catch (ArgumentException) { Input.ConfirmationToken = null; message = L["預覽已過期或天數已變更，請重新預覽。"].Value; }
+        catch (Exception ex) { Logger.LogWarning("Could not update telemetry retention: {ErrorType}", ex.GetType().Name); message = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
     }
 
     private sealed class RetentionForm
