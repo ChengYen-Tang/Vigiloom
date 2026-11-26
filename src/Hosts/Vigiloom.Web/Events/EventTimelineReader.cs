@@ -11,7 +11,7 @@ namespace Vigiloom.Web.Events;
 /// <summary>Combines bounded references from existing host, service and security histories.</summary>
 internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbContext> agents,
     IDbContextFactory<ServiceObservabilityDbContext> services, IDbContextFactory<SecurityAnalysisDbContext> security,
-    IDbContextFactory<ResourcesDbContext> resources)
+    IDbContextFactory<ResourcesDbContext> resources, IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
     private static readonly string[] Sources = ["host-log", "service-log", "service-trace", "service-health", "inventory", "integrity", "sigma", "vulnerability", "baseline", "ioc", "yara"];
 
@@ -21,6 +21,8 @@ internal sealed class EventTimelineReader(IDbContextFactory<AgentManagementDbCon
         if (end <= start || end - start > TimeSpan.FromDays(31) || query.Page is < 1 or > 20 ||
             query.GroupId is { Version: not 7 } || query.Source is { Length: > 0 } source && !Sources.Contains(source, StringComparer.Ordinal))
             throw new ArgumentException("Invalid event query.");
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Operations:Url"]))
+            return await provider!.GetRequiredService<RemoteTimelineReader>().GetAsync(query, token);
         var limit = query.Page * 50 + 1;
         Guid[]? deviceIds = null, serviceIds = null;
         if (query.GroupId is { } group)
