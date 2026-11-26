@@ -145,6 +145,18 @@ public sealed class GroupManagementTests
         using var adminClient = Client(factory);
         await LoginAsync(adminClient, "admin", "Strong-Password-123", token);
         adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var ungroupedPage = await adminClient.GetAsync("/groups/ungrouped", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await ungroupedPage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Ungrouped devices", document.Body!.TextContent);
+            Assert.Contains("No ungrouped devices match your search.", document.Body.TextContent);
+        }
+        using (var ungroupedServicesPage = await adminClient.GetAsync("/groups/ungrouped-services", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await ungroupedServicesPage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Ungrouped services", document.Body!.TextContent);
+            Assert.Contains("No ungrouped services match your search.", document.Body.TextContent);
+        }
         using (var groupList = await adminClient.GetAsync("/groups", token))
         {
             var document = await new HtmlParser().ParseDocumentAsync(await groupList.Content.ReadAsStringAsync(token), token);

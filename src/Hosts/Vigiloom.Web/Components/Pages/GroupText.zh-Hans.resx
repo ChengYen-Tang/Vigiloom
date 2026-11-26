@@ -309,4 +309,12 @@
   <data xml:space="preserve" name="每次最多處理 100 筆，且同一設備不能同時加入及移出。">
     <value>每次最多处理 100 项，且同一设备不能同时加入及移出。</value>
   </data>
+  <data name="尚未加入任何群組的應用服務。" xml:space="preserve"><value>尚未加入任何群组的应用服务。</value></data>
+  <data name="尚未加入任何群組的設備。" xml:space="preserve"><value>尚未加入任何群组的设备。</value></data>
+  <data name="無法載入服務，請稍後再試。" xml:space="preserve"><value>无法加载服务，请稍后再试。</value></data>
+  <data name="無法載入設備，請稍後再試。" xml:space="preserve"><value>无法加载设备，请稍后再试。</value></data>
+  <data name="沒有符合條件的未分組服務。" xml:space="preserve"><value>没有符合条件的未分组服务。</value></data>
+  <data name="沒有符合條件的未分組設備。" xml:space="preserve"><value>没有符合条件的未分组设备。</value></data>
+  <data name="共 {0} 個服務" xml:space="preserve"><value>共 {0} 个服务</value></data>
+  <data name="共 {0} 台設備" xml:space="preserve"><value>共 {0} 台设备</value></data>
 </root>

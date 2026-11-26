@@ -309,4 +309,12 @@
   <data xml:space="preserve" name="每次最多處理 100 筆，且同一設備不能同時加入及移出。">
     <value>At most 100 devices can be changed at a time; a device cannot be added and removed together.</value>
   </data>
+  <data name="尚未加入任何群組的應用服務。" xml:space="preserve"><value>Application services not assigned to any group.</value></data>
+  <data name="尚未加入任何群組的設備。" xml:space="preserve"><value>Devices not assigned to any group.</value></data>
+  <data name="無法載入服務，請稍後再試。" xml:space="preserve"><value>Unable to load services. Please try again later.</value></data>
+  <data name="無法載入設備，請稍後再試。" xml:space="preserve"><value>Unable to load devices. Please try again later.</value></data>
+  <data name="沒有符合條件的未分組服務。" xml:space="preserve"><value>No ungrouped services match your search.</value></data>
+  <data name="沒有符合條件的未分組設備。" xml:space="preserve"><value>No ungrouped devices match your search.</value></data>
+  <data name="共 {0} 個服務" xml:space="preserve"><value>{0} services</value></data>
+  <data name="共 {0} 台設備" xml:space="preserve"><value>{0} devices</value></data>
 </root>
