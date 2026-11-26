@@ -496,6 +496,9 @@ public sealed class PingSqlTests
         await store.ReconcileAsync(policy, token); await DueAsync(network, token);
         var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id && x.Target == "::1");
         Assert.IsTrue(await store.IsCurrentAsync(lease, token));
+        var source = new DevicePingSource(resources);
+        var verification = new Vigiloom.Contracts.Resources.PingTargetVerification(lease.DeviceId, lease.DeviceVersion, lease.Target);
+        Assert.IsNotNull(await source.VerifyAsync(verification, token));
         await using (var db = resources.CreateDbContext())
         {
             var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
@@ -509,6 +512,7 @@ public sealed class PingSqlTests
             await db.SaveChangesAsync(token);
         }
         Assert.IsFalse(await store.IsCurrentAsync(lease, token));
+        Assert.IsNull(await source.VerifyAsync(verification, token));
         Assert.IsFalse(await store.CommitAsync(lease, policy, new(PingOutcome.Success, "::1", 0), clock.Now, "central", token));
         await using var check = network.CreateDbContext();
         Assert.AreEqual(0, await check.PingSamples.CountAsync(token));

@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Infrastructure.Persistence;
@@ -10,6 +11,16 @@ namespace Vigiloom.Modules.Resources.Application;
 
 public sealed class DevicePingSource(IDbContextFactory<ResourcesDbContext> contexts) : IDevicePingSource
 {
+    public async Task<PingDeviceContext?> VerifyAsync(PingTargetVerification target, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var connection = db.Database.GetDbConnection();
+        var current = await IsCurrentAsync(target.DeviceId, target.Version, target.Target, connection, transaction.GetDbTransaction(), token);
+        if (!current) return null;
+        return await GetContextAsync(target.DeviceId, connection, transaction.GetDbTransaction(), token);
+    }
+
     public async IAsyncEnumerable<PingDeviceSnapshot> ReadEnabledAsync([EnumeratorCancellation] CancellationToken token)
     {
         long after = 0;
