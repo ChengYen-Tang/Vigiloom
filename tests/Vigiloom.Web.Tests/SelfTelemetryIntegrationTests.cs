@@ -7,6 +7,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Temporalio.Client;
+using Temporalio.Exceptions;
 using Google.Protobuf;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -53,12 +56,18 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (observabilityDb, middle) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (operationsDb, token) =>
         {
+            var temporalAddress = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL");
+            var taskQueue = "vigiloom-req48-test-" + Guid.CreateVersion7().ToString("N");
+            var dispatchedIds = new HashSet<Guid>();
+            TemporalClient? temporal = null;
+            try
+            {
             using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseEnvironment("Production");
                 web.UseUrls("http://127.0.0.1:0");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Resources"] = resourcesDb.ConnectionString, ["Services:Observability:Url"] = "http://127.0.0.1:1" }));
+                { ["ConnectionStrings:Resources"] = resourcesDb.ConnectionString, ["Services:Observability:Url"] = "http://127.0.0.1:1", ["Work:ObservabilityQueue"] = taskQueue, ["Work:AuditQueue"] = taskQueue + "-audit" }));
                 web.ConfigureTestServices(services =>
                 {
                     RemoveWorkers(services);
@@ -148,13 +157,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 var group = await db.Groups.SingleAsync(x => x.Name == "Self", token);
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == service.Id && x.GroupId == group.Id, token));
             }
-            await using (var schedule = new SchedulingDbContext(scheduleOptions))
-            {
-                var payload = await schedule.Database.SqlQueryRaw<string>("SELECT TOP (1) Payload AS [Value] FROM scheduling.Outbox ORDER BY RowId").SingleAsync(token);
-                var work = JsonSerializer.Deserialize<TemporalWorkRequest>(payload)!.Work;
-                await using var scope = observation.Services.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<IServiceWorkHandler>().ExecuteAsync(work, token);
-            }
+            await ProjectAsync(serviceId);
             using (var accepted = await PostMetricsAsync(client, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
@@ -190,6 +193,11 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             SourceCredentialIssue externalSource;
             await using (var scope = observation.Services.CreateAsyncScope())
                 externalSource = await scope.ServiceProvider.GetRequiredService<SourceAdministration>().IssueAsync("External", Guid.CreateVersion7(), token);
+            using (var spoofed = await PostExternalMetricsAsync(gatewayClient, externalSource.Secret, token, "Vigiloom.Web"))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, spoofed.StatusCode);
+                Assert.AreEqual(1L, ExportMetricsServiceResponse.Parser.ParseFrom(await spoofed.Content.ReadAsByteArrayAsync(token)).PartialSuccess.RejectedDataPoints);
+            }
             using (var pending = await PostExternalMetricsAsync(gatewayClient, externalSource.Secret, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, pending.StatusCode);
@@ -198,8 +206,8 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             Guid candidateId;
             await using (var db = await resourceContexts.CreateDbContextAsync(token))
             {
-                var candidate = await db.ApplicationCandidates.SingleAsync(x => x.SourceId == externalSource.SourceId, token);
-                Assert.AreEqual("External.App", candidate.ServiceKey);
+                Assert.IsTrue(await db.ApplicationCandidates.AnyAsync(x => x.SourceId == externalSource.SourceId && x.ServiceKey == "Vigiloom.Web", token));
+                var candidate = await db.ApplicationCandidates.SingleAsync(x => x.SourceId == externalSource.SourceId && x.ServiceKey == "External.App", token);
                 candidateId = candidate.Id;
             }
             Assert.AreEqual(1, await verify.MetricPoints.CountAsync(token));
@@ -208,14 +216,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             approveResponse.EnsureSuccessStatusCode();
             var approval = await approveResponse.Content.ReadFromJsonAsync<ApplicationApprovalResult>(cancellationToken: token);
             Assert.AreEqual(ApplicationApprovalStatus.Approved, approval!.Status);
-            await using (var schedule = new SchedulingDbContext(scheduleOptions))
-            {
-                var payloads = await schedule.Database.SqlQueryRaw<string>("SELECT Payload AS [Value] FROM scheduling.Outbox ORDER BY RowId").ToArrayAsync(token);
-                var work = payloads.Select(payload => JsonSerializer.Deserialize<TemporalWorkRequest>(payload)!.Work)
-                    .Single(item => item.Kind == nameof(ApplicationApproved) && item.Payload.Contains(approval.ServiceId!.Value.ToString(), StringComparison.OrdinalIgnoreCase));
-                await using var scope = observation.Services.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<IServiceWorkHandler>().ExecuteAsync(work, token);
-            }
+            await ProjectAsync(approval.ServiceId!.Value);
             using (var accepted = await PostExternalMetricsAsync(gatewayClient, externalSource.Secret, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
@@ -253,10 +254,59 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             statuses.EnsureSuccessStatusCode();
             var statusMap = await statuses.Content.ReadFromJsonAsync<Dictionary<Guid, Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader.OverviewStatus>>(cancellationToken: token);
             Assert.AreEqual(ServiceHealthState.Unknown, statusMap![serviceId].Status.State);
+            async Task ProjectAsync(Guid id)
+            {
+                await using var connection = new SqlConnection(resourcesDb.ConnectionString);
+                await connection.OpenAsync(token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT MessageId, Payload FROM scheduling.Outbox ORDER BY RowId";
+                Guid messageId = default;
+                ServiceWork? work = null;
+                await using (var records = await command.ExecuteReaderAsync(token))
+                    while (await records.ReadAsync(token))
+                    {
+                        var rowId = records.GetGuid(0);
+                        var candidate = JsonSerializer.Deserialize<TemporalWorkRequest>(records.GetString(1))!.Work;
+                        if (!string.IsNullOrWhiteSpace(temporalAddress)) dispatchedIds.Add(rowId);
+                        if (candidate.Kind == nameof(ApplicationApproved) && candidate.Payload.Contains(id.ToString(), StringComparison.OrdinalIgnoreCase))
+                        { messageId = rowId; work = candidate; }
+                    }
+                Assert.IsNotNull(work);
+                await using var scope = observation.Services.CreateAsyncScope();
+                var handler = scope.ServiceProvider.GetRequiredService<IServiceWorkHandler>();
+                if (string.IsNullOrWhiteSpace(temporalAddress)) { await handler.ExecuteAsync(work, token); return; }
+                temporal ??= await TemporalClient.ConnectAsync(new(temporalAddress));
+                var workClient = new ServiceWorkClient(temporal);
+                var dispatcher = new OutboxDispatcher(resourcesDb.ConnectionString, [new TemporalOutboxHandler(workClient)], NullLogger<OutboxDispatcher>.Instance);
+                using var worker = ServiceWorkWorker.Create(temporal, taskQueue, handler);
+                await worker.ExecuteAsync(async () =>
+                {
+                    await dispatcher.DispatchAsync(token);
+                    await workClient.Get(messageId.ToString("D")).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
+                }, token);
+            }
             using var anonymous = await client.GetAsync($"/api/v1/service-health/{serviceId:D}/status", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using var internalStatus = await client.GetAsync($"/internal/v1/health/{serviceId:D}/status", token);
             Assert.AreEqual(HttpStatusCode.OK, internalStatus.StatusCode);
+            }
+            finally
+            {
+                if (temporal is not null && dispatchedIds.Count > 0)
+                {
+                    using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    foreach (var id in dispatchedIds)
+                    {
+                        try
+                        {
+                            await temporal.WorkflowService.DeleteWorkflowExecutionAsync(new()
+                            { Namespace = "default", WorkflowExecution = new() { WorkflowId = id.ToString("D") } },
+                                new RpcOptions { CancellationToken = cleanup.Token });
+                        }
+                        catch (RpcException error) when (error.Code == RpcException.StatusCode.NotFound) { }
+                    }
+                }
+            }
         }, middle), outer), context.CancellationToken);
 
     private static async Task<HttpResponseMessage> PostMetricsAsync(HttpClient client, CancellationToken token)
@@ -271,9 +321,9 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
         return await client.PostAsync("/internal/v1/self-otlp/v1/metrics", body, token);
     }
 
-    private static async Task<HttpResponseMessage> PostExternalMetricsAsync(HttpClient client, string secret, CancellationToken token)
+    private static async Task<HttpResponseMessage> PostExternalMetricsAsync(HttpClient client, string secret, CancellationToken token, string name = "External.App")
     {
-        var resource = ExternalResource();
+        var resource = ExternalResource(name);
         var metric = new Metric { Name = "external.test", Gauge = new Gauge { DataPoints = { new NumberDataPoint
             { TimeUnixNano = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000, AsDouble = 2 } } } };
         var payload = new ExportMetricsServiceRequest { ResourceMetrics = { new ResourceMetrics
@@ -290,10 +340,10 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
         return await client.SendAsync(request, token);
     }
 
-    private static Resource ExternalResource()
+    private static Resource ExternalResource(string name = "External.App")
     {
         var resource = new Resource();
-        resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "External.App" } });
+        resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = name } });
         resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "Production" } });
         return resource;
     }
