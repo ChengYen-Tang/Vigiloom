@@ -1,4 +1,5 @@
 extern alias NetworkHost;
+extern alias GatewayHost;
 
 using System.Data.Common;
 using System.Net;
@@ -142,6 +143,29 @@ public sealed class NetworkHostTests(TestContext context)
         {
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             Assert.IsNotNull(await response.Content.ReadFromJsonAsync<SpeedHistoryPage>(cancellationToken: token));
+        }
+        using (var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:network:Destinations:network:Address"] = address,
+                ["Services:Identity:Url"] = "http://identity"
+            }));
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IApiCredentialValidation>();
+                services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
+            });
+        }))
+        using (var throughGateway = gateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+        {
+            using (var denied = await throughGateway.GetAsync("/api/v1/speed-tests?from=2026-01-01T00%3A00%3A00Z&to=2026-01-02T00%3A00%3A00Z", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            throughGateway.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+            using (var allowed = await throughGateway.GetAsync("/api/v1/speed-tests?from=2026-01-01T00%3A00%3A00Z&to=2026-01-02T00%3A00%3A00Z", token))
+                Assert.AreEqual(HttpStatusCode.OK, allowed.StatusCode);
+            using (var internalApi = await throughGateway.GetAsync("/internal/v1/ping/settings", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, internalApi.StatusCode);
         }
         using (var response = await client.PostAsJsonAsync("/internal/v1/ping/history", new PingHistoryQuery(id, allowedBucket, allowedBucket.AddMinutes(5), "example.org", "central"), token))
         {
