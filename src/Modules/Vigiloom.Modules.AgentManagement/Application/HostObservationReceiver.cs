@@ -58,7 +58,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             if (!prior.Pending) return BatchReceiptStatus.AlreadyAccepted;
             if (logBatch is null) return BatchReceiptStatus.Conflict;
             await transaction.CommitAsync(token);
-            return await DeliverLogAsync(identity, logBatch, token);
+            return await DeliverLogAsync(identity, logBatch, digest, token);
         }
 
         var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (HOLDLOCK) WHERE [Scope] = 1")
@@ -163,10 +163,10 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         }
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
-        return logBatch is null ? BatchReceiptStatus.Accepted : await DeliverLogAsync(identity, logBatch, token);
+        return logBatch is null ? BatchReceiptStatus.Accepted : await DeliverLogAsync(identity, logBatch, digest, token);
     }
 
-    private async Task<BatchReceiptResult> DeliverLogAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, CancellationToken token)
+    private async Task<BatchReceiptResult> DeliverLogAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, byte[] digest, CancellationToken token)
     {
         var result = await logs!.ReceiveAsync(identity, batch, token);
         if (result.Status != LogReceiptStatus.Accepted)
@@ -181,7 +181,9 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         await AgentDeviceLock.AcquireReceiptAsync(db, identity.AgentId, token);
-        var receipt = await db.ReceivedBatches.SingleAsync(x => x.AgentId == identity.AgentId && x.BatchId == batch.BatchId, token);
+        var receipt = await db.ReceivedBatches.SingleOrDefaultAsync(x => x.AgentId == identity.AgentId && x.BatchId == batch.BatchId, token);
+        if (receipt is null) return BatchReceiptStatus.Expired;
+        if (!CryptographicOperations.FixedTimeEquals(receipt.Digest, digest)) return BatchReceiptStatus.Conflict;
         db.Entry(receipt).Property("PendingDelivery").CurrentValue = false;
         var state = await db.InboxStates.SingleAsync(x => x.Id == identity.AgentId, token);
         state.RecordCommittedBatch(receipt);

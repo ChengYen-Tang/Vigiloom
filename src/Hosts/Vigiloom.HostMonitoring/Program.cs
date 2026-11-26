@@ -7,6 +7,9 @@ using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
+using Hangfire;
+using Hangfire.SqlServer;
+using Vigiloom.Infrastructure.Scheduling;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
@@ -21,7 +24,18 @@ builder.Services.AddHttpClient<IHostLogSink, OperationsLogSink>((services, clien
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostObservationReceiver>();
+builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddSingleton(TimeProvider.System);
+if (builder.Configuration.GetValue("Hangfire:Enabled", true))
+{
+    builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
+            ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
+    builder.Services.AddScoped<HostInboxRetentionJob>();
+    builder.Services.AddHostedService<HostInboxRetentionSchedule>();
+    builder.Services.AddHangfireServer(options => { options.Queues = ["host"]; options.IsLightweightServer = true; });
+}
 builder.Services.AddHttpClient("resources", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
