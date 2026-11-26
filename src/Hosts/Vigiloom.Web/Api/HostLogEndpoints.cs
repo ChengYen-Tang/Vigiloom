@@ -12,7 +12,7 @@ internal static class HostLogEndpoints
     public static void MapHostLogEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-logs", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, string? cursor, Guid? sourceId, HttpContext context, HostLogHistory history, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit, CancellationToken token) =>
+            DateTimeOffset until, string? cursor, Guid? sourceId, HttpContext context, IHostLogHistory history, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) return Results.Forbid();

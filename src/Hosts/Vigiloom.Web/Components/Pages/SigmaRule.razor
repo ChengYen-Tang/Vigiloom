@@ -2,13 +2,14 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.Administrator)]
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Contracts.Intelligence
+@using Vigiloom.Contracts.Agent
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
 @inject SigmaRuleInventory Inventory
 @inject SigmaRuleService Rules
 @inject IDeviceManagement Devices
-@inject HostLogHistory Logs
+@inject IHostLogHistory Logs
 @inject TimeProvider Clock
 @inject ILogger<SigmaRule> Logger
 

@@ -395,6 +395,11 @@ builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
 });
 builder.Services.AddScoped<HostLogMonitoring>();
 builder.Services.AddScoped<HostLogHistory>();
+builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteHostLogs>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogHistory>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]) ? services.GetRequiredService<HostLogHistory>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteHostLogs>());
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
 builder.Services.AddScoped<AgentReplayPolicyService>();
 builder.Services.AddScoped<AgentInboxSettings>();
