@@ -45,7 +45,12 @@ internal static class SecurityDatabaseCommand
             sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
                 .MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
-        if (source is not null) await SqlTableDataMigration.CopyAsync(source, target, "security", Tables, token);
+        if (source is not null)
+        {
+            var mappings = Tables.Select(name => new SqlTableDataMigration.TableMapping("security", name, "security", name)).ToList();
+            mappings.Add(new("agent", "YaraScans", "security", "YaraScans"));
+            await SqlTableDataMigration.CopyAsync(source, target, mappings, token);
+        }
         Console.WriteLine(source is null ? "Security schema initialized successfully." : "Security data copied successfully.");
     }
 }

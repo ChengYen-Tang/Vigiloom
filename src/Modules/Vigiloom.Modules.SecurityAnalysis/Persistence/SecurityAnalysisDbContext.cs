@@ -5,12 +5,14 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
+using Vigiloom.Modules.SecurityAnalysis.Domain;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Persistence;
 
 public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisDbContext> options) : DbContext(options)
 {
     public DbSet<InventorySourceState> InventorySources => Set<InventorySourceState>();
+    public DbSet<YaraScan> YaraScans => Set<YaraScan>();
     public DbSet<InventorySnapshot> InventorySnapshots => Set<InventorySnapshot>();
     public DbSet<InventoryChunkData> InventoryChunks => Set<InventoryChunkData>();
     public DbSet<InventoryChangeRecord> InventoryChanges => Set<InventoryChangeRecord>();
@@ -65,6 +67,19 @@ public sealed class SecurityAnalysisDbContext(DbContextOptions<SecurityAnalysisD
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("security");
+        var yara = modelBuilder.Entity<YaraScan>();
+        yara.ToTable("YaraScans");
+        yara.HasKey(x => x.Id).IsClustered(false);
+        yara.Property(x => x.Id).ValueGeneratedNever();
+        yara.Property(x => x.RowId).UseIdentityColumn();
+        yara.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        yara.Property(x => x.FilePath).HasMaxLength(1024).IsRequired();
+        yara.Property(x => x.Rules).HasMaxLength(65536).IsRequired();
+        yara.Property(x => x.Output).HasMaxLength(65536);
+        yara.Property(x => x.Error).HasMaxLength(65536);
+        yara.Property(x => x.EngineVersion).HasMaxLength(64);
+        yara.HasIndex(x => new { x.AgentId, x.CompletedAt, x.RequestedAt });
+        yara.HasIndex(x => new { x.DeviceId, x.RequestedAt, x.RowId });
         IntelligenceModel.Configure(modelBuilder);
         DetectionModel.Configure(modelBuilder);
         VulnerabilityModel.Configure(modelBuilder);
