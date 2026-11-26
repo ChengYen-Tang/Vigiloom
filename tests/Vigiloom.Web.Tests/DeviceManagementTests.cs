@@ -94,6 +94,17 @@ public sealed class DeviceManagementTests
         Assert.IsNotNull(devices);
         Assert.AreEqual(1, devices.Total);
         Assert.AreEqual("example.com", devices.Items[0].Address);
+        foreach (var (culture, heading) in new[] { ("en", "Add device"), ("zh-Hans", "添加设备") })
+        {
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+            using var localized = await admin.GetAsync("/devices", token);
+            var content = (await new HtmlParser().ParseDocumentAsync(await localized.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains(heading, content);
+            Assert.Contains("Test router", content);
+            Assert.Contains("example.com", content);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         var now = DateTimeOffset.UtcNow;
         var auditUrl = $"/api/v1/operations/audit-feed/devices?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
         var auditFeed = await admin.GetFromJsonAsync<AuditFeedPage>(auditUrl, token);

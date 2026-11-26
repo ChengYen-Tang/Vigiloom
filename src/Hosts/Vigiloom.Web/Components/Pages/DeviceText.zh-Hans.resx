@@ -1,0 +1,102 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="設備">
+    <value>设备</value>
+  </data>
+  <data xml:space="preserve" name="管理網路設備與深入監控設備，查看各自的監測狀態。">
+    <value>管理网络设备与深入监控设备，查看各自的监测状态。</value>
+  </data>
+  <data xml:space="preserve" name="新增設備">
+    <value>添加设备</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>搜索名称或目标</value>
+  </data>
+  <data xml:space="preserve" name="名稱、IP 或 DNS">
+    <value>名称、IP 或 DNS</value>
+  </data>
+  <data xml:space="preserve" name="排序">
+    <value>排序</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>名称</value>
+  </data>
+  <data xml:space="preserve" name="目標">
+    <value>目标</value>
+  </data>
+  <data xml:space="preserve" name="建立時間">
+    <value>创建时间</value>
+  </data>
+  <data xml:space="preserve" name="反向排序">
+    <value>反向排序</value>
+  </data>
+  <data xml:space="preserve" name="顯示已封存">
+    <value>显示已归档</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>搜索</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請稍後重新整理。">
+    <value>无法加载设备，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的封存設備。">
+    <value>没有符合条件的归档设备。</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>没有符合条件的设备。</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 台設備">
+    <value>共 {0} 台设备</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>主要目标</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>监控模式</value>
+  </data>
+  <data xml:space="preserve" name="主要目標 Ping">
+    <value>主要目标 Ping</value>
+  </data>
+  <data xml:space="preserve" name="建立時間（UTC）">
+    <value>创建时间（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>深入监控</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>仅 Ping</value>
+  </data>
+  <data xml:space="preserve" name="已封存">
+    <value>已归档</value>
+  </data>
+  <data xml:space="preserve" name="已停用">
+    <value>已停用</value>
+  </data>
+  <data xml:space="preserve" name="查看詳情">
+    <value>查看详情</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>设备分页</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>上一页</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>下一页</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>第 {0} 页</value>
+  </data>
+</root>
