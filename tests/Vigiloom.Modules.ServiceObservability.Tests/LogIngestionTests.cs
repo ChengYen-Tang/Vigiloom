@@ -13,6 +13,7 @@ using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Contracts.Operations;
 using OtlpLogRecord = OpenTelemetry.Proto.Logs.V1.LogRecord;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests;
@@ -22,6 +23,53 @@ namespace Vigiloom.Modules.ServiceObservability.Tests;
 [TestCategory("Database")]
 public sealed class LogIngestionTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task Export_ForwardsSharedResourceAndRollsBackOnBusy() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new ServiceSource("source", new byte[32], now);
+            await using (var db = new ServiceObservabilityDbContext(options))
+            {
+                await db.Database.MigrateAsync(token);
+                db.Sources.Add(source);
+                db.Services.Add(new MonitoredService(new ServiceCandidate(source.Id, "api", "prod", "API", now), now.AddMinutes(-1)));
+                await db.SaveChangesAsync(token);
+            }
+            var resource = new ResourceLogs { Resource = new Resource() };
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.name", Value = new AnyValue { StringValue = "api" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "deployment.environment.name", Value = new AnyValue { StringValue = "prod" } });
+            resource.Resource.Attributes.Add(new KeyValue { Key = "service.instance.id", Value = new AnyValue { StringValue = "node" } });
+            resource.ScopeLogs.Add(new ScopeLogs { LogRecords = { new OtlpLogRecord() } });
+            resource.ScopeLogs.Add(new ScopeLogs { LogRecords = { new OtlpLogRecord() } });
+            var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
+            var delivery = new RecordingDelivery();
+            var export = new LogExport(factory, new CandidateDiscovery(factory), delivery);
+            var request = new ExportLogsServiceRequest { ResourceLogs = { resource } };
+            Assert.AreEqual(ExportStatus.Retry, (await export.WriteAsync(source.Id, request, token)).Status);
+            await using (var db = new ServiceObservabilityDbContext(options)) Assert.AreEqual(0, await db.Instances.CountAsync(token));
+            delivery.Status = LogReceiptStatus.Accepted;
+            Assert.AreEqual(ExportStatus.Complete, (await export.WriteAsync(source.Id, request, token)).Status);
+            Assert.HasCount(1, delivery.Batch!.Resources);
+            Assert.HasCount(2, delivery.Batch.Resources[0].Scopes);
+            await using var verify = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(1, await verify.Instances.CountAsync(token));
+            Assert.AreEqual(0, await verify.LogRecords.CountAsync(token));
+        }, context.CancellationToken);
+
+    private sealed class RecordingDelivery : IApplicationLogDelivery
+    {
+        public LogReceiptStatus Status { get; set; } = LogReceiptStatus.Busy;
+        public ApplicationLogBatch? Batch { get; private set; }
+        public Task<LogReceipt> SendAsync(ApplicationLogBatch batch, CancellationToken token)
+        {
+            Batch = batch;
+            return Task.FromResult(new LogReceipt(Status));
+        }
+    }
     [TestMethod]
     [Timeout(120000, CooperativeCancellation = true)]
     public Task Export_ConcurrentReverseServiceOrderCommitsBothRequests() =>
