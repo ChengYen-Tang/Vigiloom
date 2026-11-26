@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 
-public sealed class PingRetentionJob(PingRetentionCleanup cleanup, ILogger<PingRetentionJob> logger)
+public sealed class NetworkPingRetentionJob(PingRetentionCleanup cleanup, ILogger<NetworkPingRetentionJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]
     [DisableConcurrentExecution(10)]
@@ -14,7 +14,7 @@ public sealed class PingRetentionJob(PingRetentionCleanup cleanup, ILogger<PingR
     }
 }
 
-public sealed class PingRollupBackfillJob(PingRollupBackfill backfill)
+public sealed class NetworkPingRollupJob(PingRollupBackfill backfill)
 {
     [AutomaticRetry(Attempts = 3)]
     public async Task RunAsync(CancellationToken token)

@@ -24,6 +24,40 @@ public sealed class ProxyTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
+    public async Task RoutesNetworkReadsWithoutExposingInternalOrAdministrativeEndpoints()
+    {
+        await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
+        await using var network = await StartUpstreamAsync("network", TestContext.CancellationToken);
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = builder.Build();
+        identity.MapPost("/internal/identity/api-credentials/validate", () => Results.Json(new VerifiedApiCredentialResponse(Guid.CreateVersion7(), "read", false)));
+        await identity.StartAsync(TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
+                ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(network),
+                ["Services:Identity:Url"] = Address(identity)
+            })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        var id = Guid.CreateVersion7();
+        using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
+        Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken));
+        Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/devices/{id:D}/ping/history", TestContext.CancellationToken));
+        Assert.AreEqual("network", await client.GetStringAsync("/api/v1/speed-tests", TestContext.CancellationToken));
+        Assert.AreEqual("web", await client.GetStringAsync($"/api/v1/devices/{id:D}", TestContext.CancellationToken));
+        using (var response = await client.GetAsync("/api/v1/settings/ping", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.PostAsync($"/api/v1/speed-tests/{id:D}/cancel", null, TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync("/internal/v1/ping-targets", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+    [TestMethod]
     public async Task ForwardsPublicPathsAndRejectsInternalPaths()
     {
         var builder = WebApplication.CreateBuilder();
