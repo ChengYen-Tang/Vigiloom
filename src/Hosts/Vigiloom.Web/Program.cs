@@ -122,6 +122,9 @@ builder.Services.AddHttpClient<Vigiloom.Web.Operations.AuditRetentionAccess>((se
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddScoped<DeviceAuditFeed>();
+builder.Services.AddHttpClient<Vigiloom.Web.Diagnostics.RemoteDeviceAuditFeed>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentAuditFeed>();
 builder.Services.AddHttpClient<RemoteHostAuditFeed>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))

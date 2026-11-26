@@ -19,6 +19,7 @@ using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Resources.Publication;
 using Vigiloom.Resources.DeploymentLinks;
 using Vigiloom.Contracts.Services;
+using Vigiloom.Contracts.Operations;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Resources");
@@ -63,6 +64,7 @@ builder.Services.AddScoped<GroupMembersReader>();
 builder.Services.AddScoped<ServiceGroupsReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
+builder.Services.AddScoped<DeviceAuditFeed>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<GroupAuditOutbox>();
@@ -106,6 +108,8 @@ builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetR
 
 var app = builder.Build();
 app.MapWorkHistoryEndpoints();
+app.MapPost("/internal/v1/devices/audit", async (OperationAuditQuery query, DeviceAuditFeed feed, CancellationToken token) =>
+    AuditFeedLimits.Valid(query) ? Results.Ok(await feed.QueryAsync(query, token)) : Results.BadRequest());
 var internalApi = app.MapGroup("/internal/v1");
 internalApi.MapGet("/application-services/{id:guid}/deployments", async (Guid id, ResourceDeploymentLinks links, CancellationToken token, int page = 1) =>
     await links.ListAsync(id, page, token) is { } result ? Results.Ok(result) : Results.NotFound());
