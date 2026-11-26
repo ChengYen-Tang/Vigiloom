@@ -114,6 +114,12 @@ builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
 builder.Services.AddScoped<ISecurityDetectionRetention, SecurityDetectionRetention>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.AuditRetentionAccess>((services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"];
+    client.BaseAddress = new Uri((string.IsNullOrWhiteSpace(address) ? "http://localhost" : address).TrimEnd('/') + "/");
+})
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddScoped<DeviceAuditFeed>();
 builder.Services.AddScoped<AgentAuditFeed>();
@@ -409,7 +415,10 @@ builder.Services.AddScoped<HostLogMonitoring>();
 builder.Services.AddScoped<IHostLogMonitoring>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<HostLogMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddHttpClient<Vigiloom.Web.LogQuota.LogQuotaReader>((services, client) =>
-    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"];
+    client.BaseAddress = new Uri((string.IsNullOrWhiteSpace(address) ? "http://localhost" : address).TrimEnd('/') + "/");
+})
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.HostLogEvidenceReader>((services, client) =>
