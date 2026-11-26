@@ -11,6 +11,13 @@ namespace Vigiloom.Modules.Resources.Application;
 
 public sealed class DevicePingSource(IDbContextFactory<ResourcesDbContext> contexts) : IDevicePingSource
 {
+    public async Task<PingDeviceContext> GetContextAsync(Guid id, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        return await GetContextAsync(id, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+    }
+
     public async Task<PingDeviceContext?> VerifyAsync(PingTargetVerification target, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
