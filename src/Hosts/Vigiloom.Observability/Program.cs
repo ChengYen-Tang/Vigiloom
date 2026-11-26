@@ -84,6 +84,13 @@ builder.Services.AddHttpClient<IApplicationLogDelivery, ApplicationLogDelivery>(
 builder.Services.AddHttpClient<IApplicationLogOverview, ApplicationLogOverview>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IApplicationLogHistory, ApplicationLogHistory>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<TelemetryHistory>();
+builder.Services.AddScoped<ServiceEvidenceReader>();
+builder.Services.AddScoped<ServiceHttpMetricsReader>();
+builder.Services.AddScoped<HealthObservationReader>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
