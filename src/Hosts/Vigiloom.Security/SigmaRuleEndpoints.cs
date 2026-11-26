@@ -8,6 +8,8 @@ internal static class SigmaRuleEndpoints
     public static void MapSigmaRuleEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/internal/v1/sigma");
+        group.MapGet("/evidence/{testId:guid}", async (Guid testId, SigmaEvidenceReader reader, CancellationToken token) =>
+            await reader.GetAsync(testId, token) is { } evidence ? Results.Ok(evidence) : Results.NotFound());
         group.MapGet("/rules", async (string? cursor, IServiceProvider services, CancellationToken token) =>
         {
             if (!SigmaRuleInventory.ValidCursor(cursor)) return Results.BadRequest();

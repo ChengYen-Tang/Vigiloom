@@ -25,6 +25,9 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -43,10 +46,22 @@ public sealed class YaraRoutingTests(TestContext context)
             await using (var db = new SecurityAnalysisDbContext(options)) await db.Database.MigrateAsync(token);
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var anotherDevice = Guid.CreateVersion7();
+            var sigmaTestId = Guid.CreateVersion7();
             await using (var db = new SecurityAnalysisDbContext(options))
             {
                 db.InventorySources.Add(new InventorySourceState(new(identity.AgentId, identity.DeviceId, 1), InventorySource.HostSystem));
                 db.InventorySources.Add(new InventorySourceState(new(Guid.CreateVersion7(), anotherDevice, 1), InventorySource.LinuxDpkg));
+                var now = DateTimeOffset.UtcNow;
+                var source = new IntelligenceSource { Key = "sigma-evidence-test" };
+                var revision = new IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "1", RetrievedAt = now, Digest = new byte[32], Artifact = [1], SchemaVersion = "1", MappingVersion = "1", LicenseEvidence = "test", RecordCount = 1 };
+                var content = System.Text.Encoding.UTF8.GetBytes("detection: test-condition");
+                var baseContent = System.Text.Encoding.UTF8.GetBytes("selection: base-condition");
+                var digest = System.Security.Cryptography.SHA256.HashData(content);
+                var baseDigest = System.Security.Cryptography.SHA256.HashData(baseContent);
+                db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision);
+                db.SigmaRules.Add(new SigmaRule { RevisionId = revision.Id, Path = "rules/test.yml", Title = "test", Digest = digest, Content = content });
+                db.SigmaRules.Add(new SigmaRule { RevisionId = revision.Id, Path = "rules/base.yml", Title = "base", Digest = baseDigest, Content = baseContent });
+                db.SigmaRuleTests.Add(new SigmaRuleTest { Id = sigmaTestId, SourceId = source.Id, RevisionId = revision.Id, Path = "rules/test.yml", Digest = Convert.ToHexStringLower(digest), ActivationVersion = "1", MatcherVersion = "1", SamplesJson = $$"""{"BasePath":"rules/base.yml","BaseSha256":"{{Convert.ToHexStringLower(baseDigest)}}","Exceptions":[{"Field":"User","Value":"ignored-user"}]}""", Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = now });
                 await db.SaveChangesAsync(token);
             }
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
@@ -64,6 +79,13 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            var evidence = await securityClient.GetFromJsonAsync<SigmaEvidence>($"/internal/v1/sigma/evidence/{sigmaTestId:D}", token);
+            Assert.IsNotNull(evidence);
+            Assert.AreEqual("detection: test-condition", evidence.Content);
+            Assert.AreEqual("selection: base-condition", evidence.BaseRule);
+            Assert.AreEqual("ignored-user", Assert.ContainsSingle(evidence.Exceptions!).Value);
+            using (var missing = await securityClient.GetAsync($"/internal/v1/sigma/evidence/{Guid.CreateVersion7():D}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             using (var sigmaOffline = await securityClient.GetAsync("/internal/v1/sigma/rules", token))
                 Assert.AreEqual(HttpStatusCode.ServiceUnavailable, sigmaOffline.StatusCode);
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<IntelligenceSourcePage>("/internal/v1/intelligence/sources/?page=1", token));
