@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="事件" xml:space="preserve"><value>Events</value></data>
+  <data name="事件與證據" xml:space="preserve"><value>Events and evidence</value></data>
+  <data name="查看主機、服務與安全監控的時間線。安全比對結果是待調查線索，目前不包含人工判定狀態。" xml:space="preserve"><value>View host, service and security monitoring timelines. Security matches are investigation leads and do not currently include manual verdicts.</value></data>
+  <data name="篩選事件" xml:space="preserve"><value>Filter events</value></data>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>Start date (UTC)</value></data>
+  <data name="結束日期（UTC）" xml:space="preserve"><value>End date (UTC)</value></data>
+  <data name="群組" xml:space="preserve"><value>Group</value></data>
+  <data name="全部群組" xml:space="preserve"><value>All groups</value></data>
+  <data name="來源" xml:space="preserve"><value>Source</value></data>
+  <data name="全部來源" xml:space="preserve"><value>All sources</value></data>
+  <data name="查詢" xml:space="preserve"><value>Search</value></data>
+  <data name="清除篩選" xml:space="preserve"><value>Clear filters</value></data>
+  <data name="事件時間線" xml:space="preserve"><value>Event timeline</value></data>
+  <data name="這段時間沒有符合條件的事件。" xml:space="preserve"><value>No events match this time range.</value></data>
+  <data name="左右滑動查看完整事件。" xml:space="preserve"><value>Scroll horizontally to view the full event.</value></data>
+  <data name="事件時間線，可左右捲動" xml:space="preserve"><value>Event timeline, scroll horizontally</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>Time (UTC)</value></data>
+  <data name="證據" xml:space="preserve"><value>Evidence</value></data>
+  <data name="相關對象" xml:space="preserve"><value>Related resource</value></data>
+  <data name="查看原始事件" xml:space="preserve"><value>View original event</value></data>
+  <data name="查看掃描" xml:space="preserve"><value>View scan</value></data>
+  <data name="查看服務" xml:space="preserve"><value>View service</value></data>
+  <data name="查看設備" xml:space="preserve"><value>View device</value></data>
+  <data name="查看規則依據" xml:space="preserve"><value>View rule evidence</value></data>
+  <data name="匯出目前頁 CSV" xml:space="preserve"><value>Export current page as CSV</value></data>
+  <data name="結果超過可顯示的範圍，請縮小日期或選擇來源後重新查詢。" xml:space="preserve"><value>Results exceed the display limit. Narrow the dates or choose a source and search again.</value></data>
+  <data name="事件分頁" xml:space="preserve"><value>Event pagination</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>Host logs</value></data>
+  <data name="應用程式日誌" xml:space="preserve"><value>Application logs</value></data>
+  <data name="應用程式追蹤" xml:space="preserve"><value>Application traces</value></data>
+  <data name="服務健康" xml:space="preserve"><value>Service health</value></data>
+  <data name="資產盤點" xml:space="preserve"><value>Asset inventory</value></data>
+  <data name="完整性" xml:space="preserve"><value>Integrity</value></data>
+  <data name="行為規則" xml:space="preserve"><value>Behavior rules</value></data>
+  <data name="漏洞評估" xml:space="preserve"><value>Vulnerability assessment</value></data>
+  <data name="安全基準" xml:space="preserve"><value>Security baseline</value></data>
+  <data name="IOC 比對" xml:space="preserve"><value>IOC matching</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA scan</value></data>
+  <data name="請選擇有效的日期。" xml:space="preserve"><value>Choose valid dates.</value></data>
+  <data name="開始日期不能晚於結束日期。" xml:space="preserve"><value>Start date cannot be after end date.</value></data>
+  <data name="每次最多查詢 31 天。" xml:space="preserve"><value>Search up to 31 days at a time.</value></data>
+  <data name="請選擇有效的群組。" xml:space="preserve"><value>Choose a valid group.</value></data>
+  <data name="無法確認登入身分。" xml:space="preserve"><value>Unable to confirm signed-in identity.</value></data>
+  <data name="請確認篩選條件與頁碼。" xml:space="preserve"><value>Check the filters and page number.</value></data>
+  <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>Unable to load events. Try again later.</value></data>
+</root>

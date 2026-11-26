@@ -722,6 +722,21 @@ public sealed class AgentIdentityHttpTests
             var filtered = await filteredResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
             Assert.IsNotNull(filtered);
             Assert.IsEmpty(filtered.Items);
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishEvents = await reader.GetAsync("/events", token))
+            {
+                var englishHtml = WebUtility.HtmlDecode(await englishEvents.Content.ReadAsStringAsync(token));
+                Assert.Contains("Events and evidence", englishHtml);
+                Assert.Contains("Host logs", englishHtml);
+                Assert.Contains(item.MessageId.ToString("D"), englishHtml);
+            }
+            using (var invalidEvents = await reader.GetAsync("/events?from=2026-02-02&to=2026-02-01", token))
+                Assert.Contains("Start date cannot be after end date.", WebUtility.HtmlDecode(await invalidEvents.Content.ReadAsStringAsync(token)));
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedEvents = await reader.GetAsync("/events", token))
+                Assert.Contains("事件与证据", WebUtility.HtmlDecode(await simplifiedEvents.Content.ReadAsStringAsync(token)));
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var eventPage = await reader.GetAsync("/events", token);
             Assert.AreEqual(HttpStatusCode.OK, eventPage.StatusCode);
             var eventPageHtml = await eventPage.Content.ReadAsStringAsync(token);
