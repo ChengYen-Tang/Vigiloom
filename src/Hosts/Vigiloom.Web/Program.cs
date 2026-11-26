@@ -469,9 +469,10 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelli
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceRevocation>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevOfflineImport>();
 builder.Services.AddScoped<AgentInventorySettings>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>();
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
-    services.GetRequiredService<IInventorySettingsReader>(), services.GetRequiredService<TimeProvider>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<IInventorySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<AgentInventoryStatus>();
 builder.Services.AddScoped<DeviceInventoryAgent>();
@@ -499,7 +500,7 @@ builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
-    services.GetRequiredService<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader>(), services.GetRequiredService<TimeProvider>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();
