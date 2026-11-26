@@ -10,6 +10,7 @@ using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -20,6 +21,7 @@ builder.Services.AddServiceDiscovery();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentSecuritySettings>();
+builder.Services.AddScoped<IBaselineSource, BaselineSource>();
 builder.Services.AddHttpClient("host", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Host:Url"] ?? "http://vigiloom-host-monitoring";
@@ -60,6 +62,8 @@ app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/inventory", async (Guid 
     deviceId.Version == 7 ? Results.Ok(await settings.InventoryAsync(deviceId, token)) : Results.BadRequest());
 app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/integrity", async (Guid deviceId, AgentSecuritySettings settings, CancellationToken token) =>
     deviceId.Version == 7 ? Results.Ok(await settings.IntegrityAsync(deviceId, token)) : Results.BadRequest());
+app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/baseline", async (Guid deviceId, AgentSecuritySettings settings, CancellationToken token) =>
+    deviceId.Version == 7 ? Results.Ok(await settings.BaselineAsync(deviceId, token)) : Results.BadRequest());
 var yara = app.MapGroup("/internal/v1/yara-scans");
 yara.MapPost("/create", async (YaraCreateCommand command, YaraScans scans, CancellationToken token) =>
     Results.Ok(await scans.CreateAsync(command.Identity, command.Request, command.ActorId, token)));

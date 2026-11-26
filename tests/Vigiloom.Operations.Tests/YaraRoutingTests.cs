@@ -14,6 +14,7 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -76,6 +77,12 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.IsNotNull(await integrity.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token));
                 Assert.IsNotNull(integrity.Headers.ETag);
             }
+            using (var baseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, baseline.StatusCode);
+                Assert.IsNotNull(await baseline.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token));
+                Assert.IsTrue(baseline.Headers.CacheControl!.NoStore);
+            }
             Assert.AreEqual(job.Id, (await agent.GetFromJsonAsync<YaraScanJob>("/api/v1/agent/yara-scans/next", token))!.Id);
             using (var cancel = await securityClient.PostAsync($"/internal/v1/yara-scans/devices/{identity.DeviceId:D}/{job.Id:D}/cancel", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, cancel.StatusCode);
@@ -85,6 +92,8 @@ public sealed class YaraRoutingTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             using var deniedSettings = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, deniedSettings.StatusCode);
+            using var deniedBaseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, deniedBaseline.StatusCode);
         }, context.CancellationToken);
 
     private sealed class IdentityHandler(RegisteredAgentIdentity identity) : HttpMessageHandler

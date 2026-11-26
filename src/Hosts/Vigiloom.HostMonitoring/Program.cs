@@ -141,6 +141,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/baseline-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
