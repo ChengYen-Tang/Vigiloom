@@ -112,6 +112,20 @@ public sealed class CustomBaselineHttpTests(TestContext context)
             var first = await sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{sourceId:D}", token);
             Assert.AreEqual(BaselineSourceAvailability.Ready, first.Availability);
             Assert.AreEqual("0600", first.Check!.Expected);
+            var exceptionPage = $"/devices/{device.Id:D}/baseline-exception?source={Uri.EscapeDataString($"{BaselineSources.LocalPrefix}{sourceId:D}")}&revision={firstRevision:D}";
+            using (var denied = await reader.GetAsync(exceptionPage, token)) Assert.AreNotEqual(HttpStatusCode.OK, denied.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishException = await admin.GetAsync(exceptionPage, token))
+            {
+                var text = WebUtility.HtmlDecode(await englishException.Content.ReadAsStringAsync(token));
+                Assert.Contains("Add baseline exception note", text);
+                Assert.Contains("SSH config permissions", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedException = await admin.GetAsync(exceptionPage, token))
+                Assert.Contains("新增基准例外说明", WebUtility.HtmlDecode(await simplifiedException.Content.ReadAsStringAsync(token)));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             var observedAt = DateTimeOffset.UtcNow;
             var observation = new BaselineResult(sourceId, firstRevision, first.ActivationVersion!, first.Check.Id, observedAt,
                 "ubuntu:24.04", BaselineOutcome.Fail, "Mode 640; extended ACL absent");

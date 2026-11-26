@@ -9,23 +9,24 @@
 @inject Vigiloom.Web.HostMonitoring.BaselineAccess Exceptions
 @inject NavigationManager Navigation
 @inject ILogger<BaselineException> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>新增基準例外說明 - Vigiloom</PageTitle>
+<PageTitle>@L["新增基準例外說明"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <header class="device-heading"><div><h1>新增基準例外說明</h1><p>記錄此設備的原因；不會變更檢查結果或停止檢查。</p></div></header>
-    <p><a href="@($"/devices/{DeviceId:D}")">返回設備</a></p>
+    <header class="device-heading"><div><h1>@L["新增基準例外說明"]</h1><p>@L["記錄此設備的原因；不會變更檢查結果或停止檢查。"]</p></div></header>
+    <p><a href="@($"/devices/{DeviceId:D}")">@L["返回設備"]</a></p>
     @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
     @if (check is not null)
     {
         <section class="device-panel">
             <h2>@check.Title</h2>
-            <p>檢查版本：@RevisionId</p>
+            <p>@L["檢查版本：{0}", RevisionId?.ToString() ?? ""]</p>
             <EditForm Model="Input" FormName="baseline-exception" method="post" OnValidSubmit="SaveAsync" class="baseline-exception-form">
                 <DataAnnotationsValidator /><ValidationSummary />
-                <label for="baseline-exception-reason">例外原因</label>
+                <label for="baseline-exception-reason">@L["例外原因"]</label>
                 <InputTextArea id="baseline-exception-reason" @bind-Value="Input.Reason" rows="4" maxlength="200" />
-                <p>請勿填入密碼或其他機密。唯讀使用者也能查看此說明。</p>
-                <button type="submit">儲存說明</button>
+                <p>@L["請勿填入密碼或其他機密。唯讀使用者也能查看此說明。"]</p>
+                <button type="submit">@L["儲存說明"]</button>
             </EditForm>
         </section>
     }
@@ -43,26 +44,26 @@
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
-        if (string.IsNullOrWhiteSpace(SourceKey) || RevisionId is null) { message = "請從設備頁選擇基準版本。"; return; }
+        if (string.IsNullOrWhiteSpace(SourceKey) || RevisionId is null) { message = L["請從設備頁選擇基準版本。"].Value; return; }
         var view = await Query.GetAsync(DeviceId, HttpContext.RequestAborted);
         check = view?.Checks.SingleOrDefault(x => x.SourceKey == SourceKey && x.ActiveRevisionId == RevisionId);
-        if (check is null) message = "基準版本已變更或無法使用，請回設備頁重新選擇。";
+        if (check is null) message = L["基準版本已變更或無法使用，請回設備頁重新選擇。"].Value;
     }
 
     private async Task SaveAsync()
     {
         if (check is null || RevisionId is not { } revision || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor))
-        { message = "登入或基準版本已失效，請重新整理。"; return; }
+        { message = L["登入或基準版本已失效，請重新整理。"].Value; return; }
         try
         {
             var result = await Exceptions.RecordAsync(DeviceId, SourceKey!, revision, Input.Reason, actor, HttpContext.RequestAborted);
             if (result == BaselineExceptionStatus.Recorded) { Navigation.NavigateTo($"/devices/{DeviceId:D}"); return; }
-            message = result == BaselineExceptionStatus.VersionChanged ? "基準版本已變更，請回設備頁重新選擇。" : "無法儲存說明，請檢查內容後再試。";
+            message = result == BaselineExceptionStatus.VersionChanged ? L["基準版本已變更，請回設備頁重新選擇。"].Value : L["無法儲存說明，請檢查內容後再試。"].Value;
         }
         catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
         {
             Logger.LogWarning("Unable to record baseline explanation: {ErrorType}", ex.GetType().Name);
-            message = "無法儲存說明，請稍後再試。";
+            message = L["無法儲存說明，請稍後再試。"].Value;
         }
     }
 
