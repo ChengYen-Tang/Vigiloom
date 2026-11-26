@@ -437,4 +437,17 @@
   <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed elsewhere. Refresh and try again.</value></data>
   <data name="保存設定已儲存。" xml:space="preserve"><value>Retention settings saved.</value></data>
   <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or the periods changed. Preview again.</value></data>
+  <data name="{0} 收集配額" xml:space="preserve"><value>{0} ingestion quota</value></data>
+  <data name="設定各來源與平台共同使用的收集速率。" xml:space="preserve"><value>Set shared ingestion rates for sources and the platform.</value></data>
+  <data name="{0} 接收功能尚未完成；設定會在接收功能啟用後套用。" xml:space="preserve"><value>{0} ingestion is not yet complete; settings apply when ingestion is enabled.</value></data>
+  <data name="收集上限" xml:space="preserve"><value>Ingestion limits</value></data>
+  <data name="每來源指經認證的應用來源與服務組合；" xml:space="preserve"><value>Each source means an authenticated application source and service pair; </value></data>
+  <data name="來源是經認證的主機或應用來源；" xml:space="preserve"><value>A source is an authenticated host or application source; </value></data>
+  <data name="平台上限由所有來源共用。突發上限是短時間可接收的最大筆數。" xml:space="preserve"><value>the platform limit is shared across all sources. The burst limit is the maximum count accepted over a short period.</value></data>
+  <data name="每來源速率（筆／秒）" xml:space="preserve"><value>Per-source rate (records/second)</value></data>
+  <data name="每來源突發上限（筆）" xml:space="preserve"><value>Per-source burst limit (records)</value></data>
+  <data name="全平台速率（筆／秒）" xml:space="preserve"><value>Platform rate (records/second)</value></data>
+  <data name="全平台突發上限（筆）" xml:space="preserve"><value>Platform burst limit (records)</value></data>
+  <data name="請輸入大於零的數值。" xml:space="preserve"><value>Enter values greater than zero.</value></data>
+  <data name="{0} 配額設定已儲存。" xml:space="preserve"><value>{0} quota settings saved.</value></data>
 </root>
