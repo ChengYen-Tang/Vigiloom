@@ -20,6 +20,9 @@ internal static class ResourcesDatabaseCommand
         var options = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(target,
             sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
         await using (var db = new ResourcesDbContext(options)) await db.Database.MigrateAsync(token);
+        var linksOptions = new DbContextOptionsBuilder<ResourceDeploymentLinksDbContext>().UseSqlServer(target,
+            sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable(ResourceDeploymentLinksDbContext.MigrationHistory, "resources")).Options;
+        await using (var db = new ResourceDeploymentLinksDbContext(linksOptions)) await db.Database.MigrateAsync(token);
         var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(target,
             sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel).MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
