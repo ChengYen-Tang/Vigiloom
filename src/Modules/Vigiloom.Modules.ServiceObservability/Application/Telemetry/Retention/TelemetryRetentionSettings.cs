@@ -13,8 +13,14 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
+public interface IApplicationLogRetentionCounter
+{
+    Task<long> CountBeforeAsync(DateTimeOffset before, CancellationToken token);
+}
+
 public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection, IHostLogRetention? hostLogs = null, ISecurityDetectionRetention? securityDetections = null)
+    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection, IHostLogRetention? hostLogs = null, ISecurityDetectionRetention? securityDetections = null,
+    IApplicationLogRetentionCounter? applicationLogs = null)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.TelemetryRetention.Preview.v1");
 
@@ -39,7 +45,9 @@ public sealed class TelemetryRetentionSettings(IDbContextFactory<ServiceObservab
         var healthDays = input.HealthDays ?? policy.HealthDays;
         if (!TelemetryRetentionLimits.IsValidMetrics(rawDays, rollupDays) || !TelemetryRetentionLimits.IsValidHealth(healthDays)) throw new ArgumentException("Invalid retention settings.");
         var now = await NowAsync(db, token);
-        var logs = await db.LogRecords.LongCountAsync(x => x.OccurredAt < now.AddDays(-input.LogDays), token);
+        var cutoff = now.AddDays(-input.LogDays);
+        var logs = applicationLogs is null ? await db.LogRecords.LongCountAsync(x => x.OccurredAt < cutoff, token)
+            : await applicationLogs.CountBeforeAsync(cutoff, token);
         var hostLogCount = hostLogs is null ? 0 : await hostLogs.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, input.LogDays, token);
         var detectionCount = securityDetections is null ? 0 : await securityDetections.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, input.LogDays, token);
         var spans = await db.TraceSpans.LongCountAsync(x => x.StartedAt < now.AddDays(-input.TraceDays), token);

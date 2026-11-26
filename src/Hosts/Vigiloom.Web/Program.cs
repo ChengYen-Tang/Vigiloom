@@ -228,6 +228,10 @@ builder.Services.AddScoped<ICandidateObserver>(services => services.GetRequiredS
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<TelemetryRetentionSettings>();
+builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.LegacyHostLogCleanup>();
+builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<ServiceDetailsReader>();
@@ -696,6 +700,9 @@ app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id,
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapTelemetryRetentionEndpoints();
+app.MapPost("/internal/v1/legacy-host-logs/cleanup", async (Vigiloom.Contracts.Operations.ApplicationLogCleanupRequest input,
+    Vigiloom.Web.ServiceDetails.LegacyHostLogCleanup cleanup, CancellationToken token) =>
+    input.RetentionDays is < 1 or > 3650 ? Results.BadRequest() : Results.Ok(await cleanup.RunAsync(input.RetentionDays, token)));
 app.MapServiceDetailsEndpoints();
 app.MapServiceInstanceEndpoints();
 app.MapHealthTargetEndpoints();

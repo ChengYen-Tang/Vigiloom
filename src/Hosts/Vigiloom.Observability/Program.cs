@@ -1,5 +1,12 @@
+using Hangfire;
+using Hangfire.SqlServer;
+using Vigiloom.Infrastructure.Scheduling;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Contracts.Services;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -92,6 +99,11 @@ builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<HealthObservationReader>();
+builder.Services.AddHttpClient<IApplicationLogRetentionCounter, ApplicationLogRetentionCounter>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
+builder.Services.AddScoped<TelemetryRetentionSettings>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
@@ -106,6 +118,27 @@ builder.Services.AddHostedService<HealthWorker>();
 builder.Services.AddHostedService<HealthPolicyWorker>();
 builder.Services.AddHostedService<HealthExpiryWorker>();
 builder.Services.AddHostedService<WorkDispatcher>();
+if (builder.Configuration.GetValue("Hangfire:Enabled", true))
+{
+    builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
+            ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
+    builder.Services.AddHttpClient("operations", (services, client) =>
+        client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddHttpClient("legacy-web", (services, client) =>
+        client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Web:Url"] ?? "http://vigiloom-web").TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<TelemetryRetentionCleanup>();
+    builder.Services.AddScoped<MetricRollupMaterializer>();
+    builder.Services.AddScoped<MetricWindowBackfill>();
+    builder.Services.AddScoped<MetricRollupCoordinator>();
+    builder.Services.AddScoped<ObservabilityRetentionJob>();
+    builder.Services.AddScoped<ObservabilityMetricRollupJob>();
+    builder.Services.AddHostedService<ObservabilityMaintenanceSchedule>();
+    builder.Services.AddHangfireServer(options => { options.Queues = ["observability"]; options.IsLightweightServer = true; });
+}
 var app = builder.Build();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);
@@ -123,6 +156,11 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints
         if (!context.Response.HasStarted && context.Response.StatusCode >= 400 && context.Response.ContentLength is null)
             await OtlpResponse.Failure(context.Response.StatusCode, "Telemetry request was rejected.").ExecuteAsync(context);
     }));
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api")) context.Response.Headers.CacheControl = "no-store";
+    await next(context);
+});
 app.UseMiddleware<OtlpTransportGuard>();
 app.UseRouting();
 app.UseRateLimiter();
@@ -152,6 +190,7 @@ internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
 app.MapHealthReads();
 app.MapServiceReads();
 app.MapTelemetryHistoryEndpoints();
+app.MapRetentionEndpoints();
 app.Run();
 
 public partial class Program;
