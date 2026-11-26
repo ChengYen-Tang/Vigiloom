@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="群組">
+    <value>群组</value>
+  </data>
+  <data xml:space="preserve" name="依地點、環境或系統整理設備和應用服務。群組不改變公開設定。">
+    <value>按地点、环境或系统整理设备和应用服务。群组不改变公开设置。</value>
+  </data>
+  <data xml:space="preserve" name="新增群組">
+    <value>添加群组</value>
+  </data>
+  <data xml:space="preserve" name="編輯群組">
+    <value>编辑群组</value>
+  </data>
+  <data xml:space="preserve" name="搜尋群組">
+    <value>搜索群组</value>
+  </data>
+  <data xml:space="preserve" name="名稱或說明">
+    <value>名称或说明</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>搜索</value>
+  </data>
+  <data xml:space="preserve" name="未分組設備">
+    <value>未分组设备</value>
+  </data>
+  <data xml:space="preserve" name="未分組服務">
+    <value>未分组服务</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後重新整理。">
+    <value>无法加载群组，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的群組。">
+    <value>没有符合条件的群组。</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組">
+    <value>共 {0} 个群组</value>
+  </data>
+  <data xml:space="preserve" name="左右滑動查看完整表格。">
+    <value>左右滑动查看完整表格。</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>名称</value>
+  </data>
+  <data xml:space="preserve" name="說明">
+    <value>说明</value>
+  </data>
+  <data xml:space="preserve" name="設備">
+    <value>设备</value>
+  </data>
+  <data xml:space="preserve" name="應用服務">
+    <value>应用服务</value>
+  </data>
+  <data xml:space="preserve" name="查看群組">
+    <value>查看群组</value>
+  </data>
+  <data xml:space="preserve" name="群組分頁">
+    <value>群组分页</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>上一页</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>下一页</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>第 {0} 页</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← 返回</value>
+  </data>
+  <data xml:space="preserve" name="使用群組整理資源，不影響公開或監控設定。">
+    <value>使用群组整理资源，不影响公开或监控设置。</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請返回清單確認。">
+    <value>无法加载群组，请返回列表确认。</value>
+  </data>
+  <data xml:space="preserve" name="群組名稱">
+    <value>群组名称</value>
+  </data>
+  <data xml:space="preserve" name="說明（選填）">
+    <value>说明（选填）</value>
+  </data>
+  <data xml:space="preserve" name="儲存群組">
+    <value>保存群组</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>取消</value>
+  </data>
+  <data xml:space="preserve" name="請重新登入後再試。">
+    <value>请重新登录后重试。</value>
+  </data>
+  <data xml:space="preserve" name="資料已過期，請重新整理。">
+    <value>数据已过期，请刷新。</value>
+  </data>
+  <data xml:space="preserve" name="群組已變更或不存在，請重新整理後再試。">
+    <value>群组已变更或不存在，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>无法确认保存结果，请返回列表确认后重试。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的群組名稱。">
+    <value>请输入 1 至 256 个字符的群组名称。</value>
+  </data>
+  <data xml:space="preserve" name="說明最多 1024 個字元。">
+    <value>说明最多 1024 个字符。</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="已有相同名稱的群組，請使用其他名稱。">
+    <value>已有相同名称的群组，请使用其他名称。</value>
+  </data>
+</root>
