@@ -275,6 +275,22 @@ public sealed class SpeedHttpTests
         var beforeRetention = await admin.GetFromJsonAsync<SpeedRetentionSnapshot>("/api/v1/settings/speed-retention", token);
         Assert.IsNotNull(beforeRetention);
         using (var denied = await admin.PostAsJsonAsync("/api/v1/settings/speed-retention/preview", new SpeedRetentionPreviewRequest(30, beforeRetention.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/speed-tests", token))
+        {
+            var englishText = await TextAsync(english, token);
+            Assert.Contains("Speed test settings", englishText);
+            Assert.Contains("Speed test retention", englishText);
+            var englishFields = Hidden(await FormAsync(english, "speed-retention", token));
+            englishFields["Input.Days"] = "30";
+            using var englishPreview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(englishFields), token);
+            Assert.Contains("Confirm save", await TextAsync(englishPreview, token));
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/speed-tests", token))
+            Assert.Contains("网络测速设置", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var initial = await admin.GetAsync("/settings/speed-tests", token);
         var scheduleFields = Hidden(await FormAsync(initial, "speed-settings", token));
         scheduleFields["Input.Hours"] = "6"; scheduleFields["Input.MaxMiB"] = "100"; scheduleFields["Input.Timeout"] = "45";
