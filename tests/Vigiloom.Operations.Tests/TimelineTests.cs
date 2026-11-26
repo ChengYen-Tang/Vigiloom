@@ -28,6 +28,29 @@ namespace Vigiloom.Operations.Tests;
 public sealed class TimelineTests(TestContext context)
 {
     [TestMethod]
+    public Task RetriedTimelineBatchDoesNotDuplicateEvents() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var services = new ServiceCollection();
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
+            services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
+            using var provider = services.BuildServiceProvider();
+            var contexts = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Operations"] = database.ConnectionString }).Build();
+            var handler = new OperationsWorkHandler(config, new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
+            var service = Guid.CreateVersion7();
+            var delivery = new EventTimelineBatch(Enumerable.Range(0, 33).Select(i => new EventTimelineDelivery(Guid.CreateVersion7(),
+                new EventTimelineEntry("service-trace", DateTimeOffset.UtcNow, service, "service", $"Trace {i}", "evidence", "/services"))).ToArray());
+            var payload = JsonSerializer.Serialize(delivery);
+            await handler.ExecuteAsync(new(EventTimelineWork.BatchKind, payload, Guid.CreateVersion7().ToString("D")), token);
+            await handler.ExecuteAsync(new(EventTimelineWork.BatchKind, payload, Guid.CreateVersion7().ToString("D")), token);
+            await using var verify = await contexts.CreateDbContextAsync(token);
+            Assert.AreEqual(33, await verify.Set<TimelineRecord>().CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task HealthTimelineCleanupPreservesRecentAndOtherSources() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
