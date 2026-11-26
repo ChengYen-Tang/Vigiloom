@@ -65,7 +65,10 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { /* Concurrent initialization is retried next tick. */ }
     }
 
-    public async Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, CancellationToken token)
+    public Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, CancellationToken token) =>
+        ClaimAsync(settings, settings.MaxConcurrency, token);
+
+    public async Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, int count, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await db.Database.OpenConnectionAsync(token);
@@ -84,9 +87,9 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                     LeaseUntil = DATEADD(second, @lease, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))
                 OUTPUT inserted.DeviceId, inserted.Target, inserted.DeviceVersion, inserted.Generation
                 """;
-            Add(command, "@count", SqlDbType.Int, settings.MaxConcurrency);
+            Add(command, "@count", SqlDbType.Int, count);
             Add(command, "@lease", SqlDbType.Int, 2 * settings.TimeoutSeconds + 30);
-            var leases = new List<PingLease>(settings.MaxConcurrency);
+            var leases = new List<PingLease>(count);
             await using var reader = await command.ExecuteReaderAsync(token);
             while (await reader.ReadAsync(token)) leases.Add(new(reader.GetGuid(0), reader.GetString(1), (byte[])reader.GetValue(2), reader.GetInt64(3)));
             return leases;
