@@ -31,6 +31,8 @@ builder.Services.AddScoped<InventoryConfiguration>();
 builder.Services.AddScoped<InventoryQuery>();
 builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<IntegrityConfiguration>();
+builder.Services.AddScoped<IntegrityQuery>();
+builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddHttpClient<IDeviceAgentSource, ResourceDevices>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
@@ -108,6 +110,18 @@ app.MapPut("/internal/v1/inventory-settings", async (Guid? deviceId, InventorySe
         ? Results.Ok(saved) : Results.Conflict();
 });
 var integrity = app.MapGroup("/internal/v1/devices/{deviceId:guid}/integrity-scopes");
+var integrityHistory = app.MapGroup("/internal/v1/devices/{deviceId:guid}/integrity");
+integrityHistory.MapGet("/", (Guid deviceId, Guid? agentId, IntegrityQuery query, CancellationToken token) => query.GetAsync(deviceId, agentId, token));
+integrityHistory.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, Guid? scopeId, string? cursor, IntegrityChangeQuery query, CancellationToken token) =>
+{
+    try { return Results.Ok(await query.GetAsync(deviceId, from, until, scopeId, cursor, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+integrityHistory.MapGet("/scopes/{scopeId:guid}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}", async (Guid deviceId, Guid agentId, Guid scopeId, Guid snapshotId, int chunkIndex, IntegrityQuery query, CancellationToken token) =>
+{
+    try { return await query.GetChunkAsync(deviceId, agentId, scopeId, snapshotId, chunkIndex, token) is { } chunk ? Results.Ok(chunk) : Results.NotFound(); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
 integrity.MapGet("/", async (Guid deviceId, IntegrityConfiguration settings, CancellationToken token) =>
     await settings.ListAsync(deviceId, token) is { } scopes ? Results.Ok(scopes) : Results.NotFound());
 integrity.MapPost("/", async (Guid deviceId, IntegrityCreateCommand command, IntegrityConfiguration settings, CancellationToken token) =>
