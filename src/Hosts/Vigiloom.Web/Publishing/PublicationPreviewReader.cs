@@ -27,7 +27,8 @@ internal sealed class PublicationPreviewReader(IDeviceManagement devices, IPingS
         }
         if (kind == PublicationResourceKind.Service)
         {
-            var result = await health.ReadAsync(id, token);
+            var result = string.IsNullOrWhiteSpace(configuration["Services:Observability:Url"])
+                ? await health.ReadAsync(id, token) : await provider.GetRequiredService<Vigiloom.Web.ServiceDetails.ServiceQueries>().StatusAsync(id, token);
             return result is null ? null : new(result.State switch
             { ServiceHealthState.Healthy => "Healthy", ServiceHealthState.Degraded => "Degraded", ServiceHealthState.Unhealthy => "Unhealthy", _ => "Unknown" }, null);
         }
