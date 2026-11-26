@@ -27,6 +27,30 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 public sealed class SecurityWorkTests(TestContext context)
 {
     [TestMethod]
+    public Task RealDetectionHandlersConsumeHostWorkWithoutActiveRules() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton(TimeProvider.System);
+            services.AddSingleton<IDbContextFactory<SecurityAnalysisDbContext>>(new Factory(options));
+            services.AddSingleton<IHostLogReader, EmptyLogReader>();
+            services.AddScoped<ISigmaCatalog, SigmaCatalog>();
+            services.AddHostDetection();
+            using var provider = services.BuildServiceProvider();
+            using var scope = provider.CreateScope();
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            using var http = new HttpClient(new HostHandler([])) { BaseAddress = new Uri("http://host/") };
+            var consumer = new SecurityWorkHandler(config, new TestClients(http), scope.ServiceProvider.GetServices<IOutboxHandler>());
+            var dispatch = new HostLogDispatch(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, [Guid.CreateVersion7()]);
+            var work = new ServiceWork(HostLogDispatch.CombinedMessageType, JsonSerializer.Serialize(dispatch), Guid.CreateVersion7().ToString());
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(work, token);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public void SecurityDetectionHandlersCanBeResolved()
     {
         var services = new ServiceCollection();
