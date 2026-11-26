@@ -140,6 +140,7 @@ app.UseAuthorization();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory/status") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-status") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/baseline-settings") ||

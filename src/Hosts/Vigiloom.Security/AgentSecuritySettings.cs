@@ -13,6 +13,16 @@ namespace Vigiloom.Security;
 
 internal sealed class AgentSecuritySettings(IDbContextFactory<SecurityAnalysisDbContext> contexts, IBaselineSource sources)
 {
+    public async Task<IReadOnlyList<InventorySourceStatus>> InventoryStatusAsync(RegisteredAgentIdentity identity, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var status = await new InventoryStatusReader().ReadAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
+            new(identity.AgentId, identity.DeviceId, identity.DeviceGeneration), token);
+        await transaction.CommitAsync(token);
+        return status;
+    }
+
     public async Task<IntegrityScopeStatus> IntegrityStatusAsync(RegisteredAgentIdentity identity, Guid scopeId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

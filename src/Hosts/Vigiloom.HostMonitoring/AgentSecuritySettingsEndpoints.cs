@@ -12,6 +12,35 @@ internal static class AgentSecuritySettingsEndpoints
 {
     public static void MapAgentSecuritySettingsEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/agent/inventory/status", async (int? contract, HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (contract is not (null or 5)) return Results.BadRequest();
+            var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
+            using var response = await clients.CreateClient("security").PostAsJsonAsync("internal/v1/agent-inventory-status", identity, token);
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            response.EnsureSuccessStatusCode();
+            var status = await response.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token)
+                ?? throw new InvalidOperationException("Security service returned empty inventory status.");
+            if (contract == 5)
+            {
+                context.Response.Headers["Vigiloom-Inventory-Contract"] = "5";
+                context.Response.Headers["Vigiloom-Inventory-Schemas"] = "4, 5, 7, 8, 9, 10";
+                var supportsUpdate = context.Request.Headers.TryGetValue("Vigiloom-Windows-Update-Contract", out var requested) && requested.Count == 1 && requested[0] == "9";
+                if (supportsUpdate) context.Response.Headers["Vigiloom-Windows-Update-Contract"] = "9";
+                else
+                {
+                    if (status.Any(x => x.Source == InventorySource.WindowsUpdate && x.ActiveGeneration is not null)) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                    status = status.Where(x => x.Source != InventorySource.WindowsUpdate).ToArray();
+                }
+            }
+            else
+            {
+                if (status.Any(x => x.Source > InventorySource.HostVolumes && x.ActiveGeneration is not null)) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                status = status.Where(x => x.Source <= InventorySource.HostVolumes).ToArray();
+            }
+            return Results.Ok(status);
+        });
         app.MapGet("/api/v1/agent/integrity-status/{scopeId:guid}", async (Guid scopeId, HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
         {
             if (scopeId.Version != 7) return Results.BadRequest();
