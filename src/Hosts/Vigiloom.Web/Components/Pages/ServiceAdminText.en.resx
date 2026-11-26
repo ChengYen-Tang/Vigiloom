@@ -661,4 +661,44 @@
   <data name="無法讀取來源" xml:space="preserve"><value>Unable to read source</value></data>
   <data name="採集狀態衝突，等待重試" xml:space="preserve"><value>Collection status conflict; waiting to retry</value></data>
   <data name="狀態未知" xml:space="preserve"><value>Unknown status</value></data>
+  <data name="設定效能閾值" xml:space="preserve"><value>Configure performance threshold</value></data>
+  <data name="此設定只套用於選定的 Agent 與資料來源。" xml:space="preserve"><value>This setting applies only to the selected Agent and data source.</value></data>
+  <data name="找不到此來源，或暫時無法讀取設定。請返回設備詳情後重試。" xml:space="preserve"><value>The source was not found or its settings could not be loaded. Return to device details and retry.</value></data>
+  <data name="Agent：{0} · 指標：{1} · 來源：{2} {3}" xml:space="preserve"><value>Agent: {0} · Metric: {1} · Source: {2} {3}</value></data>
+  <data name="使用最新樣本判斷；樣本過期或不存在時顯示未知。" xml:space="preserve"><value>The latest sample is used; status is unknown when the sample is stale or missing.</value></data>
+  <data name="啟用閾值判斷" xml:space="preserve"><value>Enable threshold evaluation</value></data>
+  <data name="判斷條件" xml:space="preserve"><value>Comparison</value></data>
+  <data name="大於等於閾值時" xml:space="preserve"><value>At or above the threshold</value></data>
+  <data name="小於等於閾值時" xml:space="preserve"><value>At or below the threshold</value></data>
+  <data name="閾值（{0}）" xml:space="preserve"><value>Threshold ({0})</value></data>
+  <data name="樣本有效時間（秒，30～86400）" xml:space="preserve"><value>Sample validity (seconds, 30–86400)</value></data>
+  <data name="請確認來源與登入狀態。" xml:space="preserve"><value>Check the source and sign-in status.</value></data>
+  <data name="設定無效，請確認數字及選擇欄位。" xml:space="preserve"><value>Invalid settings. Check numeric values and selections.</value></data>
+  <data name="設定已變更或來源不存在，請重新整理後再試。" xml:space="preserve"><value>Settings changed or the source no longer exists. Refresh and try again.</value></data>
+  <data name="請確認閾值是非負數，且樣本有效時間為 30～86400 秒。" xml:space="preserve"><value>Ensure the threshold is nonnegative and sample validity is 30–86400 seconds.</value></data>
+  <data name="CPU 使用率" xml:space="preserve"><value>CPU usage</value></data>
+  <data name="CPU 核心使用率" xml:space="preserve"><value>CPU core usage</value></data>
+  <data name="系統負載（1 分鐘）" xml:space="preserve"><value>System load (1 minute)</value></data>
+  <data name="系統負載（5 分鐘）" xml:space="preserve"><value>System load (5 minutes)</value></data>
+  <data name="系統負載（15 分鐘）" xml:space="preserve"><value>System load (15 minutes)</value></data>
+  <data name="總記憶體" xml:space="preserve"><value>Total memory</value></data>
+  <data name="可用記憶體" xml:space="preserve"><value>Available memory</value></data>
+  <data name="交換空間總量" xml:space="preserve"><value>Total swap</value></data>
+  <data name="可用交換空間" xml:space="preserve"><value>Available swap</value></data>
+  <data name="分頁檔總量" xml:space="preserve"><value>Total page file</value></data>
+  <data name="已用分頁檔" xml:space="preserve"><value>Page file used</value></data>
+  <data name="總磁碟空間" xml:space="preserve"><value>Total disk space</value></data>
+  <data name="可用磁碟空間" xml:space="preserve"><value>Available disk space</value></data>
+  <data name="磁碟讀取" xml:space="preserve"><value>Disk read</value></data>
+  <data name="磁碟寫入" xml:space="preserve"><value>Disk write</value></data>
+  <data name="磁碟讀取延遲" xml:space="preserve"><value>Disk read latency</value></data>
+  <data name="磁碟寫入延遲" xml:space="preserve"><value>Disk write latency</value></data>
+  <data name="網路接收" xml:space="preserve"><value>Network received</value></data>
+  <data name="網路傳送" xml:space="preserve"><value>Network sent</value></data>
+  <data name="網路接收錯誤" xml:space="preserve"><value>Network receive errors</value></data>
+  <data name="網路傳送錯誤" xml:space="preserve"><value>Network send errors</value></data>
+  <data name="程序 CPU 使用率" xml:space="preserve"><value>Process CPU usage</value></data>
+  <data name="程序工作集記憶體" xml:space="preserve"><value>Process working set</value></data>
+  <data name="未知指標" xml:space="preserve"><value>Unknown metric</value></data>
+  <data name="負載" xml:space="preserve"><value>load</value></data>
 </root>

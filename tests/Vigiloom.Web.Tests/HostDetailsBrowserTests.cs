@@ -279,6 +279,25 @@ public sealed class HostDetailsBrowserTests
         { db.Agents.Add(agent); await db.SaveChangesAsync(token); }
         using var client = PingTestSite.Client(factory); await PingTestSite.LoginAsync(client, "admin", token);
         var path = $"/devices/{device.Id:D}/metric-threshold?agentId={agent.Id:D}&kind=1&source=test.cpu";
+        if (field == "Input.Value")
+        {
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await client.GetAsync(path, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Configure performance threshold", text);
+                Assert.Contains("CPU usage", text);
+                Assert.Contains("test.cpu", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await client.GetAsync(path, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("设置性能阈值", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
+        }
         using var response = await client.GetAsync(path, token);
         var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
         var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "metric-threshold-edit");
