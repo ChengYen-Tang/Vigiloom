@@ -11,6 +11,29 @@ namespace Vigiloom.Web.Tests;
 public sealed class LocalizationTests(TestContext context)
 {
     [TestMethod]
+    [DataRow("en", "Public status", "Search public names")]
+    [DataRow("zh-Hant", "公開監測狀態", "搜尋公開名稱")]
+    [DataRow("zh-Hans", "公开监测状态", "搜索公开名称")]
+    public async Task PublicStatusPrerenderUsesSelectedLanguage(string culture, string title, string search)
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Vigiloom"] = "Server=localhost;Database=unused;Integrated Security=true;TrustServerCertificate=true"
+            }));
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+        using var response = await client.GetAsync("/", context.CancellationToken);
+        response.EnsureSuccessStatusCode();
+        var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken);
+        Assert.Contains(title, document.Body!.TextContent);
+        Assert.Contains(search, document.Body.TextContent);
+    }
+
+    [TestMethod]
     [DataRow("en", "en")]
     [DataRow("zh-Hant", "zh-Hant")]
     [DataRow("zh-Hans", "zh-Hans")]

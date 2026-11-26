@@ -87,4 +87,157 @@
   <data xml:space="preserve" name="資料涵蓋率">
     <value>数据覆盖率</value>
   </data>
+  <data xml:space="preserve" name="公開監測狀態">
+    <value>公开监测状态</value>
+  </data>
+  <data xml:space="preserve" name="僅顯示管理員公開的設備與應用服務；狀態依目前可用資料顯示。">
+    <value>仅显示管理员公开的设备与应用服务；状态依据当前可用数据显示。</value>
+  </data>
+  <data xml:space="preserve" name="即時連線暫時中斷，頁面會重新確認公開狀態。">
+    <value>实时连接暂时中断，页面会重新确认公开状态。</value>
+  </data>
+  <data xml:space="preserve" name="公開群組">
+    <value>公开群组</value>
+  </data>
+  <data xml:space="preserve" name="全部公開項目">
+    <value>全部公开项目</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>上一页</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>下一页</value>
+  </data>
+  <data xml:space="preserve" name="查詢條件">
+    <value>查询条件</value>
+  </data>
+  <data xml:space="preserve" name="搜尋公開名稱">
+    <value>搜索公开名称</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>搜索</value>
+  </data>
+  <data xml:space="preserve" name="服務歷史">
+    <value>服务历史</value>
+  </data>
+  <data xml:space="preserve" name="最近 7 天">
+    <value>最近 7 天</value>
+  </data>
+  <data xml:space="preserve" name="最近 30 天">
+    <value>最近 30 天</value>
+  </data>
+  <data xml:space="preserve" name="最近 90 天">
+    <value>最近 90 天</value>
+  </data>
+  <data xml:space="preserve" name="自訂範圍">
+    <value>自定义范围</value>
+  </data>
+  <data xml:space="preserve" name="時間以 UTC 顯示">
+    <value>时间以 UTC 显示</value>
+  </data>
+  <data xml:space="preserve" name="開始時間（UTC）">
+    <value>开始时间（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="結束時間（UTC）">
+    <value>结束时间（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="套用時間範圍">
+    <value>应用时间范围</value>
+  </data>
+  <data xml:space="preserve" name="狀態圖例：">
+    <value>状态图例：</value>
+  </data>
+  <data xml:space="preserve" name="正在載入公開狀態…">
+    <value>正在加载公开状态…</value>
+  </data>
+  <data xml:space="preserve" name="暫時無法讀取公開狀態">
+    <value>暂时无法读取公开状态</value>
+  </data>
+  <data xml:space="preserve" name="請確認網路連線後重試。">
+    <value>请确认网络连接后重试。</value>
+  </data>
+  <data xml:space="preserve" name="重新嘗試">
+    <value>重试</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取延遲歷史…">
+    <value>正在读取延迟历史…</value>
+  </data>
+  <data xml:space="preserve" name="延遲歷史暫時無法讀取，請稍後重試。">
+    <value>延迟历史暂时无法读取，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="此設備未提供公開延遲歷史。">
+    <value>此设备未提供公开延迟历史。</value>
+  </data>
+  <data xml:space="preserve" name="公開延遲歷史">
+    <value>公开延迟历史</value>
+  </data>
+  <data xml:space="preserve" name="設備最多顯示所選區間最後 7 天；資料為已結束的五分鐘平均延遲，沒有資料不代表正常或中斷。">
+    <value>设备最多显示所选区间最后 7 天；数据为已结束的五分钟平均延迟，没有数据不代表正常或中断。</value>
+  </data>
+  <data xml:space="preserve" name="登入後查看設備詳情">
+    <value>登录后查看设备详情</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取允許公開的狀態時間…">
+    <value>正在读取允许公开的状态时间…</value>
+  </data>
+  <data xml:space="preserve" name="狀態時間暫時無法讀取，請稍後重試。">
+    <value>状态时间暂时无法读取，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="此服務只提供每日狀態摘要。">
+    <value>此服务只提供每日状态摘要。</value>
+  </data>
+  <data xml:space="preserve" name="此時段沒有可公開的狀態時間。">
+    <value>此时段没有可公开的状态时间。</value>
+  </data>
+  <data xml:space="preserve" name="正在確認可公開的歷史…">
+    <value>正在确认可公开的历史…</value>
+  </data>
+  <data xml:space="preserve" name="歷史資料暫時無法讀取，請稍後重試。">
+    <value>历史数据暂时无法读取，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="此服務目前未提供該時段的公開歷史。">
+    <value>此服务目前未提供该时段的公开历史。</value>
+  </data>
+  <data xml:space="preserve" name="選擇上方歷史色條可查看日期摘要。">
+    <value>选择上方历史色条可查看日期摘要。</value>
+  </data>
+  <data xml:space="preserve" name="登入後查看服務詳情">
+    <value>登录后查看服务详情</value>
+  </data>
+  <data xml:space="preserve" name="未知代表資料不足或無法確認，並非正常運作。公開狀態不包含內部診斷資訊。">
+    <value>未知代表数据不足或无法确认，并非正常运行。公开状态不包含内部诊断信息。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入有效的開始與結束時間。">
+    <value>请输入有效的开始与结束时间。</value>
+  </data>
+  <data xml:space="preserve" name="開始時間必須早於結束時間。">
+    <value>开始时间必须早于结束时间。</value>
+  </data>
+  <data xml:space="preserve" name="時間範圍最多 90 天。">
+    <value>时间范围最多 90 天。</value>
+  </data>
+  <data xml:space="preserve" name="無資料">
+    <value>无数据</value>
+  </data>
+  <data xml:space="preserve" name="狀態變更">
+    <value>状态变更</value>
+  </data>
+  <data xml:space="preserve" name="區間起點">
+    <value>区间起点</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>第 {0} 页</value>
+  </data>
+  <data xml:space="preserve" name="設備第 {0} 頁">
+    <value>设备第 {0} 页</value>
+  </data>
+  <data xml:space="preserve" name="服務第 {0} 頁">
+    <value>服务第 {0} 页</value>
+  </data>
+  <data xml:space="preserve" name="{0} 個公開設備・{1} 個公開服務">
+    <value>{0} 个公开设备・{1} 个公开服务</value>
+  </data>
+  <data xml:space="preserve" name="資料涵蓋率 {0}；可用率 {1}。">
+    <value>数据覆盖率 {0}；可用率 {1}。</value>
+  </data>
 </root>
