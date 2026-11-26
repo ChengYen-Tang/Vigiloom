@@ -64,6 +64,8 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            using (var sigmaOffline = await securityClient.GetAsync("/internal/v1/sigma/rules", token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, sigmaOffline.StatusCode);
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<IntelligenceSourcePage>("/internal/v1/intelligence/sources/?page=1", token));
             var custom = new BaselineCheck("", "Test", "linux", ["debian:12"], BaselineSources.LinuxShadowOperation, "/etc/shadow", "0640", "", "local");
             using (var staged = await securityClient.PostAsJsonAsync("/internal/v1/intelligence/custom-baselines/stage",
