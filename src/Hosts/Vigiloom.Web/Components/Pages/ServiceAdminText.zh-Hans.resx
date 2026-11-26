@@ -450,4 +450,43 @@
   <data name="全平台突發上限（筆）" xml:space="preserve"><value>全平台突发上限（笔）</value></data>
   <data name="請輸入大於零的數值。" xml:space="preserve"><value>请输入大于零的数值。</value></data>
   <data name="{0} 配額設定已儲存。" xml:space="preserve"><value>{0} 配额设置已保存。</value></data>
+  <data name="Agent 設定" xml:space="preserve"><value>Agent 设置</value></data>
+  <data name="返回設備詳情" xml:space="preserve"><value>返回设备详情</value></data>
+  <data name="傳送與同步" xml:space="preserve"><value>传输与同步</value></data>
+  <data name="無法讀取設定，請稍後重新整理。" xml:space="preserve"><value>无法读取设置，请稍后刷新。</value></data>
+  <data name="找不到此設備。" xml:space="preserve"><value>找不到此设备。</value></data>
+  <data name="心跳間隔（10～300 秒）" xml:space="preserve"><value>心跳间隔（10～300 秒）</value></data>
+  <data name="設定同步間隔（60～3600 秒）" xml:space="preserve"><value>设置同步间隔（60～3600 秒）</value></data>
+  <data name="資料傳送間隔（1～300 秒）" xml:space="preserve"><value>数据传输间隔（1～300 秒）</value></data>
+  <data name="儲存 Agent 設定" xml:space="preserve"><value>保存 Agent 设置</value></data>
+  <data name="主機效能採樣" xml:space="preserve"><value>主机性能采样</value></data>
+  <data name="管理主機效能資料保存期限" xml:space="preserve"><value>管理主机性能数据保留期限</value></data>
+  <data name="無法讀取採樣設定，請稍後重新整理。" xml:space="preserve"><value>无法读取采样设置，请稍后刷新。</value></data>
+  <data name="主機效能採樣間隔（10～3600 秒）" xml:space="preserve"><value>主机性能采样间隔（10～3600 秒）</value></data>
+  <data name="程序採樣與主機程序／服務快照間隔（10～3600 秒）" xml:space="preserve"><value>进程采样与主机进程／服务快照间隔（10～3600 秒）</value></data>
+  <data name="採樣 CPU 預算（每分鐘 100～60000 毫秒）" xml:space="preserve"><value>采样 CPU 预算（每分钟 100～60000 毫秒）</value></data>
+  <data name="Agent 記憶體門檻（64～4096 MiB）" xml:space="preserve"><value>Agent 内存门槛（64～4096 MiB）</value></data>
+  <data name="程序採集時間預算（100～30000 毫秒）" xml:space="preserve"><value>进程采集时间预算（100～30000 毫秒）</value></data>
+  <data name="採樣 I/O 預算（1～4096 MiB／分鐘）" xml:space="preserve"><value>采样 I/O 预算（1～4096 MiB／分钟）</value></data>
+  <data name="儲存採樣設定" xml:space="preserve"><value>保存采样设置</value></data>
+  <data name="主機盤點" xml:space="preserve"><value>主机清单</value></data>
+  <data name="無法讀取盤點設定，請稍後重新整理。" xml:space="preserve"><value>无法读取清单设置，请稍后刷新。</value></data>
+  <data name="盤點間隔（900～604800 秒，即 15 分鐘～7 天）" xml:space="preserve"><value>清单间隔（900～604800 秒，即 15 分钟～7 天）</value></data>
+  <data name="程序執行資訊" xml:space="preserve"><value>进程执行信息</value></data>
+  <data name="不收集執行路徑" xml:space="preserve"><value>不收集执行路径</value></data>
+  <data name="收集執行路徑，遮罩所有參數" xml:space="preserve"><value>收集执行路径，屏蔽所有参数</value></data>
+  <data name="儲存盤點設定" xml:space="preserve"><value>保存清单设置</value></data>
+  <data name="本機佇列容量" xml:space="preserve"><value>本地队列容量</value></data>
+  <data name="無法讀取佇列容量設定，請稍後重新整理。" xml:space="preserve"><value>无法读取队列容量设置，请稍后刷新。</value></data>
+  <data name="批次內容容量（1～1024 MiB）" xml:space="preserve"><value>批次内容容量（1～1024 MiB）</value></data>
+  <data name="批次數量上限（1～100000 批）" xml:space="preserve"><value>批次数量上限（1～100000 批）</value></data>
+  <data name="儲存佇列容量" xml:space="preserve"><value>保存队列容量</value></data>
+  <data name="離線資料補送" xml:space="preserve"><value>离线数据补传</value></data>
+  <data name="無法讀取補送政策，請稍後重新整理。" xml:space="preserve"><value>无法读取补传策略，请稍后刷新。</value></data>
+  <data name="設定已儲存；Agent 會在下一次同步時更新。" xml:space="preserve"><value>设置已保存；Agent 将在下次同步时更新。</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查。" xml:space="preserve"><value>无法确认保存结果，请刷新并检查。</value></data>
+  <data name="請檢查各項設定的允許範圍。" xml:space="preserve"><value>请检查各项设置的允许范围。</value></data>
+  <data name="請檢查佇列容量的允許範圍。" xml:space="preserve"><value>请检查队列容量的允许范围。</value></data>
+  <data name="請檢查採樣設定的允許範圍。" xml:space="preserve"><value>请检查采样设置的允许范围。</value></data>
+  <data name="請檢查盤點間隔的允許範圍。" xml:space="preserve"><value>请检查清单间隔的允许范围。</value></data>
 </root>

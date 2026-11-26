@@ -450,4 +450,43 @@
   <data name="全平台突發上限（筆）" xml:space="preserve"><value>Platform burst limit (records)</value></data>
   <data name="請輸入大於零的數值。" xml:space="preserve"><value>Enter values greater than zero.</value></data>
   <data name="{0} 配額設定已儲存。" xml:space="preserve"><value>{0} quota settings saved.</value></data>
+  <data name="Agent 設定" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="返回設備詳情" xml:space="preserve"><value>Back to device details</value></data>
+  <data name="傳送與同步" xml:space="preserve"><value>Transmission and synchronization</value></data>
+  <data name="無法讀取設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load settings. Refresh and try again.</value></data>
+  <data name="找不到此設備。" xml:space="preserve"><value>Device not found.</value></data>
+  <data name="心跳間隔（10～300 秒）" xml:space="preserve"><value>Heartbeat interval (10–300 seconds)</value></data>
+  <data name="設定同步間隔（60～3600 秒）" xml:space="preserve"><value>Settings sync interval (60–3600 seconds)</value></data>
+  <data name="資料傳送間隔（1～300 秒）" xml:space="preserve"><value>Data transmission interval (1–300 seconds)</value></data>
+  <data name="儲存 Agent 設定" xml:space="preserve"><value>Save Agent settings</value></data>
+  <data name="主機效能採樣" xml:space="preserve"><value>Host performance sampling</value></data>
+  <data name="管理主機效能資料保存期限" xml:space="preserve"><value>Manage host performance data retention</value></data>
+  <data name="無法讀取採樣設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load sampling settings. Refresh and try again.</value></data>
+  <data name="主機效能採樣間隔（10～3600 秒）" xml:space="preserve"><value>Host sampling interval (10–3600 seconds)</value></data>
+  <data name="程序採樣與主機程序／服務快照間隔（10～3600 秒）" xml:space="preserve"><value>Process and service snapshot interval (10–3600 seconds)</value></data>
+  <data name="採樣 CPU 預算（每分鐘 100～60000 毫秒）" xml:space="preserve"><value>Sampling CPU budget (100–60000 ms per minute)</value></data>
+  <data name="Agent 記憶體門檻（64～4096 MiB）" xml:space="preserve"><value>Agent memory threshold (64–4096 MiB)</value></data>
+  <data name="程序採集時間預算（100～30000 毫秒）" xml:space="preserve"><value>Process collection time budget (100–30000 ms)</value></data>
+  <data name="採樣 I/O 預算（1～4096 MiB／分鐘）" xml:space="preserve"><value>Sampling I/O budget (1–4096 MiB/minute)</value></data>
+  <data name="儲存採樣設定" xml:space="preserve"><value>Save sampling settings</value></data>
+  <data name="主機盤點" xml:space="preserve"><value>Host inventory</value></data>
+  <data name="無法讀取盤點設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load inventory settings. Refresh and try again.</value></data>
+  <data name="盤點間隔（900～604800 秒，即 15 分鐘～7 天）" xml:space="preserve"><value>Inventory interval (900–604800 seconds, 15 minutes–7 days)</value></data>
+  <data name="程序執行資訊" xml:space="preserve"><value>Process execution information</value></data>
+  <data name="不收集執行路徑" xml:space="preserve"><value>Do not collect executable paths</value></data>
+  <data name="收集執行路徑，遮罩所有參數" xml:space="preserve"><value>Collect executable paths and mask all arguments</value></data>
+  <data name="儲存盤點設定" xml:space="preserve"><value>Save inventory settings</value></data>
+  <data name="本機佇列容量" xml:space="preserve"><value>Local queue capacity</value></data>
+  <data name="無法讀取佇列容量設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load queue capacity settings. Refresh and try again.</value></data>
+  <data name="批次內容容量（1～1024 MiB）" xml:space="preserve"><value>Batch payload capacity (1–1024 MiB)</value></data>
+  <data name="批次數量上限（1～100000 批）" xml:space="preserve"><value>Maximum batches (1–100000)</value></data>
+  <data name="儲存佇列容量" xml:space="preserve"><value>Save queue capacity</value></data>
+  <data name="離線資料補送" xml:space="preserve"><value>Offline data replay</value></data>
+  <data name="無法讀取補送政策，請稍後重新整理。" xml:space="preserve"><value>Unable to load replay policy. Refresh and try again.</value></data>
+  <data name="設定已儲存；Agent 會在下一次同步時更新。" xml:space="preserve"><value>Settings saved. The Agent will update on its next sync.</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查。" xml:space="preserve"><value>Unable to confirm the save. Refresh and check.</value></data>
+  <data name="請檢查各項設定的允許範圍。" xml:space="preserve"><value>Check the permitted ranges for the settings.</value></data>
+  <data name="請檢查佇列容量的允許範圍。" xml:space="preserve"><value>Check the permitted queue capacity ranges.</value></data>
+  <data name="請檢查採樣設定的允許範圍。" xml:space="preserve"><value>Check the permitted sampling settings ranges.</value></data>
+  <data name="請檢查盤點間隔的允許範圍。" xml:space="preserve"><value>Check the permitted inventory interval range.</value></data>
 </root>
