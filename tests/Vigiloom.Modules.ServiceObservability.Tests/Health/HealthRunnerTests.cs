@@ -619,18 +619,19 @@ public sealed class HealthRunnerTests(TestContext context)
                 db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), changed));
                 await db.SaveChangesAsync(token);
             }
+            var recording = new RecordingHealthSink();
             if (invalidateService)
             {
                 await using var db = new ServiceObservabilityDbContext(options);
                 await using var tx = await db.Database.BeginTransactionAsync(token);
                 var service = await db.Services.SingleAsync(token);
-                await HealthInvalidation.ServiceAsync(db, service.Id, await DiscoveryTransaction.NowAsync(db, token), token);
+                await HealthInvalidation.ServiceAsync(db, service.Id, await DiscoveryTransaction.NowAsync(db, token), token, [recording]);
                 await db.SaveChangesAsync(token);
                 await tx.CommitAsync(token);
             }
             else
             {
-                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System, [recording]);
                 await runner.ExpireStaleAsync(token);
             }
             await using var verify = new ServiceObservabilityDbContext(options);
@@ -639,6 +640,9 @@ public sealed class HealthRunnerTests(TestContext context)
             Assert.AreEqual(changed, intervals[0].EndedAt);
             Assert.AreEqual(changed, intervals[1].StartedAt);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, intervals[1].State);
+            Assert.HasCount(1, recording.Transitions);
+            Assert.AreEqual(changed, recording.Transitions[0].ObservedAt);
+            Assert.AreEqual(ServiceHealthState.Unknown, recording.Transitions[0].State);
         }, context.CancellationToken);
 
     [TestMethod]
