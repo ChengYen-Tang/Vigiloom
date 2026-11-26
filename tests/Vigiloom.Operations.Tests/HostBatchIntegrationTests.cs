@@ -176,6 +176,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             var status = await proxyClient.GetFromJsonAsync<AgentConnectionStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-status", token);
             Assert.AreEqual(AgentConnectionState.Online, status!.State);
+            var settingsStatus = await proxyClient.GetFromJsonAsync<AgentSettingsStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-settings-status", token);
+            Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, settingsStatus!.State);
             using (var response = await proxyClient.PostAsJsonAsync("/internal/v1/agent-connections", new[] { identity.DeviceId }, token))
             {
                 response.EnsureSuccessStatusCode();

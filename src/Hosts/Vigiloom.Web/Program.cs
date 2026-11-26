@@ -381,6 +381,8 @@ builder.Services.AddScoped<AgentReplayPolicyService>();
 builder.Services.AddScoped<AgentInboxSettings>();
 builder.Services.AddScoped<AgentQueueCapacityMonitoring>();
 builder.Services.AddScoped<AgentSettingsMonitoring>();
+builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentSettingsStatusReader>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentSettingsMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddScoped<AgentBatchReceiver>();
 builder.Services.AddScoped<IInventoryStageWriter, InventoryStageWriter>();
 builder.Services.AddScoped<IInventoryStatusReader, InventoryStatusReader>();
