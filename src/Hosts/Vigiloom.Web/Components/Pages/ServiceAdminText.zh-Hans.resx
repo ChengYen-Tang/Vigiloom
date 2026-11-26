@@ -106,4 +106,73 @@
   <data name="請提供有效的主機、執行個體與確認依據（最多 512 字）。" xml:space="preserve"><value>请提供有效的主机、实例与确认依据（最多 512 字）。</value></data>
   <data name="找不到設備或執行個體，請重新整理。" xml:space="preserve"><value>找不到设备或实例，请刷新。</value></data>
   <data name="關聯或資源狀態已變更，請重新整理並確認。" xml:space="preserve"><value>关联或资源状态已变更，请刷新并确认。</value></data>
+  <data name="服務健康檢查" xml:space="preserve"><value>服务健康检查</value></data>
+  <data name="為已加入的應用服務設定 HTTP 健康檢查。" xml:space="preserve"><value>为已加入的应用服务设置 HTTP 健康检查。</value></data>
+  <data name="無法讀取設定，請重新整理後再試。" xml:space="preserve"><value>无法读取设置，请刷新后再试。</value></data>
+  <data name="選擇服務" xml:space="preserve"><value>选择服务</value></data>
+  <data name="此頁沒有已加入的服務。請先到" xml:space="preserve"><value>此页没有已加入的服务。请先到</value></data>
+  <data name="待加入服務" xml:space="preserve"><value>待加入服务</value></data>
+  <data name="核准來源。" xml:space="preserve"><value>核准来源。</value></data>
+  <data name="來源：" xml:space="preserve"><value>来源：</value></data>
+  <data name="識別碼" xml:space="preserve"><value>标识符</value></data>
+  <data name="服務：" xml:space="preserve"><value>服务：</value></data>
+  <data name="服務分頁" xml:space="preserve"><value>服务分页</value></data>
+  <data name="檢查清單" xml:space="preserve"><value>检查清单</value></data>
+  <data name="服務：{0}（{1}），來源：{2}。" xml:space="preserve"><value>服务：{0}（{1}），来源：{2}。</value></data>
+  <data name="服務與來源識別碼" xml:space="preserve"><value>服务与来源标识符</value></data>
+  <data name="最後記錄只代表當時的量測，並非目前服務健康結論。" xml:space="preserve"><value>最后记录只代表当时的测量，并非当前服务健康结论。</value></data>
+  <data name="此頁沒有健康檢查，可使用下方表單新增。" xml:space="preserve"><value>此页没有健康检查，可使用下方表单新增。</value></data>
+  <data name="左右滑動查看完整檢查資訊。" xml:space="preserve"><value>左右滑动查看完整检查信息。</value></data>
+  <data name="健康檢查清單，可左右捲動" xml:space="preserve"><value>健康检查清单，可左右滚动</value></data>
+  <data name="檢查對象" xml:space="preserve"><value>检查对象</value></data>
+  <data name="檢查網址" xml:space="preserve"><value>检查网址</value></data>
+  <data name="設定" xml:space="preserve"><value>设置</value></data>
+  <data name="最後記錄（UTC）" xml:space="preserve"><value>最后记录（UTC）</value></data>
+  <data name="已啟用" xml:space="preserve"><value>已启用</value></data>
+  <data name="已停用" xml:space="preserve"><value>已停用</value></data>
+  <data name="{0}，每 {1} 秒" xml:space="preserve"><value>{0}，每 {1} 秒</value></data>
+  <data name="尚無記錄" xml:space="preserve"><value>尚无记录</value></data>
+  <data name="編輯" xml:space="preserve"><value>编辑</value></data>
+  <data name="健康檢查分頁" xml:space="preserve"><value>健康检查分页</value></data>
+  <data name="新增健康檢查" xml:space="preserve"><value>新增健康检查</value></data>
+  <data name="編輯健康檢查" xml:space="preserve"><value>编辑健康检查</value></data>
+  <data name="支援 ASP.NET Core 預設的純文字健康回應；請勿將密碼或 token 寫進網址。" xml:space="preserve"><value>支持 ASP.NET Core 默认的纯文字健康响应；请勿将密码或 token 写进网址。</value></data>
+  <data name="整個服務" xml:space="preserve"><value>整个服务</value></data>
+  <data name="（已退役）" xml:space="preserve"><value>（已退役）</value></data>
+  <data name="識別碼：" xml:space="preserve"><value>标识符：</value></data>
+  <data name="檢查間隔（秒）" xml:space="preserve"><value>检查间隔（秒）</value></data>
+  <data name="逾時（秒）" xml:space="preserve"><value>超时（秒）</value></data>
+  <data name="失敗門檻" xml:space="preserve"><value>失败门槛</value></data>
+  <data name="恢復門檻" xml:space="preserve"><value>恢复门槛</value></data>
+  <data name="執行個體第 {0} 頁" xml:space="preserve"><value>实例第 {0} 页</value></data>
+  <data name="啟用定期檢查" xml:space="preserve"><value>启用定期检查</value></data>
+  <data name="儲存檢查" xml:space="preserve"><value>保存检查</value></data>
+  <data name="取消編輯" xml:space="preserve"><value>取消编辑</value></data>
+  <data name="允許檢查的網段" xml:space="preserve"><value>允许检查的网段</value></data>
+  <data name="此政策適用於所有服務的健康檢查。Worker 只會連線至下列位址或網段。每行輸入一個 IP 位址（例如 192.168.1.10）或 CIDR 網段（例如 10.0.0.0/8）；空白表示不執行檢查。" xml:space="preserve"><value>此策略适用于所有服务的健康检查。Worker 只会连接至下列地址或网段。每行输入一个 IP 地址（例如 192.168.1.10）或 CIDR 网段（例如 10.0.0.0/8）；空白表示不执行检查。</value></data>
+  <data name="尚未設定允許網段，健康檢查目前不會執行。" xml:space="preserve"><value>尚未设置允许网段，健康检查当前不会执行。</value></data>
+  <data name="允許網段" xml:space="preserve"><value>允许网段</value></data>
+  <data name="移除網段會中止使用舊政策的檢查；已保存的歷史紀錄不會被刪除。" xml:space="preserve"><value>移除网段会中止使用旧策略的检查；已保存的历史记录不会被删除。</value></data>
+  <data name="儲存網段" xml:space="preserve"><value>保存网段</value></data>
+  <data name="找不到此服務的健康檢查。" xml:space="preserve"><value>找不到此服务的健康检查。</value></data>
+  <data name="無法確認管理員身分。" xml:space="preserve"><value>无法确认管理员身份。</value></data>
+  <data name="網段設定已變更，請重新整理後再試。" xml:space="preserve"><value>网段设置已变更，请刷新后再试。</value></data>
+  <data name="網段設定已儲存。" xml:space="preserve"><value>网段设置已保存。</value></data>
+  <data name="請逐行輸入有效的 IP 位址或 CIDR 網段，最多 64 筆。" xml:space="preserve"><value>请逐行输入有效的 IP 地址或 CIDR 网段，最多 64 笔。</value></data>
+  <data name="請先選擇服務。" xml:space="preserve"><value>请先选择服务。</value></data>
+  <data name="健康檢查設定已儲存；結果會在下次檢查後顯示。" xml:space="preserve"><value>健康检查设置已保存；结果会在下次检查后显示。</value></data>
+  <data name="請檢查網址、間隔、逾時及門檻設定；逾時不可大於檢查間隔。" xml:space="preserve"><value>请检查网址、间隔、超时及门槛设置；超时不可大于检查间隔。</value></data>
+  <data name="設定已被修改，請重新整理後再試。" xml:space="preserve"><value>设置已被修改，请刷新后再试。</value></data>
+  <data name="服務、來源或執行個體目前不可使用，無法啟用檢查。" xml:space="preserve"><value>服务、来源或实例当前不可使用，无法启用检查。</value></data>
+  <data name="此服務的健康檢查已達上限。" xml:space="preserve"><value>此服务的健康检查已达上限。</value></data>
+  <data name="找不到服務或執行個體，請重新整理後再試。" xml:space="preserve"><value>找不到服务或实例，请刷新后再试。</value></data>
+  <data name="回報正常" xml:space="preserve"><value>回报正常</value></data>
+  <data name="回報降級" xml:space="preserve"><value>回报降级</value></data>
+  <data name="回報異常" xml:space="preserve"><value>回报异常</value></data>
+  <data name="檢查逾時" xml:space="preserve"><value>检查超时</value></data>
+  <data name="連線失敗" xml:space="preserve"><value>连接失败</value></data>
+  <data name="回應格式不符" xml:space="preserve"><value>响应格式不符</value></data>
+  <data name="網段未允許" xml:space="preserve"><value>网段未允许</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="無法讀取執行個體" xml:space="preserve"><value>无法读取实例</value></data>
 </root>

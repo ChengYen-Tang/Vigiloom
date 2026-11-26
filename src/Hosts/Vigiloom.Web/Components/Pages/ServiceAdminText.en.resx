@@ -106,4 +106,73 @@
   <data name="請提供有效的主機、執行個體與確認依據（最多 512 字）。" xml:space="preserve"><value>Provide a valid host, instance and evidence (at most 512 characters).</value></data>
   <data name="找不到設備或執行個體，請重新整理。" xml:space="preserve"><value>Device or instance not found. Refresh and try again.</value></data>
   <data name="關聯或資源狀態已變更，請重新整理並確認。" xml:space="preserve"><value>The relationship or resource status has changed. Refresh and check.</value></data>
+  <data name="服務健康檢查" xml:space="preserve"><value>Service health checks</value></data>
+  <data name="為已加入的應用服務設定 HTTP 健康檢查。" xml:space="preserve"><value>Configure HTTP health checks for enrolled applications.</value></data>
+  <data name="無法讀取設定，請重新整理後再試。" xml:space="preserve"><value>Unable to load settings. Refresh and try again.</value></data>
+  <data name="選擇服務" xml:space="preserve"><value>Select service</value></data>
+  <data name="此頁沒有已加入的服務。請先到" xml:space="preserve"><value>There are no enrolled services on this page. First go to </value></data>
+  <data name="待加入服務" xml:space="preserve"><value>Pending services</value></data>
+  <data name="核准來源。" xml:space="preserve"><value> to approve a source.</value></data>
+  <data name="來源：" xml:space="preserve"><value>Source: </value></data>
+  <data name="識別碼" xml:space="preserve"><value>ID</value></data>
+  <data name="服務：" xml:space="preserve"><value>Service: </value></data>
+  <data name="服務分頁" xml:space="preserve"><value>Service pagination</value></data>
+  <data name="檢查清單" xml:space="preserve"><value>Health checks</value></data>
+  <data name="服務：{0}（{1}），來源：{2}。" xml:space="preserve"><value>Service: {0} ({1}), source: {2}.</value></data>
+  <data name="服務與來源識別碼" xml:space="preserve"><value>Service and source IDs</value></data>
+  <data name="最後記錄只代表當時的量測，並非目前服務健康結論。" xml:space="preserve"><value>The last observation represents only the measurement at that time, not current service health.</value></data>
+  <data name="此頁沒有健康檢查，可使用下方表單新增。" xml:space="preserve"><value>No health checks on this page. Use the form below to add one.</value></data>
+  <data name="左右滑動查看完整檢查資訊。" xml:space="preserve"><value>Scroll horizontally to view all check details.</value></data>
+  <data name="健康檢查清單，可左右捲動" xml:space="preserve"><value>Health check list, scroll horizontally</value></data>
+  <data name="檢查對象" xml:space="preserve"><value>Check target</value></data>
+  <data name="檢查網址" xml:space="preserve"><value>Check URL</value></data>
+  <data name="設定" xml:space="preserve"><value>Settings</value></data>
+  <data name="最後記錄（UTC）" xml:space="preserve"><value>Last observation (UTC)</value></data>
+  <data name="已啟用" xml:space="preserve"><value>Enabled</value></data>
+  <data name="已停用" xml:space="preserve"><value>Disabled</value></data>
+  <data name="{0}，每 {1} 秒" xml:space="preserve"><value>{0}, every {1} seconds</value></data>
+  <data name="尚無記錄" xml:space="preserve"><value>No observations yet</value></data>
+  <data name="編輯" xml:space="preserve"><value>Edit</value></data>
+  <data name="健康檢查分頁" xml:space="preserve"><value>Health check pagination</value></data>
+  <data name="新增健康檢查" xml:space="preserve"><value>Add health check</value></data>
+  <data name="編輯健康檢查" xml:space="preserve"><value>Edit health check</value></data>
+  <data name="支援 ASP.NET Core 預設的純文字健康回應；請勿將密碼或 token 寫進網址。" xml:space="preserve"><value>Supports the default ASP.NET Core plain-text health response. Do not put passwords or tokens in URLs.</value></data>
+  <data name="整個服務" xml:space="preserve"><value>Entire service</value></data>
+  <data name="（已退役）" xml:space="preserve"><value> (retired)</value></data>
+  <data name="識別碼：" xml:space="preserve"><value>ID: </value></data>
+  <data name="檢查間隔（秒）" xml:space="preserve"><value>Check interval (seconds)</value></data>
+  <data name="逾時（秒）" xml:space="preserve"><value>Timeout (seconds)</value></data>
+  <data name="失敗門檻" xml:space="preserve"><value>Failure threshold</value></data>
+  <data name="恢復門檻" xml:space="preserve"><value>Recovery threshold</value></data>
+  <data name="執行個體第 {0} 頁" xml:space="preserve"><value>Instances, page {0}</value></data>
+  <data name="啟用定期檢查" xml:space="preserve"><value>Enable periodic checks</value></data>
+  <data name="儲存檢查" xml:space="preserve"><value>Save check</value></data>
+  <data name="取消編輯" xml:space="preserve"><value>Cancel editing</value></data>
+  <data name="允許檢查的網段" xml:space="preserve"><value>Allowed health check networks</value></data>
+  <data name="此政策適用於所有服務的健康檢查。Worker 只會連線至下列位址或網段。每行輸入一個 IP 位址（例如 192.168.1.10）或 CIDR 網段（例如 10.0.0.0/8）；空白表示不執行檢查。" xml:space="preserve"><value>This policy applies to health checks for all services. The Worker connects only to the listed addresses or networks. Enter one IP address (for example, 192.168.1.10) or CIDR network (for example, 10.0.0.0/8) per line; an empty list disables checks.</value></data>
+  <data name="尚未設定允許網段，健康檢查目前不會執行。" xml:space="preserve"><value>No networks are allowed; health checks will not run.</value></data>
+  <data name="允許網段" xml:space="preserve"><value>Allowed networks</value></data>
+  <data name="移除網段會中止使用舊政策的檢查；已保存的歷史紀錄不會被刪除。" xml:space="preserve"><value>Removing a network stops checks using the old policy; saved history is not deleted.</value></data>
+  <data name="儲存網段" xml:space="preserve"><value>Save networks</value></data>
+  <data name="找不到此服務的健康檢查。" xml:space="preserve"><value>The health check for this service was not found.</value></data>
+  <data name="無法確認管理員身分。" xml:space="preserve"><value>Unable to confirm administrator identity.</value></data>
+  <data name="網段設定已變更，請重新整理後再試。" xml:space="preserve"><value>Network settings changed. Refresh and try again.</value></data>
+  <data name="網段設定已儲存。" xml:space="preserve"><value>Network settings saved.</value></data>
+  <data name="請逐行輸入有效的 IP 位址或 CIDR 網段，最多 64 筆。" xml:space="preserve"><value>Enter one valid IP address or CIDR network per line, up to 64 entries.</value></data>
+  <data name="請先選擇服務。" xml:space="preserve"><value>Select a service first.</value></data>
+  <data name="健康檢查設定已儲存；結果會在下次檢查後顯示。" xml:space="preserve"><value>Health check settings saved; results appear after the next check.</value></data>
+  <data name="請檢查網址、間隔、逾時及門檻設定；逾時不可大於檢查間隔。" xml:space="preserve"><value>Check the URL, interval, timeout and thresholds; timeout cannot exceed the interval.</value></data>
+  <data name="設定已被修改，請重新整理後再試。" xml:space="preserve"><value>Settings were modified. Refresh and try again.</value></data>
+  <data name="服務、來源或執行個體目前不可使用，無法啟用檢查。" xml:space="preserve"><value>The service, source or instance is unavailable; the check cannot be enabled.</value></data>
+  <data name="此服務的健康檢查已達上限。" xml:space="preserve"><value>This service has reached its health check limit.</value></data>
+  <data name="找不到服務或執行個體，請重新整理後再試。" xml:space="preserve"><value>Service or instance not found. Refresh and try again.</value></data>
+  <data name="回報正常" xml:space="preserve"><value>Reported healthy</value></data>
+  <data name="回報降級" xml:space="preserve"><value>Reported degraded</value></data>
+  <data name="回報異常" xml:space="preserve"><value>Reported unhealthy</value></data>
+  <data name="檢查逾時" xml:space="preserve"><value>Check timed out</value></data>
+  <data name="連線失敗" xml:space="preserve"><value>Connection failed</value></data>
+  <data name="回應格式不符" xml:space="preserve"><value>Invalid response format</value></data>
+  <data name="網段未允許" xml:space="preserve"><value>Network not allowed</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="無法讀取執行個體" xml:space="preserve"><value>Unable to load instance</value></data>
 </root>
