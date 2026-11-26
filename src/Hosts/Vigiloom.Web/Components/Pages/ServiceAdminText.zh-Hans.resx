@@ -991,4 +991,63 @@
   <data name="版本已啟用。" xml:space="preserve"><value>版本已启用。</value></data>
   <data name="無法啟用版本，請確認檢查狀態並重新整理。" xml:space="preserve"><value>无法启用版本，请确认检查状态并刷新。</value></data>
   <data name="無法啟用版本，請稍後再試。" xml:space="preserve"><value>无法启用版本，请稍后重试。</value></data>
+  <data name="安全設定基準" xml:space="preserve"><value>安全设置基准</value></data>
+  <data name="唯讀檢查已選用的安全設定，不會自動修改設備；檢查結果不代表設備沒有其他風險。" xml:space="preserve"><value>只读检查已选用的安全设置，不会自动修改设备；检查结果不代表设备没有其他风险。</value></data>
+  <data name="無法載入基準檢查結果，請稍後重新整理。" xml:space="preserve"><value>无法加载基准检查结果，请稍后刷新。</value></data>
+  <data name="目前沒有基準檢查資料。" xml:space="preserve"><value>目前没有基准检查数据。</value></data>
+  <data name="檢查間隔與盤點設定相同：{0} 秒。" xml:space="preserve"><value>检查间隔与清单设置相同：{0} 秒。</value></data>
+  <data name="此設備尚無可用 Agent。" xml:space="preserve"><value>此设备尚无可用 Agent。</value></data>
+  <data name="Agent 設定：{0}" xml:space="preserve"><value>Agent 设置：{0}</value></data>
+  <data name="期望版本：{0}" xml:space="preserve"><value>期望版本：{0}</value></data>
+  <data name="已套用版本：{0}" xml:space="preserve"><value>已应用版本：{0}</value></data>
+  <data name="尚未回報" xml:space="preserve"><value>尚未报告</value></data>
+  <data name="最後成功同步（UTC）：{0}" xml:space="preserve"><value>最后成功同步（UTC）：{0}</value></data>
+  <data name="同步問題：{0}" xml:space="preserve"><value>同步问题：{0}</value></data>
+  <data name="基準檢查，可左右捲動" xml:space="preserve"><value>基准检查，可左右滚动</value></data>
+  <data name="檢查項目" xml:space="preserve"><value>检查项目</value></data>
+  <data name="上次檢查（UTC）" xml:space="preserve"><value>上次检查（UTC）</value></data>
+  <data name="目前選用版本" xml:space="preserve"><value>当前选用版本</value></data>
+  <data name="查看最近紀錄" xml:space="preserve"><value>查看最近记录</value></data>
+  <data name="結果：{0}" xml:space="preserve"><value>结果：{0}</value></data>
+  <data name="（非目前有效結果）" xml:space="preserve"><value>（非当前有效结果）</value></data>
+  <data name="作業系統：{0}" xml:space="preserve"><value>操作系统：{0}</value></data>
+  <data name="當時預期：{0}" xml:space="preserve"><value>当时预期：{0}</value></data>
+  <data name="建議：{0}" xml:space="preserve"><value>建议：{0}</value></data>
+  <data name="來源版本 ID：{0}" xml:space="preserve"><value>来源版本 ID：{0}</value></data>
+  <data name="最近的例外說明（{0}）" xml:space="preserve"><value>最近的例外说明（{0}）</value></data>
+  <data name="目前版本" xml:space="preserve"><value>当前版本</value></data>
+  <data name="其他版本" xml:space="preserve"><value>其他版本</value></data>
+  <data name="版本：{0}" xml:space="preserve"><value>版本：{0}</value></data>
+  <data name="新增例外說明" xml:space="preserve"><value>新增例外说明</value></data>
+  <data name="密碼檔案權限" xml:space="preserve"><value>密码文件权限</value></data>
+  <data name="登入畫面網路選擇" xml:space="preserve"><value>登录画面网络选择</value></data>
+  <data name="本機自訂" xml:space="preserve"><value>本地自定义</value></data>
+  <data name="已套用" xml:space="preserve"><value>已应用</value></data>
+  <data name="等待套用" xml:space="preserve"><value>等待应用</value></data>
+  <data name="同步失敗" xml:space="preserve"><value>同步失败</value></data>
+  <data name="等待回報" xml:space="preserve"><value>等待报告</value></data>
+  <data name="Agent 身分驗證失敗" xml:space="preserve"><value>Agent 身份验证失败</value></data>
+  <data name="設定資料無效" xml:space="preserve"><value>设置数据无效</value></data>
+  <data name="無法讀寫 Agent 本機設定" xml:space="preserve"><value>无法读写 Agent 本地设置</value></data>
+  <data name="設定同步衝突，稍後會重試" xml:space="preserve"><value>设置同步冲突，稍后会重试</value></data>
+  <data name="暫時無法取得設定，稍後會重試" xml:space="preserve"><value>暂时无法获取设置，稍后会重试</value></data>
+  <data name="/etc/shadow 為一般檔案，權限不寬於 0640，且沒有額外 ACL。" xml:space="preserve"><value>/etc/shadow 为普通文件，权限不宽于 0640，且没有额外 ACL。</value></data>
+  <data name="64 位元登錄檢視中的 DontDisplayNetworkSelectionUI 為 DWORD 1。" xml:space="preserve"><value>64 位注册表视图中的 DontDisplayNetworkSelectionUI 为 DWORD 1。</value></data>
+  <data name="{0} 權限不寬於 {1}，且沒有額外 ACL。" xml:space="preserve"><value>{0} 权限不宽于 {1}，且没有额外 ACL。</value></data>
+  <data name="{0} 的 DWORD 值為 {1}。" xml:space="preserve"><value>{0} 的 DWORD 值为 {1}。</value></data>
+  <data name="無法取得此紀錄當時的檢查定義。" xml:space="preserve"><value>无法获取此记录当时的检查定义。</value></data>
+  <data name="請由主機管理員檢查檔案權限與 ACL，確認影響後依組織政策調整。" xml:space="preserve"><value>请由主机管理员检查文件权限与 ACL，确认影响后按组织策略调整。</value></data>
+  <data name="請由主機管理員檢查登入畫面網路選擇的群組原則設定。" xml:space="preserve"><value>请由主机管理员检查登录画面网络选择的组策略设置。</value></data>
+  <data name="請由主機管理員參考此紀錄的來源版本。" xml:space="preserve"><value>请由主机管理员参考此记录的来源版本。</value></data>
+  <data name="尚無 Agent" xml:space="preserve"><value>尚无 Agent</value></data>
+  <data name="來源未啟用" xml:space="preserve"><value>来源未启用</value></data>
+  <data name="來源尚未發布" xml:space="preserve"><value>来源尚未发布</value></data>
+  <data name="來源已過期" xml:space="preserve"><value>来源已过期</value></data>
+  <data name="來源無法使用" xml:space="preserve"><value>来源无法使用</value></data>
+  <data name="尚未評估" xml:space="preserve"><value>尚未评估</value></data>
+  <data name="結果過期或版本已變更" xml:space="preserve"><value>结果过期或版本已更改</value></data>
+  <data name="不適用" xml:space="preserve"><value>不适用</value></data>
+  <data name="權限不足" xml:space="preserve"><value>权限不足</value></data>
+  <data name="檢查錯誤" xml:space="preserve"><value>检查错误</value></data>
+  <data name="無法判斷" xml:space="preserve"><value>无法判断</value></data>
 </root>

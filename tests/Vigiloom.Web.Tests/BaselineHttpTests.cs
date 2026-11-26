@@ -168,6 +168,22 @@ public sealed class BaselineHttpTests(TestContext context)
             }
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(reader, "reader", token);
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Security configuration baseline", text);
+                Assert.Contains("Password file permissions", text);
+                Assert.Contains("test evidence", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await reader.GetAsync($"/devices/{device.Id:D}", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("安全设置基准", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
