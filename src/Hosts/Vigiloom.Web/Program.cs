@@ -73,6 +73,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+builder.Services.AddLocalization();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -745,6 +746,10 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !cont
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseRequestLocalization(new RequestLocalizationOptions()
+    .SetDefaultCulture("zh-Hant")
+    .AddSupportedCultures("en", "zh-Hant", "zh-Hans")
+    .AddSupportedUICultures("en", "zh-Hant", "zh-Hans"));
 app.UseMiddleware<OtlpTransportGuard>();
 app.UseMiddleware<AgentTransportGuard>();
 app.UseRateLimiter();
