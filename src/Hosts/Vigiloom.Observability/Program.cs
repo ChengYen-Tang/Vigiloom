@@ -7,6 +7,7 @@ using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Observability;
 using Vigiloom.Observability.Authentication;
@@ -33,6 +34,10 @@ builder.Services.AddScoped(provider => new OutboxWriter(provider.GetServices<IOu
 builder.Services.AddHttpClient<TemporalHealthTransitionSink>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<ICandidateObserver, RemoteCandidateObserver>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
 builder.Services.AddSingleton<HealthRunner>();
 builder.Services.AddScoped<HealthStatusReader>();

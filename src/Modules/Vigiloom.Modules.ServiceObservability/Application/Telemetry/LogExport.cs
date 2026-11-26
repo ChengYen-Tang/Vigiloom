@@ -12,7 +12,7 @@ public enum ExportStatus { Complete, Partial, Retry, Invalid, BatchTooLarge, Una
 public sealed record ExportResult(ExportStatus Status, long Rejected, TimeSpan? RetryAfter = null, bool ServiceNotAuthorized = false, bool MetricWindowPruned = false);
 
 /// <summary>Atomically commits all accepted groups in an OTLP Log request.</summary>
-internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, CandidateDiscovery candidates)
+internal sealed class LogExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates)
 {
     private const int MaximumRequestBytes = 4 * 1024 * 1024;
     private const int MaximumGroups = 256;
