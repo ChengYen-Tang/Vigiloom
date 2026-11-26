@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net;
 using Microsoft.Net.Http.Headers;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
@@ -11,6 +12,18 @@ internal static class AgentSecuritySettingsEndpoints
 {
     public static void MapAgentSecuritySettingsEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/agent/integrity-status/{scopeId:guid}", async (Guid scopeId, HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
+        {
+            if (scopeId.Version != 7) return Results.BadRequest();
+            var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
+            using var response = await clients.CreateClient("security").PostAsJsonAsync($"internal/v1/agent-integrity-status/{scopeId:D}", identity, token);
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            response.EnsureSuccessStatusCode();
+            var status = await response.Content.ReadFromJsonAsync<IntegrityScopeStatus>(cancellationToken: token)
+                ?? throw new InvalidOperationException("Security service returned empty integrity status.");
+            context.Response.Headers.CacheControl = "private, no-store";
+            return Results.Ok(status);
+        });
         app.MapGet("/api/v1/agent/baseline-settings", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
         {
             var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
