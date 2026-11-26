@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="對外網路設備">
+    <value>Public network devices</value>
+  </data>
+  <data xml:space="preserve" name="顯示管理員允許公開的連線狀態與延遲。">
+    <value>Connection status and latency shared by the administrator.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開設備。">
+    <value>No public devices to display.</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>Device</value>
+  </data>
+  <data xml:space="preserve" name="目前狀態">
+    <value>Current status</value>
+  </data>
+  <data xml:space="preserve" name="延遲與觀測時間">
+    <value>Latency and observed time</value>
+  </data>
+  <data xml:space="preserve" name="查看延遲歷史">
+    <value>View latency history</value>
+  </data>
+  <data xml:space="preserve" name="對外應用服務">
+    <value>Public application services</value>
+  </data>
+  <data xml:space="preserve" name="應用服務的健康狀態獨立於設備連線。">
+    <value>Application health is independent of device connectivity.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開服務。">
+    <value>No public services to display.</value>
+  </data>
+  <data xml:space="preserve" name="服務名稱">
+    <value>Service</value>
+  </data>
+  <data xml:space="preserve" name="歷史狀態">
+    <value>Status history</value>
+  </data>
+  <data xml:space="preserve" name="此服務未提供公開歷史。">
+    <value>This service has no public history.</value>
+  </data>
+  <data xml:space="preserve" name="歷史資料暫時無法讀取。">
+    <value>History is temporarily unavailable.</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取歷史資料…">
+    <value>Loading history…</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>Operational</value>
+  </data>
+  <data xml:space="preserve" name="部分影響">
+    <value>Degraded</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>Unavailable</value>
+  </data>
+  <data xml:space="preserve" name="未知或無資料">
+    <value>Unknown or no data</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可公開的歷史資料。">
+    <value>No public history is available.</value>
+  </data>
+  <data xml:space="preserve" name="服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要">
+    <value>Daily service history. Scroll horizontally and select a day for details.</value>
+  </data>
+  <data xml:space="preserve" name="所選歷史時間範圍">
+    <value>Selected history range</value>
+  </data>
+  <data xml:space="preserve" name="至">
+    <value>to</value>
+  </data>
+  <data xml:space="preserve" name="本頁取得時間：">
+    <value>Retrieved: </value>
+  </data>
+  <data xml:space="preserve" name="資料涵蓋率">
+    <value>Data coverage</value>
+  </data>
+</root>

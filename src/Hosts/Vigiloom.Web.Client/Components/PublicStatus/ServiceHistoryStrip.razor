@@ -1,12 +1,13 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PublicStatusText> L
 @using Vigiloom.Contracts.Publishing
 
 @if (Days.Count == 0)
 {
-    <p class="history-empty">目前沒有可公開的歷史資料。</p>
+    <p class="history-empty">@L["目前沒有可公開的歷史資料。"]</p>
 }
 else
 {
-    <div class="history-strip" style="grid-template-columns: repeat(@DayCount, minmax(24px, 1fr))" aria-label="服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要">
+    <div class="history-strip" style="grid-template-columns: repeat(@DayCount, minmax(24px, 1fr))" aria-label="@L["服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要"]">
         @foreach (var day in Days)
         {
             <button type="button" class="history-day @StateClass(day.State)" style="grid-column: @Column(day.From)" @key="day.From"
@@ -14,9 +15,9 @@ else
                     aria-pressed="@(Selected == day.From ? "true" : "false")" @onclick="() => OnSelect.InvokeAsync(day)"></button>
         }
     </div>
-    <div class="history-range" aria-label="所選歷史時間範圍">
+    <div class="history-range" aria-label="@L["所選歷史時間範圍"]">
         <time datetime="@From.ToString("O")">@From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</time>
-        <span>至</span>
+        <span>@L["至"]</span>
         <time datetime="@To.ToString("O")">@To.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</time>
     </div>
 }
@@ -33,8 +34,8 @@ else
 
     private static string StateClass(string state) => state switch
     { "Healthy" => "good", "Degraded" => "degraded", "Unhealthy" => "bad", _ => "unknown" };
-    private static string StateText(string state) => state switch
-    { "Healthy" => "正常", "Degraded" => "部分影響", "Unhealthy" => "異常", _ => "未知或無資料" };
-    private static string Description(PublicHealthDay day) =>
-        $"{day.From:yyyy-MM-dd HH:mm} 至 {day.To:yyyy-MM-dd HH:mm} UTC，{StateText(day.State)}，資料涵蓋率 {day.Coverage:P1}";
+    private string StateText(string state) => state switch
+    { "Healthy" => L["正常"].Value, "Degraded" => L["部分影響"].Value, "Unhealthy" => L["異常"].Value, _ => L["未知或無資料"].Value };
+    private string Description(PublicHealthDay day) =>
+        $"{day.From:yyyy-MM-dd HH:mm} {L["至"]} {day.To:yyyy-MM-dd HH:mm} UTC, {StateText(day.State)}, {L["資料涵蓋率"]} {day.Coverage:P1}";
 }

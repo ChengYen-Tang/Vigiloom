@@ -1,15 +1,16 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PublicStatusText> L
 @using Vigiloom.Contracts.Publishing
 
 <section class="public-section" aria-labelledby="public-services-title">
-    <h2 id="public-services-title">對外應用服務</h2>
-    <p>應用服務的健康狀態獨立於設備連線。</p>
+    <h2 id="public-services-title">@L["對外應用服務"]</h2>
+    <p>@L["應用服務的健康狀態獨立於設備連線。"]</p>
     @if (Items.Count == 0)
     {
-        <p>目前沒有可顯示的公開服務。</p>
+        <p>@L["目前沒有可顯示的公開服務。"]</p>
     }
     else
     {
-        <div class="public-head" aria-hidden="true"><span>服務名稱</span><span>目前狀態</span><span>歷史狀態</span></div>
+        <div class="public-head" aria-hidden="true"><span>@L["服務名稱"]</span><span>@L["目前狀態"]</span><span>@L["歷史狀態"]</span></div>
         <ul class="public-rows">
             @foreach (var service in Items)
             {
@@ -21,16 +22,16 @@
                     <div class="history-content">
                     @if (HistoryRevisions.TryGetValue(service.Id, out var revision) && revision == CurrentRevision && Histories.TryGetValue(service.Id, out var history))
                     {
-                        if (history is null) { <p>此服務未提供公開歷史。</p> }
+                        if (history is null) { <p>@L["此服務未提供公開歷史。"]</p> }
                         else
                         {
                             @if (HistoryRanges.TryGetValue(service.Id, out var range))
                             { <ServiceHistoryStrip Days="history.Days" From="range.From" To="range.To" OnSelect="day => OnSelectDay.InvokeAsync((service.Id, day))" /> }
-                            @if (HistoryUpdatedAt.TryGetValue(service.Id, out var updated)) { <small>本頁取得時間：@updated.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</small> }
+                            @if (HistoryUpdatedAt.TryGetValue(service.Id, out var updated)) { <small>@L["本頁取得時間："]@updated.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</small> }
                         }
                     }
-                    else if (HistoryRevisions.TryGetValue(service.Id, out revision) && revision == CurrentRevision && FailedHistories.Contains(service.Id)) { <p role="status">歷史資料暫時無法讀取。</p> }
-                    else { <p role="status">正在讀取歷史資料…</p> }
+                    else if (HistoryRevisions.TryGetValue(service.Id, out revision) && revision == CurrentRevision && FailedHistories.Contains(service.Id)) { <p role="status">@L["歷史資料暫時無法讀取。"]</p> }
+                    else { <p role="status">@L["正在讀取歷史資料…"]</p> }
                     </div>
                 </li>
             }
