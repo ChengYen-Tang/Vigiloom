@@ -6,6 +6,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using Hangfire;
+using Hangfire.SqlServer;
+using Hangfire.Storage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -28,6 +31,7 @@ using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
@@ -50,6 +54,8 @@ public sealed class NetworkHostTests(TestContext context)
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new NetworkDbContext(networkOptions)) await db.Database.MigrateAsync(token);
         await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
+        var setup = new SqlServerStorage(database.ConnectionString, SchedulingRegistration.StorageOptions(prepareSchema: true));
+        using (setup.GetConnection()) { }
         var id = Guid.CreateVersion7();
         var version = new byte[8];
         var published = true;
@@ -88,10 +94,10 @@ public sealed class NetworkHostTests(TestContext context)
         using var host = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(builder =>
         {
             builder.UseUrls("http://127.0.0.1:0");
-            builder.UseSetting("Hangfire:Enabled", "false");
+            builder.UseSetting("Hangfire:Enabled", "true");
             builder.UseSetting("Temporal:EnableNetworkWorker", "false");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-            { ["ConnectionStrings:Network"] = database.ConnectionString, ["Hangfire:Enabled"] = "false", ["Services:Identity:Url"] = "http://identity",
+            { ["ConnectionStrings:Network"] = database.ConnectionString, ["ConnectionStrings:Scheduling"] = database.ConnectionString, ["Hangfire:Enabled"] = "true", ["Services:Identity:Url"] = "http://identity",
                 ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1", ["Services:Resources:Url"] = resourceAddress }));
             builder.ConfigureTestServices(services =>
             {
@@ -110,6 +116,15 @@ public sealed class NetworkHostTests(TestContext context)
         });
         host.UseKestrel(0);
         host.StartServer();
+        using (var jobs = host.Services.GetRequiredService<JobStorage>().GetConnection())
+        {
+            var recurring = jobs.GetRecurringJobs();
+            foreach (var jobId in new[] { "vigiloom-speed-test", "vigiloom-speed-retention", "vigiloom-ping-retention", "vigiloom-ping-rollup-backfill" })
+            {
+                var job = recurring.Single(item => item.Id == jobId);
+                Assert.AreEqual("network", job.Job.Queue);
+            }
+        }
         var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var client = new HttpClient { BaseAddress = new Uri(address) };
         client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
