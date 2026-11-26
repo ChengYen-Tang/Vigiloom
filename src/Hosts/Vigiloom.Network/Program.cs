@@ -92,10 +92,10 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
         .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
             ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
-    builder.Services.AddScoped<AutomaticSpeedJob>();
-    builder.Services.AddScoped<PingRetentionJob>();
-    builder.Services.AddScoped<PingRollupBackfillJob>();
-    builder.Services.AddScoped<SpeedRetentionJob>();
+    builder.Services.AddScoped<NetworkAutomaticSpeedJob>();
+    builder.Services.AddScoped<NetworkPingRetentionJob>();
+    builder.Services.AddScoped<NetworkPingRollupJob>();
+    builder.Services.AddScoped<NetworkSpeedRetentionJob>();
     builder.Services.AddHostedService<NetworkMaintenanceSchedule>();
     builder.Services.AddHostedService<SpeedSchedule>();
     builder.Services.AddHangfireServer(options => { options.Queues = ["network"]; options.IsLightweightServer = true; });

@@ -10,14 +10,14 @@ public sealed class SpeedScheduleContractTests
     [TestMethod]
     public void RecurringJobUsesSharedModuleAndNetworkQueue()
     {
-        var job = Job.FromExpression<AutomaticSpeedJob>(worker => worker.RunAsync(CancellationToken.None), "network");
+        var job = Job.FromExpression<NetworkAutomaticSpeedJob>(worker => worker.RunAsync(CancellationToken.None), "network");
         Assert.AreEqual(typeof(SpeedQueue).Assembly, job.Type.Assembly);
         Assert.AreEqual("network", job.Queue);
         var maintenance = new[]
         {
-            Job.FromExpression<PingRetentionJob>(worker => worker.RunAsync(CancellationToken.None), "network"),
-            Job.FromExpression<PingRollupBackfillJob>(worker => worker.RunAsync(CancellationToken.None), "network"),
-            Job.FromExpression<SpeedRetentionJob>(worker => worker.RunAsync(CancellationToken.None), "network")
+            Job.FromExpression<NetworkPingRetentionJob>(worker => worker.RunAsync(CancellationToken.None), "network"),
+            Job.FromExpression<NetworkPingRollupJob>(worker => worker.RunAsync(CancellationToken.None), "network"),
+            Job.FromExpression<NetworkSpeedRetentionJob>(worker => worker.RunAsync(CancellationToken.None), "network")
         };
         foreach (var item in maintenance)
         {

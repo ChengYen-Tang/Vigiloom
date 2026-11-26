@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public sealed class SpeedRetentionJob(SpeedRetentionCleanup cleanup, ILogger<SpeedRetentionJob> logger)
+public sealed class NetworkSpeedRetentionJob(SpeedRetentionCleanup cleanup, ILogger<NetworkSpeedRetentionJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]
     public async Task RunAsync(CancellationToken token)
