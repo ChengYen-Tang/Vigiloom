@@ -7,11 +7,16 @@
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Groups
+@using Vigiloom.Contracts.Services
+@using Vigiloom.Modules.ServiceObservability.Application.Health
 @using System.Security.Claims
 @inject IGroupManagement GroupsService
 @inject IServiceMembership ServiceMembers
 @inject NavigationManager Navigation
 @inject ILogger<GroupDetails> Logger
+@inject HealthStatusReader Health
+@inject Vigiloom.Web.Publishing.PublicObservationClient Observation
+@inject IConfiguration Configuration
 
 <PageTitle>群組詳情 - Vigiloom</PageTitle>
 <main class="device-page">
@@ -76,10 +81,10 @@
                     @if (serviceList.Items.Count == 0) { <p class="device-empty">沒有符合條件的服務。</p> }
                     else {
                     <p class="group-scroll-hint">左右滑動查看完整表格。</p>
-                    <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>環境</th><th>群組歸屬</th></tr></thead><tbody>
+                    <div class="device-table-wrap"><table><thead><tr><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><th scope="col">選取</th></Authorized></AuthorizeView><th>名稱</th><th>環境</th><th>健康狀態</th><th>群組歸屬</th></tr></thead><tbody>
                     @foreach (var service in serviceList.Items)
                     {
-                        <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td><a href="@($"/services/{service.Id:D}")">@service.Name</a></td><td>@service.Environment</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
+                        <tr @key="service.Id"><AuthorizeView Policy="Administrator"><Authorized Context="administrator"><td><input type="checkbox" name="serviceIds" value="@service.Id" aria-label="選取 @service.Name" /></td></Authorized></AuthorizeView><td><a href="@($"/services/{service.Id:D}")">@service.Name</a></td><td>@service.Environment</td><td>@HealthText(service.Id)</td><td>@(service.IsMember ? "已加入" : "未加入")</td></tr>
                     }
                     </tbody></table></div>
                     <AuthorizeView Policy="Administrator"><Authorized Context="administrator"><div class="device-actions">
@@ -123,6 +128,8 @@
     private GroupDto? group;
     private GroupDevicePage? devices;
     private GroupServicePage? serviceList;
+    private IReadOnlyDictionary<Guid, HealthStatusReader.OverviewStatus> serviceHealth = new Dictionary<Guid, HealthStatusReader.OverviewStatus>();
+    private bool healthUnavailable;
     private bool loadError;
     private string? message, deleteError, serviceMessage;
     protected override async Task OnInitializedAsync()
@@ -144,8 +151,33 @@
             devices = await GroupsService.ListDevicesAsync(Id, false, member, Search is { Length: <= 256 } ? Search : null, Page, HttpContext.RequestAborted);
             bool? serviceMember = ServiceFilter switch { "available" => false, "all" => null, _ => true };
             serviceList = await ServiceMembers.ListAsync(Id, false, serviceMember, ServiceSearch is { Length: <= 256 } ? ServiceSearch : null, ServicePage, HttpContext.RequestAborted);
+            var ids = serviceList.Items.Select(service => service.Id).ToArray();
+            if (ids.Length > 0)
+            {
+                try
+                {
+                    serviceHealth = string.IsNullOrWhiteSpace(Configuration["Services:Observability:Url"])
+                        ? await Health.ReadManyAsync(ids, HttpContext.RequestAborted)
+                        : await Observation.StatusesAsync(ids, HttpContext.RequestAborted);
+                }
+                catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { throw; }
+                catch (Exception exception) { Logger.LogWarning("Could not load service health: {ExceptionType}", exception.GetType().Name); healthUnavailable = true; }
+            }
         }
         catch (Exception exception) { Logger.LogWarning("Could not load group: {ExceptionType}", exception.GetType().Name); loadError = true; }
+    }
+    private string HealthText(Guid id)
+    {
+        if (healthUnavailable) return "無法讀取";
+        if (!serviceHealth.TryGetValue(id, out var health)) return "未知或資料不足";
+        if (health.CollectionStopped) return "收集已停止";
+        if (health.SourceRevoked) return "來源已撤銷";
+        if (health.Status.UnknownReasons == ServiceHealthUnknownReason.Disabled) return "健康檢查已停用";
+        return health.Status.State switch
+        {
+            ServiceHealthState.Healthy => "正常", ServiceHealthState.Degraded => "降級",
+            ServiceHealthState.Unhealthy => "異常", _ => "未知或資料不足"
+        };
     }
     private async Task ChangeServicesAsync()
     {
