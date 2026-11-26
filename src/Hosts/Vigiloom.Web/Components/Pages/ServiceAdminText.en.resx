@@ -930,4 +930,22 @@
   <data name="此規則的格式或日誌來源尚不支援。" xml:space="preserve"><value>This rule format or log source is not yet supported.</value></data>
   <data name="無法執行試跑，請稍後再試。" xml:space="preserve"><value>Unable to run the test. Try again later.</value></data>
   <data name="未選擇" xml:space="preserve"><value>Not selected</value></data>
+  <data name="規則設定" xml:space="preserve"><value>Rule settings</value></data>
+  <data name="來源不可用時仍可停用規則。" xml:space="preserve"><value>The rule can still be disabled when its source is unavailable.</value></data>
+  <data name="狀態：{0}" xml:space="preserve"><value>Status: {0}</value></data>
+  <data name="找不到此設定，請回到清單重新選擇。" xml:space="preserve"><value>Setting not found. Return to the list and select again.</value></data>
+  <data name="無法讀取規則設定，請稍後再試。" xml:space="preserve"><value>Unable to load rule settings. Try again later.</value></data>
+  <data name="設定已變更或來源不存在，請重新載入。" xml:space="preserve"><value>Settings changed or the source no longer exists. Reload the page.</value></data>
+  <data name="無法停用規則，請稍後再試。" xml:space="preserve"><value>Unable to disable the rule. Try again later.</value></data>
+  <data name="行為規則證據" xml:space="preserve"><value>Behavior rule evidence</value></data>
+  <data name="返回通知紀錄" xml:space="preserve"><value>Back to notification history</value></data>
+  <data name="找不到此規則版本，相關資料可能已不再保留。" xml:space="preserve"><value>This rule version was not found; related data may no longer be retained.</value></data>
+  <data name="規則：{0} · 情報版本：{1} · 試跑：{2}" xml:space="preserve"><value>Rule: {0} · Intelligence revision: {1} · Test: {2}</value></data>
+  <data name="此處顯示告警使用的上游規則與本機排除條件，並非目前設定的即時狀態。" xml:space="preserve"><value>This shows the upstream rule and local exceptions used by the alert, not the current live settings.</value></data>
+  <data name="規則與匹配條件" xml:space="preserve"><value>Rule and matching conditions</value></data>
+  <data name="關聯規則的基礎事件條件" xml:space="preserve"><value>Base event conditions for the correlation rule</value></data>
+  <data name="無法取得符合版本的基礎規則。" xml:space="preserve"><value>Unable to retrieve the matching base rule version.</value></data>
+  <data name="本機排除條件" xml:space="preserve"><value>Local exceptions</value></data>
+  <data name="無法讀取排除條件。" xml:space="preserve"><value>Unable to load exceptions.</value></data>
+  <data name="無法載入規則證據，請稍後再試。" xml:space="preserve"><value>Unable to load rule evidence. Try again later.</value></data>
 </root>

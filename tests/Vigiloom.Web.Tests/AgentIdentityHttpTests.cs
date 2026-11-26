@@ -683,6 +683,13 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("/tmp/historical", text);
                 Assert.Contains("4.6.0", text);
             }
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var localizedEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await localizedEvidence.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("行为规则证据", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var ruleEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, ruleEvidence.StatusCode);
