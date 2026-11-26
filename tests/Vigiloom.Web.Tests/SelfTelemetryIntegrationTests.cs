@@ -89,9 +89,11 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             resources.Services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] = observationAddress;
 
             using (var initial = await PostMetricsAsync(client, token)) Assert.AreEqual(HttpStatusCode.OK, initial.StatusCode);
+            Guid serviceId;
             await using (var db = await resourceContexts.CreateDbContextAsync(token))
             {
                 var service = await db.ApplicationServices.SingleAsync(token);
+                serviceId = service.Id;
                 var group = await db.Groups.SingleAsync(x => x.Name == "Self", token);
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == service.Id && x.GroupId == group.Id, token));
             }
@@ -110,6 +112,10 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             }
             await using var verify = await observationContexts.CreateDbContextAsync(token);
             Assert.AreEqual(1, await verify.MetricPoints.CountAsync(token));
+            using var anonymous = await client.GetAsync($"/api/v1/service-health/{serviceId:D}/status", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using var internalStatus = await client.GetAsync($"/internal/v1/health/{serviceId:D}/status", token);
+            Assert.AreEqual(HttpStatusCode.OK, internalStatus.StatusCode);
         }, outer), context.CancellationToken);
 
     private static async Task<HttpResponseMessage> PostMetricsAsync(HttpClient client, CancellationToken token)
