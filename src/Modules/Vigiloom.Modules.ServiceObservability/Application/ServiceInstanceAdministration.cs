@@ -48,6 +48,15 @@ public sealed class ServiceInstanceAdministration(IDbContextFactory<ServiceObser
             x.CreatedAt, x.RetiredAt, Convert.ToBase64String(x.Version))).ToArray();
     }
 
+    /// <summary>Returns instance identifiers for a service, including retired instances referenced by historical links.</summary>
+    public async Task<Guid[]> GetInstanceIdsAsync(Guid serviceId, CancellationToken token)
+    {
+        if (serviceId.Version != 7) throw new ArgumentException("A valid service is required.");
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await db.Instances.AsNoTracking().Where(instance => instance.ServiceId == serviceId)
+            .Select(instance => instance.Id).ToArrayAsync(token);
+    }
+
     public async Task<IReadOnlyList<ServiceInstanceSummary>> ListAsync(Guid serviceId, int page, CancellationToken token)
     {
         if (serviceId.Version != 7 || page is < 1 or > 1000) throw new ArgumentException("A valid service and page are required.");

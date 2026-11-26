@@ -9,7 +9,7 @@ using ServiceDetailsDto = Vigiloom.Contracts.Services.ServiceDetails;
 namespace Vigiloom.Web.ServiceDetails;
 
 internal sealed class ServerServiceDetailsClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    ServiceQueries services, DeploymentLinks deployments) : IServiceDetailsClient
+    ServiceQueries services, IDeploymentLinks deployments) : IServiceDetailsClient
 {
     public async Task<ServiceDetailsDto?> GetServiceAsync(Guid id, CancellationToken token)
     { await AuthorizeAsync(token); return await services.DetailAsync(id, token); }

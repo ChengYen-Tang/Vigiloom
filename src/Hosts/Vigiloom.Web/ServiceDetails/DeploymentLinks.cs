@@ -14,10 +14,17 @@ namespace Vigiloom.Web.ServiceDetails;
 internal enum DeploymentLinkStatus { Saved, NotFound, Conflict, Invalid }
 internal sealed record DeploymentLinkResult(DeploymentLinkStatus Status, Guid? Id = null);
 
+internal interface IDeploymentLinks
+{
+    Task<DeploymentLinkPage?> ListAsync(Guid serviceId, int page, CancellationToken token);
+    Task<DeploymentLinkResult> CreateAsync(Guid serviceId, CreateDeploymentLink input, Guid actor, CancellationToken token);
+    Task<DeploymentLinkStatus> EndAsync(Guid serviceId, Guid id, EndDeploymentLink input, Guid actor, CancellationToken token);
+}
+
 /// <summary>Coordinates an administrator's attestation across independently owned resources.</summary>
 internal sealed class DeploymentLinks(IDbContextFactory<DeploymentLinksDbContext> links,
     IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<ServiceObservabilityDbContext> services,
-    IOperationAuditWriter<OperationAudit> audit)
+    IOperationAuditWriter<OperationAudit> audit) : IDeploymentLinks
 {
     public async Task<DeploymentLinkPage?> ListAsync(Guid serviceId, int page, CancellationToken token)
     {
