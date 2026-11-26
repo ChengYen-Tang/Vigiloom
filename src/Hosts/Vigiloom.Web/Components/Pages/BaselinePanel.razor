@@ -4,35 +4,36 @@
 @using Vigiloom.Modules.SecurityAnalysis.Application.Baseline
 @inject Vigiloom.Web.HostMonitoring.BaselineAccess Query
 @inject ILogger<BaselinePanel> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
 <section class="baseline-panel" aria-labelledby="baseline-title">
-    <h2 id="baseline-title">安全設定基準</h2>
-    <p class="baseline-intro">唯讀檢查已選用的安全設定，不會自動修改設備；檢查結果不代表設備沒有其他風險。</p>
+    <h2 id="baseline-title">@L["安全設定基準"]</h2>
+    <p class="baseline-intro">@L["唯讀檢查已選用的安全設定，不會自動修改設備；檢查結果不代表設備沒有其他風險。"]</p>
     @if (error)
     {
-        <p class="baseline-error" role="alert">無法載入基準檢查結果，請稍後重新整理。</p>
+        <p class="baseline-error" role="alert">@L["無法載入基準檢查結果，請稍後重新整理。"]</p>
     }
     else if (view is null)
     {
-        <p>目前沒有基準檢查資料。</p>
+        <p>@L["目前沒有基準檢查資料。"]</p>
     }
     else
     {
-        <p class="baseline-meta">檢查間隔與盤點設定相同：@view.ScanIntervalSeconds 秒。@if (view.AgentId is null) { <span>此設備尚無可用 Agent。</span> }</p>
+        <p class="baseline-meta">@L["檢查間隔與盤點設定相同：{0} 秒。", view.ScanIntervalSeconds] @if (view.AgentId is null) { <span>@L["此設備尚無可用 Agent。"]</span> }</p>
         @if (view.Sync is { } sync && view.AgentId is not null)
         {
             <details class="baseline-meta">
-                <summary>Agent 設定：@SyncStatus(sync.State)</summary>
-                <p>期望版本：@ShortVersion(sync.DesiredRevision)</p>
-                <p>已套用版本：@(sync.AppliedRevision is { } applied ? ShortVersion(applied) : "尚未回報")</p>
-                <p>最後成功同步（UTC）：@(sync.LastSyncedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚未回報")</p>
-                @if (sync.Failure is { } failure) { <p>同步問題：@SyncFailure(failure)</p> }
+                <summary>@L["Agent 設定：{0}", SyncStatus(sync.State)]</summary>
+                <p>@L["期望版本：{0}", ShortVersion(sync.DesiredRevision)]</p>
+                <p>@L["已套用版本：{0}", sync.AppliedRevision is { } applied ? ShortVersion(applied) : L["尚未回報"].Value]</p>
+                <p>@L["最後成功同步（UTC）：{0}", sync.LastSyncedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚未回報"].Value]</p>
+                @if (sync.Failure is { } failure) { <p>@L["同步問題：{0}", SyncFailure(failure)]</p> }
             </details>
         }
-        <p class="baseline-scroll-hint">左右滑動查看完整檢查資訊。</p>
-        <div class="baseline-table" tabindex="0" role="region" aria-label="基準檢查，可左右捲動">
+        <p class="baseline-scroll-hint">@L["左右滑動查看完整檢查資訊。"]</p>
+        <div class="baseline-table" tabindex="0" role="region" aria-label="@L["基準檢查，可左右捲動"]">
             <table>
-                <thead><tr><th scope="col">檢查項目</th><th scope="col">狀態</th><th scope="col">上次檢查（UTC）</th><th scope="col">目前選用版本</th></tr></thead>
+                <thead><tr><th scope="col">@L["檢查項目"]</th><th scope="col">@L["狀態"]</th><th scope="col">@L["上次檢查（UTC）"]</th><th scope="col">@L["目前選用版本"]</th></tr></thead>
                 <tbody>
                 @foreach (var check in view.Checks)
                 {
@@ -41,31 +42,31 @@
                             <strong>@Title(check)</strong><div class="baseline-detail">@Source(check) · @check.CheckId</div>
                             @if (check.Latest is { } latest)
                             {
-                                <details><summary>查看最近紀錄</summary>
-                                    <p>結果：@Outcome(latest.Outcome)@if (!latest.Current) { <span>（非目前有效結果）</span> }</p>
-                                    <p>作業系統：@latest.OperatingSystem</p>
+                                <details><summary>@L["查看最近紀錄"]</summary>
+                                    <p>@L["結果：{0}", Outcome(latest.Outcome)]@if (!latest.Current) { <span>@L["（非目前有效結果）"]</span> }</p>
+                                    <p>@L["作業系統：{0}", latest.OperatingSystem]</p>
                                     @if (!string.IsNullOrWhiteSpace(latest.Evidence)) { <p>@latest.Evidence</p> }
-                                    <p>當時預期：@Expected(check, latest.Definition)</p>
-                                    @if (latest.Outcome == BaselineOutcome.Fail) { <p class="baseline-guidance">建議：@Guidance(check, latest.Definition)</p> }
-                                    <p>來源版本 ID：@latest.RevisionId</p>
+                                    <p>@L["當時預期：{0}", Expected(check, latest.Definition)]</p>
+                                    @if (latest.Outcome == BaselineOutcome.Fail) { <p class="baseline-guidance">@L["建議：{0}", Guidance(check, latest.Definition)]</p> }
+                                    <p>@L["來源版本 ID：{0}", latest.RevisionId]</p>
                                 </details>
                             }
                             @if (check.Notes is { Count: > 0 } notes)
                             {
-                                <details><summary>最近的例外說明（@notes.Count）</summary>
+                                <details><summary>@L["最近的例外說明（{0}）", notes.Count]</summary>
                                     @foreach (var note in notes)
                                     {
-                                        <p class="baseline-guidance">@(note.RevisionId == check.ActiveRevisionId ? "目前版本" : "其他版本") · @note.RecordedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @note.ActorId<br />版本：@note.RevisionId<br />@note.Reason</p>
+                                        <p class="baseline-guidance">@(note.RevisionId == check.ActiveRevisionId ? L["目前版本"].Value : L["其他版本"].Value) · @note.RecordedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @note.ActorId<br />@L["版本：{0}", note.RevisionId]<br />@note.Reason</p>
                                     }
                                 </details>
                             }
                             @if (check.ActiveRevisionId is { } revision && check.SourceAvailability == BaselineSourceAvailability.Ready)
                             {
-                                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{DeviceId:D}/baseline-exception?source={Uri.EscapeDataString(check.SourceKey)}&revision={revision:D}")">新增例外說明</a></Authorized></AuthorizeView>
+                                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{DeviceId:D}/baseline-exception?source={Uri.EscapeDataString(check.SourceKey)}&revision={revision:D}")">@L["新增例外說明"]</a></Authorized></AuthorizeView>
                             }
                         </td>
                         <td><span class="baseline-status @StatusClass(check)">@Status(check, view.AgentId)</span></td>
-                        <td>@(check.Latest?.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無紀錄")</td>
+                        <td>@(check.Latest?.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無紀錄"].Value)</td>
                         <td>@if (check.UpstreamVersion is { } version) { <span title="@version">@ShortVersion(version)</span> } else { <span>—</span> }</td>
                     </tr>
                 }
@@ -91,75 +92,75 @@
         }
     }
 
-    private static string Title(BaselineCheckView check) => check.SourceKey switch
+    private string Title(BaselineCheckView check) => check.SourceKey switch
     {
-        BaselineSources.LinuxShadow => "密碼檔案權限",
-        BaselineSources.WindowsNetworkSelection => "登入畫面網路選擇",
+        BaselineSources.LinuxShadow => L["密碼檔案權限"].Value,
+        BaselineSources.WindowsNetworkSelection => L["登入畫面網路選擇"].Value,
         _ => check.Title
     };
 
-    private static string Source(BaselineCheckView check) => check.SourceKey switch
+    private string Source(BaselineCheckView check) => check.SourceKey switch
     {
         BaselineSources.LinuxShadow => "ComplianceAsCode",
         BaselineSources.WindowsNetworkSelection => "PowerSTIG",
-        _ when check.SourceKey.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) => "本機自訂",
+        _ when check.SourceKey.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) => L["本機自訂"].Value,
         _ => check.SourceKey
     };
 
     private static string ShortVersion(string value) => value.Length > 12 ? value[..12] : value;
 
-    private static string SyncStatus(BaselineSyncState state) => state switch
+    private string SyncStatus(BaselineSyncState state) => state switch
     {
-        BaselineSyncState.Applied => "已套用", BaselineSyncState.Pending => "等待套用", BaselineSyncState.Failed => "同步失敗",
-        BaselineSyncState.Offline => "Agent 離線", _ => "等待回報"
+        BaselineSyncState.Applied => L["已套用"].Value, BaselineSyncState.Pending => L["等待套用"].Value, BaselineSyncState.Failed => L["同步失敗"].Value,
+        BaselineSyncState.Offline => L["Agent 離線"].Value, _ => L["等待回報"].Value
     };
 
-    private static string SyncFailure(Vigiloom.Contracts.Agent.AgentConfigurationFailure failure) => failure switch
+    private string SyncFailure(Vigiloom.Contracts.Agent.AgentConfigurationFailure failure) => failure switch
     {
-        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Unauthorized => "Agent 身分驗證失敗",
-        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Invalid => "設定資料無效",
-        Vigiloom.Contracts.Agent.AgentConfigurationFailure.LocalStorage => "無法讀寫 Agent 本機設定",
-        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Conflict => "設定同步衝突，稍後會重試",
-        _ => "暫時無法取得設定，稍後會重試"
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Unauthorized => L["Agent 身分驗證失敗"].Value,
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Invalid => L["設定資料無效"].Value,
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.LocalStorage => L["無法讀寫 Agent 本機設定"].Value,
+        Vigiloom.Contracts.Agent.AgentConfigurationFailure.Conflict => L["設定同步衝突，稍後會重試"].Value,
+        _ => L["暫時無法取得設定，稍後會重試"].Value
     };
 
-    private static string Expected(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
+    private string Expected(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
     {
-        BaselineSources.LinuxShadow => "/etc/shadow 為一般檔案，權限不寬於 0640，且沒有額外 ACL。",
-        BaselineSources.WindowsNetworkSelection => "64 位元登錄檢視中的 DontDisplayNetworkSelectionUI 為 DWORD 1。",
-        _ when definition is { Operation: BaselineSources.LinuxShadowOperation } => $"{definition.Target} 權限不寬於 {definition.Expected}，且沒有額外 ACL。",
-        _ when definition is { Operation: BaselineSources.WindowsRegistryOperation } => $"{definition.Target} 的 DWORD 值為 {definition.Expected}。",
-        _ => "無法取得此紀錄當時的檢查定義。"
+        BaselineSources.LinuxShadow => L["/etc/shadow 為一般檔案，權限不寬於 0640，且沒有額外 ACL。"].Value,
+        BaselineSources.WindowsNetworkSelection => L["64 位元登錄檢視中的 DontDisplayNetworkSelectionUI 為 DWORD 1。"].Value,
+        _ when definition is { Operation: BaselineSources.LinuxShadowOperation } => L["{0} 權限不寬於 {1}，且沒有額外 ACL。", definition.Target, definition.Expected].Value,
+        _ when definition is { Operation: BaselineSources.WindowsRegistryOperation } => L["{0} 的 DWORD 值為 {1}。", definition.Target, definition.Expected].Value,
+        _ => L["無法取得此紀錄當時的檢查定義。"].Value
     };
 
-    private static string Guidance(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
+    private string Guidance(BaselineCheckView check, BaselineCheck? definition) => check.SourceKey switch
     {
-        BaselineSources.LinuxShadow => "請由主機管理員檢查檔案權限與 ACL，確認影響後依組織政策調整。",
-        BaselineSources.WindowsNetworkSelection => "請由主機管理員檢查登入畫面網路選擇的群組原則設定。",
+        BaselineSources.LinuxShadow => L["請由主機管理員檢查檔案權限與 ACL，確認影響後依組織政策調整。"].Value,
+        BaselineSources.WindowsNetworkSelection => L["請由主機管理員檢查登入畫面網路選擇的群組原則設定。"].Value,
         _ when !string.IsNullOrWhiteSpace(definition?.Guidance) => definition.Guidance!,
-        _ => "請由主機管理員參考此紀錄的來源版本。"
+        _ => L["請由主機管理員參考此紀錄的來源版本。"].Value
     };
 
-    private static string Status(BaselineCheckView check, Guid? agentId)
+    private string Status(BaselineCheckView check, Guid? agentId)
     {
-        if (agentId is null) return "尚無 Agent";
+        if (agentId is null) return L["尚無 Agent"].Value;
         if (check.SourceAvailability != BaselineSourceAvailability.Ready) return check.SourceAvailability switch
         {
-            BaselineSourceAvailability.Disabled => "來源未啟用",
-            BaselineSourceAvailability.NoActiveRevision => "來源尚未發布",
-            BaselineSourceAvailability.Stale => "來源已過期",
-            _ => "來源無法使用"
+            BaselineSourceAvailability.Disabled => L["來源未啟用"].Value,
+            BaselineSourceAvailability.NoActiveRevision => L["來源尚未發布"].Value,
+            BaselineSourceAvailability.Stale => L["來源已過期"].Value,
+            _ => L["來源無法使用"].Value
         };
-        if (check.Latest is null) return "尚未評估";
-        return check.Latest.Current ? Outcome(check.Latest.Outcome) : "結果過期或版本已變更";
+        if (check.Latest is null) return L["尚未評估"].Value;
+        return check.Latest.Current ? Outcome(check.Latest.Outcome) : L["結果過期或版本已變更"].Value;
     }
 
     private static string StatusClass(BaselineCheckView check) => check.Latest is { Current: true } latest && check.SourceAvailability == BaselineSourceAvailability.Ready
         ? latest.Outcome switch { BaselineOutcome.Pass => "pass", BaselineOutcome.Fail => "fail", _ => "neutral" } : "neutral";
 
-    private static string Outcome(BaselineOutcome outcome) => outcome switch
+    private string Outcome(BaselineOutcome outcome) => outcome switch
     {
-        BaselineOutcome.Pass => "通過", BaselineOutcome.Fail => "未通過", BaselineOutcome.NotApplicable => "不適用",
-        BaselineOutcome.PermissionDenied => "權限不足", BaselineOutcome.Error => "檢查錯誤", _ => "無法判斷"
+        BaselineOutcome.Pass => L["通過"].Value, BaselineOutcome.Fail => L["未通過"].Value, BaselineOutcome.NotApplicable => L["不適用"].Value,
+        BaselineOutcome.PermissionDenied => L["權限不足"].Value, BaselineOutcome.Error => L["檢查錯誤"].Value, _ => L["無法判斷"].Value
     };
 }
