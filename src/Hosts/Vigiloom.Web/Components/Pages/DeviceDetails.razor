@@ -19,18 +19,19 @@
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<DeviceText> L
 
-<PageTitle>設備詳情 - Vigiloom</PageTitle>
+<PageTitle>@L["設備詳情"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="/devices">← 返回設備清單</a>
-    @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後重試。</p> }
-    else if (device is null) { <section class="device-panel"><h1>找不到設備</h1><p>此設備不存在，請返回清單。</p></section> }
+    <a href="/devices">@L["← 返回設備清單"]</a>
+    @if (error) { <p class="device-alert" role="alert">@L["無法載入設備，請稍後重試。"]</p> }
+    else if (device is null) { <section class="device-panel"><h1>@L["找不到設備"]</h1><p>@L["此設備不存在，請返回清單。"]</p></section> }
     else
     {
-        <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
-            <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <div class="device-actions"><a href="@($"/settings/publication/devices/{Id:D}")">公開設定</a><a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a></div> }</Authorized></AuthorizeView>
+        <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? L["深入監控"].Value : L["僅 Ping"].Value) · @(device.Archived ? L["已封存"].Value : device.Enabled ? L["監控已啟用"].Value : L["監控已停用"].Value)</p></div>
+            <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <div class="device-actions"><a href="@($"/settings/publication/devices/{Id:D}")">@L["公開設定"]</a><a class="device-primary" href="@($"/devices/{Id:D}/edit")">@L["編輯設備"]</a></div> }</Authorized></AuthorizeView>
         </header>
-        <section class="device-panel"><h2>監測資訊</h2><p><a href="@($"/devices/{Id:D}/ping-history")">查看 Ping 歷史</a></p><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+        <section class="device-panel"><h2>@L["監測資訊"]</h2><p><a href="@($"/devices/{Id:D}/ping-history")">@L["查看 Ping 歷史"]</a></p><dl class="device-details"><div><dt>@L["主要目標"]</dt><dd>@device.Address</dd></div><div><dt>@L["額外目標"]</dt><dd>@(device.AdditionalTargets.Count == 0 ? L["無"].Value : string.Join(", ", device.AdditionalTargets))</dd></div><div><dt>@L["Ping 狀態"]</dt><dd>@L[device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料"]</dd></div><div><dt>@L["建立時間（UTC）"]</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
             @if (device.DeepMonitoring)
             {
                 <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
@@ -183,29 +184,29 @@
                 <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">編輯此設備的 Agent 設定</a></Authorized></AuthorizeView>
             </section>
         }
-        <section class="device-panel"><h2>Ping 量測</h2>
-            <p>每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。</p>
-            @if (pingStatus?.Policy is { } policy) { <p>目前每 @policy.IntervalSeconds 秒一次，逾時 @policy.TimeoutSeconds 秒；連續 @policy.FailureThreshold 次失敗判不可達、@policy.SuccessThreshold 次成功恢復。</p> }
-            @if (pingError) { <p role="alert">無法讀取 Ping 資料，請稍後再試。</p> }
-            else if (device.Archived || !device.Enabled) { <p>設備@(device.Archived ? "已封存" : "已停用")，不排入新量測。</p> }
+        <section class="device-panel"><h2>@L["Ping 量測"]</h2>
+            <p>@L["每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。"]</p>
+            @if (pingStatus?.Policy is { } policy) { <p>@L["目前每 {0} 秒一次，逾時 {1} 秒；連續 {2} 次失敗判不可達、{3} 次成功恢復。", policy.IntervalSeconds, policy.TimeoutSeconds, policy.FailureThreshold, policy.SuccessThreshold]</p> }
+            @if (pingError) { <p role="alert">@L["無法讀取 Ping 資料，請稍後再試。"]</p> }
+            else if (device.Archived || !device.Enabled) { <p>@(device.Archived ? L["設備已封存，不排入新量測。"].Value : L["設備已停用，不排入新量測。"].Value)</p> }
             else if (pingStatus is not null)
             {
-                <div class="device-table-wrap"><table><thead><tr><th>目標</th><th>實際位址</th><th>目前狀態</th><th>最近結果</th><th>成功延遲</th><th>量測時間（UTC）</th><th>位置</th></tr></thead><tbody>
+                <div class="device-table-wrap"><table><thead><tr><th>@L["目標"]</th><th>@L["實際位址"]</th><th>@L["目前狀態"]</th><th>@L["最近結果"]</th><th>@L["成功延遲"]</th><th>@L["量測時間（UTC）"]</th><th>@L["位置"]</th></tr></thead><tbody>
                 @foreach (var result in pingStatus.Targets)
                 {
-                    <tr><td>@result.Target</td><td>@(result.ResolvedAddress ?? "—")</td><td><PingStatusBadge Status="result" /></td><td>@Outcome(result.LastOutcome)</td><td>@(result.LatencyMilliseconds is { } latency ? $"{latency:0.###} ms" : "—")</td><td>@(result.MeasuredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</td><td>@result.Location</td></tr>
+                    <tr><td>@result.Target</td><td>@(result.ResolvedAddress ?? "—")</td><td><PingStatusBadge Status="result" /></td><td>@L[Outcome(result.LastOutcome)]</td><td>@(result.LatencyMilliseconds is { } latency ? $"{latency:0.###} ms" : "—")</td><td>@(result.MeasuredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</td><td>@result.Location</td></tr>
                 }
                 </tbody></table></div>
             }
         </section>
         <AuthorizeView Policy="Administrator"><Authorized Context="administrator">
-            <section class="device-panel"><h2>@(device.Archived ? "恢復設備" : "封存設備")</h2>
-                <p>@(device.Archived ? "恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。" : "封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。")</p>
+            <section class="device-panel"><h2>@(device.Archived ? L["恢復設備"].Value : L["封存設備"].Value)</h2>
+                <p>@(device.Archived ? L["恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。"].Value : L["封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。"].Value)</p>
                 @if (actionError is not null) { <p class="device-alert" role="alert">@actionError</p> }
                 <EditForm Model="Action" FormName="device-archive" method="post" OnValidSubmit="ChangeArchiveAsync">
                     <InputHidden @bind-Value="Action.Version" />
-                    <label><InputCheckbox @bind-Value="Action.Confirm" /> 我了解以上影響</label>
-                    <button type="submit">@(device.Archived ? "確認恢復" : "確認封存")</button>
+                    <label><InputCheckbox @bind-Value="Action.Confirm" /> @L["我了解以上影響"]</label>
+                    <button type="submit">@(device.Archived ? L["確認恢復"].Value : L["確認封存"].Value)</button>
                 </EditForm>
             </section>
         </Authorized></AuthorizeView>
@@ -258,15 +259,15 @@
     {
         if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || device is null ||
             !Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!Action.Confirm) { actionError = "請先確認操作影響。"; return; }
+        if (!Action.Confirm) { actionError = L["請先確認操作影響。"].Value; return; }
         var succeeded = false;
         try
         {
             var result = await DevicesService.SetArchivedAsync(Id, !device.Archived, Action.Version, actor, HttpContext.RequestAborted);
             if (result.Status == DeviceResultStatus.Success) succeeded = true;
-            else actionError = "設備狀態已變更，請重新整理後再試。";
+            else actionError = L["設備狀態已變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not change device archival state: {ExceptionType}", exception.GetType().Name); actionError = "無法確認操作結果，請重新整理並檢查設備狀態。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not change device archival state: {ExceptionType}", exception.GetType().Name); actionError = L["無法確認操作結果，請重新整理並檢查設備狀態。"].Value; }
         if (succeeded) Navigation.NavigateTo($"/devices/{Id:D}", forceLoad: true);
     }
     private sealed class ArchiveInput { public string? Version { get; set; } public bool Confirm { get; set; } }
