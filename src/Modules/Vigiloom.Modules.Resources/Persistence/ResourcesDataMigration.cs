@@ -8,6 +8,7 @@ public static class ResourcesDataMigration
     private static readonly SqlTableDataMigration.TableMapping[] Tables =
     [
         new("resources", "Devices", "resources", "Devices"),
+        new("resources", "DeploymentLinks", "resources", "DeploymentLinks"),
         new("resources", "Groups", "resources", "Groups"),
         new("resources", "DeviceTargets", "resources", "DeviceTargets"),
         new("resources", "DeviceAudits", "resources", "DeviceAudits"),
