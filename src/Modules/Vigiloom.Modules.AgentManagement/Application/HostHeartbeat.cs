@@ -59,7 +59,7 @@ public sealed class HostHeartbeat(IDbContextFactory<HostMonitoringDbContext> con
         return AgentIdentityStatus.Success;
     }
 
-    private async Task<HostAgentStatus?> GetOrCreateAsync(HostMonitoringDbContext db, RegisteredAgentIdentity identity, CancellationToken token)
+    internal async Task<HostAgentStatus?> GetOrCreateAsync(HostMonitoringDbContext db, RegisteredAgentIdentity identity, CancellationToken token)
     {
         var agent = await db.AgentStatuses.SingleOrDefaultAsync(x => x.Id == identity.AgentId, token);
         if (agent is not null) return agent.DeviceId == identity.DeviceId && agent.DeviceGeneration == identity.DeviceGeneration ? agent : null;

@@ -11,6 +11,7 @@ using Hangfire.SqlServer;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
@@ -38,6 +39,7 @@ builder.Services.AddHttpClient<IHostWorkRetentionDays, OperationsWorkRetentionDa
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostObservationReceiver>();
 builder.Services.AddScoped<HostHeartbeat>();
+builder.Services.AddScoped<HostAgentConfiguration>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddScoped<HostWorkRetention>();
@@ -75,7 +77,8 @@ var app = builder.Build();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
-    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session"), agent => agent.UseMiddleware<AgentAccess>());
+    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
@@ -92,6 +95,19 @@ app.MapPost("/api/v1/agent/queue-session", async (AgentQueueSessionRequest reque
         AgentIdentityStatus.Conflict => Results.Conflict(),
         _ => Results.Unauthorized()
     }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024));
+app.MapGet("/api/v1/agent/settings", async (HttpContext context, HostAgentConfiguration service, CancellationToken token) =>
+{
+    var snapshot = await service.GetForAgentAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
+    if (snapshot is null) return Results.Unauthorized();
+    var tag = new EntityTagHeaderValue($"\"{snapshot.Revision}\"");
+    context.Response.GetTypedHeaders().ETag = tag;
+    context.Response.Headers.CacheControl = "private, no-store";
+    var requested = context.Request.GetTypedHeaders().IfNoneMatch;
+    if (requested?.Any(x => x.Equals(EntityTagHeaderValue.Any) || x.Compare(tag, useStrongComparison: false)) == true)
+        return Results.StatusCode(StatusCodes.Status304NotModified);
+    return Results.Ok(snapshot);
+}).Produces<AgentSettingsSnapshot>().Produces(StatusCodes.Status304NotModified).ProducesProblem(401).ProducesProblem(503)
+    .WithSummary("Read effective settings for the authenticated Agent");
 app.MapGet("/internal/v1/security-batches/{agentId:guid}/{batchId:guid}", async (Guid agentId, Guid batchId,
     IDbContextFactory<HostMonitoringDbContext> contexts, CancellationToken token) =>
 {
