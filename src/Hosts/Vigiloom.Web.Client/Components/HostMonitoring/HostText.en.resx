@@ -392,4 +392,34 @@
   <data name="未取得" xml:space="preserve"><value>Unavailable</value></data>
   <data name="僅列出部分取代線索。" xml:space="preserve"><value>Only some supersedence leads are shown.</value></data>
   <data name="更新資料未列出 CVE，無法判定漏洞狀態。" xml:space="preserve"><value>The update data lists no CVEs; vulnerability status cannot be determined.</value></data>
+  <data name="{0} 份候選公告，適用性未知" xml:space="preserve"><value>{0} candidate advisories, applicability unknown</value></data>
+  <data name="尚未取得候選公告" xml:space="preserve"><value>No candidate advisories retrieved</value></data>
+  <data name="{0} 份提及同一產品" xml:space="preserve"><value>{0} mention the same product</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動，" xml:space="preserve"><value>Microsoft advisory indicates customer action is required; </value></data>
+  <data name="查看官方公告" xml:space="preserve"><value>view official advisory</value></data>
+  <data name="。" xml:space="preserve"><value>.</value></data>
+  <data name="查看公告修補線索" xml:space="preserve"><value>View advisory remediation leads</value></data>
+  <data name="以下由供應商公告列出，不代表已確認適用此設備或已安裝。" xml:space="preserve"><value>Listed by the vendor advisory; applicability and installation on this device are not confirmed.</value></data>
+  <data name="公告描述 {0}" xml:space="preserve"><value>Advisory description {0}</value></data>
+  <data name="修補組建 {0}" xml:space="preserve"><value>Fixed build {0}</value></data>
+  <data name="公告描述與此更新快取的 KB 編號相同；仍需確認實際修補狀態。" xml:space="preserve"><value>The advisory description matches this cached update’s KB number; actual patch status still needs verification.</value></data>
+  <data name="僅列出部分修補線索。" xml:space="preserve"><value>Only some remediation leads are shown.</value></data>
+  <data name="依評估狀態、可用的 KEV 及 EPSS 排序。EPSS 是未來 30 天遭利用的預測機率，不代表此設備受影響或已遭入侵；資料時間：{0} UTC。" xml:space="preserve"><value>Sorted by assessment and available KEV and EPSS. EPSS predicts exploitation probability over the next 30 days; it does not mean this device is affected or compromised. Data time: {0} UTC.</value></data>
+  <data name="Ubuntu 優先級：{0}" xml:space="preserve"><value>Ubuntu priority: {0}</value></data>
+  <data name="未提供或無法確認" xml:space="preserve"><value>Unavailable or unconfirmed</value></data>
+  <data name="{0} 的評估歷史" xml:space="preserve"><value>Assessment history for {0}</value></data>
+  <data name="判斷原因：{0}" xml:space="preserve"><value>Assessment reason: {0}</value></data>
+  <data name="修補線索：{0}" xml:space="preserve"><value>Remediation lead: {0}</value></data>
+  <data name="來源套件版本 {0}" xml:space="preserve"><value>Source package version {0}</value></data>
+  <data name="情報提供者：{0}" xml:space="preserve"><value>Intelligence provider: {0}</value></data>
+  <data name="情報版本：{0}" xml:space="preserve"><value>Intelligence version: {0}</value></data>
+  <data name="比對器版本：{0}" xml:space="preserve"><value>Matcher version: {0}</value></data>
+  <data name="主機盤點：{0}" xml:space="preserve"><value>Host inventory: {0}</value></data>
+  <data name="套件盤點：{0}" xml:space="preserve"><value>Package inventory: {0}</value></data>
+  <data name="來源套件版本 {0}；更新後需重新盤點確認。" xml:space="preserve"><value>Source package version {0}; collect inventory again after updating to confirm.</value></data>
+  <data name="來源未提供可確認的修補版本。" xml:space="preserve"><value>The source does not provide a confirmed fixed version.</value></data>
+  <data name="證據不足，無法確認修補版本。" xml:space="preserve"><value>Insufficient evidence to confirm the fixed version.</value></data>
+  <data name="目前狀態未判定為受影響。" xml:space="preserve"><value>The current status is not assessed as affected.</value></data>
+  <data name="資料超出處理上限，無法確認修補版本。" xml:space="preserve"><value>Data exceeded processing limits; fixed version cannot be confirmed.</value></data>
+  <data name="無法確認修補版本。" xml:space="preserve"><value>Unable to confirm the fixed version.</value></data>
 </root>

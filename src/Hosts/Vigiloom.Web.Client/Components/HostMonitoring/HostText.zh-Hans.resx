@@ -392,4 +392,34 @@
   <data name="未取得" xml:space="preserve"><value>未获取</value></data>
   <data name="僅列出部分取代線索。" xml:space="preserve"><value>仅列出部分替代线索。</value></data>
   <data name="更新資料未列出 CVE，無法判定漏洞狀態。" xml:space="preserve"><value>更新数据未列出 CVE，无法判定漏洞状态。</value></data>
+  <data name="{0} 份候選公告，適用性未知" xml:space="preserve"><value>{0} 份候选公告，适用性未知</value></data>
+  <data name="尚未取得候選公告" xml:space="preserve"><value>尚未获取候选公告</value></data>
+  <data name="{0} 份提及同一產品" xml:space="preserve"><value>{0} 份提及同一产品</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動，" xml:space="preserve"><value>Microsoft 公告标示需要客户采取行动，</value></data>
+  <data name="查看官方公告" xml:space="preserve"><value>查看官方公告</value></data>
+  <data name="。" xml:space="preserve"><value>。</value></data>
+  <data name="查看公告修補線索" xml:space="preserve"><value>查看公告修补线索</value></data>
+  <data name="以下由供應商公告列出，不代表已確認適用此設備或已安裝。" xml:space="preserve"><value>以下由供应商公告列出，不代表已确认适用此设备或已安装。</value></data>
+  <data name="公告描述 {0}" xml:space="preserve"><value>公告描述 {0}</value></data>
+  <data name="修補組建 {0}" xml:space="preserve"><value>修补版本 {0}</value></data>
+  <data name="公告描述與此更新快取的 KB 編號相同；仍需確認實際修補狀態。" xml:space="preserve"><value>公告描述与此更新缓存的 KB 编号相同；仍需确认实际修补状态。</value></data>
+  <data name="僅列出部分修補線索。" xml:space="preserve"><value>仅列出部分修补线索。</value></data>
+  <data name="依評估狀態、可用的 KEV 及 EPSS 排序。EPSS 是未來 30 天遭利用的預測機率，不代表此設備受影響或已遭入侵；資料時間：{0} UTC。" xml:space="preserve"><value>按评估状态、可用的 KEV 及 EPSS 排序。EPSS 是未来 30 天遭利用的预测概率，不代表此设备受影响或已遭入侵；数据时间：{0} UTC。</value></data>
+  <data name="Ubuntu 優先級：{0}" xml:space="preserve"><value>Ubuntu 优先级：{0}</value></data>
+  <data name="未提供或無法確認" xml:space="preserve"><value>未提供或无法确认</value></data>
+  <data name="{0} 的評估歷史" xml:space="preserve"><value>{0} 的评估历史</value></data>
+  <data name="判斷原因：{0}" xml:space="preserve"><value>判断原因：{0}</value></data>
+  <data name="修補線索：{0}" xml:space="preserve"><value>修补线索：{0}</value></data>
+  <data name="來源套件版本 {0}" xml:space="preserve"><value>来源软件包版本 {0}</value></data>
+  <data name="情報提供者：{0}" xml:space="preserve"><value>情报提供者：{0}</value></data>
+  <data name="情報版本：{0}" xml:space="preserve"><value>情报版本：{0}</value></data>
+  <data name="比對器版本：{0}" xml:space="preserve"><value>比对器版本：{0}</value></data>
+  <data name="主機盤點：{0}" xml:space="preserve"><value>主机清单：{0}</value></data>
+  <data name="套件盤點：{0}" xml:space="preserve"><value>软件包清单：{0}</value></data>
+  <data name="來源套件版本 {0}；更新後需重新盤點確認。" xml:space="preserve"><value>来源软件包版本 {0}；更新后需重新盘点确认。</value></data>
+  <data name="來源未提供可確認的修補版本。" xml:space="preserve"><value>来源未提供可确认的修补版本。</value></data>
+  <data name="證據不足，無法確認修補版本。" xml:space="preserve"><value>证据不足，无法确认修补版本。</value></data>
+  <data name="目前狀態未判定為受影響。" xml:space="preserve"><value>当前状态未判定为受影响。</value></data>
+  <data name="資料超出處理上限，無法確認修補版本。" xml:space="preserve"><value>数据超出处理上限，无法确认修补版本。</value></data>
+  <data name="無法確認修補版本。" xml:space="preserve"><value>无法确认修补版本。</value></data>
 </root>

@@ -225,6 +225,9 @@ public sealed class HostDetailsSnapshotBrowserTests
         await host.GetByText("Windows vulnerability advisory matching", new() { Exact = true }).WaitForAsync();
         await host.GetByText("Mapped product: Windows Server 2022 (Server Core installation)", new() { Exact = true }).WaitForAsync();
         await host.GetByText("Related KBs: 1234567", new() { Exact = true }).WaitForAsync();
+        await host.GetByText("1 candidate advisories, applicability unknown", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("View advisory remediation leads", new() { Exact = true }).ClickAsync();
+        await host.GetByText("Fixed build 10.0.20348.3000", new() { Exact = false }).WaitForAsync();
         await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(vulnerabilityPath)}");
         await host.GetByText("Windows 漏洞公告比对", new() { Exact = true }).WaitForAsync();
     }, TestContext.CancellationToken);
