@@ -221,6 +221,7 @@ builder.Services.AddScoped<IMachineAgentIdentity>(services =>
         ? services.GetRequiredService<AgentIdentity>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
 builder.Services.AddScoped<CandidateDiscovery>();
+builder.Services.AddScoped<ICandidateObserver>(services => services.GetRequiredService<CandidateDiscovery>());
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<TelemetryRetentionSettings>();
