@@ -8,3 +8,8 @@ public sealed record HostLogEntry(Guid AgentId, Guid MessageId, Guid SourceId, A
 
 /// <summary>A bounded receipt-time page; the continuation token is opaque to clients.</summary>
 public sealed record HostLogPage(IReadOnlyList<HostLogEntry> Items, string? NextCursor, int RetentionDays = 14);
+
+public interface IHostLogHistory
+{
+    Task<HostLogPage?> GetAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, Guid? sourceId, CancellationToken token);
+}
