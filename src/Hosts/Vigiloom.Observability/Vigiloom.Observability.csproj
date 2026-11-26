@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../Modules/Vigiloom.Modules.ServiceObservability/Vigiloom.Modules.ServiceObservability.csproj" />
+    <PackageReference Include="Google.Api.CommonProtos" />
   </ItemGroup>
 
 </Project>
