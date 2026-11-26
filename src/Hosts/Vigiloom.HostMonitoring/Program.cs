@@ -61,6 +61,7 @@ builder.Services.AddHttpClient<IHostWorkRetentionDays, OperationsWorkRetentionDa
 builder.Services.AddScoped<HostObservationReceiver>();
 builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostAgentConfiguration>();
+builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddScoped<HostWorkRetention>();
@@ -107,6 +108,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
+app.MapHostAgentStatusEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
 app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>
