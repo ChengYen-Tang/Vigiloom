@@ -226,11 +226,17 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc,
                 Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [item]);
             var payload = AgentLogBatchCodec.Serialize(batch);
+            var beforePending = await client.GetFromJsonAsync<AgentReceiverSnapshot>("/internal/v1/agent-receiver/status", token);
+            Assert.IsNotNull(beforePending!.LastCommittedBatchAt);
             using (var unauthorized = await SendAsync(client, payload, null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
             using (var trailingSlash = await client.PostAsync("/api/v1/agent/batches/", new ByteArrayContent(payload), token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, trailingSlash.StatusCode);
             using (var lost = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.ServiceUnavailable, lost.StatusCode);
+            var whilePending = await client.GetFromJsonAsync<AgentReceiverSnapshot>("/internal/v1/agent-receiver/status", token);
+            Assert.AreEqual(beforePending.LastCommittedBatchAt, whilePending!.LastCommittedBatchAt);
             using (var repeated = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, repeated.StatusCode);
+            var afterDelivery = await client.GetFromJsonAsync<AgentReceiverSnapshot>("/internal/v1/agent-receiver/status", token);
+            Assert.IsTrue(afterDelivery!.LastCommittedBatchAt >= beforePending.LastCommittedBatchAt);
             using (var already = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, already.StatusCode);
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));

@@ -476,6 +476,11 @@ builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();
+builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteAgentReceiver>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IAgentReceiverMonitoring>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentReceiverMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentReceiver>());
 builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddScoped<Vigiloom.Web.Diagnostics.JobOverview>();
