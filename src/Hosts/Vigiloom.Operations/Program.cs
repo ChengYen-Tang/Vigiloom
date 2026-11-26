@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ using Vigiloom.Operations.Work;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Operations");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddModuleSqlServer<OperationsDbContext>(services =>

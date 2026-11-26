@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -18,6 +19,7 @@ using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Resources.Publication;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Resources");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
 builder.Services.AddAntiforgery();

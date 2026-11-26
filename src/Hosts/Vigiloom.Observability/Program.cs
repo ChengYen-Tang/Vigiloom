@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ using Vigiloom.Observability.Authentication;
 using Vigiloom.Observability.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Observability");
 var database = builder.Configuration.GetConnectionString("Observability")
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required.");
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => database, "service", pooled: true);
