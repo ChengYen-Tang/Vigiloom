@@ -167,6 +167,7 @@ public sealed class HostObservationMigrationTests(TestContext context)
             var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(target.ConnectionString,
                 sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
             await using var db = new HostMonitoringDbContext(options);
+            Assert.IsFalse(db.Database.HasPendingModelChanges());
             var policy = await db.ReplayPolicies.SingleAsync(token);
             Assert.IsTrue(policy.FreshInstallation);
             Assert.IsNotNull(policy.CleanupCutoverAt);
