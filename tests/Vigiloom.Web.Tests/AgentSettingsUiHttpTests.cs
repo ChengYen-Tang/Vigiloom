@@ -1242,6 +1242,23 @@ public sealed class AgentSettingsUiHttpTests
             using (var deniedMetricAudit = await reader.GetAsync("/settings/audit?source=agent-metric-settings", token))
                 Assert.AreEqual(HttpStatusCode.Redirect, deniedMetricAudit.StatusCode);
             var platformUrl = "/settings/agents";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(platformUrl, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Agent platform settings", text);
+                Assert.Contains("Heartbeat interval (10–300 seconds)", text);
+                Assert.Contains("Current target:", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(platformUrl, token))
+            {
+                var text = await BodyTextAsync(simplified, token);
+                Assert.Contains("Agent 平台设置", text);
+                Assert.Contains("当前目标值：", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync(platformUrl, token))
             {
                 var inventoryPlatformFields = await FieldsAsync(page, token, "agent-inventory");
