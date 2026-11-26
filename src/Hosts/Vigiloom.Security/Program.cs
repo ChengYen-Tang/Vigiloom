@@ -209,6 +209,12 @@ app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/integrity", async (Guid 
     deviceId.Version == 7 ? Results.Ok(await settings.IntegrityAsync(deviceId, token)) : Results.BadRequest());
 app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/baseline", async (Guid deviceId, AgentSecuritySettings settings, CancellationToken token) =>
     deviceId.Version == 7 ? Results.Ok(await settings.BaselineAsync(deviceId, token)) : Results.BadRequest());
+app.MapPost("/internal/v1/agent-inventory-status", async (RegisteredAgentIdentity identity, AgentSecuritySettings settings, CancellationToken token) =>
+{
+    if (identity.AgentId.Version != 7 || identity.DeviceId.Version != 7 || identity.DeviceGeneration < 0) return Results.BadRequest();
+    try { return Results.Ok(await settings.InventoryStatusAsync(identity, token)); }
+    catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+});
 app.MapPost("/internal/v1/agent-integrity-status/{scopeId:guid}", async (Guid scopeId, RegisteredAgentIdentity identity, AgentSecuritySettings settings, CancellationToken token) =>
 {
     if (scopeId.Version != 7 || identity.AgentId.Version != 7 || identity.DeviceId.Version != 7 || identity.DeviceGeneration < 0)

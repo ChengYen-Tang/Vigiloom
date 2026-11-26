@@ -179,6 +179,15 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var noCredential = await agent.GetAsync("/api/v1/agent/yara-scans/next", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, noCredential.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
+            using (var inventoryStatus = await agent.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, inventoryStatus.StatusCode);
+                Assert.AreEqual("5", inventoryStatus.Headers.GetValues("Vigiloom-Inventory-Contract").Single());
+                var sources = await inventoryStatus.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.AreEqual(InventorySource.HostSystem, sources!.Single().Source);
+            }
+            using (var unsupportedInventory = await agent.GetAsync("/api/v1/agent/inventory/status?contract=4", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, unsupportedInventory.StatusCode);
             using (var inventory = await agent.GetAsync("/api/v1/agent/inventory-settings?contract=2", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, inventory.StatusCode);
@@ -254,6 +263,8 @@ public sealed class YaraRoutingTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Unauthorized, deniedBaseline.StatusCode);
             using var deniedStatus = await agent.GetAsync($"/api/v1/agent/integrity-status/{scopeId:D}", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, deniedStatus.StatusCode);
+            using var deniedInventory = await agent.GetAsync("/api/v1/agent/inventory/status?contract=5", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, deniedInventory.StatusCode);
         }, context.CancellationToken);
 
     private sealed class IdentityHandler(RegisteredAgentIdentity identity) : HttpMessageHandler
