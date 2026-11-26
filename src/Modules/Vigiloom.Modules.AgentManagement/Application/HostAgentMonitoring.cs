@@ -11,6 +11,29 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 /// <summary>Reads host-owned Agent observations for a current Resources registration.</summary>
 public sealed class HostAgentMonitoring(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
 {
+    public async Task<AgentQueueCapacityStatus> GetQueueCapacityStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var rows = await db.Set<AgentQueueCapacitySetting>().FromSqlInterpolated($"SELECT * FROM [agent].[QueueCapacitySettings] WITH (HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {device.DeviceId}")
+            .AsNoTracking().ToListAsync(token);
+        var desired = AgentQueueCapacityConfiguration.ToView(device.DeviceId, rows).Effective;
+        QueueCapacityObservation? agent = null;
+        if (device.Eligible && registration is not null && registration.RevokedAt is null && registration.DeviceGeneration == device.Generation)
+        {
+            var status = await db.AgentStatuses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == registration.Id, token);
+            if (status is not null && (status.DeviceId != device.DeviceId || status.DeviceGeneration != device.Generation))
+                throw new InvalidOperationException("Host status does not match the current Agent registration.");
+            agent = new QueueCapacityObservation(registration.CreatedAt, status?.LastHeartbeatAt, status?.HeartbeatSafetyIntervalSeconds ?? 30,
+                status?.QueueReportEpoch, status?.QueueReportSequence, status?.QueueCapacityReportEpoch, status?.QueueCapacityReportSequence,
+                status?.QueueCapacityReportedAt, status?.QueueCapacityAppliedRevision, status?.QueueCapacityAppliedBytes,
+                status?.QueueCapacityAppliedBatches, status?.QueueCapacityAppliedAt, status?.QueueCapacityFailure);
+        }
+        var result = QueueCapacityStatusFormatter.Create(device, desired, agent, clock.GetUtcNow());
+        await transaction.CommitAsync(token);
+        return result;
+    }
+
     public async Task<AgentSettingsStatus> GetSettingsStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

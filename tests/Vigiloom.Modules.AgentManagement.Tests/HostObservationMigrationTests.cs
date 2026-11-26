@@ -67,6 +67,25 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.IsNotNull(changed);
             Assert.AreEqual(AgentSettingsApplyState.Pending, (await monitor.GetSettingsStatusAsync(device, registration, token)).State);
             Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await monitor.GetSettingsStatusAsync(device, null, token)).State);
+            Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, (await monitor.GetQueueCapacityStatusAsync(device, registration, token)).State);
+            var capacity = AgentQueueCapacitySnapshot.Create(AgentQueueCapacity.Default);
+            var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
+            var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.RecordAsync(identity, new AgentHeartbeatReport(1, epoch, 4, queue, CapacityConfiguration: capacityReport), token));
+            Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitor.GetQueueCapacityStatusAsync(device, registration, token)).State);
+            var queueSettings = new HostQueueCapacity(factory, TimeProvider.System);
+            var queueUpdate = new AgentQueueCapacityUpdate(new AgentQueueCapacityOverrides(128L * 1024 * 1024, null), "");
+            Assert.IsNotNull(await queueSettings.UpdateAsync(identity.DeviceId, queueUpdate, actor, token));
+            Assert.AreEqual(AgentSettingsApplyState.Pending, (await monitor.GetQueueCapacityStatusAsync(device, registration, token)).State);
+            var newCapacity = await queueSettings.GetForAgentAsync(identity, token);
+            Assert.AreEqual(128L * 1024 * 1024, newCapacity.Capacity.PayloadBytes);
+            var newQueue = new AgentQueueSnapshot(0, 0, 0, newCapacity.Capacity.PayloadBytes, newCapacity.Capacity.BatchCount);
+            var newReport = new AgentQueueCapacityReport(newCapacity, DateTimeOffset.UtcNow, null);
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.RecordAsync(identity, new AgentHeartbeatReport(1, epoch, 5, newQueue, CapacityConfiguration: newReport), token));
+            Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitor.GetQueueCapacityStatusAsync(device, registration, token)).State);
+            Assert.AreEqual(1, await db.Set<AgentQueueCapacityAudit>().CountAsync(token));
+            Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await monitor.GetQueueCapacityStatusAsync(device, null, token)).State);
+            Assert.AreEqual(AgentSettingsApplyState.Disabled, (await monitor.GetQueueCapacityStatusAsync(device with { Eligible = false }, registration, token)).State);
         }, context.CancellationToken);
 
     [TestMethod]

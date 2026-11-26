@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
@@ -10,7 +9,7 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Resolves and audits the independent Agent queue capacity group.</summary>
 public sealed class AgentQueueCapacityConfiguration(IDbContextFactory<AgentManagementDbContext> contexts,
-    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock)
+    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock) : IAgentQueueCapacitySettings
 {
     public async Task<AgentQueueCapacityView?> GetAsync(Guid? deviceId, CancellationToken token)
     {
@@ -46,43 +45,7 @@ public sealed class AgentQueueCapacityConfiguration(IDbContextFactory<AgentManag
         if (version.Length is not (0 or 8)) return null;
         if (deviceId is { } id && await devices.GetAsync(id, token) is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        var rows = await db.QueueCapacitySettings.FromSqlInterpolated($"SELECT * FROM [agent].[QueueCapacitySettings] WITH (UPDLOCK, HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {deviceId}").ToListAsync(token);
-        var setting = rows.SingleOrDefault(x => x.DeviceId == deviceId);
-        if (setting is null)
-        {
-            if (version.Length != 0) return null;
-            setting = new AgentQueueCapacitySetting { DeviceId = deviceId };
-            db.QueueCapacitySettings.Add(setting);
-            rows.Add(setting);
-        }
-        else
-        {
-            if (version.Length != 8 || !version.AsSpan().SequenceEqual(setting.Version)) return null;
-            db.Entry(setting).Property(x => x.Version).OriginalValue = version;
-        }
-        setting.PayloadBytes = update.Overrides.PayloadBytes;
-        setting.BatchCount = update.Overrides.BatchCount;
-        setting.UpdatedAt = clock.GetUtcNow();
-        setting.UpdatedBy = actorId;
-        db.Entry(setting).Property(x => x.UpdatedAt).IsModified = true;
-        var view = ToView(deviceId, rows);
-        try
-        {
-            await db.SaveChangesAsync(token);
-            db.QueueCapacityAudits.Add(new AgentQueueCapacityAudit
-            {
-                SettingId = setting.Id, DeviceId = deviceId, ActorId = actorId, OccurredAt = setting.UpdatedAt,
-                PayloadBytes = setting.PayloadBytes, BatchCount = setting.BatchCount,
-                EffectivePayloadBytes = view.Effective.Capacity.PayloadBytes, EffectiveBatchCount = view.Effective.Capacity.BatchCount,
-                EffectiveRevision = view.Effective.Revision, ChangeVersion = setting.Version.ToArray()
-            });
-            await db.SaveChangesAsync(token);
-            await transaction.CommitAsync(token);
-            return ToView(deviceId, rows);
-        }
-        catch (DbUpdateConcurrencyException) { return null; }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { return null; }
+        return await AgentQueueCapacityWriter.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
     }
 
     public static bool Valid(AgentQueueCapacityOverrides? layer) => layer is not null && Resolve(AgentQueueCapacity.Default, layer).IsValid();

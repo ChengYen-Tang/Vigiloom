@@ -113,6 +113,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             Assert.AreEqual(epoch, (await client.GetFromJsonAsync<AgentQueueSession>("/api/v1/agent/queue-session", token))!.Epoch);
+            var capacityCommand = new AgentQueueCapacityCommand(new AgentQueueCapacityUpdate(new AgentQueueCapacityOverrides(128L * 1024 * 1024, null), ""), Guid.CreateVersion7());
+            using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-queue-capacity/devices/{identity.DeviceId:D}", capacityCommand, token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            var capacity = await client.GetFromJsonAsync<AgentQueueCapacitySnapshot>("/api/v1/agent/queue-capacity", token);
+            Assert.AreEqual(128L * 1024 * 1024, capacity!.Capacity.PayloadBytes);
+            var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
+            var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var command = new AgentSettingsCommand(new AgentSettingsUpdate(new AgentSettingsOverrides(90, null, null), ""), Guid.CreateVersion7());
             using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-settings/devices/{identity.DeviceId:D}", command, token))
                 Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
@@ -178,6 +187,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(AgentConnectionState.Online, status!.State);
             var settingsStatus = await proxyClient.GetFromJsonAsync<AgentSettingsStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-settings-status", token);
             Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, settingsStatus!.State);
+            var capacityStatus = await proxyClient.GetFromJsonAsync<AgentQueueCapacityStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity-status", token);
+            Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
             using (var response = await proxyClient.PostAsJsonAsync("/internal/v1/agent-connections", new[] { identity.DeviceId }, token))
             {
                 response.EnsureSuccessStatusCode();
