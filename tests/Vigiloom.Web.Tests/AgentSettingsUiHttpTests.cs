@@ -1249,7 +1249,10 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains("Agent platform settings", text);
                 Assert.Contains("Heartbeat interval (10–300 seconds)", text);
                 Assert.Contains("Current target:", text);
+                Assert.Contains("Arguments are not sent to the platform.", text);
             }
+            using (var englishDevice = await admin.GetAsync($"/devices/{device.Id:D}/agent-settings", token))
+                Assert.Contains("Settings status: Agent not registered", await BodyTextAsync(englishDevice, token));
             admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
             using (var simplified = await admin.GetAsync(platformUrl, token))
@@ -1257,6 +1260,7 @@ public sealed class AgentSettingsUiHttpTests
                 var text = await BodyTextAsync(simplified, token);
                 Assert.Contains("Agent 平台设置", text);
                 Assert.Contains("当前目标值：", text);
+                Assert.Contains("参数不会发送到平台。", text);
             }
             admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync(platformUrl, token))
