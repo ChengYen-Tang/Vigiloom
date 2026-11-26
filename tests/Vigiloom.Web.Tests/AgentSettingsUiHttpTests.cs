@@ -440,6 +440,19 @@ public sealed class AgentSettingsUiHttpTests
             Assert.IsNotNull(created.Headers.Location);
             var source = await created.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token);
             Assert.IsNotNull(source);
+            var editUrl = $"/devices/{first.Id:D}/log-sources/{source.Settings.SourceId:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(editUrl, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Edit log source", text);
+                Assert.Contains("Current source location: local", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(editUrl, token))
+                Assert.Contains("编辑日志来源", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var detail = await admin.GetAsync(created.Headers.Location, token)) Assert.AreEqual(HttpStatusCode.OK, detail.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
             using (var denied = await agent.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);

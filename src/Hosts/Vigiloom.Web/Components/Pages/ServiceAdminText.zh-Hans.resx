@@ -595,4 +595,23 @@
   <data name="設定已變更，請重新整理。" xml:space="preserve"><value>设置已更改，请刷新。</value></data>
   <data name="預覽已過期或設定已變更，請重新預覽。" xml:space="preserve"><value>预览已过期或设置已更改，请重新预览。</value></data>
   <data name="清理尚未就緒或系統時間異常，請重新整理並檢查。" xml:space="preserve"><value>清理尚未就绪或系统时间异常，请刷新并检查。</value></data>
+  <data name="編輯日誌來源" xml:space="preserve"><value>编辑日志来源</value></data>
+  <data name="返回日誌來源" xml:space="preserve"><value>返回日志来源</value></data>
+  <data name="來源位置與類型不能變更；如要改讀其他位置，請建立新來源。" xml:space="preserve"><value>来源位置与类型不能更改；如需读取其他位置，请创建新来源。</value></data>
+  <data name="找不到來源或暫時無法讀取，請返回後重試。" xml:space="preserve"><value>找不到来源或暂时无法读取，请返回后重试。</value></data>
+  <data name="目前來源位置：{0}" xml:space="preserve"><value>当前来源位置：{0}</value></data>
+  <data name="設定儲存後會定期同步；設備可能尚未套用。" xml:space="preserve"><value>保存后设置会定期同步；设备可能尚未应用。</value></data>
+  <data name="文字檔格式" xml:space="preserve"><value>文本文件格式</value></data>
+  <data name="每行一筆" xml:space="preserve"><value>每行一条</value></data>
+  <data name="縮排行接續前一筆" xml:space="preserve"><value>缩进行接续前一条</value></data>
+  <data name="啟用來源" xml:space="preserve"><value>启用来源</value></data>
+  <data name="移除來源" xml:space="preserve"><value>移除来源</value></data>
+  <data name="Agent 同步後會停止採集；移除不會立即刪除已接收的日誌。" xml:space="preserve"><value>Agent 同步后会停止采集；移除不会立即删除已接收的日志。</value></data>
+  <data name="我了解移除後會停止採集" xml:space="preserve"><value>我了解移除后会停止采集</value></data>
+  <data name="無法確認來源或帳號，請重新整理。" xml:space="preserve"><value>无法确认来源或账号，请刷新。</value></data>
+  <data name="請確認來源名稱及文字檔格式。" xml:space="preserve"><value>请确认来源名称及文本文件格式。</value></data>
+  <data name="無法確認儲存結果，請重新整理後查看。" xml:space="preserve"><value>无法确认保存结果，请刷新后查看。</value></data>
+  <data name="請先確認移除來源的影響。" xml:space="preserve"><value>请先确认移除来源的影响。</value></data>
+  <data name="無法確認移除結果，請重新整理後查看。" xml:space="preserve"><value>无法确认移除结果，请刷新后查看。</value></data>
+  <data name="來源已變更或不存在，請重新整理後再試。" xml:space="preserve"><value>来源已更改或不存在，请刷新后重试。</value></data>
 </root>
