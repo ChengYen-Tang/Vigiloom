@@ -18,6 +18,13 @@ using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Migrator.Identity;
 using Vigiloom.Migrator.Operations;
 using Vigiloom.Migrator.Resources;
+using Vigiloom.Migrator.Network;
+
+if (args is ["migrate-network"] or ["initialize-network"])
+{
+    await NetworkDatabaseCommand.RunAsync(copyExisting: args[0] == "migrate-network");
+    return;
+}
 
 if (args is ["initialize-operations"] or ["migrate-operations"])
 {
@@ -39,7 +46,7 @@ var freshInstall = args is ["fresh-install"];
 if (args.Length > 0 && !freshInstall)
 {
     if (args.Length != 2 || args[0] != "recover-admin")
-        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | recover-admin <account-name>]");
+        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | initialize-network | migrate-network | recover-admin <account-name>]");
     await LocalRecoveryCommand.RunAsync(args[1]);
     return;
 }
