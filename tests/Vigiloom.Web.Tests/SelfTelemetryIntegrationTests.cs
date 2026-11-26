@@ -22,6 +22,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using OpenTelemetry.Metrics;
+using Metric = OpenTelemetry.Proto.Metrics.V1.Metric;
 using OpenTelemetry.Proto.Collector.Metrics.V1;
 using OpenTelemetry.Proto.Collector.Logs.V1;
 using OpenTelemetry.Proto.Collector.Trace.V1;
@@ -32,6 +34,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Metrics.V1;
 using OpenTelemetry.Proto.Resource.V1;
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
@@ -243,6 +246,28 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             }
             Assert.AreEqual(2, await verify.TraceSpans.CountAsync(token));
             await using (var logs = await logContexts.CreateDbContextAsync(token)) Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
+            var idleBuilder = Host.CreateApplicationBuilder();
+            idleBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Services:Observability:Url"] = observationAddress, ["Vigiloom:SelfTelemetry:Enabled"] = "true" });
+            idleBuilder.AddVigiloomSelfTelemetry("Vigiloom.Worker");
+            using (var idleHost = idleBuilder.Build())
+            {
+                await idleHost.StartAsync(token);
+                var metrics = idleHost.Services.GetRequiredService<MeterProvider>();
+                Assert.IsTrue(await Task.Run(() => metrics.ForceFlush(10000), token));
+                Guid workerServiceId;
+                await using (var db = await resourceContexts.CreateDbContextAsync(token))
+                {
+                    var worker = await db.ApplicationServices.SingleAsync(x => x.ServiceKey == "Vigiloom.Worker", token);
+                    var group = await db.Groups.SingleAsync(x => x.Name == "Self", token);
+                    Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == worker.Id && x.GroupId == group.Id, token));
+                    workerServiceId = worker.Id;
+                }
+                await ProjectAsync(workerServiceId);
+                Assert.IsTrue(await Task.Run(() => metrics.ForceFlush(10000), token));
+                Assert.IsTrue(await verify.MetricContexts.AnyAsync(row => row.ServiceId == workerServiceId && row.MetricName == "vigiloom.service.running", token));
+                await idleHost.StopAsync(token);
+            }
             using var versionResponse = await client.PostAsJsonAsync("/internal/v1/public-observation/versions", new[] { serviceId }, token);
             versionResponse.EnsureSuccessStatusCode();
             var versions = await versionResponse.Content.ReadFromJsonAsync<PublicObservationVersions[]>(cancellationToken: token);
