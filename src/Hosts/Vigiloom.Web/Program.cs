@@ -212,6 +212,13 @@ builder.Services.AddScoped<IServiceMembership>(services =>
         ? services.GetRequiredService<ServiceMembership>()
         : services.GetRequiredService<RemoteServiceMembership>());
 builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.DeploymentLinks>();
+builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.RemoteDeploymentLinks>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.IDeploymentLinks>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
+        ? services.GetRequiredService<Vigiloom.Web.ServiceDetails.DeploymentLinks>()
+        : services.GetRequiredService<Vigiloom.Web.ServiceDetails.RemoteDeploymentLinks>());
 builder.Services.AddScoped<IDevicePingSource, DevicePingSource>();
 builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
