@@ -459,7 +459,14 @@ builder.Services.AddScoped<AgentInventorySettingsMonitoring>(services => new(
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<AgentInventoryStatus>();
 builder.Services.AddScoped<DeviceInventoryAgent>();
-builder.Services.AddScoped<IAgentOwnerResolver, AgentOwnerResolver>();
+builder.Services.AddScoped<AgentOwnerResolver>();
+builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentOwnership>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IDeviceInventoryAgent>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]) ? services.GetRequiredService<DeviceInventoryAgent>() : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentOwnership>());
+builder.Services.AddScoped<IAgentOwnerResolver>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]) ? services.GetRequiredService<AgentOwnerResolver>() : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentOwnership>());
 builder.Services.AddScoped<IAgentBaselineSyncReader>(services => new AgentBaselineSyncReader(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
