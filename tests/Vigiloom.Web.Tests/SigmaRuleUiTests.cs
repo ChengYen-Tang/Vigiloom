@@ -68,6 +68,22 @@ public sealed class SigmaRuleUiTests(TestContext context)
             using var client = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(client, "admin", token);
             var url = $"/settings/sigma/rule?path=rules%2Ftest.yml&device={device.Id:D}";
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await client.GetAsync(url, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Select test logs", text);
+                Assert.Contains("rules/test.yml", text);
+                Assert.Contains("Should match", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await client.GetAsync(url, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("选择测试日志", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var first = await client.GetAsync(url, token);
             Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
             var doc = await new HtmlParser().ParseDocumentAsync(await first.Content.ReadAsStringAsync(token), token);

@@ -854,4 +854,80 @@
   <data name="停用" xml:space="preserve"><value>停用</value></data>
   <data name="已儲存設定分頁" xml:space="preserve"><value>已保存设置分页</value></data>
   <data name="無法讀取規則，請重新整理。" xml:space="preserve"><value>无法读取规则，请刷新。</value></data>
+  <data name="規則管理" xml:space="preserve"><value>规则管理</value></data>
+  <data name="返回行為規則" xml:space="preserve"><value>返回行为规则</value></data>
+  <data name="使用已收集的日誌試跑規則，確認結果後再啟用。" xml:space="preserve"><value>使用已收集的日志试运行规则，确认结果后再启用。</value></data>
+  <data name="試跑結果" xml:space="preserve"><value>试运行结果</value></data>
+  <data name="{0}：預期 {1}，實際 {2}" xml:space="preserve"><value>{0}：预期 {1}，实际 {2}</value></data>
+  <data name="規則狀態" xml:space="preserve"><value>规则状态</value></data>
+  <data name="支援狀態：{0}" xml:space="preserve"><value>支持状态：{0}</value></data>
+  <data name="尚不支援此規則" xml:space="preserve"><value>尚不支持此规则</value></data>
+  <data name="最近試跑：{0}" xml:space="preserve"><value>最近试运行：{0}</value></data>
+  <data name="啟用狀態：{0}" xml:space="preserve"><value>启用状态：{0}</value></data>
+  <data name="來源或版本已變更，尚未評估" xml:space="preserve"><value>来源或版本已更改，尚未评估</value></data>
+  <data name="目前生效的排除條件：" xml:space="preserve"><value>当前生效的排除条件：</value></data>
+  <data name="無。" xml:space="preserve"><value>无。</value></data>
+  <data name="規則已啟用不代表設備已收集所需日誌。" xml:space="preserve"><value>规则已启用不代表设备已收集所需日志。</value></data>
+  <data name="停用規則" xml:space="preserve"><value>停用规则</value></data>
+  <data name="啟用規則" xml:space="preserve"><value>启用规则</value></data>
+  <data name="套用通過的試跑" xml:space="preserve"><value>应用通过的试运行</value></data>
+  <data name="請先完成通過的試跑，才能啟用。" xml:space="preserve"><value>请先完成通过的试运行，才能启用。</value></data>
+  <data name="選擇測試日誌" xml:space="preserve"><value>选择测试日志</value></data>
+  <data name="搜尋設備" xml:space="preserve"><value>搜索设备</value></data>
+  <data name="日誌時間" xml:space="preserve"><value>日志时间</value></data>
+  <data name="最近 24 小時" xml:space="preserve"><value>最近 24 小时</value></data>
+  <data name="最近 7 天" xml:space="preserve"><value>最近 7 天</value></data>
+  <data name="最近 30 天" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="搜尋" xml:space="preserve"><value>搜索</value></data>
+  <data name="請選擇設備" xml:space="preserve"><value>请选择设备</value></data>
+  <data name="查看日誌" xml:space="preserve"><value>查看日志</value></data>
+  <data name="搜尋設備名稱可縮小範圍，目前顯示前 50 筆。" xml:space="preserve"><value>搜索设备名称可缩小范围，当前显示前 50 条。</value></data>
+  <data name="這段時間沒有主機日誌。" xml:space="preserve"><value>这段时间没有主机日志。</value></data>
+  <data name="對每筆案例選擇預期結果，至少包含「應命中」及「不應命中」；一次最多 20 筆。" xml:space="preserve"><value>为每条案例选择预期结果，至少包含「应命中」及「不应命中」；一次最多 20 条。</value></data>
+  <data name="本機排除條件（選填）" xml:space="preserve"><value>本地排除条件（选填）</value></data>
+  <data name="每行輸入一組「欄位=值」，值以不區分大小寫的完整內容比對；符合任一條件的事件會被排除。關聯規則會在計數前排除。變更後請重新試跑並啟用。" xml:space="preserve"><value>每行输入一组「字段=值」，值按不区分大小写的完整内容比对；符合任一条件的事件会被排除。关联规则会在计数前排除。更改后请重新试运行并启用。</value></data>
+  <data name="已選案例" xml:space="preserve"><value>已选案例</value></data>
+  <data name="可跨頁挑選；勾選移除後，按「更新案例」即可移除。" xml:space="preserve"><value>可跨页选择；勾选移除后，按「更新案例」即可移除。</value></data>
+  <data name="左右滑動查看完整日誌資訊。" xml:space="preserve"><value>左右滑动查看完整日志信息。</value></data>
+  <data name="測試日誌，可左右捲動" xml:space="preserve"><value>测试日志，可左右滚动</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>接收时间（UTC）</value></data>
+  <data name="來源與內容" xml:space="preserve"><value>来源与内容</value></data>
+  <data name="預期結果" xml:space="preserve"><value>预期结果</value></data>
+  <data name="採集缺口" xml:space="preserve"><value>采集缺口</value></data>
+  <data name="案例 {0}" xml:space="preserve"><value>案例 {0}</value></data>
+  <data name="不使用" xml:space="preserve"><value>不使用</value></data>
+  <data name="應命中" xml:space="preserve"><value>应命中</value></data>
+  <data name="不應命中" xml:space="preserve"><value>不应命中</value></data>
+  <data name="應為未評估" xml:space="preserve"><value>应为未评估</value></data>
+  <data name="更新案例" xml:space="preserve"><value>更新案例</value></data>
+  <data name="加入所選並查看較早日誌" xml:space="preserve"><value>加入所选并查看较早日志</value></data>
+  <data name="執行試跑" xml:space="preserve"><value>执行试运行</value></data>
+  <data name="變更時間並保留案例" xml:space="preserve"><value>更改时间并保留案例</value></data>
+  <data name="搜尋其他設備" xml:space="preserve"><value>搜索其他设备</value></data>
+  <data name="搜尋並保留案例" xml:space="preserve"><value>搜索并保留案例</value></data>
+  <data name="其他設備" xml:space="preserve"><value>其他设备</value></data>
+  <data name="切換設備並保留案例" xml:space="preserve"><value>切换设备并保留案例</value></data>
+  <data name="找不到此規則，請回到清單重新選擇。" xml:space="preserve"><value>找不到此规则，请返回列表重新选择。</value></data>
+  <data name="規則來源無法使用或已變更，請回到清單重新載入。" xml:space="preserve"><value>规则来源无法使用或已更改，请返回列表重新加载。</value></data>
+  <data name="找不到所選設備，請重新選擇。" xml:space="preserve"><value>找不到所选设备，请重新选择。</value></data>
+  <data name="無法讀取規則或日誌，請重新整理。" xml:space="preserve"><value>无法读取规则或日志，请刷新。</value></data>
+  <data name="規則設定已變更，請重新載入。" xml:space="preserve"><value>规则设置已更改，请重新加载。</value></data>
+  <data name="規則設定無效，請重新載入。" xml:space="preserve"><value>规则设置无效，请重新加载。</value></data>
+  <data name="規則已啟用。" xml:space="preserve"><value>规则已启用。</value></data>
+  <data name="規則已停用。" xml:space="preserve"><value>规则已停用。</value></data>
+  <data name="此版本需要先完成通過的試跑。" xml:space="preserve"><value>此版本需要先完成通过的试运行。</value></data>
+  <data name="規則來源無法使用或已變更，請重新載入。" xml:space="preserve"><value>规则来源无法使用或已更改，请重新加载。</value></data>
+  <data name="無法更新規則，請稍後再試。" xml:space="preserve"><value>无法更新规则，请稍后重试。</value></data>
+  <data name="規則已變更，請重新載入。" xml:space="preserve"><value>规则已更改，请重新加载。</value></data>
+  <data name="一次最多選擇 20 筆案例。" xml:space="preserve"><value>一次最多选择 20 条案例。</value></data>
+  <data name="請選擇設備。" xml:space="preserve"><value>请选择设备。</value></data>
+  <data name="請選擇有效的預期結果。" xml:space="preserve"><value>请选择有效的预期结果。</value></data>
+  <data name="排除條件請每行輸入「欄位=值」。" xml:space="preserve"><value>排除条件请每行输入「字段=值」。</value></data>
+  <data name="請選擇 2 至 20 筆不同日誌作為案例。" xml:space="preserve"><value>请选择 2 至 20 条不同日志作为案例。</value></data>
+  <data name="試跑通過，可以啟用此版本。" xml:space="preserve"><value>试运行通过，可以启用此版本。</value></data>
+  <data name="試跑未通過，請檢查預期結果；須包含應命中及不應命中案例。" xml:space="preserve"><value>试运行未通过，请检查预期结果；须包含应命中及不应命中案例。</value></data>
+  <data name="部分日誌已不存在，請重新選擇案例。" xml:space="preserve"><value>部分日志已不存在，请重新选择案例。</value></data>
+  <data name="此規則的格式或日誌來源尚不支援。" xml:space="preserve"><value>此规则的格式或日志来源尚不支持。</value></data>
+  <data name="無法執行試跑，請稍後再試。" xml:space="preserve"><value>无法执行试运行，请稍后重试。</value></data>
+  <data name="未選擇" xml:space="preserve"><value>未选择</value></data>
 </root>
