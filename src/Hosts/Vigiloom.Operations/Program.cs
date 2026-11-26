@@ -184,6 +184,8 @@ app.MapPost("/internal/v1/application-logs/cleanup", async (ApplicationLogCleanu
     if (input.RetentionDays is < 1 or > 3650) return Results.BadRequest();
     return Results.Ok(await cleanup.RunAsync(input.RetentionDays, token));
 });
+app.MapPost("/internal/v1/timeline/health-cleanup", async (ApplicationLogCleanupRequest input, TimelineLogCleanup cleanup, CancellationToken token) =>
+    input.RetentionDays is < 1 or > 3650 ? Results.BadRequest() : Results.Ok(await cleanup.RunHealthBatchAsync(input.RetentionDays, token)));
 app.MapPut("/internal/v1/log-quota", async (LogQuotaUpdate input, SharedLogQuota quota, CancellationToken token) =>
 {
     if (input.Settings is null || input.ActorId == Guid.Empty) return Results.BadRequest();
