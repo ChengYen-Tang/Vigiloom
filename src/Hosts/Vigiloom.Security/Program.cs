@@ -143,6 +143,8 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddScoped<BaselineExceptions>();
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
+    builder.Services.AddScoped<TemporalOutboxHandler>();
+    builder.Services.AddScoped(provider => new OutboxWriter([provider.GetRequiredService<TemporalOutboxHandler>()]));
     builder.Services.AddScoped<ISigmaCatalog, SigmaCatalog>();
     builder.Services.AddHostDetection();
     builder.Services.AddScoped<INotificationWriter, TemporalNotificationWriter>();
