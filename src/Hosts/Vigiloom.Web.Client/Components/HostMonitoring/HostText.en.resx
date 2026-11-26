@@ -123,4 +123,59 @@
   <data name="這段時間沒有已記錄的資料缺口。" xml:space="preserve"><value>No recorded data gaps in this period.</value></data>
   <data name="較新缺口" xml:space="preserve"><value>Newer gaps</value></data>
   <data name="較早缺口" xml:space="preserve"><value>Older gaps</value></data>
+  <data name="依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。" xml:space="preserve"><value>Shown separately by Agent registration and source; missing data is not zero. Collection may pause during updates or offline periods. Charts aggregate by time interval and may not show brief gaps.</value></data>
+  <data name="近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）：" xml:space="preserve"><value>Recent incomplete collections (latest per source, up to 10; not current status):</value></data>
+  <data name="原始樣本保存 {0} 天，五分鐘彙總保存 {1} 天。" xml:space="preserve"><value>Raw samples retained for {0} days; five-minute aggregates retained for {1} days.</value></data>
+  <data name="來源與 Agent" xml:space="preserve"><value>Source and Agent</value></data>
+  <data name="閾值評估結果" xml:space="preserve"><value>Threshold evaluation</value></data>
+  <data name="大於等於" xml:space="preserve"><value>at least</value></data>
+  <data name="小於等於" xml:space="preserve"><value>at most</value></data>
+  <data name="閾值：{0} {1} {2} · 樣本有效時間：{3} 秒" xml:space="preserve"><value>Threshold: {0} {1} {2} · Sample validity: {3} seconds</value></data>
+  <data name="最新樣本：{0} {1} · 量測時間：{2}（UTC）" xml:space="preserve"><value>Latest sample: {0} {1} · Measured: {2} (UTC)</value></data>
+  <data name="評估時間：{0}（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。" xml:space="preserve"><value>Evaluated: {0} (UTC). This result uses settings and the latest sample at that time, separately from the history below.</value></data>
+  <data name="更新評估" xml:space="preserve"><value>Refresh evaluation</value></data>
+  <data name="設定此來源的閾值" xml:space="preserve"><value>Set threshold for this source</value></data>
+  <data name="部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。" xml:space="preserve"><value>Raw data for some periods has expired and cannot be calculated accurately; the chart skips those intervals.</value></data>
+  <data name="效能趨勢" xml:space="preserve"><value>Performance trend</value></data>
+  <data name="此時間範圍沒有可繪製的資料。" xml:space="preserve"><value>No data to chart in this period.</value></data>
+  <data name="還有其他資料來源，可切換下一頁查看。" xml:space="preserve"><value>More sources are available on the next page.</value></data>
+  <data name="這段時間沒有此指標。" xml:space="preserve"><value>No data for this metric in this period.</value></data>
+  <data name="上一頁來源" xml:space="preserve"><value>Previous sources</value></data>
+  <data name="下一頁來源" xml:space="preserve"><value>Next sources</value></data>
+  <data name="平台不支援" xml:space="preserve"><value>Platform unsupported</value></data>
+  <data name="採集錯誤" xml:space="preserve"><value>Collection error</value></data>
+  <data name="資料未能取得，原因未知" xml:space="preserve"><value>Data unavailable; reason unknown</value></data>
+  <data name="未設定閾值" xml:space="preserve"><value>Threshold not configured</value></data>
+  <data name="閾值已停用" xml:space="preserve"><value>Threshold disabled</value></data>
+  <data name="未達觸發條件" xml:space="preserve"><value>Below trigger condition</value></data>
+  <data name="已達閾值" xml:space="preserve"><value>Threshold reached</value></data>
+  <data name="未知：尚無樣本" xml:space="preserve"><value>Unknown: no sample</value></data>
+  <data name="未知：樣本已過期" xml:space="preserve"><value>Unknown: sample expired</value></data>
+  <data name="未知：樣本時間晚於平台時間" xml:space="preserve"><value>Unknown: sample time is later than platform time</value></data>
+  <data name="未知：無法判定" xml:space="preserve"><value>Unknown: unable to determine</value></data>
+  <data name="CPU 使用率" xml:space="preserve"><value>CPU usage</value></data>
+  <data name="CPU 核心使用率" xml:space="preserve"><value>CPU core usage</value></data>
+  <data name="系統負載（1 分鐘）" xml:space="preserve"><value>System load (1 minute)</value></data>
+  <data name="系統負載（5 分鐘）" xml:space="preserve"><value>System load (5 minutes)</value></data>
+  <data name="系統負載（15 分鐘）" xml:space="preserve"><value>System load (15 minutes)</value></data>
+  <data name="總記憶體" xml:space="preserve"><value>Total memory</value></data>
+  <data name="可用記憶體" xml:space="preserve"><value>Available memory</value></data>
+  <data name="交換空間總量" xml:space="preserve"><value>Total swap</value></data>
+  <data name="可用交換空間" xml:space="preserve"><value>Available swap</value></data>
+  <data name="分頁檔總量" xml:space="preserve"><value>Total page file</value></data>
+  <data name="已用分頁檔" xml:space="preserve"><value>Page file used</value></data>
+  <data name="總磁碟空間" xml:space="preserve"><value>Total disk space</value></data>
+  <data name="可用磁碟空間" xml:space="preserve"><value>Available disk space</value></data>
+  <data name="磁碟讀取" xml:space="preserve"><value>Disk read</value></data>
+  <data name="磁碟寫入" xml:space="preserve"><value>Disk write</value></data>
+  <data name="磁碟讀取延遲" xml:space="preserve"><value>Disk read latency</value></data>
+  <data name="磁碟寫入延遲" xml:space="preserve"><value>Disk write latency</value></data>
+  <data name="網路接收" xml:space="preserve"><value>Network received</value></data>
+  <data name="網路傳送" xml:space="preserve"><value>Network sent</value></data>
+  <data name="網路接收錯誤" xml:space="preserve"><value>Network receive errors</value></data>
+  <data name="網路傳送錯誤" xml:space="preserve"><value>Network send errors</value></data>
+  <data name="程序 CPU 使用率" xml:space="preserve"><value>Process CPU usage</value></data>
+  <data name="程序工作集記憶體" xml:space="preserve"><value>Process working set</value></data>
+  <data name="未知指標" xml:space="preserve"><value>Unknown metric</value></data>
+  <data name="負載" xml:space="preserve"><value>load</value></data>
 </root>
