@@ -348,4 +348,72 @@
   <data name="此監控服務已登記，請重新整理後確認。" xml:space="preserve"><value>此监控服务已登记，请刷新后确认。</value></data>
   <data name="服務或來源無法使用，請重新整理後確認。" xml:space="preserve"><value>服务或来源无法使用，请刷新后确认。</value></data>
   <data name="無法更新清單，請重新整理。" xml:space="preserve"><value>无法更新清单，请刷新。</value></data>
+  <data name="Collector 來源對應" xml:space="preserve"><value>Collector 来源对应</value></data>
+  <data name="記錄此 Collector 的轉送設定，協助辨識各來源的管線。" xml:space="preserve"><value>记录此 Collector 的转送设置，协助识别各来源的管线。</value></data>
+  <data name="此對應只供管理與查詢，不會修改 Collector 設定或授予資料接收權限。請確認轉送元件名稱與實際設定一致。" xml:space="preserve"><value>此对应只供管理与查询，不会修改 Collector 设置或授予数据接收权限。请确认转送组件名称与实际设置一致。</value></data>
+  <data name="找不到此 Collector。" xml:space="preserve"><value>找不到此 Collector。</value></data>
+  <data name="監控來源：" xml:space="preserve"><value>监控来源：</value></data>
+  <data name="監控來源憑證已撤銷。" xml:space="preserve"><value>监控来源凭证已撤销。</value></data>
+  <data name="監控服務已停收。" xml:space="preserve"><value>监控服务已停止收集。</value></data>
+  <data name="目前來源對應" xml:space="preserve"><value>当前来源对应</value></data>
+  <data name="尚未加入來源對應。" xml:space="preserve"><value>尚未加入来源对应。</value></data>
+  <data name="（來源已撤銷）" xml:space="preserve"><value>（来源已撤销）</value></data>
+  <data name="轉送元件：" xml:space="preserve"><value>转送组件：</value></data>
+  <data name="移除對應" xml:space="preserve"><value>移除对应</value></data>
+  <data name="我了解此操作不會變更 Collector 設定" xml:space="preserve"><value>我了解此操作不会变更 Collector 设置</value></data>
+  <data name="移除" xml:space="preserve"><value>移除</value></data>
+  <data name="加入來源對應" xml:space="preserve"><value>加入来源对应</value></data>
+  <data name="選擇業務來源並輸入 Collector 設定中的 exporter 名稱，例如 " xml:space="preserve"><value>选择业务来源并输入 Collector 设置中的 exporter 名称，例如 </value></data>
+  <data name="。監控來源本身不能作為業務來源。" xml:space="preserve"><value>。监控来源本身不能作为业务来源。</value></data>
+  <data name="沒有可選來源。" xml:space="preserve"><value>没有可选来源。</value></data>
+  <data name="（已撤銷）" xml:space="preserve"><value>（已撤销）</value></data>
+  <data name="（監控來源）" xml:space="preserve"><value>（监控来源）</value></data>
+  <data name="（已對應）" xml:space="preserve"><value>（已对应）</value></data>
+  <data name="轉送元件名稱" xml:space="preserve"><value>转送组件名称</value></data>
+  <data name="加入對應" xml:space="preserve"><value>加入对应</value></data>
+  <data name="來源選擇分頁" xml:space="preserve"><value>来源选择分页</value></data>
+  <data name="上一頁來源" xml:space="preserve"><value>上一页来源</value></data>
+  <data name="下一頁來源" xml:space="preserve"><value>下一页来源</value></data>
+  <data name="返回 Collector 回報" xml:space="preserve"><value>返回 Collector 回报</value></data>
+  <data name="請選擇來源並輸入轉送元件名稱。" xml:space="preserve"><value>请选择来源并输入转送组件名称。</value></data>
+  <data name="請確認移除來源對應的影響。" xml:space="preserve"><value>请确认移除来源对应的影响。</value></data>
+  <data name="來源對應已加入。" xml:space="preserve"><value>来源对应已加入。</value></data>
+  <data name="來源對應已移除。" xml:space="preserve"><value>来源对应已移除。</value></data>
+  <data name="資料已變更，或來源與轉送元件已被使用；請重新整理後確認。" xml:space="preserve"><value>数据已变更，或来源与转送组件已被使用；请刷新后确认。</value></data>
+  <data name="此來源已撤銷、無法使用，或是 Collector 自身的監控來源。" xml:space="preserve"><value>此来源已撤销、无法使用，或是 Collector 自身的监控来源。</value></data>
+  <data name="來源對應已達上限。" xml:space="preserve"><value>来源对应已达上限。</value></data>
+  <data name="找不到 Collector 或來源對應，請重新整理後確認。" xml:space="preserve"><value>找不到 Collector 或来源对应，请刷新后确认。</value></data>
+  <data name="Collector 來源轉送" xml:space="preserve"><value>Collector 来源转送</value></data>
+  <data name="查看指定執行個體回報的累計計數。" xml:space="preserve"><value>查看指定实例回报的累计计数。</value></data>
+  <data name="無法讀取回報，請重新整理後再試。" xml:space="preserve"><value>无法读取回报，请刷新后再试。</value></data>
+  <data name="{0}：選擇來源" xml:space="preserve"><value>{0}：选择来源</value></data>
+  <data name="尚未設定來源對應。" xml:space="preserve"><value>尚未设置来源对应。</value></data>
+  <data name="來源轉送回報" xml:space="preserve"><value>来源转送回报</value></data>
+  <data name="找不到所選來源或執行個體，請重新選擇。" xml:space="preserve"><value>找不到所选来源或实例，请重新选择。</value></data>
+  <data name="資料範圍：截至 {0} UTC 前 24 小時內保存的回報。這些是 Collector 回報的累計數，並非目前健康狀態或已遺失筆數；不同維度分開顯示。" xml:space="preserve"><value>数据范围：截至 {0} UTC 前 24 小时内保存的回报。这些是 Collector 回报的累计数，并非当前健康状态或已丢失笔数；不同维度分开显示。</value></data>
+  <data name="監控或轉送來源已撤銷、服務已停收或執行個體已退役；歷史回報不能代表目前狀態。" xml:space="preserve"><value>监控或转送来源已撤销、服务已停止收集或实例已退役；历史回报不能代表当前状态。</value></data>
+  <data name="累計值列表因查詢上限、資料變動或格式不支援而可能不完整；近期比較會分別檢查各訊號的資料。" xml:space="preserve"><value>累计值列表因查询上限、数据变动或格式不支持而可能不完整；近期比较会分别检查各信号的数据。</value></data>
+  <data name="最近兩次失敗回報的比較" xml:space="preserve"><value>最近两次失败回报的比较</value></data>
+  <data name="僅比較同一序列且累計起始時間相同的樣本；最新回報超過 90 秒、樣本間隔超過 5 分鐘或資料不足時無法判斷。送出失敗可能隨後重試，不代表永久遺失。" xml:space="preserve"><value>仅比较同一序列且累计开始时间相同的样本；最新回报超过 90 秒、样本间隔超过 5 分钟或数据不足时无法判断。发送失败可能随后重试，不代表永久丢失。</value></data>
+  <data name="（{0} 至 {1} UTC）" xml:space="preserve"><value>（{0} 至 {1} UTC）</value></data>
+  <data name="此範圍沒有可顯示的計數；無資料不代表計數為零。" xml:space="preserve"><value>此范围没有可显示的计数；无数据不代表计数为零。</value></data>
+  <data name="同名指標的不同序列不會合計；序列識別碼用來區分維度，不顯示來源回報的任意屬性。" xml:space="preserve"><value>同名指标的不同序列不会合计；序列标识符用来区分维度，不显示来源回报的任意属性。</value></data>
+  <data name="左右滑動表格，查看完整計數與時間。" xml:space="preserve"><value>左右滑动表格，查看完整计数与时间。</value></data>
+  <data name="來源轉送計數，可左右滑動" xml:space="preserve"><value>来源转送计数，可左右滑动</value></data>
+  <data name="計數" xml:space="preserve"><value>计数</value></data>
+  <data name="累計值" xml:space="preserve"><value>累计值</value></data>
+  <data name="累計起始（UTC）" xml:space="preserve"><value>累计开始（UTC）</value></data>
+  <data name="量測時間（UTC）" xml:space="preserve"><value>测量时间（UTC）</value></data>
+  <data name="保存時間（UTC）" xml:space="preserve"><value>保存时间（UTC）</value></data>
+  <data name="序列" xml:space="preserve"><value>序列</value></data>
+  <data name="未提供" xml:space="preserve"><value>未提供</value></data>
+  <data name="比較期間失敗計數增加" xml:space="preserve"><value>比较期间失败计数增加</value></data>
+  <data name="比較期間未觀察到失敗增加" xml:space="preserve"><value>比较期间未观察到失败增加</value></data>
+  <data name="回報過期" xml:space="preserve"><value>回报过期</value></data>
+  <data name="Log 已送出" xml:space="preserve"><value>Log 已发送</value></data>
+  <data name="Log 送出失敗" xml:space="preserve"><value>Log 发送失败</value></data>
+  <data name="Metrics 已送出" xml:space="preserve"><value>Metrics 已发送</value></data>
+  <data name="Metrics 送出失敗" xml:space="preserve"><value>Metrics 发送失败</value></data>
+  <data name="Trace 已送出" xml:space="preserve"><value>Trace 已发送</value></data>
+  <data name="Trace 送出失敗" xml:space="preserve"><value>Trace 发送失败</value></data>
 </root>
