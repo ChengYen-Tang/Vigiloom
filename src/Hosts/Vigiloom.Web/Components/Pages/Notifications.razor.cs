@@ -24,16 +24,16 @@ public partial class Notifications
         episodes = null;
         error = null;
         if (!string.IsNullOrEmpty(Source) && Source is not ("ping" or "service-health" or "sigma" or "ioc" or "vulnerability"))
-        { error = "請選擇有效的通知來源。"; return; }
+        { error = L["請選擇有效的通知來源。"].Value; return; }
         if (!TryDate(From, out var from) || !TryDate(To, out var to))
-        { error = "請選擇有效的日期。"; return; }
-        if (from > to) { error = "開始日期不能晚於結束日期。"; return; }
+        { error = L["請選擇有效的日期。"].Value; return; }
+        if (from > to) { error = L["開始日期不能晚於結束日期。"].Value; return; }
         var page = 1;
         if (Page is not null && (!int.TryParse(Page, NumberStyles.None, CultureInfo.InvariantCulture, out page) || page is < 1 or > 1000))
-        { error = "頁碼無效，請重新查詢。"; return; }
+        { error = L["頁碼無效，請重新查詢。"].Value; return; }
         var alertPage = 1;
         if (AlertPage is not null && (!int.TryParse(AlertPage, NumberStyles.None, CultureInfo.InvariantCulture, out alertPage) || alertPage is < 1 or > 1000))
-        { error = "頁碼無效，請重新查詢。"; return; }
+        { error = L["頁碼無效，請重新查詢。"].Value; return; }
         try
         {
             result = await Reader.GetRecentAsync(new NotificationQuery(page, Source, from, to), HttpContext.RequestAborted);
@@ -42,7 +42,7 @@ public partial class Notifications
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Notification query failed: {ExceptionType}", ex.GetType().Name);
-            error = "無法載入通知紀錄，請稍後再試。";
+            error = L["無法載入通知紀錄，請稍後再試。"].Value;
         }
     }
 
