@@ -448,10 +448,19 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains("Edit log source", text);
                 Assert.Contains("Current source location: local", text);
             }
+            using (var englishList = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+            {
+                var text = await BodyTextAsync(englishList, token);
+                Assert.Contains("Host log sources", text);
+                Assert.Contains("No status for current settings", text);
+                Assert.Contains("local", text);
+            }
             admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
             using (var simplified = await admin.GetAsync(editUrl, token))
                 Assert.Contains("编辑日志来源", await BodyTextAsync(simplified, token));
+            using (var simplifiedList = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("主机日志来源", await BodyTextAsync(simplifiedList, token));
             admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var detail = await admin.GetAsync(created.Headers.Location, token)) Assert.AreEqual(HttpStatusCode.OK, detail.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
