@@ -276,4 +276,60 @@
   <data name="部分觀察：首次看到" xml:space="preserve"><value>Partial observation: newly seen</value></data>
   <data name="部分觀察：資料變化" xml:space="preserve"><value>Partial observation: data changed</value></data>
   <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="漏洞比對" xml:space="preserve"><value>Vulnerability matching</value></data>
+  <data name="比對結果需要結合盤點與情報判讀" xml:space="preserve"><value>Interpret matches alongside inventory and intelligence</value></data>
+  <data name="目前以 {0} 來源套件版本比對；套件來自發行版的身分是未驗證的假設。未知或無公告資料不代表安全。" xml:space="preserve"><value>Matching uses {0} source package versions; distribution origin is an unverified assumption. Unknown or absent advisory data does not imply safety.</value></data>
+  <data name="正在載入漏洞資料…" xml:space="preserve"><value>Loading vulnerability data…</value></data>
+  <data name="作業系統生命週期尚未核實；舊系統的情報與修補覆蓋可能不足。" xml:space="preserve"><value>The operating system lifecycle is not verified; intelligence and patch coverage for older systems may be incomplete.</value></data>
+  <data name="此作業系統版本尚未支援漏洞比對，無法判斷是否有漏洞。" xml:space="preserve"><value>Vulnerability matching does not support this OS version; vulnerability status cannot be determined.</value></data>
+  <data name="尚無評估結果" xml:space="preserve"><value>No assessment yet</value></data>
+  <data name="請確認設備已完成盤點，並已啟用適用的漏洞情報來源。" xml:space="preserve"><value>Ensure device inventory is complete and the applicable vulnerability intelligence source is enabled.</value></data>
+  <data name="資料已過期或來源、Agent、盤點已變更；以下為上次評估，請勿視為目前狀態。" xml:space="preserve"><value>Data is stale or the source, Agent or inventory changed. The following is the previous assessment, not current status.</value></data>
+  <data name="盤點覆蓋" xml:space="preserve"><value>Inventory coverage</value></data>
+  <data name="個套件" xml:space="preserve"><value> packages</value></data>
+  <data name="其中 {0} 個套件有未知結果。" xml:space="preserve"><value>{0} packages have unknown results.</value></data>
+  <data name="評估說明" xml:space="preserve"><value>Assessment notes</value></data>
+  <data name="版本比對是風險線索，不能證明實際遭入侵；未列出不代表沒有漏洞。" xml:space="preserve"><value>Version matches are risk indicators, not proof of compromise; omissions do not imply there are no vulnerabilities.</value></data>
+  <data name="無法建立公告比對的套件" xml:space="preserve"><value>Packages without advisory matches</value></data>
+  <data name="以下列出缺少套件身分或未找到公告的套件；其他未知結果會列在公告比對表中。" xml:space="preserve"><value>These packages lack an identity or matching advisory; other unknown results appear in the advisory table.</value></data>
+  <data name="已安裝版本 {0}" xml:space="preserve"><value>Installed version {0}</value></data>
+  <data name="套件漏洞結果" xml:space="preserve"><value>Package vulnerability results</value></data>
+  <data name="已標示 CISA 已知遭利用項目。" xml:space="preserve"><value>CISA known exploited items are marked.</value></data>
+  <data name="已標示非官方驗證來源的 KEV 資料；來源未經系統驗證。" xml:space="preserve"><value>KEV data from a non-officially verified source is marked; its source was not verified by the system.</value></data>
+  <data name="未標示不代表安全或未遭利用。" xml:space="preserve"><value>Unmarked does not mean safe or unexploited.</value></data>
+  <data name="已知遭利用情報目前不可用或已過期，未提供此標示。" xml:space="preserve"><value>Known-exploited intelligence is unavailable or expired; this marker is not provided.</value></data>
+  <data name="EPSS 情報目前不可用或已過期，未使用分數排序。" xml:space="preserve"><value>EPSS intelligence is unavailable or expired; scores are not used for sorting.</value></data>
+  <data name="套件或公告" xml:space="preserve"><value>Package or advisory</value></data>
+  <data name="例如 openssl 或 CVE" xml:space="preserve"><value>e.g. openssl or CVE</value></data>
+  <data name="評估狀態" xml:space="preserve"><value>Assessment status</value></data>
+  <data name="全部狀態" xml:space="preserve"><value>All statuses</value></data>
+  <data name="可能受影響" xml:space="preserve"><value>Potentially affected</value></data>
+  <data name="版本顯示已修補" xml:space="preserve"><value>Version indicates fixed</value></data>
+  <data name="不受影響" xml:space="preserve"><value>Not affected</value></data>
+  <data name="尚未評估" xml:space="preserve"><value>Not evaluated</value></data>
+  <data name="查詢" xml:space="preserve"><value>Search</value></data>
+  <data name="沒有符合條件的公告比對結果；這不代表沒有漏洞。" xml:space="preserve"><value>No matching advisories found; this does not mean there are no vulnerabilities.</value></data>
+  <data name="漏洞結果表格，可左右捲動" xml:space="preserve"><value>Vulnerability results, scroll horizontally</value></data>
+  <data name="套件" xml:space="preserve"><value>Package</value></data>
+  <data name="公告" xml:space="preserve"><value>Advisory</value></data>
+  <data name="套件版本" xml:space="preserve"><value>Package version</value></data>
+  <data name="來源信心" xml:space="preserve"><value>Source confidence</value></data>
+  <data name="最後評估（UTC）" xml:space="preserve"><value>Last assessed (UTC)</value></data>
+  <data name="歷史" xml:space="preserve"><value>History</value></data>
+  <data name="查看歷史" xml:space="preserve"><value>View history</value></data>
+  <data name="正在載入歷史…" xml:space="preserve"><value>Loading history…</value></data>
+  <data name="此時間範圍沒有評估紀錄。" xml:space="preserve"><value>No assessments in this period.</value></data>
+  <data name="載入較早紀錄" xml:space="preserve"><value>Load older records</value></data>
+  <data name="資料或情報已更新，已回到第一頁。" xml:space="preserve"><value>Data or intelligence changed; returned to the first page.</value></data>
+  <data name="無法載入漏洞資料，請稍後重試。" xml:space="preserve"><value>Unable to load vulnerability data. Try again later.</value></data>
+  <data name="無法載入歷史，請稍後重試。" xml:space="preserve"><value>Unable to load history. Try again later.</value></data>
+  <data name="假設為發行版來源" xml:space="preserve"><value>Assumed distribution origin</value></data>
+  <data name="來源衝突" xml:space="preserve"><value>Conflicting origin</value></data>
+  <data name="來源已驗證" xml:space="preserve"><value>Origin verified</value></data>
+  <data name="來源未知" xml:space="preserve"><value>Unknown origin</value></data>
+  <data name="依發行版公告的版本範圍判斷" xml:space="preserve"><value>Based on the distribution advisory version range</value></data>
+  <data name="沒有找到可比對的公告，無法判定安全" xml:space="preserve"><value>No matching advisory found; safety cannot be determined</value></data>
+  <data name="套件身分或版本不完整" xml:space="preserve"><value>Package identity or version incomplete</value></data>
+  <data name="公告資料不足或有歧義" xml:space="preserve"><value>Advisory data incomplete or ambiguous</value></data>
+  <data name="判斷原因未知" xml:space="preserve"><value>Assessment reason unknown</value></data>
 </root>

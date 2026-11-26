@@ -281,6 +281,8 @@ public sealed class HostDetailsBrowserTests
         await englishChanges.GetByText("Example package", new() { Exact = true }).WaitForAsync();
         await englishChanges.GetByText("Before", new() { Exact = true }).ClickAsync();
         await englishChanges.GetByText("Version：1.0", new() { Exact = false }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Vulnerabilities", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "No assessment yet", Exact = true }).WaitForAsync();
         await using var localizedContext = await browser.NewContextAsync();
         var localizedPage = await localizedContext.NewPageAsync();
         await localizedPage.GotoAsync($"{url}/account/login");
@@ -300,6 +302,8 @@ public sealed class HostDetailsBrowserTests
         await localizedPage.GetByText("目前没有这类清单数据。", new() { Exact = true }).WaitForAsync();
         await localizedPage.GetByRole(AriaRole.Button, new() { Name = "查看清单变更", Exact = true }).ClickAsync();
         await localizedPage.GetByRole(AriaRole.Region, new() { Name = "清单变更表格，可左右滚动" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "漏洞", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Heading, new() { Name = "尚无评估结果", Exact = true }).WaitForAsync();
         await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 
