@@ -11,6 +11,28 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 /// <summary>Reads host-owned Agent observations for a current Resources registration.</summary>
 public sealed class HostAgentMonitoring(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
 {
+    public async Task<AgentSettingsStatus> GetSettingsStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var rows = await db.Set<AgentSetting>().FromSqlInterpolated($"SELECT * FROM [agent].[Settings] WITH (HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {device.DeviceId}")
+            .AsNoTracking().ToListAsync(token);
+        var desired = AgentConfiguration.ToView(device.DeviceId, rows).Effective;
+        AgentSettingsObservation? agent = null;
+        if (device.Eligible && registration is not null && registration.RevokedAt is null && registration.DeviceGeneration == device.Generation)
+        {
+            var status = await db.AgentStatuses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == registration.Id, token);
+            if (status is not null && (status.DeviceId != device.DeviceId || status.DeviceGeneration != device.Generation))
+                throw new InvalidOperationException("Host status does not match the current Agent registration.");
+            agent = new AgentSettingsObservation(registration.CreatedAt, status?.LastHeartbeatAt, status?.HeartbeatSafetyIntervalSeconds ?? 30,
+                status?.ConfigurationReportedAt, status?.AppliedConfigurationRevision, status?.AppliedHeartbeatSeconds,
+                status?.AppliedSettingsPollSeconds, status?.AppliedBatchIntervalSeconds, status?.ConfigurationAppliedAt, status?.ConfigurationFailure);
+        }
+        var result = AgentSettingsStatusFormatter.Create(device, desired, agent, clock.GetUtcNow());
+        await transaction.CommitAsync(token);
+        return result;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<DeviceAgentOverview> devices, CancellationToken token)
     {
         var ids = devices.Where(x => x.Device.Eligible && x.Registration is not null).Select(x => x.Registration!.Id).ToArray();

@@ -58,6 +58,15 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(90, (await settings.GetForAgentAsync(identity, token))!.Settings.HeartbeatSeconds);
             Assert.IsNull(await settings.UpdateAsync(null, new AgentSettingsUpdate(new AgentSettingsOverrides(60, null, null), ""), actor, token));
             Assert.AreEqual(2, await db.Set<AgentSettingAudit>().CountAsync(token));
+            Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, (await monitor.GetSettingsStatusAsync(device, registration, token)).State);
+            var targetSettings = (await settings.GetForAgentAsync(identity, token))!;
+            var report = new AgentConfigurationReport(targetSettings, DateTimeOffset.UtcNow, null);
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.RecordAsync(identity, new AgentHeartbeatReport(1, epoch, 3, null, report), token));
+            Assert.AreEqual(AgentSettingsApplyState.Applied, (await monitor.GetSettingsStatusAsync(device, registration, token)).State);
+            var changed = await settings.UpdateAsync(identity.DeviceId, new AgentSettingsUpdate(new AgentSettingsOverrides(75, null, null), deviceSettings.Version), actor, token);
+            Assert.IsNotNull(changed);
+            Assert.AreEqual(AgentSettingsApplyState.Pending, (await monitor.GetSettingsStatusAsync(device, registration, token)).State);
+            Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await monitor.GetSettingsStatusAsync(device, null, token)).State);
         }, context.CancellationToken);
 
     [TestMethod]

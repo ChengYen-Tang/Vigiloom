@@ -28,7 +28,7 @@ internal static class AgentConfigurationEndpoints
             .Produces<AgentSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read effective Agent scheduling settings for a device");
 
-        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-settings-status", async (Guid deviceId, AgentSettingsMonitoring monitoring, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-settings-status", async (Guid deviceId, IAgentSettingsStatusReader monitoring, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await monitoring.GetAsync(deviceId, token) is { } status ? Results.Ok(status) : Results.NotFound();
