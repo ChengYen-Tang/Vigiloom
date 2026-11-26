@@ -4,6 +4,8 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.Modules.Resources.Domain;
@@ -235,6 +237,16 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(logSource.Id, (await copied.Set<HostLogSourceAudit>().SingleAsync(token)).SourceId);
             Assert.AreEqual(80d, (await copied.Set<HostMetricThreshold>().SingleAsync(token)).Value);
             Assert.IsTrue(await copied.HostLogMessageIds.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == logMessageId, token));
+            var oldMessageId = Guid.CreateVersion7();
+            copied.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
+                new AgentMetricPoint(oldMessageId, now.AddDays(-20), AgentMetricKind.CpuTotalPercent, "cpu", null, 15), now.AddDays(-20)));
+            await copied.SaveChangesAsync(token);
+            var maintenance = new HostMetricMaintenance(new PooledDbContextFactory<HostMonitoringDbContext>(hostOptions), NullLogger<HostMetricMaintenance>.Instance);
+            await maintenance.RollupAsync(token);
+            await maintenance.RetainAsync(token);
+            Assert.IsFalse(await copied.HostMetrics.AnyAsync(x => x.MessageId == oldMessageId, token));
+            Assert.IsTrue(await copied.HostMetrics.AnyAsync(x => x.MessageId == messageId && x.Aggregated, token));
+            Assert.IsTrue(await copied.HostMetricRollups.AnyAsync(x => x.AgentId == agent.Id && x.Sum == 15d, token));
         }, outerToken), context.CancellationToken);
 
     private sealed class TargetReader(RecordedAgentUpdateTarget target) : IRecordedAgentTargetReader

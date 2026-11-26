@@ -209,8 +209,12 @@ public static class WorkerHost
         builder.Services.AddHostedService<BaselineRefreshSchedule>();
         builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
-        builder.Services.AddHostedService<HostMetricRollupSchedule>();
-        builder.Services.AddHostedService<HostMetricRetentionSchedule>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:HostMonitoring:Url"]))
+        {
+            builder.Services.AddHostedService<HostMetricRollupSchedule>();
+            builder.Services.AddHostedService<HostMetricRetentionSchedule>();
+        }
+        else builder.Services.AddHostedService<RetiredHostMetricSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
         {
