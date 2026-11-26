@@ -3,6 +3,7 @@ using Hangfire.Common;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 
 namespace Vigiloom.Network;
 
@@ -43,6 +44,19 @@ internal sealed class SpeedSchedule(IRecurringJobManager jobs) : IHostedService
     {
         jobs.AddOrUpdate("vigiloom-speed-test", Job.FromExpression<AutomaticSpeedJob>(job => job.RunAsync(CancellationToken.None), "network"),
             "* * * * *", new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        return Task.CompletedTask;
+    }
+    public Task StopAsync(CancellationToken token) => Task.CompletedTask;
+}
+
+internal sealed class NetworkMaintenanceSchedule(IRecurringJobManager jobs) : IHostedService
+{
+    public Task StartAsync(CancellationToken token)
+    {
+        var options = new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc };
+        jobs.AddOrUpdate("vigiloom-ping-retention", Job.FromExpression<PingRetentionJob>(job => job.RunAsync(CancellationToken.None), "network"), Cron.Hourly(), options);
+        jobs.AddOrUpdate("vigiloom-speed-retention", Job.FromExpression<SpeedRetentionJob>(job => job.RunAsync(CancellationToken.None), "network"), Cron.Hourly(), options);
+        jobs.AddOrUpdate("vigiloom-ping-rollup-backfill", Job.FromExpression<PingRollupBackfillJob>(job => job.RunAsync(CancellationToken.None), "network"), "* * * * *", options);
         return Task.CompletedTask;
     }
     public Task StopAsync(CancellationToken token) => Task.CompletedTask;

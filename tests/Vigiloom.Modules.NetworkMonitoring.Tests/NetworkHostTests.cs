@@ -3,8 +3,11 @@ extern alias NetworkHost;
 using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -16,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -45,6 +49,14 @@ public sealed class NetworkHostTests(TestContext context)
         await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
         var id = Guid.CreateVersion7();
         var version = new byte[8];
+        var resourceBuilder = WebApplication.CreateSlimBuilder();
+        resourceBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var resources = resourceBuilder.Build();
+        resources.MapGet("/internal/v1/device-management/{deviceId:guid}", (Guid deviceId) =>
+            deviceId == id ? Results.Ok(new DeviceDetails(id, "Example", "example.org", [], false, true, false,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Convert.ToBase64String(version))) : Results.NotFound());
+        await resources.StartAsync(token);
+        var resourceAddress = resources.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         await using (var db = new NetworkDbContext(networkOptions))
         {
             db.PingTargets.Add(new PingTargetState { DeviceId = id, Target = "example.org", DeviceVersion = version,
@@ -58,7 +70,7 @@ public sealed class NetworkHostTests(TestContext context)
             builder.UseSetting("Temporal:EnableNetworkWorker", "false");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Network"] = database.ConnectionString, ["Hangfire:Enabled"] = "false", ["Services:Identity:Url"] = "http://identity",
-                ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1" }));
+                ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1", ["Services:Resources:Url"] = resourceAddress }));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IDataProtectionProvider>();
@@ -84,11 +96,20 @@ public sealed class NetworkHostTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/settings/speed-tests", token))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", token))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
         using (var response = await client.GetAsync("/api/v1/speed-tests?from=2026-01-01T00%3A00%3A00Z&to=2026-01-02T00%3A00%3A00Z", token))
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/settings/speed-tests", token))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var status = await response.Content.ReadFromJsonAsync<DevicePingStatus>(cancellationToken: token);
+            Assert.IsNotNull(status);
+            Assert.AreEqual("example.org", Assert.ContainsSingle(status.Targets).Target);
+        }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
         while (true)
