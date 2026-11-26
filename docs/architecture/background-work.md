@@ -26,4 +26,4 @@ REQ-06-T01 的實作契約。Hangfire 使用 LGPL-3.0-or-later 開源授權；�
 
 ## 開發與部署
 
-部署者先建立目標資料庫，將 `VIGILOOM_MIGRATION_SQL_CONNECTION` 設為該資料庫的連線，再執行 `dotnet run --project src/Hosts/Vigiloom.Migrator`。Migrator 不建立資料庫，也拒絕系統資料庫；它套用模組與排程 migration、初始化內建角色並安裝 Hangfire schema，且會驗證安裝結果。Web 和 Worker 分別以 `ConnectionStrings:Vigiloom` 指向同一目標資料庫；通常環境變數名稱是 `ConnectionStrings__Vigiloom`。日常排程由管理員透過介面管理，不要求終端使用者操作 Hangfire 或修改設定檔。
+部署者先建立目標資料庫，將 `VIGILOOM_MIGRATION_SQL_CONNECTION` 設為該資料庫的連線，再執行 `dotnet run --project src/Hosts/Vigiloom.Migrator`。Migrator 不建立資料庫，也拒絕系統資料庫；它套用模組與排程 migration、初始化內建角色並安裝 Hangfire schema，且會驗證安裝結果。Web 和 Worker 的舊平台資料庫使用 `ConnectionStrings:Vigiloom`。微服務部署時，Web、Worker 與各排程服務可設定相同的 `ConnectionStrings:Scheduling` 指向共用 Hangfire 儲存；未設定時 Web 和 Worker 沿用 `ConnectionStrings:Vigiloom`。日常排程由管理員透過介面管理。

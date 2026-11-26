@@ -1,18 +1,17 @@
-using Microsoft.EntityFrameworkCore;
-using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Microsoft.Data.SqlClient;
 
 namespace Vigiloom.Infrastructure.Scheduling;
 
 public sealed record SchedulingHeartbeats(DateTimeOffset ObservedAt, IReadOnlyList<DateTimeOffset?> Values);
 
 /// <summary>Reads the Hangfire SQL Server heartbeat table with a cancellable, bounded query.</summary>
-public sealed class SchedulingHealth(IDbContextFactory<SchedulingDbContext> contexts)
+public sealed class SchedulingHealth(SchedulingReadStorage storage)
 {
     public async Task<SchedulingHeartbeats> ReadAsync(CancellationToken token)
     {
-        await using var db = await contexts.CreateDbContextAsync(token);
-        await db.Database.OpenConnectionAsync(token);
-        await using var command = db.Database.GetDbConnection().CreateCommand();
+        await using var connection = new SqlConnection(storage.ConnectionString);
+        await connection.OpenAsync(token);
+        await using var command = connection.CreateCommand();
         command.CommandTimeout = 5;
         command.CommandText = "SELECT LastHeartbeat FROM [hangfire].[Server]";
         var values = new List<DateTimeOffset?>();

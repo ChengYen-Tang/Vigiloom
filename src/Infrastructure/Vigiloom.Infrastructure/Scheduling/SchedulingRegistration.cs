@@ -18,7 +18,7 @@ public static class SchedulingRegistration
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
-            .UseSqlServerStorage(Connection(configuration), StorageOptions(prepareSchema: false)));
+            .UseSqlServerStorage(HangfireConnection(configuration), StorageOptions(prepareSchema: false)));
         services.AddScoped<OutboxWriter>();
         services.AddScoped<DashboardAuditStore>();
         services.AddScoped<SchedulingOverview>();
@@ -33,6 +33,9 @@ public static class SchedulingRegistration
 
     public static string Connection(IConfiguration configuration) => configuration.GetConnectionString("Vigiloom")
         ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required.");
+
+    public static string HangfireConnection(IConfiguration configuration) => configuration.GetConnectionString("Scheduling")
+        ?? Connection(configuration);
 
     public static SqlServerStorageOptions StorageOptions(bool prepareSchema) => new()
     {
