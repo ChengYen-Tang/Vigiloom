@@ -17,7 +17,7 @@ namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     IDeviceInventoryAgent ownership, InventoryAccess inventory, IHostMetricHistory metrics, IHostMetricThresholds thresholds, IHostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
+    IntegrityAccess integrity, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -99,7 +99,7 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     {
         await AuthorizeAsync(token);
         var resolved = await ownership.ResolveAsync(deviceId, token);
-        return resolved.Exists ? await changes.GetAsync(deviceId, from, until, null, cursor, token) : null;
+        return resolved.Exists ? await integrity.GetChangesAsync(deviceId, from, until, null, cursor, token) : null;
     }
     private async Task<ClaimsPrincipal> AuthorizeAsync(CancellationToken token)
     {

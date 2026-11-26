@@ -117,6 +117,12 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.IsNotNull(integrity.Headers.ETag);
             }
             var scopeId = scopeResult.Scope.Scope.Id;
+            var integrityPath = $"/internal/v1/devices/{identity.DeviceId:D}/integrity/";
+            var monitored = await securityClient.GetFromJsonAsync<DeviceIntegrityView>(integrityPath + $"?agentId={identity.AgentId:D}", token);
+            Assert.IsTrue(monitored!.Scopes.Any(scope => scope.ScopeId == scopeId));
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<IntegrityChangePage>(integrityPath + "changes?" + query, token));
+            using (var invalidIntegrity = await securityClient.GetAsync(integrityPath + "changes?" + query + "&cursor=invalid", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidIntegrity.StatusCode);
             var status = await agent.GetFromJsonAsync<IntegrityScopeStatus>($"/api/v1/agent/integrity-status/{scopeId:D}", token);
             Assert.IsNotNull(status);
             Assert.IsTrue(status.ScopePresent);
