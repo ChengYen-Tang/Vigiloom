@@ -26,10 +26,32 @@ public sealed class RemoteHostAuditTests(TestContext context)
         })) { BaseAddress = new Uri("http://host/") };
         using var services = new ServiceCollection().AddSingleton(new RemoteHostAuditFeed(client)).BuildServiceProvider();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Services:HostMonitoring:Url"] = "http://host" }).Build();
-        var reader = new AuditFeedReader(null!, null!, null!, null!, null!, config, services);
+        var reader = new AuditFeedReader(null!, null!, null!, null!, null!, config, services, null!);
         var actual = await reader.QueryAsync(new ClaimsPrincipal(), expected.Source, query, context.CancellationToken);
         Assert.AreEqual(expected.Source, actual.Source);
         Assert.AreEqual(expected.Page, actual.Page);
+    }
+
+    [TestMethod]
+    public async Task AuditReaderRoutesInventoryToSecurityService()
+    {
+        var query = new OperationAuditQuery(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
+        var expected = new AuditFeedPage(AuditFeedSource.InventorySettings, [], 1, false, false);
+        using var client = new HttpClient(new Handler(async request =>
+        {
+            Assert.AreEqual("/internal/v1/inventory-settings/audit", request.RequestUri!.AbsolutePath);
+            Assert.AreEqual(query, await request.Content!.ReadFromJsonAsync<OperationAuditQuery>(context.CancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(expected) };
+        })) { BaseAddress = new Uri("http://security/") };
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Services:Security:Url"] = "http://security" }).Build();
+        var reader = new AuditFeedReader(null!, null!, null!, null!, null!, config, services, new ClientFactory(client));
+        Assert.AreEqual(expected.Source, (await reader.QueryAsync(new ClaimsPrincipal(), expected.Source, query, context.CancellationToken)).Source);
+    }
+
+    private sealed class ClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
