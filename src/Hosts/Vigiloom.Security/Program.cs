@@ -131,6 +131,7 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddScoped<IntelligencePolicy>();
     builder.Services.AddScoped<AdvisoryCredentials>();
     builder.Services.AddScoped<AdvisoryRecovery>();
+    builder.Services.AddScoped<KevOfflineImport>();
     builder.Services.AddScoped<BaselineExceptions>();
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
@@ -156,6 +157,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
 app.MapGet("/health/live", () => Results.Ok());
 app.MapIntelligenceStatusEndpoints();
 app.MapCustomBaselineEndpoints();
+app.MapIntelligenceImportEndpoints();
 app.MapGet("/internal/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, CancellationToken token) =>
     await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound());
 app.MapPost("/internal/v1/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionCommand command, IServiceProvider services, CancellationToken token) =>

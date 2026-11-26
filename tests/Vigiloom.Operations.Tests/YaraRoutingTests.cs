@@ -89,6 +89,8 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var noCredentialAudit = await securityClient.PutAsJsonAsync(sourcePath + "advisory-credential",
                 new { Input = new AdvisoryCredentialUpdate("", true, null), ActorId = Guid.CreateVersion7() }, token))
                 Assert.AreEqual(HttpStatusCode.ServiceUnavailable, noCredentialAudit.StatusCode);
+            using (var noImportAudit = await securityClient.PostAsync(sourcePath + $"offline-import?actorId={Guid.CreateVersion7():D}", new StringContent("{}"), token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, noImportAudit.StatusCode);
             var baselineView = await securityClient.GetFromJsonAsync<DeviceBaselineView>($"/internal/v1/devices/{identity.DeviceId:D}/baseline", token);
             Assert.IsNotNull(baselineView);
             Assert.AreEqual(identity.DeviceId, baselineView.DeviceId);
