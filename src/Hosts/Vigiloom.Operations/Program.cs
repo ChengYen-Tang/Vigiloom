@@ -76,6 +76,7 @@ builder.Services.AddScoped<LineDeliveryQueue>();
 builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped<LineDeliveryStatus>();
 builder.Services.AddScoped<NotificationReader>();
+builder.Services.AddScoped<BaselineExceptionReader>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddSingleton(services =>
 {

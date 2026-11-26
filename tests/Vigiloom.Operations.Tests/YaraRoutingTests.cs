@@ -55,9 +55,20 @@ public sealed class YaraRoutingTests(TestContext context)
                 { ["ConnectionStrings:Security"] = database.ConnectionString }));
                 web.ConfigureTestServices(services => services.AddSingleton<IDeviceAgentSource>(new DeviceSource(identity.DeviceId)));
                 web.ConfigureTestServices(services => services.AddSingleton<IAgentOwnerResolver>(new NoAgentOwner()));
+                web.ConfigureTestServices(services =>
+                {
+                    services.AddHttpClient("host").ConfigurePrimaryHttpMessageHandler(() => new BaselineSourceHandler());
+                    services.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => new BaselineSourceHandler());
+                });
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            var baselineView = await securityClient.GetFromJsonAsync<DeviceBaselineView>($"/internal/v1/devices/{identity.DeviceId:D}/baseline", token);
+            Assert.IsNotNull(baselineView);
+            Assert.AreEqual(identity.DeviceId, baselineView.DeviceId);
+            using (var noAudit = await securityClient.PostAsJsonAsync($"/internal/v1/devices/{identity.DeviceId:D}/baseline-exceptions",
+                new { Input = new BaselineExceptionInput("test", Guid.CreateVersion7(), "reason"), ActorId = Guid.CreateVersion7() }, token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, noAudit.StatusCode);
             using (var count = await securityClient.PostAsJsonAsync("/internal/v1/retention/detections/count", new SecurityDetectionRetentionRequest(DateTimeOffset.UtcNow, 30), token))
             {
                 count.EnsureSuccessStatusCode();
@@ -234,5 +245,12 @@ public sealed class YaraRoutingTests(TestContext context)
     private sealed class NoAgentOwner : IAgentOwnerResolver
     {
         public Task<InventoryOwner?> ResolveAsync(Guid deviceId, CancellationToken token) => Task.FromResult<InventoryOwner?>(null);
+    }
+    private sealed class BaselineSourceHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(request.RequestUri!.AbsolutePath.Contains("agent-security-observation", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<BaselineExceptionNote>()) });
     }
 }
