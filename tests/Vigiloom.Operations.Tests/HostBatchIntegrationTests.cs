@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Devices;
@@ -79,6 +80,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var targetUpdate = new RecordedAgentUpdateTarget(Guid.CreateVersion7(), identity.AgentId, Guid.CreateVersion7(), "1.2.3", "win-x64", new string('a', 64), DateTimeOffset.UtcNow);
             var sink = new CommitThenLoseResponse(operationsClient);
+            var securityWriter = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Hangfire:Enabled", "false");
@@ -93,6 +95,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     configured.AddSingleton<IRecordedAgentTargetReader>(new TargetReader(targetUpdate));
                     configured.RemoveAll<IHostLogSink>();
                     configured.AddSingleton<IHostLogSink>(sink);
+                    configured.AddSingleton<IHostSecurityWorkWriter>(securityWriter);
                 });
             });
             using var client = host.CreateClient();
@@ -201,6 +204,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var until = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
             var metrics = await client.GetFromJsonAsync<HostMetricPage>($"/internal/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.AreEqual(25d, Assert.ContainsSingle(metrics!.Items).Value);
+            var yaraId = Guid.CreateVersion7();
+            var yara = YaraResultBatchCodec.Serialize(new(YaraResultBatchCodec.SchemaVersion, yaraId, nowUtc,
+                new(YaraScanOutcome.Completed, "match", "", false, nowUtc)));
+            using (var yaraResponse = await SendAsync(client, yara, "valid", token))
+                Assert.AreEqual(HttpStatusCode.NoContent, yaraResponse.StatusCode);
+            using (var duplicateYara = await SendAsync(client, yara, "valid", token))
+                Assert.AreEqual(HttpStatusCode.NoContent, duplicateYara.StatusCode);
+            Assert.AreEqual("yara", Assert.ContainsSingle(securityWriter.Batches).Kind);
+            await using (var verify = new HostMonitoringDbContext(hostOptions))
+                CollectionAssert.AreEqual(yara, (await verify.HostSecurityBatches.SingleAsync(x => x.BatchId == yaraId, token)).Payload);
             var series = new HostMetricThresholdQuery(identity.DeviceId, identity.AgentId, AgentMetricKind.CpuTotalPercent, "cpu", null);
             var thresholdCommand = new HostMetricThresholdCommand(series, new(true, HostMetricComparison.AtLeast, 20, 120, ""), Guid.CreateVersion7());
             using (var savedThreshold = await client.PostAsJsonAsync("/internal/v1/host-threshold/update", thresholdCommand, token))
@@ -331,6 +344,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         public Task<RecordedAgentUpdateTarget?> GetAsync(Guid agentId, Guid updateId, CancellationToken token) =>
             Task.FromResult<RecordedAgentUpdateTarget?>(target.AgentId == agentId && target.UpdateId == updateId ? target : null);
+    }
+
+    private sealed class SecurityWriter : IHostSecurityWorkWriter
+    {
+        public List<HostSecurityBatchReady> Batches { get; } = [];
+        public Task WriteAsync(HostMonitoringDbContext db, HostSecurityBatchReady batch, CancellationToken token)
+        {
+            Batches.Add(batch);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class CommitThenLoseResponse(HttpClient client) : IHostLogSink
