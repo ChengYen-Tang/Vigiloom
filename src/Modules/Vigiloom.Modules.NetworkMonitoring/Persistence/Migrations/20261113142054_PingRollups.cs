@@ -51,16 +51,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                         .Annotation("SqlServer:Clustered", true);
                 });
 
-            // Cross-module resource reference is owned by Network without a CLR module dependency.
-            migrationBuilder.AddForeignKey(
-                name: "FK_PingRollups_Devices_DeviceId",
-                schema: "network",
-                table: "PingRollups",
-                column: "DeviceId",
-                principalSchema: "resources",
-                principalTable: "Devices",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.NoAction);
+            migrationBuilder.Sql("IF OBJECT_ID(N'[resources].[Devices]', N'U') IS NOT NULL ALTER TABLE [network].[PingRollups] ADD CONSTRAINT [FK_PingRollups_Devices_DeviceId] FOREIGN KEY ([DeviceId]) REFERENCES [resources].[Devices] ([Id]);");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PingSamples_Unaggregated",
