@@ -96,6 +96,15 @@ public sealed class HostObservationMigrationTests(TestContext context)
                 await resources.SaveChangesAsync(token);
             }
             var agent = new Agent(device.Id, 1, new byte[32], now);
+            await using (var resources = new ResourcesDbContext(resourceOptions))
+            {
+                resources.Agents.Add(new RegisteredAgent { Id = agent.Id, DeviceId = device.Id, DeviceGeneration = device.AgentAuthorizationGeneration, Verifier = new byte[32], CreatedAt = now });
+                await resources.SaveChangesAsync(token);
+            }
+            var resourceFactory = new PooledDbContextFactory<ResourcesDbContext>(resourceOptions);
+            var registrations = new Vigiloom.Modules.Resources.Application.AgentIdentity.AgentRegistration(resourceFactory, TimeProvider.System, null!);
+            var overview = await registrations.OverviewAsync([device.Id], token);
+            Assert.AreEqual(agent.Id, Assert.ContainsSingle(overview).Registration!.Id);
             var epoch = Guid.CreateVersion7();
             agent.RecordHeartbeat(now);
             agent.BeginQueueSession(epoch);

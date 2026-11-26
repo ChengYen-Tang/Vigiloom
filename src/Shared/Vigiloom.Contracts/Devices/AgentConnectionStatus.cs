@@ -40,3 +40,8 @@ public interface IAgentStatusReader
 {
     Task<AgentConnectionStatus?> GetAsync(Guid deviceId, CancellationToken token);
 }
+
+public interface IAgentOverviewReader
+{
+    Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token);
+}

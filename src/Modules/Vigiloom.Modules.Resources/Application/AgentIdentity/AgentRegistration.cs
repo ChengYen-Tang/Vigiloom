@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using static Vigiloom.Infrastructure.Authentication.AgentCredentials;
@@ -12,6 +13,18 @@ namespace Vigiloom.Modules.Resources.Application.AgentIdentity;
 /// <summary>Owns device-bound Agent registration and credentials.</summary>
 public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, ResourceWork outbox)
 {
+    public async Task<IReadOnlyList<DeviceAgentOverview>> OverviewAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var devices = await db.Devices.AsNoTracking().Where(d => deviceIds.Contains(d.Id))
+            .Select(d => new DeviceAgentState(d.Id, d.AgentAuthorizationGeneration, d.DeepMonitoring && d.IsEnabled && !d.IsArchived)).ToArrayAsync(token);
+        var agents = await db.Agents.AsNoTracking().Where(a => deviceIds.Contains(a.DeviceId) && a.RevokedAt == null)
+            .Select(a => new { a.DeviceId, Summary = new AgentRegistrationSummary(a.Id, a.DeviceGeneration, a.CreatedAt, a.RevokedAt) }).ToArrayAsync(token);
+        var byDevice = agents.ToLookup(a => a.DeviceId);
+        return devices.Select(device => new DeviceAgentOverview(device,
+            byDevice[device.DeviceId].Select(x => x.Summary).SingleOrDefault(x => x.DeviceGeneration == device.Generation))).ToArray();
+    }
+
     public async Task<DeviceAgentRegistrations?> ListAsync(Guid deviceId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

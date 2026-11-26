@@ -176,6 +176,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             var status = await proxyClient.GetFromJsonAsync<AgentConnectionStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-status", token);
             Assert.AreEqual(AgentConnectionState.Online, status!.State);
+            using (var response = await proxyClient.PostAsJsonAsync("/internal/v1/agent-connections", new[] { identity.DeviceId }, token))
+            {
+                response.EnsureSuccessStatusCode();
+                var connections = await response.Content.ReadFromJsonAsync<Dictionary<Guid, AgentConnectionStatus>>(cancellationToken: token);
+                Assert.AreEqual(AgentConnectionState.Online, connections![identity.DeviceId].State);
+            }
             using (var response = await proxyClient.GetAsync("/api/v1/agent-management/settings/platform", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         }, outerToken), context.CancellationToken);
@@ -198,6 +204,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/agent-overview", StringComparison.Ordinal))
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new[] { new DeviceAgentOverview(
+                    new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true),
+                    new AgentRegistrationSummary(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null)) }) };
             if (request.Method == HttpMethod.Get)
             {
                 var payload = request.RequestUri!.AbsolutePath.EndsWith("/agents", StringComparison.Ordinal)

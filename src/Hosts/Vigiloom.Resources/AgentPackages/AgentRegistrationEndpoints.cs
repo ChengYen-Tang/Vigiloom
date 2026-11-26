@@ -7,6 +7,7 @@ internal static class AgentRegistrationEndpoints
 {
     internal static void MapInternalAgentRegistration(this RouteGroupBuilder api)
     {
+        api.MapPost("/devices/agent-overview", (Guid[] deviceIds, AgentRegistration agents, CancellationToken token) => agents.OverviewAsync(deviceIds, token));
         api.MapGet("/devices/{id:guid}/agents", async (Guid id, AgentRegistration agents, CancellationToken token) =>
             await agents.ListAsync(id, token) is { } registrations ? Results.Ok(registrations) : Results.NotFound());
         api.MapPost("/devices/{id:guid}/agent-enrollments", async (Guid id, AgentEnrollmentCommand request, AgentRegistration agents, CancellationToken token) =>

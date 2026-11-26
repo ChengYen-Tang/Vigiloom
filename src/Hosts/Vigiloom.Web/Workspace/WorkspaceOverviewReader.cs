@@ -14,7 +14,7 @@ using Vigiloom.Web.Groups;
 namespace Vigiloom.Web.Workspace;
 
 /// <summary>Combines independent source states without transferring an unbounded inventory to the browser.</summary>
-internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingStatusReader ping, AgentMonitoring agents,
+internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingStatusReader ping, AgentMonitoring agents, IServiceProvider provider,
     IDbContextFactory<ResourcesDbContext> resources, IGroupManagement groups, IServiceMembership services,
     HealthStatusReader health, Vigiloom.Web.Publishing.PublicObservationClient observation, IConfiguration configuration, TimeProvider clock, ILogger<WorkspaceOverviewReader> logger)
 {
@@ -48,6 +48,7 @@ internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingSt
         var pingItems = new List<WorkspaceItem>();
         var agentItems = new List<WorkspaceItem>();
         var pingCount = 0; var pingAttention = 0; var agentCount = 0; var agentAttention = 0;
+        var agentUnavailable = false;
         for (var page = 1; ; page++)
         {
             var batch = await devices.ListForOverviewAsync(page, token);
@@ -56,10 +57,27 @@ internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingSt
                 Convert.FromBase64String(x.Version), new[] { x.Address }.Concat(x.AdditionalTargets).ToArray())).ToArray();
             var pingStates = await ping.GetStatusesAsync(snapshots, token);
             var agentIds = batch.Items.Where(x => x.DeepMonitoring).Select(x => x.Id).ToArray();
-            await using var db = await resources.CreateDbContextAsync(token);
-            var agentDevices = await db.Devices.AsNoTracking().Where(x => agentIds.Contains(x.Id))
-                .Select(x => new DeviceAgentState(x.Id, x.AgentAuthorizationGeneration, x.DeepMonitoring && x.IsEnabled && !x.IsArchived)).ToArrayAsync(token);
-            var agentStates = await agents.GetConnectionsAsync(agentDevices, token);
+            IReadOnlyDictionary<Guid, AgentConnectionStatus> agentStates;
+            if (!string.IsNullOrWhiteSpace(configuration["Services:HostMonitoring:Url"]))
+            {
+                agentStates = new Dictionary<Guid, AgentConnectionStatus>();
+                if (!agentUnavailable)
+                {
+                    try
+                    {
+                        agentStates = await provider.GetRequiredService<IAgentOverviewReader>().GetConnectionsAsync(agentIds, token);
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                    catch (Exception ex) { logger.LogWarning(ex, "Unable to load Agent overview"); agentUnavailable = true; }
+                }
+            }
+            else
+            {
+                await using var db = await resources.CreateDbContextAsync(token);
+                var agentDevices = await db.Devices.AsNoTracking().Where(x => agentIds.Contains(x.Id))
+                    .Select(x => new DeviceAgentState(x.Id, x.AgentAuthorizationGeneration, x.DeepMonitoring && x.IsEnabled && !x.IsArchived)).ToArrayAsync(token);
+                agentStates = await agents.GetConnectionsAsync(agentDevices, token);
+            }
             foreach (var device in batch.Items)
             {
                 pingCount++;
@@ -80,7 +98,7 @@ internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingSt
             }
             if ((long)page * batch.PageSize >= batch.Total) break;
         }
-        return (new(pingCount, pingAttention, pingItems), new(agentCount, agentAttention, agentItems));
+        return (new(pingCount, pingAttention, pingItems), agentUnavailable ? Empty(true) : new(agentCount, agentAttention, agentItems));
     }
 
     private async Task<WorkspaceSection> ReadServicesAsync(CancellationToken token)

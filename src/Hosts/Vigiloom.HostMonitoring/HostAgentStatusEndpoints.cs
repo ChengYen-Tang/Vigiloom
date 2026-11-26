@@ -12,6 +12,14 @@ internal static class HostAgentStatusEndpoints
     public static void MapHostAgentStatusEndpoints(this WebApplication app)
     {
         app.MapGet("/internal/v1/devices/{id:guid}/agent-status", ReadAsync);
+        app.MapPost("/internal/v1/agent-connections", async (Guid[] ids, IHttpClientFactory clients, HostAgentMonitoring monitoring, CancellationToken token) =>
+        {
+            using var response = await clients.CreateClient("resources").PostAsJsonAsync("internal/v1/devices/agent-overview", ids, token);
+            response.EnsureSuccessStatusCode();
+            var devices = await response.Content.ReadFromJsonAsync<DeviceAgentOverview[]>(cancellationToken: token)
+                ?? throw new InvalidOperationException("Resources returned an empty Agent overview.");
+            return Results.Ok(await monitoring.GetConnectionsAsync(devices, token));
+        });
         app.MapGet("/api/v1/devices/{id:guid}/agent-status", ReadAsync).RequireAuthorization("MonitoringApiRead")
             .Produces<AgentConnectionStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get Agent connectivity independently of device Ping");
