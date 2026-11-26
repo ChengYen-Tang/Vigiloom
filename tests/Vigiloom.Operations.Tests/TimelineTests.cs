@@ -48,6 +48,8 @@ public sealed class TimelineTests(TestContext context)
             await using var verify = await factory.CreateDbContextAsync(token);
             Assert.AreEqual(2, await verify.Set<TimelineRecord>().CountAsync(token));
             Assert.AreEqual(1, await verify.Set<TimelineRecord>().CountAsync(x => x.Source == "service-trace", token));
+            Assert.AreEqual(1, await new TimelineLogCleanup(factory).RunTraceBatchAsync(7, token));
+            Assert.AreEqual(1, await verify.Set<TimelineRecord>().CountAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]
