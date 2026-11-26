@@ -2,10 +2,14 @@ using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
+using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
@@ -16,6 +20,10 @@ using Vigiloom.Observability.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Observability");
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddOptions<IdentityOptions>();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddVigiloomIdentityCredentialClient();
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), "service", pooled: true);
 builder.Services.AddSingleton(TimeProvider.System);
@@ -25,10 +33,30 @@ builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
     provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
 builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceptionRejectionDiagnostics>());
-builder.Services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ServiceSourceCredentialHandler>(
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ServiceSourceCredentialHandler>(
     ServiceSourceCredentialHandler.SchemeName, _ => { });
-builder.Services.AddAuthorization(options => options.AddPolicy("ServiceSource", policy =>
-    policy.AddAuthenticationSchemes(ServiceSourceCredentialHandler.SchemeName).RequireAuthenticatedUser()));
+builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+{
+    options.Events.OnValidatePrincipal = context => context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization(options =>
+{
+    options.AddVigiloomAccessPolicies();
+    options.AddPolicy("ServiceSource", policy => policy.AddAuthenticationSchemes(ServiceSourceCredentialHandler.SchemeName).RequireAuthenticatedUser());
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("api-client", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
+            Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+});
 builder.Services.AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
@@ -81,6 +109,8 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints
             await OtlpResponse.Failure(context.Response.StatusCode, "Telemetry request was rejected.").ExecuteAsync(context);
     }));
 app.UseMiddleware<OtlpTransportGuard>();
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
@@ -104,23 +134,7 @@ internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
         .Select(x => new ApplicationSourceStatus(x.RevokedAt == null, x.Name)).SingleOrDefaultAsync(token);
     return Results.Ok(source ?? new ApplicationSourceStatus(false, null));
 });
-internalApi.MapGet("/health/{id:guid}/status", async (Guid id, HealthStatusReader reader, CancellationToken token) =>
-{
-    if (id.Version != 7) return Results.BadRequest();
-    return await reader.ReadAsync(id, token) is { } result ? Results.Ok(result) : Results.NotFound();
-});
-internalApi.MapGet("/health/{id:guid}/history", async (Guid id, DateTimeOffset from, DateTimeOffset to,
-    HealthHistoryReader reader, CancellationToken token) =>
-{
-    try
-    {
-        return await reader.ReadAsync(id, from.ToUniversalTime(), to.ToUniversalTime(), token) is { } result
-            ? Results.Ok(result) : Results.NotFound();
-    }
-    catch (HealthHistoryRequestException) { return Results.BadRequest(); }
-    catch (HealthHistoryTooLargeException) { return Results.Problem(statusCode: 422, title: "The requested history is too large; select a shorter time range."); }
-    catch (HealthHistoryBusyException) { return Results.Problem(statusCode: 503, title: "Health history changed; retry the request."); }
-});
+app.MapHealthReads();
 app.Run();
 
 public partial class Program;
