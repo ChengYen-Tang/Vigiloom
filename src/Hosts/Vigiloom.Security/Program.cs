@@ -18,6 +18,16 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
+using Vigiloom.Security.Jobs;
+using Hangfire;
+using Hangfire.SqlServer;
+using Vigiloom.Infrastructure.Scheduling;
+using Vigiloom.Infrastructure.Security;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.SecurityAnalysis.Application.ScheduledJobs;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -39,6 +49,44 @@ builder.Services.AddScoped<SigmaDetectionHistory>();
 builder.Services.AddScoped<IocDetectionHistory>();
 builder.Services.AddScoped<VulnerabilityMonitoring>();
 builder.Services.AddScoped<IKevCatalog, KevCatalog>();
+if (builder.Configuration.GetValue("Hangfire:Enabled", false))
+{
+    if (!builder.Configuration.GetValue("Temporal:Enabled", true))
+        throw new InvalidOperationException("Temporal must be enabled for security intelligence audit delivery.");
+    builder.Services.AddVigiloomDataProtection(builder.Configuration);
+    builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
+    builder.Services.AddScoped<IntelligencePublication>();
+    builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
+            ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
+    builder.Services.AddHangfireServer(options => { options.Queues = ["security"]; options.IsLightweightServer = true; });
+    builder.Services.AddScoped<IntelligenceRefresh>();
+    builder.Services.AddScoped<DebianRefresh>();
+    builder.Services.AddScoped<UbuntuRefresh>();
+    builder.Services.AddScoped<MsrcRefresh>();
+    builder.Services.AddScoped<EpssRefresh>();
+    builder.Services.AddScoped<SigmaRefresh>();
+    builder.Services.AddScoped<SignatureRefresh>();
+    builder.Services.AddScoped<BaselineRefresh>();
+    builder.Services.AddScoped<AdvisoryRefresh>();
+    builder.Services.AddScoped<IntelligenceRefreshJob>(); builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
+    builder.Services.AddScoped<DebianRefreshJob>(); builder.Services.AddHostedService<DebianRefreshSchedule>();
+    builder.Services.AddScoped<UbuntuRefreshJob>(); builder.Services.AddHostedService<UbuntuRefreshSchedule>();
+    builder.Services.AddScoped<MsrcRefreshJob>(); builder.Services.AddHostedService<MsrcRefreshSchedule>();
+    builder.Services.AddScoped<EpssRefreshJob>(); builder.Services.AddHostedService<EpssRefreshSchedule>();
+    builder.Services.AddScoped<SigmaRefreshJob>(); builder.Services.AddHostedService<SigmaRefreshSchedule>();
+    builder.Services.AddScoped<SignatureRefreshJob>(); builder.Services.AddHostedService<SignatureRefreshSchedule>();
+    builder.Services.AddScoped<BaselineRefreshJob>(); builder.Services.AddHostedService<BaselineRefreshSchedule>();
+    builder.Services.AddScoped<AdvisoryRefreshJob>(); builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
+    builder.Services.AddHttpClient(IntelligenceHttp.KevClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.DebianClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateDebianHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.UbuntuClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.MsrcClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.EpssClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.AdvisoryClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.RepositoryClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
+}
 builder.Services.AddHttpClient<ResourceDevices>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
