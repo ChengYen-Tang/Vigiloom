@@ -1,12 +1,11 @@
 @page "/devices/{DeviceId:guid}/host-logs/{AgentId:guid}/{MessageId:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
 @attribute [ExcludeFromInteractiveRouting]
-@using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
+@using Vigiloom.Contracts.Agent
 @using Vigiloom.Contracts.Operations
-@using Vigiloom.Modules.AgentManagement.Persistence
 @using Vigiloom.Web.Events
-@inject IDbContextFactory<AgentManagementDbContext> Agents
+@inject Vigiloom.Web.HostMonitoring.HostLogEvidenceReader EvidenceReader
 @inject EventTimelineAudit Audit
 @inject ILogger<HostLogEvidence> Logger
 
@@ -30,7 +29,7 @@
     [Parameter] public Guid AgentId { get; set; }
     [Parameter] public Guid MessageId { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
-    private Evidence? entry;
+    private HostLogEvidenceView? entry;
     private string? error;
 
     protected override async Task OnParametersSetAsync()
@@ -38,11 +37,7 @@
         HttpContext.Response.Headers.CacheControl = "private, no-store";
         try
         {
-            await using var db = await Agents.CreateDbContextAsync(HttpContext.RequestAborted);
-            entry = await (from log in db.HostLogs.AsNoTracking()
-                join agent in db.Agents.AsNoTracking() on log.AgentId equals agent.Id
-                where agent.DeviceId == DeviceId && log.AgentId == AgentId && log.MessageId == MessageId
-                select new Evidence(log.SourceName, log.ParserVersion, log.ReceivedAt, log.Content)).FirstOrDefaultAsync(HttpContext.RequestAborted);
+            entry = await EvidenceReader.GetAsync(DeviceId, AgentId, MessageId, HttpContext.RequestAborted);
             if (entry is not null)
             {
                 if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new InvalidOperationException("Missing actor.");
@@ -56,5 +51,4 @@
         }
     }
 
-    private sealed record Evidence(string SourceName, int ParserVersion, DateTimeOffset ReceivedAt, string Content);
 }

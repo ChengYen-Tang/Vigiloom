@@ -124,6 +124,10 @@ public sealed class HostLogTests(TestContext context)
             var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
             var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
             var hostHistory = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
+            var evidence = await client.GetFromJsonAsync<HostLogEvidenceView>($"/internal/v1/host-logs/{input.DeviceId:D}/{input.AgentId:D}/{item.MessageId:D}", token);
+            Assert.AreEqual(item.Content, evidence!.Content);
+            using (var wrongDevice = await client.GetAsync($"/internal/v1/host-logs/{Guid.CreateVersion7():D}/{input.AgentId:D}/{item.MessageId:D}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, wrongDevice.StatusCode);
             Assert.HasCount(1, hostHistory!.Items);
             Assert.AreEqual(item.MessageId, hostHistory.Items[0].MessageId);
             var otherHost = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{Guid.CreateVersion7():D}?from={from}&until={until}", token);
