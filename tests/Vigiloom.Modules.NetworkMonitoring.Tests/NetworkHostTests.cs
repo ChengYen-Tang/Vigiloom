@@ -47,6 +47,7 @@ public sealed class NetworkHostTests(TestContext context)
         using var host = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Hangfire:Enabled", "false");
+            builder.UseSetting("Temporal:EnableNetworkWorker", "false");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Network"] = database.ConnectionString, ["Hangfire:Enabled"] = "false" }));
             builder.ConfigureTestServices(services =>

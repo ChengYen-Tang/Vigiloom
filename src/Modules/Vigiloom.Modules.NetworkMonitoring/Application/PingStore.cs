@@ -29,7 +29,45 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         if (batch.Count != 0) await ReconcileBatchAsync(batch, settings, token);
     }
 
-    private async Task ReconcileBatchAsync(List<PingDeviceSnapshot> batch, PingSettingsSnapshot settings, CancellationToken token)
+    public async Task RefreshDeviceAsync(Guid deviceId, byte[] version, PingSettingsSnapshot settings, CancellationToken token)
+    {
+        await foreach (var device in devices.ReadEnabledAsync(token))
+        {
+            if (device.Id != deviceId) continue;
+            await ReconcileBatchAsync([device], settings, token, retryConflicts: true);
+            return;
+        }
+        await DisableDeviceAsync(deviceId, version, token);
+    }
+
+    private async Task DisableDeviceAsync(Guid deviceId, byte[] version, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var targets = await db.PingTargets.Where(item => item.DeviceId == deviceId && item.Enabled).ToListAsync(token);
+        if (targets.Count == 0) return;
+        var now = clock.GetUtcNow();
+        PingDeviceContext? context = null;
+        foreach (var state in targets)
+        {
+            if (state.DeviceVersion.AsSpan().SequenceCompareTo(version) > 0) continue;
+            var previous = state.State;
+            state.DeviceVersion = version; state.Enabled = false; state.Generation++; state.LeaseUntil = null; state.State = Reachability.Unknown;
+            if (previous == Reachability.Unknown) continue;
+            db.PingStateEvents.Add(new PingStateEvent { DeviceId = state.DeviceId, Target = state.Target, Generation = state.Generation,
+                OccurredAt = now, Previous = previous, Current = Reachability.Unknown });
+            if (transitionSinks is null || !transitionSinks.Any()) continue;
+            context ??= await devices.GetContextAsync(deviceId, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            var transition = new PingTransition(deviceId, state.Target, state.Generation, now, previous, Reachability.Unknown, context, state.LastTransitionGeneration);
+            foreach (var sink in transitionSinks)
+                await sink.RecordAsync(transition, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            state.LastTransitionGeneration = state.Generation;
+        }
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+    }
+
+    private async Task ReconcileBatchAsync(List<PingDeviceSnapshot> batch, PingSettingsSnapshot settings, CancellationToken token, bool retryConflicts = false)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         var ids = batch.Select(x => x.Id).ToArray();
@@ -48,7 +86,8 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                     db.PingTargets.Add(new PingTargetState { DeviceId = device.Id, Target = target, DeviceVersion = device.Version,
                         Enabled = true, DueAt = now.AddSeconds(Spread(device.Id, target, settings.IntervalSeconds)) });
                 }
-                else if (!state.Enabled || !state.DeviceVersion.AsSpan().SequenceEqual(device.Version))
+                else if (state.DeviceVersion.AsSpan().SequenceCompareTo(device.Version) <= 0 &&
+                    (!state.Enabled || !state.DeviceVersion.AsSpan().SequenceEqual(device.Version)))
                 {
                     if (state.State != Reachability.Unknown) unknown.Add((state, state.State));
                     state.DeviceVersion = device.Version; state.Enabled = true; state.Generation++;
@@ -57,13 +96,14 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                     state.LatencyMilliseconds = null; state.ResolvedAddress = null;
                 }
             }
-            foreach (var obsolete in byDevice[device.Id].Where(x => x.Enabled && !device.Targets.Contains(x.Target, StringComparer.Ordinal)))
+            foreach (var obsolete in byDevice[device.Id].Where(x => x.Enabled && x.DeviceVersion.AsSpan().SequenceCompareTo(device.Version) <= 0 && !device.Targets.Contains(x.Target, StringComparer.Ordinal)))
             {
                 if (obsolete.State != Reachability.Unknown) unknown.Add((obsolete, obsolete.State));
-                obsolete.Enabled = false; obsolete.Generation++; obsolete.LeaseUntil = null;
+                obsolete.DeviceVersion = device.Version; obsolete.Enabled = false; obsolete.Generation++; obsolete.LeaseUntil = null;
                 obsolete.State = Reachability.Unknown;
             }
         }
+        if (!db.ChangeTracker.HasChanges()) return;
         try
         {
             await using var transaction = await db.Database.BeginTransactionAsync(token);
@@ -83,8 +123,8 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
             await db.SaveChangesAsync(token);
             await transaction.CommitAsync(token);
         }
-        catch (DbUpdateConcurrencyException) { /* Another worker claimed or reconciled a row; rescan next tick. */ }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { /* Concurrent initialization is retried next tick. */ }
+        catch (DbUpdateConcurrencyException) when (!retryConflicts) { /* Another worker claimed or reconciled a row; rescan next tick. */ }
+        catch (DbUpdateException ex) when (!retryConflicts && ex.InnerException is SqlException { Number: 2601 or 2627 }) { /* Concurrent initialization is retried next tick. */ }
     }
 
     public Task<IReadOnlyList<PingLease>> ClaimAsync(PingSettingsSnapshot settings, CancellationToken token) =>
@@ -134,13 +174,6 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         await using var tx = await db.Database.BeginTransactionAsync(token);
         if (!await db.PingTargets.FromSqlInterpolated($"SELECT * FROM [network].[PingTargets] WHERE [DeviceId] = {lease.DeviceId} AND [Target] = {lease.Target} AND [Generation] = {lease.Generation} AND [Enabled] = 1 AND [LeaseUntil] > TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')").AsNoTracking().AnyAsync(token)) return false;
         return await devices.IsCurrentAsync(lease.DeviceId, lease.DeviceVersion, lease.Target, db.Database.GetDbConnection(), tx.GetDbTransaction(), token);
-    }
-
-    public async Task DeactivateAsync(PingLease lease, CancellationToken token)
-    {
-        await using var db = await contexts.CreateDbContextAsync(token);
-        await db.PingTargets.Where(x => x.DeviceId == lease.DeviceId && x.Target == lease.Target && x.Generation == lease.Generation)
-            .ExecuteUpdateAsync(update => update.SetProperty(x => x.Enabled, false).SetProperty(x => x.LeaseUntil, (DateTimeOffset?)null), token);
     }
 
     public async Task<bool> CommitAsync(PingLease lease, PingSettingsSnapshot settings, PingMeasurement measurement,

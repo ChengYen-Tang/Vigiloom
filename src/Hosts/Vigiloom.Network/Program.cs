@@ -25,6 +25,8 @@ builder.Services.AddHttpClient<IDevicePingSource, RemoteDevicePingSource>((servi
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233", builder.Configuration["Temporal:Namespace"] ?? "default");
+if (builder.Configuration.GetValue("Temporal:EnableNetworkWorker", true))
+    builder.Services.AddVigiloomTemporalWorker<DeviceChangeHandler>(builder.Configuration["Work:NetworkQueue"] ?? "vigiloom.network.resources");
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
 builder.Services.AddScoped<IPingTransitionSink, TemporalPingTransitionSink>();
 builder.Services.AddScoped<PingSettings>();
