@@ -61,7 +61,6 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
     if (!builder.Configuration.GetValue("Temporal:Enabled", true))
         throw new InvalidOperationException("Temporal must be enabled for security intelligence audit delivery.");
     builder.Services.AddVigiloomDataProtection(builder.Configuration);
-    builder.Services.AddScoped<IntelligencePublication>();
     builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
@@ -126,6 +125,8 @@ builder.Services.AddHttpClient<IHostLogReader, OperationsHostLogs>((services, cl
 if (builder.Configuration.GetValue("Temporal:Enabled", true))
 {
     builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
+    builder.Services.AddScoped<IntelligencePublication>();
+    builder.Services.AddScoped<IntelligenceRevocation>();
     builder.Services.AddScoped<BaselineExceptions>();
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
