@@ -155,6 +155,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using var response = await client.SendAsync(request, token);
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             }
+            var from = Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"));
+            var until = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
+            var metrics = await client.GetFromJsonAsync<HostMetricPage>($"/internal/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
+            Assert.AreEqual(25d, Assert.ContainsSingle(metrics!.Items).Value);
             var item = new AgentLogRecord(Guid.CreateVersion7(), nowUtc, "host event", null, null, null, null, null);
             var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc,
                 Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [item]);

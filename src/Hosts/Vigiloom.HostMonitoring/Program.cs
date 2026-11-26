@@ -65,6 +65,7 @@ builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostAgentConfiguration>();
 builder.Services.AddScoped<HostQueueCapacity>();
 builder.Services.AddScoped<HostAgentMonitoring>();
+builder.Services.AddScoped<HostMetricReader>();
 builder.Services.AddScoped<HostUpdateResults>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
@@ -121,6 +122,7 @@ app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
 app.MapHostQueueCapacityEndpoints();
 app.MapHostAgentStatusEndpoints();
+app.MapHostMetricEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
 app.MapPost("/api/v1/agent/update-results", AgentUpdateResultEndpoint.ReceiveAsync)
