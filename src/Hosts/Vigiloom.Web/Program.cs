@@ -46,7 +46,6 @@ using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
-using Vigiloom.Web.Gateway;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -374,7 +373,20 @@ builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingRetentionSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<PingSettings>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingRetentionSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<PingRetentionSettings>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingAdministration>());
 builder.Services.AddScoped<PingStore>();
+builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingStatusReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingStatusReader>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"])
+        ? services.GetRequiredService<PingStore>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingStatusReader>());
 builder.Services.AddScoped<Vigiloom.Modules.NetworkMonitoring.Application.PingHistory.PingHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, Vigiloom.Web.Network.ServerPingHistoryClient>();
 builder.Services.AddScoped<SpeedSettings>();
@@ -382,6 +394,21 @@ builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
+builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedSettings>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedRetentionSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedRetentionSettings>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedCancellation>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedQueue>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
+builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingHistory>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedHistory>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigiloom.Web.HostMonitoring.ServerHostMonitoringClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Vulnerabilities.IVulnerabilityClient, Vigiloom.Web.HostMonitoring.ServerVulnerabilityClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, Vigiloom.Web.ServiceDetails.ServerServiceDetailsClient>();
@@ -399,8 +426,12 @@ builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicationManageme
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicReader>((services, client) =>
-    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]
+        ?? throw new InvalidOperationException("Services:Resources:Url is required when using remote publication or the network service.")).TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemoteNetworkPublicClient>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicDeviceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
@@ -479,6 +510,9 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(app.Configuration["Services:Network:Url"]) && string.IsNullOrWhiteSpace(app.Configuration["Services:Resources:Url"]))
+    throw new InvalidOperationException("Services:Resources:Url is required when Services:Network:Url is configured.");
 
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);

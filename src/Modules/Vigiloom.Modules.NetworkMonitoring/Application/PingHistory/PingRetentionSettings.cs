@@ -15,7 +15,7 @@ public sealed class PingRetentionSettings(
     IDbContextFactory<NetworkDbContext> contexts,
     PingSettings settings,
     IOperationAuditWriter<OperationAudit> audit,
-    IDataProtectionProvider protection)
+    IDataProtectionProvider protection) : IPingRetentionSettings
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.PingRetention.Preview.v1");
 

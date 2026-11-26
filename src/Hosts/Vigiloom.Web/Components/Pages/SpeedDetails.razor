@@ -5,8 +5,8 @@
 @using Vigiloom.Contracts.SpeedTests
 @using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests
 @using Vigiloom.Web.Client.Components.SpeedTests
-@inject SpeedHistory History
-@inject SpeedQueue Queue
+@inject ISpeedHistoryClient History
+@inject ISpeedCancellation Queue
 @inject NavigationManager Navigation
 @inject ILogger<SpeedDetails> Logger
 <PageTitle>測速結果 - Vigiloom</PageTitle>

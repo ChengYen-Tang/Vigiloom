@@ -320,6 +320,31 @@ public sealed class PingSqlTests
     }, snapshotReads);
 
     [TestMethod]
+    public Task SeparateWorkersReclaimExpiredPingLease() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        await SeedAsync(resources, token);
+        var first = new PingStore(network, new DevicePingSource(resources), clock);
+        var second = new PingStore(network, new DevicePingSource(resources), clock);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        await first.ReconcileAsync(policy, token);
+        await DueAsync(network, token);
+        var original = Assert.ContainsSingle(await first.ClaimAsync(policy, 1, null, token));
+        var other = await second.ClaimAsync(policy, 8, null, token);
+        Assert.IsFalse(other.Any(item => item.DeviceId == original.DeviceId && item.Target == original.Target));
+        await using (var db = network.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE network.PingTargets SET LeaseUntil = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE DeviceId = {original.DeviceId} AND Target = {original.Target}", token);
+        var recovered = Assert.ContainsSingle(await second.ClaimAsync(policy, 1, null, token));
+        Assert.AreEqual(original.DeviceId, recovered.DeviceId);
+        Assert.AreEqual(original.Target, recovered.Target);
+        Assert.IsGreaterThan(original.Generation, recovered.Generation);
+        Assert.IsFalse(await first.CommitAsync(original, policy, new(PingOutcome.Success, original.Target, 1), clock.Now, "central", token));
+        Assert.IsTrue(await second.CommitAsync(recovered, policy, new(PingOutcome.Success, recovered.Target, 1), clock.Now, "central", token));
+    });
+
+    [TestMethod]
     public Task PingRetention_PreviewsAndAuditsShortenedPolicy() => WithReusableDatabase(async (resources, network, token) =>
     {
         var (device, _) = await SeedAsync(resources, token);
@@ -428,6 +453,118 @@ public sealed class PingSqlTests
     });
 
     [TestMethod]
+    public Task DeviceChangeDisablesTargetsAndIgnoresStaleNotifications() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock, [new PingAlertSink()]);
+        await store.ReconcileAsync(policy, token);
+        byte[] oldVersion;
+        await using (var db = resources.CreateDbContext())
+        {
+            var current = await db.Devices.SingleAsync(item => item.Id == device.Id, token);
+            oldVersion = current.Version.ToArray();
+            current.Update(current.Name, current.Address, false, false, clock.Now);
+            await db.SaveChangesAsync(token);
+            device = current;
+        }
+        await using (var db = network.CreateDbContext())
+        {
+            var state = await db.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+            state.State = Reachability.Unreachable;
+            await db.SaveChangesAsync(token);
+        }
+        await store.RefreshDeviceAsync(device.Id, device.Version, policy, token);
+        await store.RefreshDeviceAsync(device.Id, oldVersion, policy, token);
+        await using var result = network.CreateDbContext();
+        var target = await result.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+        Assert.IsFalse(target.Enabled);
+        Assert.AreEqual(Reachability.Unknown, target.State);
+        CollectionAssert.AreEqual(device.Version, target.DeviceVersion);
+        Assert.AreEqual(1, await result.PingStateEvents.CountAsync(item => item.DeviceId == device.Id, token));
+    });
+
+    [TestMethod]
+    public Task ReconciliationDetectsConcurrentTransition() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(await settings.GetAsync(token), token);
+        await using var stale = network.CreateDbContext();
+        var old = await stale.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+        await using (var current = network.CreateDbContext())
+        {
+            var state = await current.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+            state.LastTransitionGeneration = 1;
+            await current.SaveChangesAsync(token);
+        }
+        old.Generation++;
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync(token));
+    });
+
+    [TestMethod]
+    public Task ChangedDevicePublishesUnknownTransition() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        var (device, _) = await SeedAsync(resources, token);
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock, [new PingAlertSink()]);
+        await store.ReconcileAsync(policy, token);
+        await using (var db = network.CreateDbContext())
+        {
+            var target = await db.PingTargets.SingleAsync(item => item.DeviceId == device.Id, token);
+            target.State = Reachability.Unreachable;
+            await db.SaveChangesAsync(token);
+        }
+        await using (var db = resources.CreateDbContext())
+        {
+            var current = await db.Devices.SingleAsync(item => item.Id == device.Id, token);
+            current.Update(current.Name, "127.0.0.3", false, true, clock.Now);
+            await db.SaveChangesAsync(token);
+        }
+        await store.ReconcileAsync(policy, token);
+        await using var result = network.CreateDbContext();
+        var change = await result.PingStateEvents.SingleAsync(item => item.DeviceId == device.Id, token);
+        Assert.AreEqual(Reachability.Unreachable, change.Previous);
+        Assert.AreEqual(Reachability.Unknown, change.Current);
+        var oldTarget = await result.PingTargets.SingleAsync(item => item.DeviceId == device.Id && item.Target == "127.0.0.1", token);
+        Assert.AreEqual(change.Generation, oldTarget.LastTransitionGeneration);
+    });
+
+    [TestMethod]
+    public Task RunnerRefillsSlotsWithoutWaitingForSlowTargets() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        await using (var db = resources.CreateDbContext())
+        {
+            for (var i = 1; i <= 10; i++) db.Devices.Add(new Device($"Device {i}", $"127.0.0.{i}", false, clock.Now));
+            await db.SaveChangesAsync(token);
+        }
+        var settings = new PingSettings(network, clock, new OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        Assert.IsNotNull(await settings.UpdateAsync(new PingSettingsInput(policy.IntervalSeconds, policy.TimeoutSeconds,
+            policy.FailureThreshold, policy.SuccessThreshold, 8, policy.Version), Guid.CreateVersion7(), token));
+        policy = await settings.GetAsync(token);
+        var store = new PingStore(network, new DevicePingSource(resources), clock);
+        await store.ReconcileAsync(policy, token);
+        await DueAsync(network, token);
+        var probe = new SlowFirstProbe();
+        var run = new PingRunner(settings, store, probe, clock).RunOnceAsync(token);
+        try { await probe.NinthStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), token); }
+        finally { probe.Release.TrySetResult(); await run; }
+        Assert.AreEqual(10, probe.Calls);
+    });
+
+    [TestMethod]
     public Task RunnerSamplesEachConfiguredTargetExactlyOnce() => WithReusableDatabase(async (resources, network, token) =>
     {
         var clock = new TestClock();
@@ -470,6 +607,9 @@ public sealed class PingSqlTests
         await store.ReconcileAsync(policy, token); await DueAsync(network, token);
         var lease = (await store.ClaimAsync(policy, token)).Single(x => x.DeviceId == device.Id && x.Target == "::1");
         Assert.IsTrue(await store.IsCurrentAsync(lease, token));
+        var source = new DevicePingSource(resources);
+        var verification = new Vigiloom.Contracts.Resources.PingTargetVerification(lease.DeviceId, lease.DeviceVersion, lease.Target);
+        Assert.IsNotNull(await source.VerifyAsync(verification, token));
         await using (var db = resources.CreateDbContext())
         {
             var current = await db.Devices.SingleAsync(x => x.Id == device.Id, token);
@@ -483,6 +623,7 @@ public sealed class PingSqlTests
             await db.SaveChangesAsync(token);
         }
         Assert.IsFalse(await store.IsCurrentAsync(lease, token));
+        Assert.IsNull(await source.VerifyAsync(verification, token));
         Assert.IsFalse(await store.CommitAsync(lease, policy, new(PingOutcome.Success, "::1", 0), clock.Now, "central", token));
         await using var check = network.CreateDbContext();
         Assert.AreEqual(0, await check.PingSamples.CountAsync(token));
@@ -958,6 +1099,20 @@ public sealed class PingSqlTests
         {
             Interlocked.Increment(ref calls);
             return Task.FromResult(new PingMeasurement(PingOutcome.Success, target, 1));
+        }
+    }
+    private sealed class SlowFirstProbe : IPingProbe
+    {
+        private int calls;
+        public int Calls => calls;
+        public TaskCompletionSource NinthStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<PingMeasurement> MeasureAsync(string target, int timeoutSeconds, CancellationToken token)
+        {
+            var index = Interlocked.Increment(ref calls);
+            if (index == 1) await Release.Task.WaitAsync(token);
+            if (index == 9) NinthStarted.TrySetResult();
+            return new(PingOutcome.Success, target, 1);
         }
     }
 }
