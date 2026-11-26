@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="操作紀錄保存" xml:space="preserve"><value>Audit record retention</value></data>
+  <data name="管理操作紀錄、告警、通知與安全變更歷史的保存期限。" xml:space="preserve"><value>Manage retention for audit records, alerts, notifications and security change history.</value></data>
+  <data name="此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。" xml:space="preserve"><value>This period covers audit records for platform settings, devices, Agent, security settings, event queries and exports, background jobs, accounts and API credentials; alerts, notifications, completed jobs, YARA scan results (including rules and output), inventory and file integrity change history, vulnerability assessment history and security baseline observation history. Current inventory snapshots, integrity states, vulnerability assessments and latest observations per baseline version are retained. Unused older GitHub Advisory versions and completed or abandoned import staging are cleaned under this period; current and previous usable versions, shared sources and published withdrawals are retained. Other security evidence is outside this period. Initial administrator setup records, ongoing alerts, notifications not yet queued for delivery and unfinished jobs are retained. Expired data is cleaned periodically; extending retention cannot restore deleted data.</value></data>
+  <data name="SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。" xml:space="preserve"><value>Older SigmaHQ, Signature-Base, CISA KEV, FIRST EPSS and Debian intelligence content is also cleaned under this period. The current, previous usable, latest candidate and event-referenced versions are retained. Version and activation records remain queryable; older versions with deleted content cannot be restored directly.</value></data>
+  <data name="Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。" xml:space="preserve"><value>Older Ubuntu and Microsoft security intelligence archives and unused content are also cleaned under this period; shared files still used by other versions and published withdrawals are retained.</value></data>
+  <data name="此期限也適用於已停止重試的 Hangfire 失敗工作；執行中及等待重試的工作會保留。" xml:space="preserve"><value>This period also applies to failed Hangfire jobs that have stopped retrying; running jobs and those awaiting retry are retained.</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>Unable to load retention settings. Refresh and try again.</value></data>
+  <data name="保存天數（1～3650 天）" xml:space="preserve"><value>Retention (1–3650 days)</value></data>
+  <data name="以 {0} 為準，預計有 {1} 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。" xml:space="preserve"><value>As of {0}, an estimated {1} audit, security history and intelligence records qualify for cleanup. Cleanup may remove references to other old intelligence, making it eligible afterward; actual counts may change.</value></data>
+  <data name="預計清理 {0} 筆已恢復告警及 {1} 筆通知。" xml:space="preserve"><value>An estimated {0} resolved alerts and {1} notifications will be cleaned up.</value></data>
+  <data name="預計清理 {0} 筆已結束的背景工作及其派送紀錄。" xml:space="preserve"><value>An estimated {0} completed background jobs and their delivery records will be cleaned up.</value></data>
+  <data name="Hangfire 失敗工作的數量未包含在上述預覽中，符合期限的紀錄也會清理。" xml:space="preserve"><value>Failed Hangfire job counts are not included in the preview; eligible records will also be cleaned up.</value></data>
+  <data name="確認後將依排程清理；預覽在 5 分鐘內有效。" xml:space="preserve"><value>After confirmation, cleanup follows its schedule. The preview is valid for 5 minutes.</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>Confirm save</value></data>
+  <data name="取消" xml:space="preserve"><value>Cancel</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>Preview changes</value></data>
+  <data name="返回操作稽核" xml:space="preserve"><value>Back to audit</value></data>
+  <data name="請輸入有效的保存天數。" xml:space="preserve"><value>Enter a valid retention period.</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed elsewhere. Refresh and try again.</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>Retention settings saved.</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or the period changed. Preview again.</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check.</value></data>
+</root>

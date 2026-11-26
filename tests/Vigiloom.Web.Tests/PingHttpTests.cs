@@ -198,6 +198,23 @@ public sealed class PingHttpTests
         Assert.IsNotNull(initial);
         using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/audit-retention/preview", new AuditRetentionPreviewRequest(30, initial.Version), token))
             Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/audit/retention", token))
+        {
+            Assert.Contains("Audit record retention", await TextAsync(english, token));
+            var englishFields = Hidden(await FormAsync(english, "audit-retention", token));
+            englishFields["Input.Days"] = "30";
+            using var englishPreview = await admin.PostAsync("/settings/audit/retention", new FormUrlEncodedContent(englishFields), token);
+            var previewText = await TextAsync(englishPreview, token);
+            Assert.Contains("an estimated 6 audit", previewText);
+            Assert.Contains("1 resolved alerts and 1 notifications", previewText);
+            Assert.Contains("Confirm save", previewText);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/audit/retention", token))
+            Assert.Contains("操作记录保存", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var page = await admin.GetAsync("/settings/audit/retention", token);
         var fields = Hidden(await FormAsync(page, "audit-retention", token));
         fields["Input.Days"] = "30";
