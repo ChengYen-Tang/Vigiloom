@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="深入監控資料" xml:space="preserve"><value>深入监控数据</value></data>
+  <data name="各資料來源各自回報；Ping、Agent 與應用服務狀態互不推定。" xml:space="preserve"><value>各数据来源各自报告；Ping、Agent 与应用服务状态互不推定。</value></data>
+  <data name="主機資料分類" xml:space="preserve"><value>主机数据分类</value></data>
+  <data name="資產盤點" xml:space="preserve"><value>资产清单</value></data>
+  <data name="效能" xml:space="preserve"><value>性能</value></data>
+  <data name="程序與服務" xml:space="preserve"><value>进程与服务</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>主机日志</value></data>
+  <data name="行為偵測" xml:space="preserve"><value>行为检测</value></data>
+  <data name="漏洞" xml:space="preserve"><value>漏洞</value></data>
+  <data name="檔案完整性" xml:space="preserve"><value>文件完整性</value></data>
+  <data name="查詢時間" xml:space="preserve"><value>查询时间</value></data>
+  <data name="最近 24 小時" xml:space="preserve"><value>最近 24 小时</value></data>
+  <data name="最近 7 天" xml:space="preserve"><value>最近 7 天</value></data>
+  <data name="最近 30 天" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="最近 1 年" xml:space="preserve"><value>最近 1 年</value></data>
+  <data name="最近 {0} 天（保存期限）" xml:space="preserve"><value>最近 {0} 天（保留期限）</value></data>
+  <data name="正在載入…" xml:space="preserve"><value>正在加载…</value></data>
+  <data name="登入已失效或權限已變更，請重新登入。" xml:space="preserve"><value>登录已失效或权限已更改，请重新登录。</value></data>
+  <data name="重新載入" xml:space="preserve"><value>重新加载</value></data>
+  <data name="顯示最後一次掃描與保留基線；覆蓋缺口不代表檔案完整無異常。" xml:space="preserve"><value>显示最后一次扫描与保留基线；覆盖缺口不代表文件完整无异常。</value></data>
+  <data name="左右滑動查看完整表格。" xml:space="preserve"><value>左右滑动查看完整表格。</value></data>
+  <data name="完整性範圍表格，可左右捲動" xml:space="preserve"><value>完整性范围表格，可左右滚动</value></data>
+  <data name="範圍" xml:space="preserve"><value>范围</value></data>
+  <data name="最後掃描" xml:space="preserve"><value>最后扫描</value></data>
+  <data name="結果" xml:space="preserve"><value>结果</value></data>
+  <data name="基線" xml:space="preserve"><value>基线</value></data>
+  <data name="已停用" xml:space="preserve"><value>已停用</value></data>
+  <data name="平台：{0}" xml:space="preserve"><value>平台：{0}</value></data>
+  <data name="（有覆蓋缺口）" xml:space="preserve"><value>（有覆盖缺口）</value></data>
+  <data name="（原因：{0}）" xml:space="preserve"><value>（原因：{0}）</value></data>
+  <data name="（設定已變更）" xml:space="preserve"><value>（设置已更改）</value></data>
+  <data name="查看基線" xml:space="preserve"><value>查看基线</value></data>
+  <data name="基線項目" xml:space="preserve"><value>基线项目</value></data>
+  <data name="範圍 ID：{0} · 基線設定版本：{1} · 觀察時間（UTC）：{2} · 第 {3} / {4} 頁" xml:space="preserve"><value>范围 ID：{0} · 基线设置版本：{1} · 观察时间（UTC）：{2} · 第 {3} / {4} 页</value></data>
+  <data name="目前設定的路徑：{0}。基線版本若與目前設定不同，原始掃描路徑可能不同，歷史路徑未提供。" xml:space="preserve"><value>当前设置的路径：{0}。基线版本若与当前设置不同，原始扫描路径可能不同，历史路径未提供。</value></data>
+  <data name="基線表格，可左右捲動" xml:space="preserve"><value>基线表格，可左右滚动</value></data>
+  <data name="項目" xml:space="preserve"><value>项目</value></data>
+  <data name="類型" xml:space="preserve"><value>类型</value></data>
+  <data name="證據" xml:space="preserve"><value>证据</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="尚未設定完整性監控範圍。" xml:space="preserve"><value>尚未设置完整性监控范围。</value></data>
+  <data name="最近變更" xml:space="preserve"><value>最近变更</value></data>
+  <data name="完整性變更表格，可左右捲動" xml:space="preserve"><value>完整性变更表格，可左右滚动</value></data>
+  <data name="觀察時間（UTC）" xml:space="preserve"><value>观察时间（UTC）</value></data>
+  <data name="覆蓋" xml:space="preserve"><value>覆盖</value></data>
+  <data name="變更證據" xml:space="preserve"><value>变更证据</value></data>
+  <data name="有缺口" xml:space="preserve"><value>有缺口</value></data>
+  <data name="變更前" xml:space="preserve"><value>变更前</value></data>
+  <data name="變更後" xml:space="preserve"><value>变更后</value></data>
+  <data name="這段時間沒有可用的變更紀錄。" xml:space="preserve"><value>这段时间没有可用的变更记录。</value></data>
+  <data name="較新變更" xml:space="preserve"><value>较新变更</value></data>
+  <data name="較早變更" xml:space="preserve"><value>较早变更</value></data>
+  <data name="（時間異常）" xml:space="preserve"><value>（时间异常）</value></data>
+  <data name="（超過 24 小時）" xml:space="preserve"><value>（超过 24 小时）</value></data>
+  <data name="完整" xml:space="preserve"><value>完整</value></data>
+  <data name="部分" xml:space="preserve"><value>部分</value></data>
+  <data name="權限不足" xml:space="preserve"><value>权限不足</value></data>
+  <data name="不支援" xml:space="preserve"><value>不支持</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>扫描失败</value></data>
+  <data name="尚無回報" xml:space="preserve"><value>尚无报告</value></data>
+  <data name="已接受完整資料" xml:space="preserve"><value>已接受完整数据</value></data>
+  <data name="部分資料" xml:space="preserve"><value>部分数据</value></data>
+  <data name="接收逾期" xml:space="preserve"><value>接收逾期</value></data>
+  <data name="已拒收" xml:space="preserve"><value>已拒收</value></data>
+  <data name="尚未完成" xml:space="preserve"><value>尚未完成</value></data>
+  <data name="基線已更新，請重新載入最新資料。" xml:space="preserve"><value>基线已更新，请重新加载最新数据。</value></data>
+  <data name="無法讀取此項資料，請稍後重試。" xml:space="preserve"><value>无法读取此项数据，请稍后重试。</value></data>
+  <data name="查看證據" xml:space="preserve"><value>查看证据</value></data>
+  <data name="無此項目。" xml:space="preserve"><value>无此项目。</value></data>
+  <data name="擁有者" xml:space="preserve"><value>所有者</value></data>
+  <data name="未提供" xml:space="preserve"><value>未提供</value></data>
+  <data name="內容雜湊" xml:space="preserve"><value>内容哈希</value></data>
+  <data name="安全性雜湊" xml:space="preserve"><value>安全性哈希</value></data>
+</root>
