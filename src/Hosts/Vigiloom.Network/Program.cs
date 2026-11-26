@@ -117,6 +117,8 @@ app.MapPost("/internal/v1/ping/status", async (PingStatusRequest input, PingStor
     Results.Ok(await store.GetStatusAsync(input.DeviceId, input.Targets, input.DeviceVersion, token)));
 app.MapPost("/internal/v1/ping/statuses", async (PingDeviceSnapshot[] inputs, PingStore store, CancellationToken token) =>
     inputs.Length > 250 ? Results.BadRequest() : Results.Ok(await store.GetStatusesAsync(inputs, token)));
+app.MapPost("/internal/v1/ping/history", async (PingHistoryQuery query, PingHistoryReader history, CancellationToken token) =>
+    PingHistoryReader.Valid(query) ? Results.Ok(await history.QueryAsync(query, token)) : Results.BadRequest());
 app.MapPost("/internal/v1/speed/history", async (Vigiloom.Contracts.SpeedTests.SpeedHistoryQuery query, SpeedHistory history, CancellationToken token) =>
     SpeedHistory.Valid(query) ? Results.Ok(await history.QueryAsync(query, token)) : Results.BadRequest());
 app.MapGet("/internal/v1/speed/history/{id:guid}", async (Guid id, SpeedHistory history, CancellationToken token) =>

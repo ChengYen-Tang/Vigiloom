@@ -143,6 +143,11 @@ public sealed class NetworkHostTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             Assert.IsNotNull(await response.Content.ReadFromJsonAsync<SpeedHistoryPage>(cancellationToken: token));
         }
+        using (var response = await client.PostAsJsonAsync("/internal/v1/ping/history", new PingHistoryQuery(id, allowedBucket, allowedBucket.AddMinutes(5), "example.org", "central"), token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsNotNull(await response.Content.ReadFromJsonAsync<PingHistoryPage>(cancellationToken: token));
+        }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
         while (true)
