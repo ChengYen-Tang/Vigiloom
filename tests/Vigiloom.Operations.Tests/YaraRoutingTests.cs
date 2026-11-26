@@ -160,6 +160,13 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
             await using (var db = new SecurityAnalysisDbContext(options))
                 Assert.AreEqual(actor, (await db.InventorySettingAudits.SingleAsync(token)).ActorId);
+            using (var audit = await securityClient.PostAsJsonAsync("/internal/v1/inventory-settings/audit",
+                new OperationAuditQuery(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1)), token))
+            {
+                audit.EnsureSuccessStatusCode();
+                var page = await audit.Content.ReadFromJsonAsync<AuditFeedPage>(cancellationToken: token);
+                Assert.AreEqual(actor, Assert.ContainsSingle(page!.Items).ActorId);
+            }
             await using (var db = new SecurityAnalysisDbContext(options))
                 await db.InventorySettingAudits.ExecuteUpdateAsync(update => update.SetProperty(x => x.OccurredAt, DateTimeOffset.UtcNow.AddDays(-40)), token);
             var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
