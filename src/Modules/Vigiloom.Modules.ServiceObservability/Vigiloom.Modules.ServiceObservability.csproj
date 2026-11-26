@@ -2,6 +2,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Vigiloom.Modules.ServiceObservability.Tests" />
     <InternalsVisibleTo Include="Vigiloom.Web.Tests" />
+    <InternalsVisibleTo Include="Vigiloom.Observability" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../Shared/Vigiloom.BuildingBlocks/Vigiloom.BuildingBlocks.csproj" />
