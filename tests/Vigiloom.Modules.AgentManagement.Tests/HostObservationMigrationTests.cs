@@ -17,6 +17,9 @@ using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Migrator.HostMonitoring;
+using Vigiloom.Modules.Resources.Application;
+using Vigiloom.Modules.Resources.Application.AgentPackages;
+using Vigiloom.Tests.Fixtures;
 
 namespace Vigiloom.Modules.AgentManagement.Tests;
 
@@ -25,6 +28,71 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class HostObservationMigrationTests(TestContext context)
 {
+    [TestMethod]
+    public Task AgentVersionAssignmentAndManualRollbackShareResourceAndHostState() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (resourceDb, outerToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (hostDb, token) =>
+        {
+            var resourceOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(resourceDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")).Options;
+            await using (var resources = new ResourcesDbContext(resourceOptions)) await resources.Database.MigrateAsync(token);
+            var schedulingOptions = new DbContextOptionsBuilder<Vigiloom.Infrastructure.Scheduling.Persistence.SchedulingDbContext>().UseSqlServer(resourceDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var scheduling = new Vigiloom.Infrastructure.Scheduling.Persistence.SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
+            await HostMonitoringDatabaseCommand.RunAsync(hostDb.ConnectionString, null, token);
+            var hostOptions = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(hostDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var resourceFactory = new PooledDbContextFactory<ResourcesDbContext>(resourceOptions);
+            var hostFactory = new PooledDbContextFactory<HostMonitoringDbContext>(hostOptions);
+            var now = DateTimeOffset.UtcNow;
+            var device = new Device("server", "server.example", true, now);
+            var agentId = Guid.CreateVersion7();
+            var oldPackage = new Vigiloom.Modules.Resources.Domain.AgentPackage { Id = Guid.CreateVersion7(), Version = "1.0.0", RuntimeIdentifier = "win-x64", Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 10 };
+            var newPackage = new Vigiloom.Modules.Resources.Domain.AgentPackage { Id = Guid.CreateVersion7(), Version = "2.0.0", RuntimeIdentifier = "win-x64", Sha256 = new string('c', 64), ManifestSha256 = new string('d', 64), Size = 10 };
+            await using (var resources = await resourceFactory.CreateDbContextAsync(token))
+            {
+                resources.Devices.Add(device);
+                resources.Agents.Add(new RegisteredAgent { Id = agentId, DeviceId = device.Id, DeviceGeneration = device.AgentAuthorizationGeneration, Verifier = new byte[32], CreatedAt = now });
+                resources.AgentPackages.AddRange(oldPackage, newPackage);
+                await resources.SaveChangesAsync(token);
+            }
+            var writer = new TemporalWorkWriter(new OutboxWriter([new TestOutboxHandler()]));
+            var resourceWork = new ResourceWork(writer, new ConfigurationBuilder().Build());
+            var assignments = new AgentAssignments(resourceFactory, new AvailablePackageTransport(), resourceWork, TimeProvider.System);
+            var hostResults = new HostUpdateResults(hostFactory, new ResourceTargetReader(assignments), TimeProvider.System);
+            var observedAssignments = new AgentAssignments(resourceFactory, new AvailablePackageTransport(), resourceWork, TimeProvider.System, new HostVersionReader(hostResults));
+            var actor = Guid.CreateVersion7();
+            Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, new(newPackage.Id, "", actor), token));
+            var target = await assignments.GetTargetAsync(agentId, token);
+            Assert.IsNotNull(target);
+            var identity = new RegisteredAgentIdentity(agentId, device.Id, device.AgentAuthorizationGeneration);
+            var failure = new AgentUpdateResult(Guid.CreateVersion7(), target.UpdateId, target.PackageId, target.ManifestSha256, 1,
+                AgentUpdateResultKind.Failed, DateTimeOffset.UtcNow, false, AgentUpdateFailure.Interrupted);
+            Assert.AreEqual(AgentUpdateResultStatus.Success, await hostResults.ReceiveAsync(identity, failure, token));
+            var failed = await observedAssignments.GetAsync(agentId, token);
+            Assert.AreEqual(newPackage.Id, failed!.PackageId);
+            Assert.AreEqual(AgentUpdateResultKind.Failed, failed.LatestResult!.Result);
+            Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, new(oldPackage.Id, failed.Revision, actor), token));
+            var rollback = await assignments.GetTargetAsync(agentId, token);
+            Assert.AreEqual(oldPackage.Id, rollback!.PackageId);
+            var success = new AgentUpdateResult(Guid.CreateVersion7(), rollback.UpdateId, rollback.PackageId, rollback.ManifestSha256, 1,
+                AgentUpdateResultKind.Succeeded, DateTimeOffset.UtcNow, false, null);
+            Assert.AreEqual(AgentUpdateResultStatus.Success, await hostResults.ReceiveAsync(identity, success, token));
+            var final = await observedAssignments.GetAsync(agentId, token);
+            Assert.AreEqual(oldPackage.Id, final!.PackageId);
+            Assert.AreEqual("1.0.0", final.LatestResult!.PackageVersion);
+            Assert.AreEqual(AgentUpdateResultKind.Succeeded, final.LatestResult.Result);
+        }, outerToken), context.CancellationToken);
+
+    private sealed class ResourceTargetReader(AgentAssignments assignments) : IRecordedAgentTargetReader
+    {
+        public Task<RecordedAgentUpdateTarget?> GetAsync(Guid agentId, Guid updateId, CancellationToken token) => assignments.GetRecordedTargetAsync(agentId, updateId, token);
+    }
+
+    private sealed class HostVersionReader(HostUpdateResults results) : IHostAgentVersion
+    {
+        public Task<AgentVersionObservation?> GetAsync(Guid agentId, CancellationToken token) => results.GetAsync(agentId, token);
+    }
     [TestMethod]
     public Task HostInboxPolicyUsesHostDataAndTransactionalAudit() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
