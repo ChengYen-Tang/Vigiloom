@@ -49,6 +49,7 @@ builder.Services.AddScoped<IntegrityConfiguration>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<SigmaDetectionHistory>();
+builder.Services.AddScoped<SigmaEvidenceReader>();
 builder.Services.AddScoped<IocDetectionHistory>();
 builder.Services.AddScoped<VulnerabilityMonitoring>();
 builder.Services.AddScoped<IKevCatalog, KevCatalog>();
