@@ -7,10 +7,16 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Timeline;
 public sealed class TimelineLogCleanup(IDbContextFactory<OperationsDbContext> contexts)
 {
     public async Task<int> RunHealthBatchAsync(int retentionDays, CancellationToken token)
+        => await RunServiceBatchAsync("service-health", retentionDays, token);
+
+    public async Task<int> RunTraceBatchAsync(int retentionDays, CancellationToken token)
+        => await RunServiceBatchAsync("service-trace", retentionDays, token);
+
+    private async Task<int> RunServiceBatchAsync(string source, int retentionDays, CancellationToken token)
     {
         if (retentionDays is < 1 or > 3650) throw new ArgumentOutOfRangeException(nameof(retentionDays));
         await using var db = await contexts.CreateDbContextAsync(token);
-        return await db.Database.ExecuteSqlInterpolatedAsync($"DELETE TOP (500) FROM [operations].[TimelineRecords] WHERE [Source] = 'service-health' AND [Time] < DATEADD(day, {-retentionDays}, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+        return await db.Database.ExecuteSqlInterpolatedAsync($"DELETE TOP (500) FROM [operations].[TimelineRecords] WHERE [Source] = {source} AND [Time] < DATEADD(day, {-retentionDays}, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
     }
     public async Task<long> RunAsync(CancellationToken token)
     {
