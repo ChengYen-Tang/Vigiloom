@@ -10,16 +10,18 @@ public sealed class PingRunner(PingSettings settings, PingStore store, IPingProb
         await settings.EnsureAsync(token);
         var current = await settings.GetAsync(token);
         await store.ReconcileAsync(current, token);
+        var cutoff = await store.ClaimCutoffAsync(token);
         const int claimSize = 8;
         var running = new List<Task>(current.MaxConcurrency);
+        var stopClaiming = 0;
         try
         {
             while (true)
             {
                 var available = current.MaxConcurrency - running.Count;
-                if (available > 0)
+                if (available > 0 && Volatile.Read(ref stopClaiming) == 0)
                 {
-                    var leases = await store.ClaimAsync(current, Math.Min(claimSize, available), token);
+                    var leases = await store.ClaimAsync(current, Math.Min(claimSize, available), cutoff, token);
                     foreach (var lease in leases) running.Add(MeasureAsync(lease));
                     if (leases.Count > 0) continue;
                 }
@@ -39,7 +41,8 @@ public sealed class PingRunner(PingSettings settings, PingStore store, IPingProb
             if (!await store.IsCurrentAsync(lease, token)) { await store.DeactivateAsync(lease, token); return; }
             var measuredAt = clock.GetUtcNow();
             var result = await probe.MeasureAsync(lease.Target, current.TimeoutSeconds, token);
-            await store.CommitAsync(lease, current, result, measuredAt, "central", token);
+            if (!await store.CommitAsync(lease, current, result, measuredAt, "central", token))
+                Interlocked.Exchange(ref stopClaiming, 1);
         }
     }
 }

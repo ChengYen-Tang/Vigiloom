@@ -5,7 +5,7 @@ namespace Vigiloom.Contracts.Network;
 
 /// <summary>One committed target state change; generation identifies the measurement for that target.</summary>
 public sealed record PingTransition(Guid DeviceId, string Target, long Generation, DateTimeOffset OccurredAt,
-    Reachability Previous, Reachability Current, PingDeviceContext Device);
+    Reachability Previous, Reachability Current, PingDeviceContext Device, long PreviousTransitionGeneration = 0);
 
 /// <summary>One transition and the preceding transition's generation for the same target.</summary>
 public sealed record PingTransitionDelivery(PingTransition Transition, long PreviousTransitionGeneration)
