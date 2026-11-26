@@ -24,6 +24,7 @@ public sealed class SecurityMigrationTests(TestContext context)
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 2);
             Guid sourceId;
+            Guid revisionId;
             await using (var db = new SecurityAnalysisDbContext(options))
             {
                 var mapped = db.Model.GetEntityTypes().Select(x => x.GetTableName()).Where(x => x is not null).Distinct().Order().ToArray();
@@ -31,6 +32,11 @@ public sealed class SecurityMigrationTests(TestContext context)
                 var feed = new IntelligenceSource { Key = "migration-test", Enabled = true };
                 sourceId = feed.Id;
                 db.IntelligenceSources.Add(feed);
+                var revision = new IntelligenceRevision { SourceId = sourceId, UpstreamVersion = "1", RetrievedAt = DateTimeOffset.UtcNow,
+                    Digest = new byte[32], Artifact = [1], SchemaVersion = "1", MappingVersion = "1", LicenseEvidence = "test" };
+                revisionId = revision.Id;
+                db.IntelligenceRevisions.Add(revision);
+                db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = sourceId, RevisionId = revisionId, ActivatedAt = DateTimeOffset.UtcNow });
                 db.InventorySources.Add(new InventorySourceState(owner, InventorySource.HostSystem));
                 await db.SaveChangesAsync(token);
             }
@@ -40,6 +46,7 @@ public sealed class SecurityMigrationTests(TestContext context)
             await using (var db = new SecurityAnalysisDbContext(targetOptions))
             {
                 Assert.IsTrue(await db.IntelligenceSources.AnyAsync(x => x.Id == sourceId && x.Key == "migration-test", token));
+                Assert.IsTrue(await db.IntelligenceActivations.AnyAsync(x => x.SourceId == sourceId && x.RevisionId == revisionId, token));
                 Assert.IsTrue(await db.InventorySources.AnyAsync(x => x.AgentId == owner.AgentId && x.DeviceId == owner.DeviceId && x.DeviceGeneration == 2, token));
             }
             await Assert.ThrowsAsync<InvalidOperationException>(() => SecurityDatabaseCommand.RunAsync(target.ConnectionString, source.ConnectionString, token));
