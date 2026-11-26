@@ -19,11 +19,15 @@ public sealed class RemoteServiceHealthTests(TestContext context)
         using var client = new HttpClient(new Handler(id, start, end)) { BaseAddress = new Uri("http://observability/") };
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["Services:Observability:Url"] = "http://observability" }).Build();
-        var query = new ServiceQueries(client, config, null!, null!, null!);
+        var query = new ServiceQueries(client, config, null!, null!, null!, null!, null!, null!);
         Assert.AreEqual(id, (await query.DetailAsync(id, context.CancellationToken))!.Id);
         Assert.IsEmpty((await query.InstancesAsync(id, 2, context.CancellationToken))!.Items);
         Assert.AreEqual(ServiceHealthState.Healthy, (await query.StatusAsync(id, context.CancellationToken))!.State);
         Assert.AreEqual(1.0, (await query.HistoryAsync(id, start, end, context.CancellationToken))!.Coverage);
+        Assert.IsEmpty((await query.ObservationsAsync(id, 2, context.CancellationToken)).Items);
+        Assert.AreEqual("available", (await query.MetricsAsync(id, context.CancellationToken)).State);
+        Assert.IsEmpty((await query.LogsAsync(id, start, end, 2, "0123456789abcdef0123456789abcdef", context.CancellationToken)).Items);
+        Assert.IsEmpty((await query.TracesAsync(id, start, end, 2, context.CancellationToken)).Items);
     }
 
     private sealed class Handler(Guid id, DateTimeOffset start, DateTimeOffset end) : HttpMessageHandler
@@ -37,6 +41,26 @@ public sealed class RemoteServiceHealthTests(TestContext context)
             {
                 Assert.AreEqual("2", QueryHelpers.ParseQuery(request.RequestUri.Query)["page"].ToString());
                 result = new ServiceInstancePage([], false);
+            }
+            else if (request.RequestUri.AbsolutePath == $"/internal/v1/services/{id:D}/health-observations")
+            {
+                Assert.AreEqual("2", QueryHelpers.ParseQuery(request.RequestUri.Query)["page"].ToString());
+                result = new HealthObservationPage([], false);
+            }
+            else if (request.RequestUri.AbsolutePath == $"/internal/v1/services/{id:D}/http-metrics")
+                result = new ServiceHttpMetrics("available", null, null, null, null, null);
+            else if (request.RequestUri.AbsolutePath == $"/internal/v1/services/{id:D}/logs" || request.RequestUri.AbsolutePath == $"/internal/v1/services/{id:D}/traces")
+            {
+                var query = QueryHelpers.ParseQuery(request.RequestUri.Query);
+                Assert.AreEqual(start, DateTimeOffset.Parse(query["from"].ToString()));
+                Assert.AreEqual(end, DateTimeOffset.Parse(query["to"].ToString()));
+                Assert.AreEqual("2", query["page"].ToString());
+                if (request.RequestUri.AbsolutePath.EndsWith("/logs", StringComparison.Ordinal))
+                {
+                    Assert.AreEqual("0123456789abcdef0123456789abcdef", query["traceId"].ToString());
+                    result = new ServiceEvidencePage<ServiceLogEvidence>([], false, false);
+                }
+                else result = new ServiceEvidencePage<ServiceTraceEvidence>([], false, false);
             }
             else if (request.RequestUri.AbsolutePath == $"/internal/v1/health/{id:D}/status")
                 result = new ServiceHealthStatus(ServiceHealthState.Healthy, 1, 0);
