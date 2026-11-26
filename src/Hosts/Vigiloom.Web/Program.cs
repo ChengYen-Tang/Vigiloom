@@ -352,7 +352,11 @@ builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, Vigiloom
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCatalog>();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
 builder.Services.AddHostDetection();
-builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationReader, Vigiloom.Modules.AlertingOperations.Application.NotificationReader>();
+builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.NotificationReader>();
+builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationReader, Vigiloom.Web.Operations.OperationsNotificationReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.RemoteNotificationReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IBaselineSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.BaselineSource>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePolicy>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
