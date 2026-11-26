@@ -37,18 +37,24 @@ public sealed class HealthRunnerTests(TestContext context)
                 var sourceOptions = Options(source.ConnectionString);
                 var targetOptions = Options(target.ConnectionString);
                 var id = await SeedAsync(sourceOptions, 12345, token);
+                Guid serviceId;
                 await using (var targetDb = new ServiceObservabilityDbContext(targetOptions)) await targetDb.Database.MigrateAsync(token);
                 await using (var db = new ServiceObservabilityDbContext(sourceOptions))
                 {
                     var sourceRow = await db.Sources.SingleAsync(token);
                     var service = await db.Services.SingleAsync(token);
+                    serviceId = service.Id;
                     var check = await db.HealthTargets.SingleAsync(token);
                     var policy = await db.HealthNetworkPolicies.SingleAsync(token);
                     var schedule = await db.HealthSchedules.SingleAsync(token);
                     var observed = DateTimeOffset.UtcNow.AddSeconds(-10);
                     schedule.SetEvaluation(1, observed, 1, 1, observed, observed);
                     schedule.SetVersions(sourceRow.Version, service.Version, null, check.Version, policy.Version);
+                    db.HealthObservations.Add(new HealthObservation(id, 1, policy.Generation, sourceRow.Version, service.Version,
+                        null, check.Version, policy.Version, HealthObservationKind.Healthy, observed, observed));
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthStateIntervals SET State = 1, Reason = 1, StartedAt = {observed} WHERE TargetId = {id}", token);
                     policy.ReplaceNetworks(["10.0.0.0/8"], observed.AddSeconds(1));
+                    db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), observed.AddSeconds(1)));
                     await db.SaveChangesAsync(token);
                     await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthSchedules SET Generation = 42, LeaseUntil = SYSDATETIMEOFFSET() WHERE TargetId = {id}", token);
                 }
@@ -62,6 +68,15 @@ public sealed class HealthRunnerTests(TestContext context)
                 Assert.AreEqual(42L, result.LastTransitionGeneration);
                 Assert.IsNull(result.LeaseUntil);
                 Assert.AreEqual(1, await verify.HealthStateIntervals.CountAsync(token));
+                var reader = new HealthStatusReader(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
+                Assert.AreEqual(ServiceHealthState.Unknown, (await reader.ReadAsync(serviceId, token))!.State);
+                var store = new HealthStore(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
+                var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+                var work = await store.LoadAsync(lease, token);
+                var network = await store.NetworkAsync(token);
+                Assert.IsNotNull(work);
+                Assert.IsNotNull(network);
+                Assert.IsTrue(await store.CommitAsync(work, network, HealthObservationKind.Healthy, DateTimeOffset.UtcNow, token));
             }, outer), context.CancellationToken);
 
     [TestMethod]
