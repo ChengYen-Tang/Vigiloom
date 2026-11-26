@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="服務執行個體" xml:space="preserve"><value>Service instances</value></data>
+  <data name="管理已識別的服務執行個體與平台容量。" xml:space="preserve"><value>Manage identified service instances and platform capacity.</value></data>
+  <data name="正式遙測接收尚未完成；此處不代表服務健康狀態。" xml:space="preserve"><value>Production telemetry reception is not yet complete; this page does not indicate service health.</value></data>
+  <data name="無法讀取資料，請重新整理後再試。" xml:space="preserve"><value>Unable to load data. Refresh and try again.</value></data>
+  <data name="執行個體容量" xml:space="preserve"><value>Instance capacity</value></data>
+  <data name="包含已退役的執行個體。降低上限不會刪除既有資料；達到上限時不再新增身分，既有身分仍可辨識。" xml:space="preserve"><value>Retired instances are included. Lowering the limit does not delete existing data. At the limit, no new identities are added, but existing identities remain recognizable.</value></data>
+  <data name="每個服務上限" xml:space="preserve"><value>Limit per service</value></data>
+  <data name="全平台上限" xml:space="preserve"><value>Platform-wide limit</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="服務管理" xml:space="preserve"><value>Service management</value></data>
+  <data name="服務停收後不再授權接收新資料；恢復後只接受新授權期間的資料。" xml:space="preserve"><value>Stopping collection revokes authorization for new data. After resuming, only data from the newly authorized period is accepted.</value></data>
+  <data name="此頁沒有已加入的服務。" xml:space="preserve"><value>There are no enrolled services on this page.</value></data>
+  <data name="已封存" xml:space="preserve"><value>Archived</value></data>
+  <data name="已核准" xml:space="preserve"><value>Approved</value></data>
+  <data name="已停收" xml:space="preserve"><value>Collection stopped</value></data>
+  <data name="來源識別碼" xml:space="preserve"><value>Source ID</value></data>
+  <data name="停止收集" xml:space="preserve"><value>Stop collection</value></data>
+  <data name="恢復收集" xml:space="preserve"><value>Resume collection</value></data>
+  <data name="停止後立即拒絕此服務的新資料，並保留既有資料。" xml:space="preserve"><value>Stopping immediately rejects new data for this service and retains existing data.</value></data>
+  <data name="恢復只接受新授權期間的資料，來源必須仍可使用。" xml:space="preserve"><value>Resuming accepts data only from the new authorization period; the source must remain available.</value></data>
+  <data name="我已確認影響" xml:space="preserve"><value>I understand the effects</value></data>
+  <data name="確認停收" xml:space="preserve"><value>Confirm stop</value></data>
+  <data name="確認恢復收集" xml:space="preserve"><value>Confirm resume collection</value></data>
+  <data name="封存服務" xml:space="preserve"><value>Archive service</value></data>
+  <data name="恢復服務" xml:space="preserve"><value>Restore service</value></data>
+  <data name="封存會停止收集並撤回公開，保留服務身分和歷史資料。" xml:space="preserve"><value>Archiving stops collection and removes public access while retaining the service identity and history.</value></data>
+  <data name="恢復後仍為私人且停止收集；如有需要，請再手動恢復收集與公開設定。" xml:space="preserve"><value>After restoration the service remains private and collection remains stopped; resume collection and public access manually if needed.</value></data>
+  <data name="確認封存" xml:space="preserve"><value>Confirm archive</value></data>
+  <data name="確認恢復服務" xml:space="preserve"><value>Confirm restore service</value></data>
+  <data name="服務清單分頁" xml:space="preserve"><value>Service list pagination</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="執行個體清單" xml:space="preserve"><value>Instances</value></data>
+  <data name="所選服務：" xml:space="preserve"><value>Selected service: </value></data>
+  <data name="退役後不會自動恢復；恢復保留原本的執行個體識別碼，也不會改變服務收集設定。" xml:space="preserve"><value>Retired instances are not automatically restored. Restoring preserves the instance ID and does not change the service collection settings.</value></data>
+  <data name="此頁沒有執行個體。" xml:space="preserve"><value>There are no instances on this page.</value></data>
+  <data name="表格可左右滑動以查看完整資訊。" xml:space="preserve"><value>Scroll horizontally to see the full table.</value></data>
+  <data name="服務執行個體清單，可左右滑動" xml:space="preserve"><value>Service instance list, scroll horizontally</value></data>
+  <data name="來源識別值" xml:space="preserve"><value>Source identity</value></data>
+  <data name="狀態" xml:space="preserve"><value>Status</value></data>
+  <data name="建立時間（UTC）" xml:space="preserve"><value>Created at (UTC)</value></data>
+  <data name="操作" xml:space="preserve"><value>Action</value></data>
+  <data name="平台識別碼" xml:space="preserve"><value>Platform ID</value></data>
+  <data name="未退役" xml:space="preserve"><value>Not retired</value></data>
+  <data name="已退役" xml:space="preserve"><value>Retired</value></data>
+  <data name="退役" xml:space="preserve"><value>Retire</value></data>
+  <data name="恢復" xml:space="preserve"><value>Restore</value></data>
+  <data name="退役後不會自動恢復，也不會停止整個服務的收集。" xml:space="preserve"><value>Retirement is not automatically reversed and does not stop collection for the entire service.</value></data>
+  <data name="恢復原本的身分；來源仍須通過授權。" xml:space="preserve"><value>Restore the original identity; the source must still be authorized.</value></data>
+  <data name="確認退役" xml:space="preserve"><value>Confirm retirement</value></data>
+  <data name="確認恢復" xml:space="preserve"><value>Confirm restore</value></data>
+  <data name="執行個體分頁" xml:space="preserve"><value>Instance pagination</value></data>
+  <data name="請輸入大於零的上限。" xml:space="preserve"><value>Enter limits greater than zero.</value></data>
+  <data name="設定已被其他人修改，請重新整理並確認。" xml:space="preserve"><value>Settings were modified by someone else. Refresh and check them.</value></data>
+  <data name="容量設定已儲存。" xml:space="preserve"><value>Capacity settings saved.</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check.</value></data>
+  <data name="請確認操作影響。" xml:space="preserve"><value>Please confirm the effects of this action.</value></data>
+  <data name="執行個體已退役。" xml:space="preserve"><value>Instance retired.</value></data>
+  <data name="執行個體已恢復。" xml:space="preserve"><value>Instance restored.</value></data>
+  <data name="資料已變更，請重新整理後再操作。" xml:space="preserve"><value>Data has changed. Refresh before trying again.</value></data>
+  <data name="無法完成操作，請重新整理後再試。" xml:space="preserve"><value>Unable to complete the action. Refresh and try again.</value></data>
+  <data name="無法確認操作結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the action result. Refresh and check.</value></data>
+  <data name="服務已封存並撤回公開。" xml:space="preserve"><value>Service archived and public access removed.</value></data>
+  <data name="服務已恢復，維持私人及停止收集。" xml:space="preserve"><value>Service restored; it remains private and collection remains stopped.</value></data>
+  <data name="服務已變更或無法操作，請重新整理後再試。" xml:space="preserve"><value>The service changed or cannot be modified. Refresh and try again.</value></data>
+  <data name="服務已停收。" xml:space="preserve"><value>Service collection stopped.</value></data>
+  <data name="服務已恢復授權。" xml:space="preserve"><value>Service authorization restored.</value></data>
+  <data name="來源已撤銷，無法恢復收集。" xml:space="preserve"><value>The source was revoked; collection cannot be resumed.</value></data>
+</root>

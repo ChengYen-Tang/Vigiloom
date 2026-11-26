@@ -645,6 +645,20 @@ public sealed class AgentSettingsUiHttpTests
             using (var denied = await anonymous.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             using (var denied = await reader.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var denied = await admin.PutAsJsonAsync("/api/v1/service-instances/policy", new InstancePolicyInput(2, 5, ""), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishPage = await admin.GetAsync(url, token))
+            {
+                var text = await BodyTextAsync(englishPage, token);
+                Assert.Contains("Service instances", text);
+                Assert.Contains("Confirm retirement", text);
+                Assert.Contains("Orders", text);
+                Assert.Contains("node", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedPage = await admin.GetAsync(url, token))
+                Assert.Contains("服务实例", await BodyTextAsync(simplifiedPage, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await admin.GetAsync(url, token);
             var fields = await FieldsAsync(page, token, "instance-policy");
             fields["PolicyForm.PerService"] = "2"; fields["PolicyForm.Total"] = "5";
