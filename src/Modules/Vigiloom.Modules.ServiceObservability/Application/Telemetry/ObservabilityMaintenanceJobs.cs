@@ -22,6 +22,7 @@ public sealed class ObservabilityRetentionJob(TelemetryRetentionCleanup cleanup,
         await cleanup.RunAsync(token);
         await cleanup.RunMetricsAsync(token);
         await cleanup.RunHealthAsync(token);
+        await cleanup.RunSecurityDetectionsAsync(token);
         var client = clients.CreateClient("operations");
         while (true)
         {

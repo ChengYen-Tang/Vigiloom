@@ -7,6 +7,7 @@ using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.BuildingBlocks.Retention;
 using Vigiloom.Contracts.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -79,6 +80,13 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 builder.Services.AddServiceDiscovery();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
+{
+    builder.Services.AddHttpClient<RemoteSecurityRetention>((services, client) =>
+        client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]!.TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<ISecurityDetectionRetention>(services => services.GetRequiredService<RemoteSecurityRetention>());
+}
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
 builder.Services.AddVigiloomTemporalWorker<ApplicationEventHandler>(builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");

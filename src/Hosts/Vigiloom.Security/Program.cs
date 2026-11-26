@@ -135,6 +135,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
         catch (ArgumentException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; }
     }));
 app.MapGet("/health/live", () => Results.Ok());
+app.MapSecurityRetentionEndpoints();
 var vulnerabilities = app.MapGroup("/internal/v1/devices/{deviceId:guid}/vulnerabilities");
 vulnerabilities.MapGet("/", async (Guid deviceId, int page, int gapPage, string? search, int? state, string? rankingVersion, VulnerabilityMonitoring monitoring, CancellationToken token) =>
 {
