@@ -7,11 +7,11 @@
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines
 @inject Vigiloom.Web.HostMonitoring.IntelligenceStatusAccess Status
-@inject IntelligencePolicy Policy
+@inject Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess Policy
 @inject Vigiloom.Web.HostMonitoring.IntelligencePublicationAccess Publication
 @inject Vigiloom.Web.HostMonitoring.IntelligencePublicationAccess Revocation
-@inject AdvisoryCredentials Credentials
-@inject AdvisoryRecovery Recovery
+@inject Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess Credentials
+@inject Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess Recovery
 @inject CustomBaselineStage CustomBaselines
 @inject ILogger<Intelligence> Logger
 
