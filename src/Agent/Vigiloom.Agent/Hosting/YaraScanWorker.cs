@@ -12,7 +12,7 @@ namespace Vigiloom.Agent.Hosting;
 /// <summary>Fetches one requested scan at a time and retries reporting until acknowledged.</summary>
 internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntime settings, AgentMetricSettingsRuntime metrics,
     SamplingBudgetCoordinator budget, IConfiguration configuration,
-    TimeProvider clock, ILogger<YaraScanWorker> logger) : BackgroundService
+    TimeProvider clock, ILogger<YaraScanWorker> logger, AgentWorkNotifications? notifications = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,7 +60,11 @@ internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntim
                 }
             }
             var seconds = settings.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
-            try { await Task.Delay(TimeSpan.FromSeconds(seconds), clock, stoppingToken); }
+            try
+            {
+                if (notifications is null) await Task.Delay(TimeSpan.FromSeconds(seconds), clock, stoppingToken);
+                else await notifications.WaitForScanAsync(TimeSpan.FromSeconds(seconds), clock, stoppingToken);
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }

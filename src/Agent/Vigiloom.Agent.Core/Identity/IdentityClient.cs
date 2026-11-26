@@ -8,6 +8,13 @@ namespace Vigiloom.Agent.Core.Identity;
 /// <summary>Registers and rotates machine credentials without putting secrets in command arguments or URLs.</summary>
 public sealed class IdentityClient(HttpClient http)
 {
+    /// <summary>Reads the registered machine credential for the configured server.</summary>
+    public static async Task<string?> ReadMachineCredentialAsync(IdentityVault vault, Uri server, CancellationToken token)
+    {
+        var (state, _) = await ReadRegisteredAsync(vault, NormalizeServer(server), token);
+        return state is null ? null : $"vla_{state.AgentId:D}.{state.MachineSecret}";
+    }
+
     /// <summary>Replace only an unregistered pending identity after an administrator revoked its prior enrollment and binding.</summary>
     public async Task ResetPendingAsync(IdentityVault vault, Uri server, string enrollmentSecret, CancellationToken token)
     {
