@@ -47,7 +47,17 @@ namespace Vigiloom.Operations.Tests;
 public sealed class HostBatchIntegrationTests(TestContext context)
 {
     [TestMethod]
-    public Task GatewayHostAndSecurityShareInventoryProgress() =>
+    public Task GatewayHostAndSecurityShareInventoryProgress() => RunInventoryPipelineAsync(null);
+
+    [TestMethod]
+    public Task TemporalDeliversAgentInventoryFromHostToSecurity()
+    {
+        var address = Environment.GetEnvironmentVariable("VIGILOOM_TEST_TEMPORAL_ISOLATED");
+        if (string.IsNullOrWhiteSpace(address)) Assert.Inconclusive("Set VIGILOOM_TEST_TEMPORAL_ISOLATED to a disposable Temporal instance for this integration test.");
+        return RunInventoryPipelineAsync(address);
+    }
+
+    private Task RunInventoryPipelineAsync(string? temporalAddress) =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (hostDb, outerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (securityDb, token) =>
         {
@@ -61,34 +71,48 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 db.ReplayPolicies.Add(policy);
                 await db.SaveChangesAsync(token);
             }
+            var hostScheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(hostDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(hostScheduling)) await db.Database.MigrateAsync(token);
             var securityOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(securityDb.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) await db.Database.MigrateAsync(token);
             var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(securityDb.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
             await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
+            var queue = "vigiloom-security-test-" + Guid.CreateVersion7().ToString("N");
+            HttpClient? hostClientForWorker = null;
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
-                web.UseSetting("Temporal:Enabled", "false");
-                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }));
+                web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
+                web.UseSetting("Work:SecurityQueue", queue);
+                web.UseSetting("Work:SecurityLogQueue", queue + "-logs");
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                { ["ConnectionStrings:Security"] = securityDb.ConnectionString, ["Temporal:Address"] = temporalAddress, ["Work:SecurityQueue"] = queue }));
+                if (temporalAddress is not null) web.ConfigureTestServices(services => services.AddHttpClient("host")
+                    .ConfigurePrimaryHttpMessageHandler(() => new DeferredHostHandler(() => hostClientForWorker!)));
             });
             using var securityClient = security.CreateClient();
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var writer = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
-                web.UseSetting("Hangfire:Enabled", "false"); web.UseSetting("Temporal:Enabled", "false");
+                web.UseSetting("Hangfire:Enabled", "false"); web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
+                web.UseSetting("Work:SecurityQueue", queue);
+                web.UseSetting("Work:AgentQueue", queue + "-agent");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:HostMonitoring"] = hostDb.ConnectionString, ["Services:Security:Url"] = securityClient.BaseAddress!.ToString() }));
+                { ["ConnectionStrings:HostMonitoring"] = hostDb.ConnectionString, ["Services:Security:Url"] = securityClient.BaseAddress!.ToString(),
+                    ["Temporal:Address"] = temporalAddress, ["Work:SecurityQueue"] = queue }));
                 web.ConfigureTestServices(services =>
                 {
                     services.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     services.AddHttpClient("security").ConfigurePrimaryHttpMessageHandler(() => security.Server.CreateHandler());
-                    services.AddSingleton<IHostSecurityWorkWriter>(writer);
+                    if (temporalAddress is null) services.AddSingleton<IHostSecurityWorkWriter>(writer);
                 });
             });
             host.UseKestrel(0);
             using var hostClient = host.CreateClient();
+            hostClientForWorker = hostClient;
             var identityBuilder = WebApplication.CreateBuilder(); identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
             await using var identityService = identityBuilder.Build();
             identityService.MapGet("/api/v1/agent/identity", () => Results.Json(identity));
@@ -108,12 +132,33 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var payload = InventoryChunkCodec.Serialize(chunk);
             using (var accepted = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
             using (var duplicate = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
-            var reference = Assert.ContainsSingle(writer.Batches);
-            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }).Build();
-            var worker = new SecurityHost::Vigiloom.Security.SecurityWorkHandler(config, new SingleHttpClientFactory(hostClient));
-            var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
-            await worker.ExecuteAsync(work, token);
-            await worker.ExecuteAsync(work, token);
+            if (temporalAddress is null)
+            {
+                var reference = Assert.ContainsSingle(writer.Batches);
+                var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }).Build();
+                var worker = new SecurityHost::Vigiloom.Security.SecurityWorkHandler(config, new SingleHttpClientFactory(hostClient));
+                var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+                await worker.ExecuteAsync(work, token);
+                await worker.ExecuteAsync(work, token);
+            }
+            else
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(45);
+                while (true)
+                {
+                    await using var db = new SecurityAnalysisDbContext(securityOptions);
+                    await using var hostState = new HostMonitoringDbContext(hostOptions);
+                    if (await db.InventorySnapshots.AnyAsync(token) && !await hostState.HostSecurityBatches.AnyAsync(token)) break;
+                    if (DateTime.UtcNow >= deadline)
+                    {
+                        await using var connection = new SqlConnection(hostDb.ConnectionString);
+                        await connection.OpenAsync(token);
+                        await using var command = new SqlCommand("SELECT CONCAT(State, ':', Attempts, ':', COALESCE(LastFailureCode, '')) FROM scheduling.Outbox", connection);
+                        Assert.Fail($"Temporal did not deliver the inventory batch. Host outbox: {await command.ExecuteScalarAsync(token) ?? "empty"}");
+                    }
+                    await Task.Delay(250, token);
+                }
+            }
             var progress = await client.GetFromJsonAsync<InventorySourceStatus[]>("/api/v1/agent/inventory/status?contract=5", token);
             Assert.AreEqual(1L, progress!.Single(x => x.Source == InventorySource.LinuxDpkg).HighWaterGeneration);
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
@@ -123,6 +168,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     private sealed class SingleHttpClientFactory(HttpClient client) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class DeferredHostHandler(Func<HttpClient> client) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var target = client();
+            using var forwarded = new HttpRequestMessage(request.Method, new Uri(target.BaseAddress!, request.RequestUri!.PathAndQuery));
+            return await target.SendAsync(forwarded, cancellationToken);
+        }
     }
     [TestMethod]
     public Task AuthenticatesAndRetriesAfterOperationsCommitted() =>
