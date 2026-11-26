@@ -3,6 +3,7 @@ using Microsoft.Net.Http.Headers;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Baseline;
 
 namespace Vigiloom.HostMonitoring;
 
@@ -10,6 +11,15 @@ internal static class AgentSecuritySettingsEndpoints
 {
     public static void MapAgentSecuritySettingsEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/v1/agent/baseline-settings", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
+        {
+            var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
+            var snapshot = await clients.CreateClient("security").GetFromJsonAsync<BaselineSettingsSnapshot>(
+                $"internal/v1/agent-settings/{identity.DeviceId:D}/baseline", token)
+                ?? throw new InvalidOperationException("Security service returned empty baseline settings.");
+            context.Response.Headers.CacheControl = "private, no-store";
+            return Results.Ok(snapshot);
+        });
         app.MapGet("/api/v1/agent/inventory-settings", async (int? contract, HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
         {
             if (contract is not (null or 2)) return Results.BadRequest();
