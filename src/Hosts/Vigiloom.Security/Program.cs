@@ -37,6 +37,7 @@ builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Security")
         ?? throw new InvalidOperationException("ConnectionStrings:Security is required."), "security", pooled: true);
 builder.Services.AddServiceDiscovery();
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentSecuritySettings>();
@@ -60,7 +61,6 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
 {
     if (!builder.Configuration.GetValue("Temporal:Enabled", true))
         throw new InvalidOperationException("Temporal must be enabled for security intelligence audit delivery.");
-    builder.Services.AddVigiloomDataProtection(builder.Configuration);
     builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
@@ -127,6 +127,9 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
     builder.Services.AddScoped<IntelligencePublication>();
     builder.Services.AddScoped<IntelligenceRevocation>();
+    builder.Services.AddScoped<IntelligencePolicy>();
+    builder.Services.AddScoped<AdvisoryCredentials>();
+    builder.Services.AddScoped<AdvisoryRecovery>();
     builder.Services.AddScoped<BaselineExceptions>();
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");

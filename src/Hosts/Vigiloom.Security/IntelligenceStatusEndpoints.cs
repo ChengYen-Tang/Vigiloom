@@ -1,5 +1,6 @@
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
 namespace Vigiloom.Security;
 
@@ -8,6 +9,25 @@ internal static class IntelligenceStatusEndpoints
     public static void MapIntelligenceStatusEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/internal/v1/intelligence/sources");
+        group.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, PolicyCommand command, IServiceProvider services, CancellationToken token) =>
+        {
+            var policy = services.GetService<IntelligencePolicy>();
+            if (policy is null) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            try { return Results.Ok(await policy.UpdateAsync(sourceId, command.Input, command.ActorId, token)); }
+            catch (ArgumentException) { return Results.BadRequest(); }
+        });
+        group.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, CredentialCommand command, IServiceProvider services, CancellationToken token) =>
+        {
+            var credentials = services.GetService<AdvisoryCredentials>();
+            return credentials is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) :
+                Results.Ok(await credentials.UpdateAsync(sourceId, command.Input, command.ActorId, token));
+        });
+        group.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, RecoveryCommand command, IServiceProvider services, CancellationToken token) =>
+        {
+            var recovery = services.GetService<AdvisoryRecovery>();
+            return recovery is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) :
+                Results.Ok(await recovery.AbandonAsync(sourceId, command.Input, command.ActorId, token));
+        });
         group.MapPost("/{sourceId:guid}/activation", async (Guid sourceId, ActivationCommand command, IServiceProvider services, CancellationToken token) =>
         {
             var publication = services.GetService<IntelligencePublication>();
@@ -41,4 +61,7 @@ internal static class IntelligenceStatusEndpoints
 
     private sealed record ActivationCommand(IntelligenceActivationRequest Input, Guid ActorId);
     private sealed record RevocationCommand(Guid ActorId);
+    private sealed record PolicyCommand(IntelligencePolicyUpdate Input, Guid ActorId);
+    private sealed record CredentialCommand(AdvisoryCredentialUpdate Input, Guid ActorId);
+    private sealed record RecoveryCommand(AdvisoryImportRecoveryRequest Input, Guid ActorId);
 }

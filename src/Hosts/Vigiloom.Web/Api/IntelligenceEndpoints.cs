@@ -84,7 +84,7 @@ internal static class IntelligenceEndpoints
             return await status.GetAdvisoryProgressAsync(sourceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<AdvisoryImportProgressView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read GitHub advisory import progress and coverage");
-        admin.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, AdvisoryImportRecoveryRequest input, AdvisoryRecovery recovery, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, AdvisoryImportRecoveryRequest input, IntelligenceSettingsAccess recovery, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || input.ImportId.Version != 7) return Results.ValidationProblem(new Dictionary<string, string[]> { ["import"] = ["Invalid import identity."] });
@@ -96,7 +96,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Abandon a failed advisory import so a later scheduled refresh can start again");
-        admin.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, AdvisoryCredentialUpdate input, AdvisoryCredentials credentials, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, AdvisoryCredentialUpdate input, IntelligenceSettingsAccess credentials, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || !AdvisoryCredentials.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["credential"] = ["Invalid credential settings."] });
@@ -108,7 +108,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Replace or clear the GitHub advisory source credential");
-        admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligencePolicy policy, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligenceSettingsAccess policy, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || !IntelligencePolicy.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["Invalid source policy."] });
