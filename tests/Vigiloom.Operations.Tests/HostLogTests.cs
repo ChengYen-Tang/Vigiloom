@@ -105,6 +105,12 @@ public sealed class HostLogTests(TestContext context)
             Assert.AreEqual(3, await logs.LogRecords.CountAsync(token));
             var latest = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"/internal/v1/application-logs/{appLog.ServiceId:D}/latest", token);
             Assert.IsTrue(latest.GetProperty("lastReceivedAt").GetDateTimeOffset() > DateTimeOffset.UtcNow.AddMinutes(-1));
+            using var latestBatch = await client.PostAsJsonAsync("/internal/v1/application-logs/latest-by-service", new[] { appLog.ServiceId, Guid.CreateVersion7() }, token);
+            latestBatch.EnsureSuccessStatusCode();
+            var lastTimes = await latestBatch.Content.ReadFromJsonAsync<ApplicationLogLastReceived[]>(cancellationToken: token);
+            Assert.IsNotNull(lastTimes);
+            Assert.AreEqual(appLog.ServiceId, lastTimes.Single().ServiceId);
+            Assert.IsTrue(lastTimes[0].ReceivedAt > DateTimeOffset.UtcNow.AddMinutes(-1));
             await using var timeline = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "host-log" && x.ResourceId == input.DeviceId, token));
             Assert.Contains("login", (await timeline.Set<TimelineRecord>().SingleAsync(x => x.Source == "host-log", token)).Evidence);

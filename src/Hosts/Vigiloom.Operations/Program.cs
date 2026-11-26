@@ -175,6 +175,8 @@ app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid service
 });
 app.MapGet("/internal/v1/application-logs/{serviceId:guid}/latest", async (Guid serviceId, ApplicationLogHistory history, CancellationToken token) =>
     serviceId.Version != 7 ? Results.BadRequest() : Results.Ok(new { LastReceivedAt = await history.LastReceivedAsync(serviceId, token) }));
+app.MapPost("/internal/v1/application-logs/latest-by-service", async (Guid[] serviceIds, ApplicationLogHistory history, CancellationToken token) =>
+    Results.Ok(await history.LastReceivedAsync(serviceIds, token)));
 app.MapGet("/internal/v1/application-logs/count", async (DateTimeOffset before, ApplicationLogHistory history, CancellationToken token) =>
     Results.Ok(new { Count = await history.CountBeforeAsync(before.ToUniversalTime(), token) }));
 app.MapPost("/internal/v1/application-logs/cleanup", async (ApplicationLogCleanupRequest input, ApplicationLogCleanup cleanup, CancellationToken token) =>
