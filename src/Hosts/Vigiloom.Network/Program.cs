@@ -16,6 +16,7 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
+using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Network;
 
@@ -56,18 +57,26 @@ builder.Services.AddServiceDiscovery();
 builder.Services.AddHttpClient<IDevicePingSource, RemoteDevicePingSource>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<ResourceDevices>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233", builder.Configuration["Temporal:Namespace"] ?? "default");
 if (builder.Configuration.GetValue("Temporal:EnableNetworkWorker", true))
     builder.Services.AddVigiloomTemporalWorker<DeviceChangeHandler>(builder.Configuration["Work:NetworkQueue"] ?? "vigiloom.network.resources");
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
 builder.Services.AddScoped<IPingTransitionSink, TemporalPingTransitionSink>();
 builder.Services.AddScoped<PingSettings>();
+builder.Services.AddScoped<PingHistoryReader>();
+builder.Services.AddScoped<PingRetentionSettings>();
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<IPingProbe, SystemPingProbe>();
 builder.Services.AddScoped<PingRunner>();
 builder.Services.AddScoped<SpeedSettings>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<SpeedRetentionSettings>();
+builder.Services.AddScoped<SpeedRetentionCleanup>();
+builder.Services.AddScoped<PingRetentionCleanup>();
+builder.Services.AddScoped<PingRollupBackfill>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedRunner>();
 builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
@@ -84,6 +93,10 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
             ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
     builder.Services.AddScoped<AutomaticSpeedJob>();
+    builder.Services.AddScoped<PingRetentionJob>();
+    builder.Services.AddScoped<PingRollupBackfillJob>();
+    builder.Services.AddScoped<SpeedRetentionJob>();
+    builder.Services.AddHostedService<NetworkMaintenanceSchedule>();
     builder.Services.AddHostedService<SpeedSchedule>();
     builder.Services.AddHangfireServer(options => { options.Queues = ["network"]; options.IsLightweightServer = true; });
 }
@@ -94,6 +107,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapSpeedTestEndpoints();
+app.MapPingEndpoints();
 app.MapGet("/health/live", () => Results.Ok());
 app.Run();
 
