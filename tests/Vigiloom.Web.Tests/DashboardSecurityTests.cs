@@ -163,6 +163,26 @@ public sealed class DashboardSecurityTests
             command.Parameters.AddWithValue("@id", Guid.CreateVersion7());
             await command.ExecuteNonQueryAsync(token);
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/jobs", token))
+        {
+            var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("Background jobs", text);
+            Assert.Contains("Platform health", text);
+            Assert.Contains("No heartbeat data", text);
+            Assert.Contains("diagnostic source", text);
+            Assert.Contains("Background data processing failed", text);
+            Assert.Contains("10 attempts", text);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/jobs", token))
+        {
+            var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("平台健康", text);
+            Assert.Contains("后台工作", text);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var overview = await admin.GetAsync("/settings/jobs", token))
         {
             Assert.AreEqual(HttpStatusCode.OK, overview.StatusCode);
