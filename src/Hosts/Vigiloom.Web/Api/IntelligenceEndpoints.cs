@@ -121,7 +121,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Update intelligence source policy");
-        admin.MapPost("/{sourceId:guid}/activation", async (Guid sourceId, IntelligenceActivationRequest input, IntelligencePublication publication, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/activation", async (Guid sourceId, IntelligenceActivationRequest input, IntelligencePublicationAccess publication, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || input.RevisionId == Guid.Empty || input.ExpectedActiveRevisionId == Guid.Empty)
@@ -138,7 +138,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Activate or restore a retained intelligence revision");
-        admin.MapPost("/{sourceId:guid}/revisions/{revisionId:guid}/revoke", async (Guid sourceId, Guid revisionId, IntelligenceRevocation revocation, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/revisions/{revisionId:guid}/revoke", async (Guid sourceId, Guid revisionId, IntelligencePublicationAccess revocation, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || revisionId.Version != 7)
