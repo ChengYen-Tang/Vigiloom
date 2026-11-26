@@ -24,4 +24,20 @@
   <data name="公開範本 - Vigiloom" xml:space="preserve"><value>Publication templates - Vigiloom</value></data>
   <data name="公開範本" xml:space="preserve"><value>Publication templates</value></data>
   <data name="管理設備公開欄位與預設範本。" xml:space="preserve"><value>Manage public device fields and the default template.</value></data>
+  <data name="主機日誌證據 - Vigiloom" xml:space="preserve"><value>Host log evidence - Vigiloom</value></data>
+  <data name="← 返回設備日誌" xml:space="preserve"><value>← Back to device logs</value></data>
+  <data name="主機日誌證據" xml:space="preserve"><value>Host log evidence</value></data>
+  <data name="找不到此事件；資料可能已超過保存期限。" xml:space="preserve"><value>Event not found; its retention period may have expired.</value></data>
+  <data name="來源：{0} · 解析版本：{1} · 平台接收：{2}" xml:space="preserve"><value>Source: {0} · Parser version: {1} · Received by platform: {2}</value></data>
+  <data name="Agent：{0} · 事件：{1}" xml:space="preserve"><value>Agent: {0} · Event: {1}</value></data>
+  <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>Unable to load the event. Try again later.</value></data>
+  <data name="找不到頁面" xml:space="preserve"><value>Page not found</value></data>
+  <data name="找不到你要尋找的內容。" xml:space="preserve"><value>The content you are looking for does not exist.</value></data>
+  <data name="錯誤" xml:space="preserve"><value>Error</value></data>
+  <data name="處理要求時發生錯誤。" xml:space="preserve"><value>An error occurred while processing your request.</value></data>
+  <data name="要求 ID：" xml:space="preserve"><value>Request ID:</value></data>
+  <data name="開發模式" xml:space="preserve"><value>Development mode</value></data>
+  <data name="切換至 Development 環境會顯示更詳細的錯誤資訊。" xml:space="preserve"><value>Switching to the Development environment displays more detailed error information.</value></data>
+  <data name="已部署的應用程式不應啟用 Development 環境。" xml:space="preserve"><value>The Development environment should not be enabled for deployed applications.</value></data>
+  <data name="這可能向使用者顯示例外中的敏感資訊。本機偵錯時，可將 ASPNETCORE_ENVIRONMENT 環境變數設為 Development 並重新啟動應用程式。" xml:space="preserve"><value>This may expose sensitive exception information to users. For local debugging, set ASPNETCORE_ENVIRONMENT to Development and restart the application.</value></data>
 </root>
