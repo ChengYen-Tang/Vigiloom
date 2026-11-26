@@ -4,6 +4,8 @@ extern alias SecurityHost;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Data.Common;
+using System.Collections.Immutable;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -15,6 +17,8 @@ using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Resources;
+using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -32,11 +36,13 @@ public sealed class YaraRoutingTests(TestContext context)
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             await using (var db = new SecurityAnalysisDbContext(options)) await db.Database.MigrateAsync(token);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Temporal:Enabled", "false");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Security"] = database.ConnectionString }));
+                web.ConfigureTestServices(services => services.AddSingleton<IDeviceAgentSource>(new DeviceSource(identity.DeviceId)));
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
@@ -51,7 +57,13 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var stale = await securityClient.PutAsJsonAsync("/internal/v1/inventory-settings",
                 new { Update = new InventorySettingsUpdate(new(3600), before.Version), ActorId = Guid.CreateVersion7() }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
-            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var scopeInput = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/var/log", true, ImmutableArray<string>.Empty, 3600, 100, 1024, 2048, 4);
+            var scopePath = $"/internal/v1/devices/{identity.DeviceId:D}/integrity-scopes/";
+            using var scopeResponse = await securityClient.PostAsJsonAsync(scopePath, new { Policy = scopeInput, ActorId = actor }, token);
+            scopeResponse.EnsureSuccessStatusCode();
+            var scopeResult = await scopeResponse.Content.ReadFromJsonAsync<IntegrityConfigurationResult>(cancellationToken: token);
+            Assert.AreEqual(IntegrityConfigurationStatus.Success, scopeResult!.Status);
+            Assert.IsNotNull(scopeResult.Scope);
             using var created = await securityClient.PostAsJsonAsync("/internal/v1/yara-scans/create",
                 new YaraCreateCommand(identity, new("/tmp/test", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7()), token);
             created.EnsureSuccessStatusCode();
@@ -91,9 +103,27 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var integrity = await agent.GetAsync("/api/v1/agent/integrity-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, integrity.StatusCode);
-                Assert.IsNotNull(await integrity.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token));
+                var settings = await integrity.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(settings);
+                Assert.IsTrue(settings.Scopes.Any(scope => scope.Id == scopeResult.Scope.Scope.Id));
                 Assert.IsNotNull(integrity.Headers.ETag);
             }
+            var scopeId = scopeResult.Scope.Scope.Id;
+            using (var changed = await securityClient.PutAsJsonAsync(scopePath + scopeId.ToString("D"),
+                new { Policy = scopeInput with { ScanIntervalSeconds = 7200 }, scopeResult.Scope.Version, ActorId = actor }, token))
+            {
+                var result = await changed.Content.ReadFromJsonAsync<IntegrityConfigurationResult>(cancellationToken: token);
+                Assert.AreEqual(IntegrityConfigurationStatus.Success, result!.Status);
+                scopeResult = result;
+            }
+            var updatedIntegrity = await agent.GetFromJsonAsync<IntegritySettingsSnapshot>("/api/v1/agent/integrity-settings", token);
+            Assert.AreEqual(7200, updatedIntegrity!.Scopes.Single(scope => scope.Id == scopeId).ScanIntervalSeconds);
+            using (var retired = await securityClient.PostAsJsonAsync(scopePath + $"{scopeId:D}/retire",
+                new { scopeResult.Scope!.Version, ActorId = actor }, token))
+                Assert.AreEqual(IntegrityConfigurationStatus.Success,
+                    (await retired.Content.ReadFromJsonAsync<IntegrityConfigurationResult>(cancellationToken: token))!.Status);
+            var retiredIntegrity = await agent.GetFromJsonAsync<IntegritySettingsSnapshot>("/api/v1/agent/integrity-settings", token);
+            Assert.IsFalse(retiredIntegrity!.Scopes.Any(scope => scope.Id == scopeId));
             using (var baseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, baseline.StatusCode);
@@ -122,5 +152,13 @@ public sealed class YaraRoutingTests(TestContext context)
             var credential = await request.Content!.ReadFromJsonAsync<AgentCredentialCommand>(cancellationToken: token);
             return credential?.Credential == "valid" ? new(HttpStatusCode.OK) { Content = JsonContent.Create(identity) } : new(HttpStatusCode.Unauthorized);
         }
+    }
+
+    private sealed class DeviceSource(Guid deviceId) : IDeviceAgentSource
+    {
+        public Task<DeviceAgentState?> GetAsync(Guid id, CancellationToken token) =>
+            Task.FromResult<DeviceAgentState?>(id == deviceId ? new(id, 1, true) : null);
+        public Task<bool> IsCurrentAsync(Guid id, long generation, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
+            throw new NotSupportedException();
     }
 }
