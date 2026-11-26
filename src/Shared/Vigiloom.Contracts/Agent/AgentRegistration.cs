@@ -16,4 +16,5 @@ public sealed record AgentRegistrationSummary(Guid Id, long DeviceGeneration, Da
 public sealed record AgentEnrollmentSummary(Guid Id, long DeviceGeneration, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt, bool Consumed);
 public sealed record DeviceAgentRegistrations(IReadOnlyList<AgentRegistrationSummary> Agents, IReadOnlyList<AgentEnrollmentSummary> Enrollments, long CurrentGeneration);
 public sealed record AgentRegistrationChanged(Guid AgentId, Guid DeviceId, bool Revoked);
+public sealed record DeviceAgentOverview(Vigiloom.Contracts.Resources.DeviceAgentState Device, AgentRegistrationSummary? Registration);
 public sealed record AgentRegistrationAudit(Guid DeviceId, Guid? AgentId, Guid? ActorId, string Action, DateTimeOffset OccurredAt);

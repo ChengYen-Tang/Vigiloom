@@ -4,7 +4,7 @@ using Vigiloom.Contracts.Devices;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader
+internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader, IAgentOverviewReader
 {
     public async Task<AgentConnectionStatus?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -13,5 +13,14 @@ internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token)
             ?? throw new InvalidOperationException("Host monitoring returned an empty Agent status.");
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token)
+    {
+        if (deviceIds.Count == 0) return new Dictionary<Guid, AgentConnectionStatus>();
+        using var response = await client.PostAsJsonAsync("internal/v1/agent-connections", deviceIds, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<Dictionary<Guid, AgentConnectionStatus>>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Host monitoring returned an empty Agent overview.");
     }
 }

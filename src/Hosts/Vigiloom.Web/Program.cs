@@ -305,6 +305,7 @@ builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>((s
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Contracts.Devices.IAgentStatusReader>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
+builder.Services.AddScoped<Vigiloom.Contracts.Devices.IAgentOverviewReader>(services => services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddScoped<HostMetricHistory>();
 builder.Services.AddScoped<HostMetricRetentionSettings>();
 builder.Services.AddScoped<HostMetricThresholds>();

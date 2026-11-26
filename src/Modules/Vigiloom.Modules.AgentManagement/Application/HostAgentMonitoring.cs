@@ -11,6 +11,34 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 /// <summary>Reads host-owned Agent observations for a current Resources registration.</summary>
 public sealed class HostAgentMonitoring(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
 {
+    public async Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<DeviceAgentOverview> devices, CancellationToken token)
+    {
+        var ids = devices.Where(x => x.Device.Eligible && x.Registration is not null).Select(x => x.Registration!.Id).ToArray();
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var statuses = await db.AgentStatuses.AsNoTracking().Where(x => ids.Contains(x.Id))
+            .Select(x => new { x.Id, x.DeviceId, x.DeviceGeneration, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds })
+            .ToDictionaryAsync(x => x.Id, token);
+        var now = clock.GetUtcNow();
+        return devices.ToDictionary(x => x.Device.DeviceId, item =>
+        {
+            var device = item.Device;
+            var registration = item.Registration;
+            if (!device.Eligible) return new AgentConnectionStatus(device.DeviceId, AgentConnectionState.Disabled, null, AgentMonitoring.OfflineAfterSeconds);
+            if (registration is null || registration.RevokedAt is not null || registration.DeviceGeneration != device.Generation)
+                return new AgentConnectionStatus(device.DeviceId, AgentConnectionState.NotRegistered, null, AgentMonitoring.OfflineAfterSeconds);
+            statuses.TryGetValue(registration.Id, out var status);
+            if (status is not null && (status.DeviceId != device.DeviceId || status.DeviceGeneration != device.Generation))
+                throw new InvalidOperationException("Host status does not match the current Agent registration.");
+            var timeout = Math.Max(AgentMonitoring.OfflineAfterSeconds, (status?.HeartbeatSafetyIntervalSeconds ?? 30) * 3);
+            var last = status?.LastHeartbeatAt;
+            var basis = last ?? registration.CreatedAt;
+            var state = basis > now ? AgentConnectionState.ClockUncertain
+                : now - basis >= TimeSpan.FromSeconds(timeout) ? AgentConnectionState.Offline
+                : last is null ? AgentConnectionState.AwaitingFirstHeartbeat : AgentConnectionState.Online;
+            return new AgentConnectionStatus(device.DeviceId, state, last, timeout);
+        });
+    }
+
     public async Task<AgentConnectionStatus> GetAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
     {
         if (!device.Eligible) return new(device.DeviceId, AgentConnectionState.Disabled, null, AgentMonitoring.OfflineAfterSeconds);
