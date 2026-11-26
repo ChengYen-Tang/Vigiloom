@@ -12,8 +12,29 @@ using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
+using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddOptions<IdentityOptions>();
+builder.Services.AddAntiforgery();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials();
+builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+{
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+    options.Events.OnValidatePrincipal = context => context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
 builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("HostMonitoring")
         ?? throw new InvalidOperationException("ConnectionStrings:HostMonitoring is required."),
@@ -74,6 +95,10 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddHostedService<WorkDispatcher>();
 }
 var app = builder.Build();
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
@@ -81,6 +106,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
+app.MapHostAgentSettingsEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
 app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>

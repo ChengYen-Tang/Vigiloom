@@ -14,6 +14,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Identity;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -88,6 +90,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 });
             });
             using var client = host.CreateClient();
+            using (var unauthorizedSettings = await client.GetAsync("/api/v1/agent-management/settings/platform", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorizedSettings.StatusCode);
             using (var unauthorizedHeartbeat = await client.PostAsync("/api/v1/agent/heartbeat", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorizedHeartbeat.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
@@ -139,6 +143,32 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.IsFalse(await check.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
             Assert.AreEqual(1, await check.HostMetrics.CountAsync(token));
             Assert.AreEqual(2, sink.Calls);
+
+            using var proxiedHost = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
+            {
+                web.UseUrls("http://127.0.0.1:0");
+                web.UseSetting("Hangfire:Enabled", "false");
+                web.UseSetting("Temporal:Enabled", "false");
+                web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:HostMonitoring"] = hostDb.ConnectionString,
+                    ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1"
+                }));
+                web.ConfigureTestServices(configured =>
+                {
+                    configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    configured.RemoveAll<IApiCredentialValidation>();
+                    configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
+                });
+            });
+            proxiedHost.UseKestrel(0);
+            using var proxyClient = proxiedHost.CreateClient();
+            proxyClient.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+            proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+            using (var response = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-settings", token))
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            using (var response = await proxyClient.GetAsync("/api/v1/agent-management/settings/platform", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         }, outerToken), context.CancellationToken);
 
     private static async Task MigrateAsync<T>(IDbContextFactory<T> factory, CancellationToken token) where T : DbContext
@@ -159,9 +189,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.Method == HttpMethod.Get) return new(HttpStatusCode.OK);
             var command = await request.Content!.ReadFromJsonAsync<AgentCredentialCommand>(cancellationToken: token);
             return command?.Credential == "valid" ? new(HttpStatusCode.OK) { Content = JsonContent.Create(identity) } : new(HttpStatusCode.Unauthorized);
         }
+    }
+
+    private sealed class CredentialValidation : IApiCredentialValidation
+    {
+        public Task<VerifiedApiCredentialResponse?> VerifyAsync(string value, CancellationToken token) =>
+            Task.FromResult<VerifiedApiCredentialResponse?>(value == "valid" ? new(Guid.CreateVersion7(), "test", false) : null);
     }
 
     private sealed class CommitThenLoseResponse(HttpClient client) : IHostLogSink

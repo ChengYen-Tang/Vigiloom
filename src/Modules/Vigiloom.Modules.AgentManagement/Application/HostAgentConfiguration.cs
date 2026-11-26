@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -6,8 +7,30 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Resolves Agent scheduling settings from host-owned configuration.</summary>
-public sealed class HostAgentConfiguration(IDbContextFactory<HostMonitoringDbContext> contexts, HostHeartbeat heartbeat)
+public sealed class HostAgentConfiguration(IDbContextFactory<HostMonitoringDbContext> contexts, HostHeartbeat heartbeat, TimeProvider clock)
 {
+    public async Task<AgentSettingsView> GetAsync(Guid? deviceId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
+        var rows = await db.Set<AgentSetting>().AsNoTracking().Where(x => x.DeviceId == null || x.DeviceId == deviceId).ToListAsync(token);
+        var result = AgentConfiguration.ToView(deviceId, rows);
+        await transaction.CommitAsync(token);
+        return result;
+    }
+
+    public async Task<AgentSettingsView?> UpdateAsync(Guid? deviceId, AgentSettingsUpdate update, Guid actorId, CancellationToken token)
+    {
+        if (deviceId == Guid.Empty || actorId == Guid.Empty || update is null || !AgentConfiguration.Valid(update.Overrides))
+            throw new ArgumentException("Invalid Agent settings update.", nameof(update));
+        byte[] version;
+        try { version = Convert.FromBase64String(update.Version ?? ""); }
+        catch (FormatException) { return null; }
+        if (version.Length is not (0 or 8)) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await AgentSettingsStore.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
+    }
+
     public async Task<AgentSettingsSnapshot?> GetForAgentAsync(RegisteredAgentIdentity identity, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

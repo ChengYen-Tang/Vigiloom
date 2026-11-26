@@ -39,6 +39,15 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(epoch, saved.QueueReportEpoch);
             Assert.AreEqual(2L, saved.QueueReportSequence);
             Assert.IsNotNull(saved.LastHeartbeatAt);
+            var settings = new HostAgentConfiguration(factory, heartbeat, TimeProvider.System);
+            var actor = Guid.CreateVersion7();
+            var platform = await settings.UpdateAsync(null, new AgentSettingsUpdate(new AgentSettingsOverrides(120, null, null), ""), actor, token);
+            Assert.IsNotNull(platform);
+            var deviceSettings = await settings.UpdateAsync(identity.DeviceId, new AgentSettingsUpdate(new AgentSettingsOverrides(90, null, null), ""), actor, token);
+            Assert.IsNotNull(deviceSettings);
+            Assert.AreEqual(90, (await settings.GetForAgentAsync(identity, token))!.Settings.HeartbeatSeconds);
+            Assert.IsNull(await settings.UpdateAsync(null, new AgentSettingsUpdate(new AgentSettingsOverrides(60, null, null), ""), actor, token));
+            Assert.AreEqual(2, await db.Set<AgentSettingAudit>().CountAsync(token));
         }, context.CancellationToken);
 
     [TestMethod]

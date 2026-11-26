@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
@@ -51,49 +50,7 @@ public sealed class AgentConfiguration(IDbContextFactory<AgentManagementDbContex
         if (version.Length is not (0 or 8)) return null;
         if (deviceId is { } id && await devices.GetAsync(id, token) is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        // Update locks serialize competing edits, including the missing platform or device row.
-        var rows = await db.Settings.FromSqlInterpolated($"SELECT * FROM [agent].[Settings] WITH (UPDLOCK, HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {deviceId}")
-            .ToListAsync(token);
-        var setting = rows.SingleOrDefault(x => x.DeviceId == deviceId);
-        if (setting is null)
-        {
-            if (version.Length != 0) return null;
-            setting = new AgentSetting { DeviceId = deviceId };
-            db.Settings.Add(setting);
-            rows.Add(setting);
-        }
-        else
-        {
-            if (version.Length != 8 || !version.AsSpan().SequenceEqual(setting.Version)) return null;
-            db.Entry(setting).Property(x => x.Version).OriginalValue = version;
-        }
-        setting.HeartbeatSeconds = update.Overrides.HeartbeatSeconds;
-        setting.SettingsPollSeconds = update.Overrides.SettingsPollSeconds;
-        setting.BatchIntervalSeconds = update.Overrides.BatchIntervalSeconds;
-        setting.UpdatedAt = clock.GetUtcNow();
-        setting.UpdatedBy = actorId;
-        db.Entry(setting).Property(x => x.UpdatedAt).IsModified = true;
-        var view = ToView(deviceId, rows);
-        try
-        {
-            await db.SaveChangesAsync(token);
-            db.SettingAudits.Add(new AgentSettingAudit
-            {
-                SettingId = setting.Id, DeviceId = deviceId, ActorId = actorId, OccurredAt = setting.UpdatedAt,
-                HeartbeatSeconds = setting.HeartbeatSeconds, SettingsPollSeconds = setting.SettingsPollSeconds,
-                BatchIntervalSeconds = setting.BatchIntervalSeconds,
-                EffectiveHeartbeatSeconds = view.Effective.Settings.HeartbeatSeconds,
-                EffectiveSettingsPollSeconds = view.Effective.Settings.SettingsPollSeconds,
-                EffectiveBatchIntervalSeconds = view.Effective.Settings.BatchIntervalSeconds,
-                EffectiveRevision = view.Effective.Revision, ChangeVersion = setting.Version.ToArray()
-            });
-            await db.SaveChangesAsync(token);
-            await transaction.CommitAsync(token);
-            return ToView(deviceId, rows);
-        }
-        catch (DbUpdateConcurrencyException) { return null; }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { return null; }
+        return await AgentSettingsStore.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
     }
 
     public static bool Valid(AgentSettingsOverrides? layer) => layer is not null && Resolve(AgentSettings.Default, layer).IsValid();
