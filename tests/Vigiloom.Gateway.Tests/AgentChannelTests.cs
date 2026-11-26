@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Work;
 using System.Text.Json;
 
@@ -80,6 +81,11 @@ public sealed class AgentChannelTests
         await second.StartAsync(TestContext.CancellationToken);
         var handler = new HostMonitoring::Vigiloom.HostMonitoring.AgentChangeHandler(
             app.Services.GetRequiredService<IHubContext<HostMonitoring::Vigiloom.HostMonitoring.AgentChannel>>());
+        var device = Guid.CreateVersion7();
+        await handler.ExecuteAsync(new ServiceWork(nameof(AgentDeviceChanged),
+            JsonSerializer.Serialize(new AgentDeviceChanged(device, [1]))), TestContext.CancellationToken);
+        await handler.ExecuteAsync(new ServiceWork(nameof(AgentRegistrationChanged),
+            JsonSerializer.Serialize(new AgentRegistrationChanged(agent, device, true))), TestContext.CancellationToken);
         await handler.ExecuteAsync(new ServiceWork(nameof(AgentAssignmentChanged),
             JsonSerializer.Serialize(new AgentAssignmentChanged(agent, Guid.CreateVersion7()))), TestContext.CancellationToken);
         await received.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
