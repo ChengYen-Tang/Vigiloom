@@ -23,6 +23,7 @@ public sealed class SharedComponentsTests
         var day = DateTimeOffset.Parse(dayText, System.Globalization.CultureInfo.InvariantCulture);
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddLocalization();
         await using var provider = services.BuildServiceProvider();
         await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
         await renderer.Dispatcher.InvokeAsync(async () =>
@@ -39,6 +40,32 @@ public sealed class SharedComponentsTests
             Assert.Contains("未知或無資料", html);
             Assert.Contains("資料涵蓋率", html);
         });
+    }
+
+    [TestMethod]
+    [DataRow("en", "Operational", "No public devices to display.")]
+    [DataRow("zh-Hant", "正常", "目前沒有可顯示的公開設備。")]
+    [DataRow("zh-Hans", "正常", "目前没有可显示的公开设备。")]
+    public async Task PublicStatusComponents_UseSelectedCulture(string culture, string state, string empty)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var badge = await renderer.RenderComponentAsync<StatusLabel>(ParameterView.FromDictionary(new Dictionary<string, object?> { [nameof(StatusLabel.State)] = "Healthy" }));
+                Assert.Contains(state, System.Net.WebUtility.HtmlDecode(badge.ToHtmlString()));
+                var devices = await renderer.RenderComponentAsync<DeviceSection>(ParameterView.Empty);
+                Assert.Contains(empty, System.Net.WebUtility.HtmlDecode(devices.ToHtmlString()));
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
     }
 
     [TestMethod]

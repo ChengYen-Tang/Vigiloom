@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="對外網路設備">
+    <value>对外网络设备</value>
+  </data>
+  <data xml:space="preserve" name="顯示管理員允許公開的連線狀態與延遲。">
+    <value>显示管理员允许公开的连接状态与延迟。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開設備。">
+    <value>目前没有可显示的公开设备。</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>设备名称</value>
+  </data>
+  <data xml:space="preserve" name="目前狀態">
+    <value>当前状态</value>
+  </data>
+  <data xml:space="preserve" name="延遲與觀測時間">
+    <value>延迟与观测时间</value>
+  </data>
+  <data xml:space="preserve" name="查看延遲歷史">
+    <value>查看延迟历史</value>
+  </data>
+  <data xml:space="preserve" name="對外應用服務">
+    <value>对外应用服务</value>
+  </data>
+  <data xml:space="preserve" name="應用服務的健康狀態獨立於設備連線。">
+    <value>应用服务的健康状态独立于设备连接。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開服務。">
+    <value>目前没有可显示的公开服务。</value>
+  </data>
+  <data xml:space="preserve" name="服務名稱">
+    <value>服务名称</value>
+  </data>
+  <data xml:space="preserve" name="歷史狀態">
+    <value>历史状态</value>
+  </data>
+  <data xml:space="preserve" name="此服務未提供公開歷史。">
+    <value>此服务未提供公开历史。</value>
+  </data>
+  <data xml:space="preserve" name="歷史資料暫時無法讀取。">
+    <value>历史数据暂时无法读取。</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取歷史資料…">
+    <value>正在读取历史数据…</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>正常</value>
+  </data>
+  <data xml:space="preserve" name="部分影響">
+    <value>部分影响</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>异常</value>
+  </data>
+  <data xml:space="preserve" name="未知或無資料">
+    <value>未知或无数据</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可公開的歷史資料。">
+    <value>目前没有可公开的历史数据。</value>
+  </data>
+  <data xml:space="preserve" name="服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要">
+    <value>服务每日状态历史，可左右滚动，选择日期查看文字摘要</value>
+  </data>
+  <data xml:space="preserve" name="所選歷史時間範圍">
+    <value>所选历史时间范围</value>
+  </data>
+  <data xml:space="preserve" name="至">
+    <value>至</value>
+  </data>
+  <data xml:space="preserve" name="本頁取得時間：">
+    <value>本页获取时间：</value>
+  </data>
+  <data xml:space="preserve" name="資料涵蓋率">
+    <value>数据覆盖率</value>
+  </data>
+</root>

@@ -10,6 +10,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.Services.AddAuthorizationCore(options => options.AddPolicy(WorkspaceAccess.MonitoringRead,
     policy => policy.RequireRole(WorkspaceAccess.Administrator, WorkspaceAccess.ReadOnly)));
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddLocalization();
 builder.Services.AddAuthenticationStateDeserialization();
 builder.Services.AddMudServices();
 builder.Services.AddSingleton(TimeProvider.System);

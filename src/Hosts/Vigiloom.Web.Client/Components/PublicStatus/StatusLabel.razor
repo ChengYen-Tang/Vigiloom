@@ -1,13 +1,14 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PublicStatusText> L
 <span class="public-state @Css">@Text</span>
 
 @code {
     [Parameter, EditorRequired] public string State { get; set; } = "Unknown";
     private string Text => State switch
     {
-        "Healthy" or "Operational" => "正常",
-        "Degraded" => "部分影響",
-        "Unhealthy" or "Unavailable" => "異常",
-        _ => "未知或無資料"
+        "Healthy" or "Operational" => L["正常"].Value,
+        "Degraded" => L["部分影響"].Value,
+        "Unhealthy" or "Unavailable" => L["異常"].Value,
+        _ => L["未知或無資料"].Value
     };
     private string Css => State switch
     {
