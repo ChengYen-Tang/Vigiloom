@@ -55,7 +55,8 @@ public static class WorkerHost
         builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "security", pooled: true);
         builder.Services.AddVigiloomDataProtection(builder.Configuration);
         builder.Services.AddHttpClient<Vigiloom.Modules.AlertingOperations.Application.Line.LinePushClient>();
-        builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHandler, Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryHandler>();
+        builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryHandler>();
+        builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHandler, LegacyLineDeliveryHandler>();
         builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryQueue>();
         builder.Services.AddScoped<LineDeliveryJob>();
         builder.Services.AddHostedService<LineDeliverySchedule>();
