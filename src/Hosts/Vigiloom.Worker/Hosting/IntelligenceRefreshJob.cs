@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class IntelligenceRefreshJob(IntelligenceRefresh refresh, ILogger<IntelligenceRefreshJob> logger)
+public sealed class IntelligenceRefreshJob(IntelligenceRefresh refresh, ILogger<IntelligenceRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var result = await refresh.RunDueAsync(token);
         if (result == IntelligenceRefreshResult.Failed)
             throw new InvalidOperationException("Intelligence source refresh failed; see source status for details.");

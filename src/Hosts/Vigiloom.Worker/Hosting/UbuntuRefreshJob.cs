@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class UbuntuRefreshJob(UbuntuRefresh refresh, ILogger<UbuntuRefreshJob> logger)
+public sealed class UbuntuRefreshJob(UbuntuRefresh refresh, ILogger<UbuntuRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var result = await refresh.RunDueAsync(token);
         if (result == UbuntuRefreshResult.Failed) throw new InvalidOperationException("Ubuntu OSV refresh failed; see source status.");
         if (result == UbuntuRefreshResult.Conflict) logger.LogWarning("Ubuntu OSV refresh ended with {Result}", result);

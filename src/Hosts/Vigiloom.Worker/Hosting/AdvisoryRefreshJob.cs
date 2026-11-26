@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class AdvisoryRefreshJob(AdvisoryRefresh refresh, ILogger<AdvisoryRefreshJob> logger)
+public sealed class AdvisoryRefreshJob(AdvisoryRefresh refresh, ILogger<AdvisoryRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var result = await refresh.RunDueAsync(token);
         if (result == AdvisoryRefreshResult.Failed)
             throw new InvalidOperationException("Advisory refresh failed; its staged import requires attention.");
