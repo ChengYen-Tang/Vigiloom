@@ -5,7 +5,7 @@ using Vigiloom.Agent.Core.Identity;
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Receives work notifications; durable work remains on the server.</summary>
-internal sealed class AgentConnectionWorker(IConfiguration configuration, AgentWorkNotifications notifications,
+internal sealed class AgentConnectionWorker(IConfiguration configuration, AgentWorkNotifications notifications, AgentHeartbeatConnection heartbeats,
     TimeProvider clock, ILogger<AgentConnectionWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -35,9 +35,11 @@ internal sealed class AgentConnectionWorker(IConfiguration configuration, AgentW
                         connection.On("ScanAvailable", notifications.NotifyScan);
                         connection.Closed += _ => { disconnected.TrySetResult(); return Task.CompletedTask; };
                         await connection.StartAsync(stoppingToken);
+                        heartbeats.Set(connection, new Uri(uri.AbsoluteUri.TrimEnd('/') + "/"), credential);
                         notifications.NotifyUpdate();
                         notifications.NotifyScan();
-                        await disconnected.Task.WaitAsync(stoppingToken);
+                        try { await disconnected.Task.WaitAsync(stoppingToken); }
+                        finally { heartbeats.Clear(connection); }
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
