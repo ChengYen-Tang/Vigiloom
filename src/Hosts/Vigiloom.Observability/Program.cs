@@ -87,6 +87,7 @@ builder.Services.AddHttpClient<IApplicationLogOverview, ApplicationLogOverview>(
 builder.Services.AddHttpClient<IApplicationLogHistory, ApplicationLogHistory>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddSingleton<MetricRollupPayloadGate>();
 builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
@@ -150,6 +151,7 @@ internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
 });
 app.MapHealthReads();
 app.MapServiceReads();
+app.MapTelemetryHistoryEndpoints();
 app.Run();
 
 public partial class Program;
