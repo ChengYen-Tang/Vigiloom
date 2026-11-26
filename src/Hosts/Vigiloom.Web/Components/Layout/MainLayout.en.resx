@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="主要導覽">
+    <value>Main navigation</value>
+  </data>
+  <data xml:space="preserve" name="總覽">
+    <value>Overview</value>
+  </data>
+  <data xml:space="preserve" name="設備">
+    <value>Devices</value>
+  </data>
+  <data xml:space="preserve" name="應用服務">
+    <value>Application services</value>
+  </data>
+  <data xml:space="preserve" name="群組">
+    <value>Groups</value>
+  </data>
+  <data xml:space="preserve" name="網路測速">
+    <value>Speed tests</value>
+  </data>
+  <data xml:space="preserve" name="事件">
+    <value>Events</value>
+  </data>
+  <data xml:space="preserve" name="設定與帳號">
+    <value>Settings and account</value>
+  </data>
+  <data xml:space="preserve" name="待加入服務">
+    <value>Discovered services</value>
+  </data>
+  <data xml:space="preserve" name="管線接入">
+    <value>Pipeline setup</value>
+  </data>
+  <data xml:space="preserve" name="服務執行個體">
+    <value>Service instances</value>
+  </data>
+  <data xml:space="preserve" name="服務健康檢查">
+    <value>Service health checks</value>
+  </data>
+  <data xml:space="preserve" name="Log 收集配額">
+    <value>Log quota</value>
+  </data>
+  <data xml:space="preserve" name="Trace 收集配額">
+    <value>Trace quota</value>
+  </data>
+  <data xml:space="preserve" name="Ping 監測">
+    <value>Ping monitoring</value>
+  </data>
+  <data xml:space="preserve" name="公開範本">
+    <value>Public templates</value>
+  </data>
+  <data xml:space="preserve" name="Agent 設定">
+    <value>Agent settings</value>
+  </data>
+  <data xml:space="preserve" name="Agent 套件管理">
+    <value>Agent packages</value>
+  </data>
+  <data xml:space="preserve" name="情報來源">
+    <value>Intelligence sources</value>
+  </data>
+  <data xml:space="preserve" name="行為規則">
+    <value>Detection rules</value>
+  </data>
+  <data xml:space="preserve" name="LINE 通知">
+    <value>LINE notifications</value>
+  </data>
+  <data xml:space="preserve" name="背景工作">
+    <value>Background jobs</value>
+  </data>
+  <data xml:space="preserve" name="操作稽核">
+    <value>Audit log</value>
+  </data>
+  <data xml:space="preserve" name="帳號管理">
+    <value>Accounts</value>
+  </data>
+  <data xml:space="preserve" name="API 憑證">
+    <value>API credentials</value>
+  </data>
+  <data xml:space="preserve" name="通知紀錄">
+    <value>Notifications</value>
+  </data>
+  <data xml:space="preserve" name="雙重驗證">
+    <value>Two-factor authentication</value>
+  </data>
+  <data xml:space="preserve" name="修改密碼">
+    <value>Change password</value>
+  </data>
+  <data xml:space="preserve" name="登出">
+    <value>Sign out</value>
+  </data>
+  <data xml:space="preserve" name="登入">
+    <value>Sign in</value>
+  </data>
+  <data xml:space="preserve" name="語言">
+    <value>Language</value>
+  </data>
+  <data xml:space="preserve" name="An unhandled error has occurred.">
+    <value>An unhandled error has occurred.</value>
+  </data>
+  <data xml:space="preserve" name="Reload">
+    <value>Reload</value>
+  </data>
+</root>
