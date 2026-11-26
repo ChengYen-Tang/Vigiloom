@@ -76,6 +76,10 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         Assert.AreEqual("Online", await ReadField("Agent status"));
         var translated = await new HtmlParser().ParseDocumentAsync(await reader.GetStringAsync($"/devices/{device.Id:D}", token), token);
         Assert.Contains("Agent settings synchronization", translated.Body!.TextContent);
+        Assert.Contains("Agent local transmission queue", translated.Body.TextContent);
+        Assert.Contains("No queue report yet.", translated.Body.TextContent);
+        Assert.Contains("No metric loss statistics are available", translated.Body.TextContent);
+        Assert.Contains("Central receipt capacity", translated.Body.TextContent);
         Assert.Contains("Independent states", translated.Body.TextContent);
     }, context.CancellationToken);
 

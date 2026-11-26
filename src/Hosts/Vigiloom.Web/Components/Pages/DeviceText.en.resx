@@ -501,4 +501,187 @@
   <data xml:space="preserve" name="未知模組">
     <value>Unknown module</value>
   </data>
+  <data xml:space="preserve" name="Agent 本機傳送佇列">
+    <value>Agent local transmission queue</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取佇列容量設定狀態。">
+    <value>Unable to load queue capacity settings status.</value>
+  </data>
+  <data xml:space="preserve" name="容量設定狀態">
+    <value>Capacity settings status</value>
+  </data>
+  <data xml:space="preserve" name="目標容量">
+    <value>Desired capacity</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用容量">
+    <value>Capacity applied by Agent</value>
+  </data>
+  <data xml:space="preserve" name="尚無已套用回報">
+    <value>No applied settings reported yet</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取傳送狀態，請稍後重新整理。">
+    <value>Unable to load transmission status. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="目前 Agent 最後提交批次（UTC）">
+    <value>Last committed batch for this Agent (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="保留範圍內無資料">
+    <value>No data within retention period</value>
+  </data>
+  <data xml:space="preserve" name="顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。">
+    <value>This shows batches committed by the platform, not whether the Agent received confirmation. Resending the same batch does not change the time.</value>
+  </data>
+  <data xml:space="preserve" name="最近記錄的時間拒收：{0}。">
+    <value>Last recorded time rejection: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="平台時間異常，請確認平台時鐘">
+    <value>Platform time is uncertain; check its clock</value>
+  </data>
+  <data xml:space="preserve" name="批次入列時間超前，請核對 Agent 與平台時鐘">
+    <value>Batch enqueue time is ahead; check Agent and platform clocks</value>
+  </data>
+  <data xml:space="preserve" name="平台拒收超過補送期限的批次">
+    <value>The platform rejected a batch beyond the replay window</value>
+  </data>
+  <data xml:space="preserve" name="未知原因">
+    <value>Unknown reason</value>
+  </data>
+  <data xml:space="preserve" name="記錄時間（UTC）：{0}。這是歷史紀錄，不代表問題目前仍持續。">
+    <value>Recorded at (UTC): {0}. This historical record does not mean the issue is still present.</value>
+  </data>
+  <data xml:space="preserve" name="此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。">
+    <value>This batch’s reported enqueue time is over five minutes ahead of the platform receipt time. Check the Agent and platform clocks.</value>
+  </data>
+  <data xml:space="preserve" name="入列（UTC）：">
+    <value>Enqueued (UTC): </value>
+  </data>
+  <data xml:space="preserve" name="接收（UTC）：">
+    <value>Received (UTC): </value>
+  </data>
+  <data xml:space="preserve" name="這是歷史批次觀察，不代表目前時鐘狀態。">
+    <value>This is a historical batch observation, not the current clock status.</value>
+  </data>
+  <data xml:space="preserve" name="批次接收時間晚於目前平台時間，請確認平台時鐘。">
+    <value>Batch receipt time is later than the current platform time. Check the platform clock.</value>
+  </data>
+  <data xml:space="preserve" name="尚無佇列回報。">
+    <value>No queue report yet.</value>
+  </data>
+  <data xml:space="preserve" name="最後佇列回報（UTC）">
+    <value>Last queue report (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="等待傳送">
+    <value>Awaiting transmission</value>
+  </data>
+  <data xml:space="preserve" name="已隔離">
+    <value>Quarantined</value>
+  </data>
+  <data xml:space="preserve" name="佇列容量">
+    <value>Queue capacity</value>
+  </data>
+  <data xml:space="preserve" name="批次容量">
+    <value>Batch capacity</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀取佇列，資料狀態未知。">
+    <value>The Agent cannot read its queue; data status is unknown.</value>
+  </data>
+  <data xml:space="preserve" name="佇列已達容量，新資料可能需要等待空間。">
+    <value>The queue is full; new data may need to wait for space.</value>
+  </data>
+  <data xml:space="preserve" name="隔離原因摘要尚未提供。">
+    <value>Quarantine reasons are not available yet.</value>
+  </data>
+  <data xml:space="preserve" name="隔離批次仍保留在 Agent，暫停自動傳送：">
+    <value>Quarantined batches remain on the Agent and are not sent automatically:</value>
+  </data>
+  <data xml:space="preserve" name="數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。">
+    <value>Values are from the last Agent report and may not reflect the current state. Quarantined batches still use capacity.</value>
+  </data>
+  <data xml:space="preserve" name="佇列回報已過時或時間異常，請確認 Agent 傳送狀態。">
+    <value>The queue report is stale or its time is uncertain. Check Agent transmission status.</value>
+  </data>
+  <data xml:space="preserve" name="Agent 指標資料完整性">
+    <value>Agent metric data integrity</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取資料完整性狀態，請稍後重新整理。">
+    <value>Unable to load data integrity status. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的指標遺失統計，無法判定是否有資料遺失。">
+    <value>No metric loss statistics are available; data loss cannot be determined.</value>
+  </data>
+  <data xml:space="preserve" name="目前統計帳本已確認遺失">
+    <value>Confirmed loss in the current ledger</value>
+  </data>
+  <data xml:space="preserve" name="至少 {0} 筆指標（{1} 批）">
+    <value>At least {0} metrics ({1} batches)</value>
+  </data>
+  <data xml:space="preserve" name="統計起點（Agent 時間，UTC）">
+    <value>Ledger start (Agent time, UTC)</value>
+  </data>
+  <data xml:space="preserve" name="最後回報（平台時間，UTC）">
+    <value>Last report (platform time, UTC)</value>
+  </data>
+  <data xml:space="preserve" name="部分資料的完整性無法確認，實際遺失數可能更多。">
+    <value>Some data completeness is unknown; actual loss may be greater.</value>
+  </data>
+  <data xml:space="preserve" name="此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。">
+    <value>This includes only metrics confirmed lost since the ledger began. Queued and quarantined batches are retained and are not counted as lost.</value>
+  </data>
+  <data xml:space="preserve" name="以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。">
+    <value>This is the last report; it is stale or platform time is uncertain. Check the Agent.</value>
+  </data>
+  <data xml:space="preserve" name="中央收據容量">
+    <value>Central receipt capacity</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取中央收據容量，請稍後重新整理。">
+    <value>Unable to load central receipt capacity. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的中央收據容量資訊。">
+    <value>No central receipt capacity information is available.</value>
+  </data>
+  <data xml:space="preserve" name="中央收據筆數">
+    <value>Central receipts</value>
+  </data>
+  <data xml:space="preserve" name="原始批次長度累計">
+    <value>Total original batch size</value>
+  </data>
+  <data xml:space="preserve" name="這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。">
+    <value>Receipt usage is shown at query time. Original batch size is not SQL disk usage and does not imply the full batch is retained.</value>
+  </data>
+  <data xml:space="preserve" name="中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。">
+    <value>The central receipt limit has been reached. Existing receipts can still confirm retries; automatic cleanup is not currently available.</value>
+  </data>
+  <data xml:space="preserve" name="{0} 批">
+    <value>{0} batches</value>
+  </data>
+  <data xml:space="preserve" name="{0}／{1} 批">
+    <value>{0} / {1} batches</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 批">
+    <value>{0} / {1} batches</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 筆">
+    <value>{0} / {1} receipts</value>
+  </data>
+  <data xml:space="preserve" name="本機批次格式無效：{0} 批">
+    <value>Invalid local batch: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕無效內容：{0} 批">
+    <value>Invalid content rejected by platform: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="批次內容衝突：{0} 批">
+    <value>Conflicting batch content: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="批次超過平台大小限制：{0} 批">
+    <value>Batch exceeds platform size limit: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="平台不支援批次格式：{0} 批">
+    <value>Batch format not supported by platform: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕過期批次：{0} 批">
+    <value>Expired batch rejected by platform: {0} batches</value>
+  </data>
+  <data xml:space="preserve" name="其他或未知原因：{0} 批">
+    <value>Other or unknown reason: {0} batches</value>
+  </data>
 </root>
