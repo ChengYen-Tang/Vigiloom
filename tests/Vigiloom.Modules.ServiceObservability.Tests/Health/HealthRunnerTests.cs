@@ -655,7 +655,8 @@ public sealed class HealthRunnerTests(TestContext context)
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [State] = 1, [EvidenceAt] = {evidence}, [Streak] = 1, [StreakCount] = 2, [StreakAt] = {evidence}, [LastEvaluatedAt] = {evidence}, [NetworkVersion] = (SELECT [Version] FROM [service].[HealthNetworkPolicies] WHERE [Name] = 'central') WHERE [TargetId] = {targetId}", token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthStateIntervals] SET [State] = 1, [Reason] = 1, [StartedAt] = {start} WHERE [TargetId] = {targetId}", token);
             }
-            using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+            var recording = new RecordingHealthSink();
+            using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System, [recording]);
             await Task.WhenAll(runner.ExpireStaleAsync(token), runner.ExpireStaleAsync(token));
             await using var verify = new ServiceObservabilityDbContext(options);
             var intervals = await verify.HealthStateIntervals.OrderBy(x => x.RowId).ToArrayAsync(token);
@@ -664,6 +665,9 @@ public sealed class HealthRunnerTests(TestContext context)
             Assert.AreEqual(intervals[0].EndedAt, intervals[1].StartedAt);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, intervals[1].State);
             Assert.AreEqual(0, await verify.HealthObservations.CountAsync(token));
+            Assert.HasCount(1, recording.Transitions);
+            Assert.AreEqual(ServiceHealthState.Unknown, recording.Transitions[0].State);
+            Assert.AreEqual(recording.Transitions[0].Generation, (await verify.HealthSchedules.SingleAsync(token)).LastTransitionGeneration);
         }, context.CancellationToken);
 
     [TestMethod]
