@@ -332,4 +332,64 @@
   <data name="套件身分或版本不完整" xml:space="preserve"><value>软件包身份或版本不完整</value></data>
   <data name="公告資料不足或有歧義" xml:space="preserve"><value>公告数据不足或有歧义</value></data>
   <data name="判斷原因未知" xml:space="preserve"><value>判断原因未知</value></data>
+  <data name="Windows 更新與公告線索" xml:space="preserve"><value>Windows 更新与公告线索</value></data>
+  <data name="公告候選依 Microsoft 產品範圍取得；Windows Hotfix 與 Update 快取只提供部分修補觀察，沒有觀察到 KB 不代表未安裝。" xml:space="preserve"><value>公告候选按 Microsoft 产品范围获取；Windows Hotfix 与 Update 缓存只提供部分补丁观察，未观察到 KB 不代表未安装。</value></data>
+  <data name="觀察資料已過期、已變更或尚未取得，請確認 Agent 盤點狀態。" xml:space="preserve"><value>观察数据已过期、已更改或尚未获取，请确认 Agent 清单状态。</value></data>
+  <data name="Windows 漏洞公告比對" xml:space="preserve"><value>Windows 漏洞公告比对</value></data>
+  <data name="尚無評估結果；請確認主機盤點與 Microsoft 漏洞情報已就緒。" xml:space="preserve"><value>尚无评估结果；请确认主机清单与 Microsoft 漏洞情报已就绪。</value></data>
+  <data name="盤點或情報已變更或過期，以下為上次評估。" xml:space="preserve"><value>清单或情报已更改或过期，以下为上次评估。</value></data>
+  <data name="部分公告沒有完整的產品範圍，候選清單可能不完整。" xml:space="preserve"><value>部分公告没有完整的产品范围，候选列表可能不完整。</value></data>
+  <data name="更新取代關係尚未完整取得或已過期，修補狀態需要進一步確認。" xml:space="preserve"><value>更新替代关系尚未完整获取或已过期，补丁状态需要进一步确认。</value></data>
+  <data name="公告候選需要進一步確認是否適用及是否完成修補；沒有列出並不代表安全。" xml:space="preserve"><value>公告候选需要进一步确认是否适用及是否完成修补；没有列出并不代表安全。</value></data>
+  <data name="依評估狀態及可用的 KEV、EPSS 情報排序；這些資料不代表此設備已遭入侵。" xml:space="preserve"><value>按评估状态及可用的 KEV、EPSS 情报排序；这些数据不代表此设备已遭入侵。</value></data>
+  <data name="部分風險情報目前不可用或已過期，未使用該情報排序。" xml:space="preserve"><value>部分风险情报当前不可用或已过期，未使用该情报排序。</value></data>
+  <data name="產品或公告" xml:space="preserve"><value>产品或公告</value></data>
+  <data name="例如 CVE" xml:space="preserve"><value>例如 CVE</value></data>
+  <data name="沒有符合條件的公告候選。" xml:space="preserve"><value>没有符合条件的公告候选。</value></data>
+  <data name="更新盤點顯示已修補" xml:space="preserve"><value>更新清单显示已修补</value></data>
+  <data name="已知遭利用（CISA KEV）" xml:space="preserve"><value>已知遭利用（CISA KEV）</value></data>
+  <data name="KEV 命中（來源未驗證）" xml:space="preserve"><value>KEV 命中（来源未验证）</value></data>
+  <data name="Microsoft 公告最高嚴重度：{0}" xml:space="preserve"><value>Microsoft 公告最高严重程度：{0}</value></data>
+  <data name="Microsoft 公告最高嚴重度：未提供或無法確認" xml:space="preserve"><value>Microsoft 公告最高严重程度：未提供或无法确认</value></data>
+  <data name="Microsoft 將此產品列在受影響範圍。" xml:space="preserve"><value>Microsoft 将此产品列在受影响范围。</value></data>
+  <data name="已觀察到相關 KB：{0}。" xml:space="preserve"><value>已观察到相关 KB：{0}。</value></data>
+  <data name="已觀察到取代更新：{0}。" xml:space="preserve"><value>已观察到替代更新：{0}。</value></data>
+  <data name="查看 Microsoft Update Catalog 來源" xml:space="preserve"><value>查看 Microsoft Update Catalog 来源</value></data>
+  <data name="KB{0} 取代 KB{1} · 更新 {2} · 取得時間 {3} UTC" xml:space="preserve"><value>KB{0} 替代 KB{1} · 更新 {2} · 获取时间 {3} UTC</value></data>
+  <data name="部分取代關係來源未列出。" xml:space="preserve"><value>部分替代关系来源未列出。</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動。" xml:space="preserve"><value>Microsoft 公告标示需要客户采取行动。</value></data>
+  <data name="公告標示需要客戶採取行動。" xml:space="preserve"><value>公告标示需要客户采取行动。</value></data>
+  <data name="相關更新回報需要重新啟動。" xml:space="preserve"><value>相关更新报告需要重新启动。</value></data>
+  <data name="公告的產品適用範圍有歧義。" xml:space="preserve"><value>公告的产品适用范围有歧义。</value></data>
+  <data name="無法讀取這筆評估的詳細依據。" xml:space="preserve"><value>无法读取此评估的详细依据。</value></data>
+  <data name="查看評估依據" xml:space="preserve"><value>查看评估依据</value></data>
+  <data name="情報提供者：Microsoft Security Update Guide" xml:space="preserve"><value>情报提供者：Microsoft Security Update Guide</value></data>
+  <data name="情報版本：{0} · 比對器：{1}" xml:space="preserve"><value>情报版本：{0} · 比对器：{1}</value></data>
+  <data name="無可用快照" xml:space="preserve"><value>无可用快照</value></data>
+  <data name="主機盤點" xml:space="preserve"><value>主机清单</value></data>
+  <data name="盤點來源" xml:space="preserve"><value>清单来源</value></data>
+  <data name="已觀察的更新" xml:space="preserve"><value>已观察的更新</value></data>
+  <data name="觀察時間：{0} UTC" xml:space="preserve"><value>观察时间：{0} UTC</value></data>
+  <data name="對應產品：{0}" xml:space="preserve"><value>对应产品：{0}</value></data>
+  <data name="尚無可確認的產品對應，無法比對公告是否提及此主機產品。" xml:space="preserve"><value>尚无可确认的产品对应，无法比对公告是否提及此主机产品。</value></data>
+  <data name="系統組建：{0}.{1}" xml:space="preserve"><value>系统版本：{0}.{1}</value></data>
+  <data name="Microsoft 公告目前無法查詢；下方只顯示更新快取提供的 CVE。" xml:space="preserve"><value>Microsoft 公告当前无法查询；下方仅显示更新缓存提供的 CVE。</value></data>
+  <data name="此頁部分 CVE 未顯示或未查詢，請勿將結果視為完整清單。" xml:space="preserve"><value>此页部分 CVE 未显示或未查询，请勿将结果视为完整列表。</value></data>
+  <data name="這次沒有可顯示的更新觀察；不代表沒有漏洞。" xml:space="preserve"><value>本次没有可显示的更新观察；不代表没有漏洞。</value></data>
+  <data name="更新 {0} · 修訂 {1} · {2} · {3}" xml:space="preserve"><value>更新 {0} · 修订 {1} · {2} · {3}</value></data>
+  <data name="快取顯示已安裝" xml:space="preserve"><value>缓存显示已安装</value></data>
+  <data name="快取顯示未安裝" xml:space="preserve"><value>缓存显示未安装</value></data>
+  <data name="快取未標示需要重新啟動" xml:space="preserve"><value>缓存未标示需要重新启动</value></data>
+  <data name="相關 KB：{0}" xml:space="preserve"><value>相关 KB：{0}</value></data>
+  <data name="（僅列出部分）" xml:space="preserve"><value>（仅列出部分）</value></data>
+  <data name="查看更新取代線索" xml:space="preserve"><value>查看更新替代线索</value></data>
+  <data name="快取回報此更新可能取代下列更新；這些識別碼不含修訂版本，不能證明包含特定漏洞修補。" xml:space="preserve"><value>缓存报告此更新可能替代以下更新；这些标识符不含修订版本，不能证明包含特定漏洞修补。</value></data>
+  <data name="搜尋來源設定：{0}" xml:space="preserve"><value>搜索来源设置：{0}</value></data>
+  <data name="服務 {0}" xml:space="preserve"><value>服务 {0}</value></data>
+  <data name="預設來源（實際服務未確認）" xml:space="preserve"><value>默认来源（实际服务未确认）</value></data>
+  <data name="受管理的更新伺服器" xml:space="preserve"><value>受管理的更新服务器</value></data>
+  <data name="其他更新服務" xml:space="preserve"><value>其他更新服务</value></data>
+  <data name="未取得" xml:space="preserve"><value>未获取</value></data>
+  <data name="僅列出部分取代線索。" xml:space="preserve"><value>仅列出部分替代线索。</value></data>
+  <data name="更新資料未列出 CVE，無法判定漏洞狀態。" xml:space="preserve"><value>更新数据未列出 CVE，无法判定漏洞状态。</value></data>
 </root>
