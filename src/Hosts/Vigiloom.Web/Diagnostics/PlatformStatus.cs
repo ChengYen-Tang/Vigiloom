@@ -17,7 +17,8 @@ internal sealed record PlatformStatusSnapshot(
 /// <summary>Combines independent, non-secret observations without equating liveness and health.</summary>
 internal sealed class PlatformStatus(
     HealthCheckService checks, SchedulingHealth scheduling, WorkerDiagnosticsStore workers,
-    AgentReceiverMonitoring receiver, ReceptionOverview telemetry, TimeProvider clock, ILogger<PlatformStatus> logger)
+    AgentReceiverMonitoring receiver, ReceptionOverview telemetry, TimeProvider clock, ILogger<PlatformStatus> logger,
+    IConfiguration configuration, IServiceProvider services)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SchedulerStaleAfter = TimeSpan.FromMinutes(1);
@@ -32,10 +33,16 @@ internal sealed class PlatformStatus(
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(Timeout);
-            var result = await checks.CheckHealthAsync(check => check.Name == "database", timeout.Token);
-            database = result.Entries.TryGetValue("database", out var entry)
-                ? entry.Status == HealthStatus.Healthy ? ObservationState.Healthy : ObservationState.Unhealthy
-                : ObservationState.Unknown;
+            if (!string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]))
+                database = await services.GetRequiredService<RemoteJobOverview>().DatabaseHealthyAsync(timeout.Token)
+                    ? ObservationState.Healthy : ObservationState.Unhealthy;
+            else
+            {
+                var result = await checks.CheckHealthAsync(check => check.Name == "database", timeout.Token);
+                database = result.Entries.TryGetValue("database", out var entry)
+                    ? entry.Status == HealthStatus.Healthy ? ObservationState.Healthy : ObservationState.Unhealthy
+                    : ObservationState.Unknown;
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception exception) { logger.LogWarning("Database health unavailable: {ExceptionType}", exception.GetType().Name); }
@@ -51,7 +58,9 @@ internal sealed class PlatformStatus(
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                 timeout.CancelAfter(Timeout);
-                var reading = await scheduling.ReadAsync(timeout.Token);
+                var reading = string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"])
+                    ? await scheduling.ReadAsync(timeout.Token)
+                    : await services.GetRequiredService<RemoteJobOverview>().SchedulerAsync(timeout.Token);
                 now = reading.ObservedAt;
                 var current = reading.Values.Count(value => value is { } heartbeat && heartbeat <= now + SqlDatetimeRoundingTolerance && now - heartbeat <= SchedulerStaleAfter);
                 var stale = reading.Values.Count(value => value is { } heartbeat && heartbeat <= now && now - heartbeat > SchedulerStaleAfter);
@@ -68,7 +77,9 @@ internal sealed class PlatformStatus(
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                 timeout.CancelAfter(Timeout);
-                snapshots = await workers.GetSnapshotAsync(timeout.Token);
+                snapshots = string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"])
+                    ? await workers.GetSnapshotAsync(timeout.Token)
+                    : await services.GetRequiredService<RemoteJobOverview>().WorkersAsync(timeout.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Exception exception) { logger.LogWarning("Worker diagnostics unavailable: {ExceptionType}", exception.GetType().Name); }

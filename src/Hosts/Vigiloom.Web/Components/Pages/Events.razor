@@ -3,13 +3,12 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using System.Globalization
 @using System.Security.Claims
-@using Microsoft.EntityFrameworkCore
 @using Vigiloom.Contracts.Events
-@using Vigiloom.Modules.Resources.Persistence
+@using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Web.Events
 @inject EventTimelineReader Reader
 @inject EventTimelineAudit Audit
-@inject IDbContextFactory<ResourcesDbContext> Resources
+@inject IGroupManagement Groups
 @inject NavigationManager Navigation
 @inject ILogger<Events> Logger
 
@@ -78,9 +77,14 @@
         if (!string.IsNullOrEmpty(Group)) { if (!Guid.TryParse(Group, out var parsed)) { error = "請選擇有效的群組。"; return; } groupId = parsed; }
         try
         {
-            await using var db = await Resources.CreateDbContextAsync(HttpContext.RequestAborted);
-            var rows = await db.Groups.AsNoTracking().OrderBy(x => x.Name).Select(x => new { x.Id, x.Name }).ToArrayAsync(HttpContext.RequestAborted);
-            groups = rows.Select(x => (x.Id, x.Name)).ToArray();
+            var allGroups = new List<(Guid Id, string Name)>();
+            for (var index = 1; ; index++)
+            {
+                var groupPage = await Groups.ListAsync(null, index, HttpContext.RequestAborted);
+                allGroups.AddRange(groupPage.Items.Select(group => (group.Id, group.Name)));
+                if (groupPage.Items.Count == 0 || allGroups.Count >= groupPage.Total) break;
+            }
+            groups = allGroups.ToArray();
             if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) { error = "無法確認登入身分。"; return; }
             var query = new EventTimelineQuery(new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc)), groupId, Source, Page ?? 1);
             var page = await Reader.GetAsync(query, HttpContext.RequestAborted);

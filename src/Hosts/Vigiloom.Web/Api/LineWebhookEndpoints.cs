@@ -11,10 +11,8 @@ internal static class LineWebhookEndpoints
             .Produces(200).ProducesProblem(400).ProducesProblem(401).ProducesProblem(413).ProducesProblem(503);
     }
 
-    private static async Task<IResult> ReceiveAsync(HttpRequest request, LineChannel channel, CancellationToken token)
+    private static async Task<IResult> ReceiveAsync(HttpRequest request, Vigiloom.Web.Operations.LineManagement channel, CancellationToken token)
     {
-        var receiver = new LineWebhookReceiver(channel);
-        return Results.StatusCode(await receiver.ReceiveAsync(request.Body, request.ContentLength,
-            request.Headers["x-line-signature"].ToString(), token));
+        return Results.StatusCode(await channel.ReceiveAsync(request, token));
     }
 }
