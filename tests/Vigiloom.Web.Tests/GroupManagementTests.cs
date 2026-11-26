@@ -336,6 +336,8 @@ public sealed class GroupManagementTests
             var auditText = WebUtility.HtmlDecode(await englishAudit.Content.ReadAsStringAsync(token));
             Assert.Contains("Audit log", auditText);
             Assert.Contains("Change services", auditText);
+            Assert.Contains("Group ID:", auditText);
+            Assert.Contains("Added", auditText);
             Assert.Contains("Saved", auditText);
         }
         using (var invalidDates = await adminClient.GetAsync("/settings/audit?from=2026-02-02&to=2026-02-01", token))
