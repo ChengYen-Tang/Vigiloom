@@ -1,8 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Respawn" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <Compile Include="../Fixtures/SpeedTests/ControlledPhaseTransport.cs" Link="Fixtures/ControlledPhaseTransport.cs" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" Aliases="NetworkHost" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" Aliases="GatewayHost" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />

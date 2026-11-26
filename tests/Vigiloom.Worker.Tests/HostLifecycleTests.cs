@@ -45,6 +45,17 @@ namespace Vigiloom.Worker.Tests;
 public sealed class HostLifecycleTests(TestContext testContext)
 {
     [TestMethod]
+    public void NetworkCutoverStopsLegacyPingAndSpeedWorkers()
+    {
+        var builder = WorkerHost.CreateBuilder(["--Services:Network:Url=http://network"]);
+        var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        foreach (var name in new[] { "PingWorker", "SpeedWorker", "SpeedSchedule", "SpeedRetentionSchedule", "PingRollupBackfillSchedule", "PingRetentionSchedule" })
+            Assert.DoesNotContain(name, hosted);
+        Assert.Contains("HealthWorker", hosted);
+    }
+
+    [TestMethod]
     public async Task MsrcNamedHttpClient_DoesNotFollowRedirect()
     {
         var builder = WorkerHost.CreateBuilder([]);

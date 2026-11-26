@@ -8,7 +8,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts, IOperationAuditWriter<OperationAudit> audit)
+public sealed class SpeedSettings(IDbContextFactory<NetworkDbContext> contexts, IOperationAuditWriter<OperationAudit> audit) : ISpeedSettings
 {
     public static bool Valid(SpeedSettingsInput input) => SpeedSettingsLimits.IsValid(input.IntervalHours, input.MaxMiB, input.TimeoutSeconds);
     public async Task<SpeedSettingsSnapshot> GetAsync(CancellationToken token)

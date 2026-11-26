@@ -10,7 +10,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 
-public sealed class SpeedRetentionSettings(IDbContextFactory<NetworkDbContext> contexts, IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+public sealed class SpeedRetentionSettings(IDbContextFactory<NetworkDbContext> contexts, IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection) : ISpeedRetentionSettings
 {
     private static readonly TimeSpan PreviewLifetime = TimeSpan.FromMinutes(5);
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.SpeedRetention.Preview.v1");

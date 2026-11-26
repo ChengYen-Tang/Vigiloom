@@ -90,6 +90,7 @@ public sealed class NetworkDbContext(DbContextOptions<NetworkDbContext> options)
         state.Property(x => x.Target).HasMaxLength(253);
         state.Property(x => x.DeviceVersion).HasMaxLength(8).IsRequired();
         state.Property(x => x.Generation).IsConcurrencyToken();
+        state.Property(x => x.LastTransitionGeneration).IsConcurrencyToken();
         state.Property(x => x.Location).HasMaxLength(256);
         state.Property(x => x.ResolvedAddress).HasMaxLength(64);
         state.HasIndex(x => new { x.Enabled, x.DueAt });
