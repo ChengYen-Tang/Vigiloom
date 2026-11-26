@@ -9,7 +9,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 
 namespace Vigiloom.Modules.NetworkMonitoring.Application;
 
-public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit> audit)
+public sealed class PingSettings(IDbContextFactory<NetworkDbContext> contexts, TimeProvider clock, IOperationAuditWriter<OperationAudit> audit) : IPingSettings
 {
     public static bool Valid(PingSettingsInput input) => PingSettingsLimits.IsValid(input.IntervalSeconds, input.TimeoutSeconds,
         input.FailureThreshold, input.SuccessThreshold, input.MaxConcurrency);
