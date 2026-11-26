@@ -17,6 +17,7 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         var previous = await IntelligenceContentRetention.ProtectedPreviousAsync(db, token);
         return await AuditRetentionQueries.CountAsync(db.InventorySettingAudits, cutoff, token) +
             await AuditRetentionQueries.CountAsync(db.IntegrityScopeAudits, cutoff, token) +
+            await db.YaraScans.LongCountAsync(x => x.CompletedAt != null && x.CompletedAt < cutoff, token) +
             await db.InventoryChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await db.IntegrityChanges.LongCountAsync(change => change.RecordedAt < cutoff, token) +
             await OldEvaluations(db, cutoff).LongCountAsync(token) +
@@ -33,6 +34,12 @@ public sealed class SecurityAuditRetention : IAuditRetentionSource
         await using var db = await OpenAsync(connection, transaction, token);
         var removed = await AuditRetentionQueries.DeleteBatchAsync(db.InventorySettingAudits, cutoff, batchSize, token);
         if (removed < batchSize) removed += await AuditRetentionQueries.DeleteBatchAsync(db.IntegrityScopeAudits, cutoff, batchSize - removed, token);
+        if (removed < batchSize)
+        {
+            var scans = db.YaraScans.Where(x => x.CompletedAt != null && x.CompletedAt < cutoff)
+                .OrderBy(x => x.CompletedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);
+            removed += await db.YaraScans.Where(x => scans.Contains(x.RowId)).ExecuteDeleteAsync(token);
+        }
         if (removed < batchSize)
         {
             var changes = db.InventoryChanges.Where(x => x.RecordedAt < cutoff).OrderBy(x => x.RecordedAt).ThenBy(x => x.RowId).Select(x => x.RowId).Take(batchSize - removed);

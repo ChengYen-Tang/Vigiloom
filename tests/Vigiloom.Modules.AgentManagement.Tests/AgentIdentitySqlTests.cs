@@ -58,7 +58,7 @@ public sealed class AgentIdentitySqlTests
         var secret = RandomNumberGenerator.GetBytes(32);
         var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
         var credential = Credential(registered.AgentId!.Value, secret);
-        var scans = new YaraScans(agents, identity, devices, clock);
+        var scans = new Vigiloom.Modules.AgentManagement.Application.YaraScans(agents, identity, devices, clock);
         var created = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule sample { condition: true }", 1024, 10), actor, token);
         Assert.IsNotNull(created);
         var next = await scans.NextAsync(credential, token);

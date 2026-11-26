@@ -3,6 +3,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.AgentVersions;
 
 namespace Vigiloom.Web.Api;
 
@@ -12,13 +13,13 @@ internal static class InventorySettingsEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/inventory-settings")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
+        admin.MapGet("/platform", (InventorySettingsAccess settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
             .Produces<InventorySettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
-        admin.MapPut("/platform", (InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
+        admin.MapPut("/platform", (InventorySettingsUpdate input, InventorySettingsAccess settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
             .Produces<InventorySettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(429);
-        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
+        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, InventorySettingsAccess settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
             .Produces<InventorySettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
+        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, InventorySettingsUpdate input, InventorySettingsAccess settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
             .Produces<InventorySettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
 
         app.MapGet("/api/v1/devices/{deviceId:guid}/inventory-settings-status", async (Guid deviceId, AgentInventorySettingsMonitoring monitoring, HttpContext context, CancellationToken token) =>
@@ -46,13 +47,13 @@ internal static class InventorySettingsEndpoints
             .Produces<InventorySettingsSnapshot>().Produces(StatusCodes.Status304NotModified).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
     }
 
-    private static async Task<IResult> ReadAsync(InventoryConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)
+    private static async Task<IResult> ReadAsync(InventorySettingsAccess settings, Guid? deviceId, HttpContext context, CancellationToken token)
     {
         context.Response.Headers.CacheControl = "no-store";
         return await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view) : Results.NotFound();
     }
 
-    private static async Task<IResult> UpdateAsync(InventoryConfiguration settings, Guid? deviceId, InventorySettingsUpdate input, HttpContext context, CancellationToken token)
+    private static async Task<IResult> UpdateAsync(InventorySettingsAccess settings, Guid? deviceId, InventorySettingsUpdate input, HttpContext context, CancellationToken token)
     {
         if (!InventoryConfiguration.Valid(input?.Overrides))
             return Results.ValidationProblem(new Dictionary<string, string[]> { ["interval"] = ["盤點間隔超出允許範圍。"] });

@@ -3,6 +3,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.HostMonitoring;
 
 namespace Vigiloom.Web.Api;
 
@@ -13,32 +14,32 @@ internal static class IntelligenceEndpoints
         var admin = app.MapGroup("/api/v1/admin/intelligence/sources")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/baseline-check", async (Guid sourceId, Guid revisionId,
-            CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+            CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await stage.ReadAsync(sourceId, revisionId, token) is { } check ? Results.Ok(check) : Results.NotFound();
         }).Produces<BaselineCheck>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read a locally authored baseline check before review");
-        admin.MapPost("/baseline-checks", async (CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/baseline-checks", async (CustomBaselineDraftRequest input, CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(null, null, input.Check, actor, token)), allowApiCredential: false);
         }).Produces<CustomBaselineStageResult>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
             .WithSummary("Stage a locally authored baseline check");
-        admin.MapPost("/{sourceId:guid}/baseline-revisions", async (Guid sourceId, CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/baseline-revisions", async (Guid sourceId, CustomBaselineDraftRequest input, CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(sourceId, input.ExpectedVersion, input.Check, actor, token)), allowApiCredential: false);
         }).Produces<CustomBaselineStageResult>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Stage a revised local baseline check");
-        admin.MapGet("/", async (int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/", async (int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
             return selected is < 1 or > 1000 ? Results.BadRequest() : Results.Ok(await status.GetSourcesAsync(selected, token));
         }).Produces<IntelligenceSourcePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List intelligence source status");
-        admin.MapGet("/{sourceId:guid}/revisions", async (Guid sourceId, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/revisions", async (Guid sourceId, int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
@@ -46,7 +47,7 @@ internal static class IntelligenceEndpoints
             return await status.GetRevisionsAsync(sourceId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<IntelligenceRevisionPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List retained intelligence revisions");
-        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/sigma-rules", async (Guid sourceId, Guid revisionId, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/sigma-rules", async (Guid sourceId, Guid revisionId, int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
@@ -54,7 +55,7 @@ internal static class IntelligenceEndpoints
             return await status.GetSigmaRulesAsync(sourceId, revisionId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<SigmaRulePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List retained Sigma rule provenance");
-        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-files", async (Guid sourceId, Guid revisionId, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-files", async (Guid sourceId, Guid revisionId, int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
@@ -62,14 +63,14 @@ internal static class IntelligenceEndpoints
             return await status.GetSignatureFilesAsync(sourceId, revisionId, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<SignatureFilePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List retained IOC and YARA source-file metadata");
-        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-evidence", async (Guid sourceId, Guid revisionId, string? path, int? line, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/signature-evidence", async (Guid sourceId, Guid revisionId, string? path, int? line, int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (path is null || path.Length is < 1 or > 512 || line is < 1 or > 1048576 || page is < 1 or > 2000) return Results.BadRequest();
             return await status.GetSignatureEvidenceAsync(sourceId, revisionId, path, token, line, page ?? 1) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<SignatureEvidenceView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read bounded candidate author and license lines from a retained source file");
-        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/ioc-issues", async (Guid sourceId, Guid revisionId, string? path, int? page, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/ioc-issues", async (Guid sourceId, Guid revisionId, string? path, int? page, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
@@ -77,13 +78,13 @@ internal static class IntelligenceEndpoints
             return await status.GetIocIssuesAsync(sourceId, revisionId, path, selected, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<IocIssuePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List unsupported IOC line locations and reasons");
-        admin.MapGet("/{sourceId:guid}/advisory-progress", async (Guid sourceId, IntelligenceStatus status, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}/advisory-progress", async (Guid sourceId, IntelligenceStatusAccess status, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await status.GetAdvisoryProgressAsync(sourceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
         }).Produces<AdvisoryImportProgressView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read GitHub advisory import progress and coverage");
-        admin.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, AdvisoryImportRecoveryRequest input, AdvisoryRecovery recovery, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/advisory-recovery", async (Guid sourceId, AdvisoryImportRecoveryRequest input, IntelligenceSettingsAccess recovery, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || input.ImportId.Version != 7) return Results.ValidationProblem(new Dictionary<string, string[]> { ["import"] = ["Invalid import identity."] });
@@ -95,7 +96,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Abandon a failed advisory import so a later scheduled refresh can start again");
-        admin.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, AdvisoryCredentialUpdate input, AdvisoryCredentials credentials, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{sourceId:guid}/advisory-credential", async (Guid sourceId, AdvisoryCredentialUpdate input, IntelligenceSettingsAccess credentials, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || !AdvisoryCredentials.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["credential"] = ["Invalid credential settings."] });
@@ -107,7 +108,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Replace or clear the GitHub advisory source credential");
-        admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligencePolicy policy, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{sourceId:guid}/policy", async (Guid sourceId, IntelligencePolicyUpdate input, IntelligenceSettingsAccess policy, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || !IntelligencePolicy.Valid(input)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["Invalid source policy."] });
@@ -120,7 +121,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Update intelligence source policy");
-        admin.MapPost("/{sourceId:guid}/activation", async (Guid sourceId, IntelligenceActivationRequest input, IntelligencePublication publication, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/activation", async (Guid sourceId, IntelligenceActivationRequest input, IntelligencePublicationAccess publication, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || input.RevisionId == Guid.Empty || input.ExpectedActiveRevisionId == Guid.Empty)
@@ -137,7 +138,7 @@ internal static class IntelligenceEndpoints
             }, allowApiCredential: false);
         }).Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Activate or restore a retained intelligence revision");
-        admin.MapPost("/{sourceId:guid}/revisions/{revisionId:guid}/revoke", async (Guid sourceId, Guid revisionId, IntelligenceRevocation revocation, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/revisions/{revisionId:guid}/revoke", async (Guid sourceId, Guid revisionId, IntelligencePublicationAccess revocation, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (sourceId == Guid.Empty || revisionId.Version != 7)

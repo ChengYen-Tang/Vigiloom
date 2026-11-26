@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class DebianRefreshJob(DebianRefresh refresh, ILogger<DebianRefreshJob> logger)
+public sealed class DebianRefreshJob(DebianRefresh refresh, ILogger<DebianRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var result = await refresh.RunDueAsync(token);
         if (result == DebianRefreshResult.Failed) throw new InvalidOperationException("Debian source refresh failed; see source status.");
         if (result == DebianRefreshResult.Conflict) logger.LogWarning("Debian source refresh ended with {Result}", result);

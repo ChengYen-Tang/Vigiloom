@@ -1,16 +1,12 @@
 @page "/events/rules/{TestId:guid}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = Vigiloom.Web.Authentication.AccessPolicies.MonitoringRead)]
 @attribute [ExcludeFromInteractiveRouting]
-@using System.Text
-@using System.Text.Json
 @using System.Security.Claims
-@using Microsoft.EntityFrameworkCore
 @using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Contracts.Operations
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
-@using Vigiloom.Modules.SecurityAnalysis.Persistence
 @using Vigiloom.Web.Events
-@inject IDbContextFactory<SecurityAnalysisDbContext> Security
+@inject Vigiloom.Web.HostMonitoring.SigmaEvidenceAccess Security
 @inject EventTimelineAudit Audit
 @inject ILogger<SigmaEvidence> Logger
 
@@ -26,17 +22,17 @@
             <p>規則：@evidence.Path · 情報版本：@evidence.RevisionId · 試跑：@TestId</p>
             <p>此處顯示告警使用的上游規則與本機排除條件，並非目前設定的即時狀態。</p>
             <h2>規則與匹配條件</h2>
-            <pre>@Encoding.UTF8.GetString(evidence.Content)</pre>
-            @if (baseSpecified)
+            <pre>@evidence.Content</pre>
+            @if (evidence.BaseSpecified)
             {
                 <h2>關聯規則的基礎事件條件</h2>
-                @if (baseRule is null) { <p>無法取得符合版本的基礎規則。</p> }
-                else { <pre>@baseRule</pre> }
+                @if (evidence.BaseRule is null) { <p>無法取得符合版本的基礎規則。</p> }
+                else { <pre>@evidence.BaseRule</pre> }
             }
             <h2>本機排除條件</h2>
-            @if (exceptions is null) { <p>無法讀取排除條件。</p> }
-            else if (exceptions.Count == 0) { <p>無。</p> }
-            else { <ul>@foreach (var item in exceptions) { <li>@item.Field = @item.Value</li> }</ul> }
+            @if (evidence.Exceptions is null) { <p>無法讀取排除條件。</p> }
+            else if (evidence.Exceptions.Count == 0) { <p>無。</p> }
+            else { <ul>@foreach (var item in evidence.Exceptions) { <li>@item.Field = @item.Value</li> }</ul> }
         </section>
     }
 </main>
@@ -44,10 +40,7 @@
 @code {
     [Parameter] public Guid TestId { get; set; }
     [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
-    private Evidence? evidence;
-    private IReadOnlyList<SigmaRuleException>? exceptions;
-    private bool baseSpecified;
-    private string? baseRule;
+    private Vigiloom.Modules.SecurityAnalysis.Application.Detection.SigmaEvidence? evidence;
     private string? error;
 
     protected override async Task OnParametersSetAsync()
@@ -55,28 +48,9 @@
         HttpContext.Response.Headers.CacheControl = "private, no-store";
         try
         {
-            await using var db = await Security.CreateDbContextAsync(HttpContext.RequestAborted);
-            evidence = await (from test in db.SigmaRuleTests.AsNoTracking()
-                join rule in db.SigmaRules.AsNoTracking() on new { test.RevisionId, test.Path } equals new { rule.RevisionId, rule.Path }
-                where test.Id == TestId
-                select new Evidence(test.RevisionId, test.Path, test.Digest, test.SamplesJson, rule.Content, rule.Digest)).SingleOrDefaultAsync(HttpContext.RequestAborted);
-            if (evidence is not null && !string.Equals(evidence.Digest, Convert.ToHexStringLower(evidence.RuleDigest), StringComparison.OrdinalIgnoreCase)) evidence = null;
+            evidence = await Security.GetAsync(TestId, HttpContext.RequestAborted);
             if (evidence is not null)
             {
-                if (SigmaExceptions.TryRead(evidence.SamplesJson, out var items)) exceptions = items;
-                using var json = JsonDocument.Parse(evidence.SamplesJson);
-                if (json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("BasePath", out var path))
-                {
-                    baseSpecified = true;
-                    if (path.ValueKind == JsonValueKind.String && json.RootElement.TryGetProperty("BaseSha256", out var digest) && digest.ValueKind == JsonValueKind.String)
-                    {
-                        var basePath = path.GetString();
-                        var source = await db.SigmaRules.AsNoTracking().Where(x => x.RevisionId == evidence.RevisionId && x.Path == basePath)
-                            .Select(x => new { x.Content, x.Digest }).SingleOrDefaultAsync(HttpContext.RequestAborted);
-                        if (source is not null && string.Equals(digest.GetString(), Convert.ToHexStringLower(source.Digest), StringComparison.OrdinalIgnoreCase))
-                            baseRule = Encoding.UTF8.GetString(source.Content);
-                    }
-                }
                 if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) throw new InvalidOperationException("Missing actor.");
                 await Audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed("sigma-rule", TestId), HttpContext.RequestAborted);
             }
@@ -88,5 +62,4 @@
         }
     }
 
-    private sealed record Evidence(Guid RevisionId, string Path, string Digest, string SamplesJson, byte[] Content, byte[] RuleDigest);
 }

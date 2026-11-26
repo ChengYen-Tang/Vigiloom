@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Events;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -15,7 +17,7 @@ internal enum LinuxWriteResult { Written, AlreadyWritten, Conflict, Changed }
 
 /// <summary>Writes one complete assessment atomically after revalidating all source and inventory fences.</summary>
 internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock,
-    INotificationWriter? notifications = null, IDevicePingSource? devices = null)
+    INotificationWriter? notifications = null, IDevicePingSource? devices = null, IDetectionTimelineWriter? timeline = null)
 {
     internal const string MatcherVersion = "ubuntu-osv-v4";
     internal const string DebianMatcherVersion = "debian-tracker-v1";
@@ -50,6 +52,7 @@ internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDb
         await db.SaveChangesAsync(token);
         foreach (var batch in assessment.Findings.Chunk(128))
         {
+            var timelineEntries = timeline is null ? null : new List<EventTimelineEntry>();
             var identities = batch.Where(x => x.AdvisoryId is not null).Select(x => FindingIdentity.Hash(x.PackageKey, x.AdvisoryId!)).ToArray();
             if (identities.Length > 0)
             {
@@ -107,8 +110,11 @@ internal sealed class LinuxAssessmentWriter(IDbContextFactory<SecurityAnalysisDb
                 SourceVersion = result.SourceVersion, BinaryVersion = result.BinaryVersion, Ecosystem = assessment.Ecosystem,
                 Architecture = result.Architecture, State = (int)result.State, Origin = (int)result.Origin, Reason = (int)result.Reason,
                 FixStatus = (int?)result.FixStatus, FixedVersion = result.FixedVersion, UbuntuPriority = result.UbuntuPriority });
+            timelineEntries?.Add(new("vulnerability", now, owner.DeviceId, "device", $"漏洞評估：{result.AdvisoryId}",
+                $"情報版本 {revisionId:D}；狀態 {(int)result.State}", $"/devices/{owner.DeviceId:D}?tab=vulnerabilities&search={Uri.EscapeDataString(result.AdvisoryId)}"));
             }
             await db.SaveChangesAsync(token);
+            if (timeline is not null && timelineEntries is { Count: > 0 }) await timeline.WriteAsync(db, timelineEntries, token);
             db.ChangeTracker.Clear();
             known.Clear();
         }

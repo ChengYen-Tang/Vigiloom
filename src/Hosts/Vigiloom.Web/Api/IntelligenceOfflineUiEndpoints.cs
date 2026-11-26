@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.HostMonitoring;
 
 namespace Vigiloom.Web.Api;
 
@@ -10,7 +11,7 @@ internal static class IntelligenceOfflineUiEndpoints
     internal static void MapIntelligenceOfflineUiEndpoints(this WebApplication app)
     {
         app.MapPost("/settings/intelligence/{sourceId:guid}/offline-import", async (Guid sourceId, [FromForm] IFormFile file,
-            HttpContext context, KevOfflineImport importer, ILogger<KevOfflineImport> logger, CancellationToken token) =>
+            HttpContext context, IntelligenceImportAccess importer, ILogger<KevOfflineImport> logger, CancellationToken token) =>
         {
             if (!Guid.TryParse(context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty)
                 return Results.Forbid();

@@ -6,9 +6,8 @@
 @using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines
 @using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence
-@inject CustomBaselineStage Stage
-@inject IBaselineSource Sources
-@inject IntelligencePublication Publication
+@inject Vigiloom.Web.HostMonitoring.CustomBaselineAccess Stage
+@inject Vigiloom.Web.HostMonitoring.IntelligencePublicationAccess Publication
 @inject NavigationManager Navigation
 @inject ILogger<CustomBaseline> Logger
 
@@ -114,7 +113,7 @@
         if (!submitted) Input = new DraftForm { SourceId = source, ExpectedVersion = draft.SourceVersion, Title = draft.Check.Title,
             Platform = PlatformOption(draft.Check.Versions), Target = draft.Check.Target,
             Expected = draft.Check.Expected, Reference = draft.Check.SourceUrl, License = draft.Check.License, Guidance = draft.Check.Guidance };
-        var current = await Sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{source:D}", HttpContext.RequestAborted);
+        var current = await Stage.GetActiveAsync(source, HttpContext.RequestAborted);
         sourceAvailability = current.Availability;
         activeRevision = current.RevisionId;
         Approval ??= new() { SourceId = source, RevisionId = revision, ExpectedActiveId = current.RevisionId, ExpectedVersion = current.ActivationVersion ?? "" };

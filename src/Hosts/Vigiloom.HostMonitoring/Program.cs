@@ -107,6 +107,12 @@ builder.Services.AddHttpClient("operations", (services, client) =>
     var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient("security", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Security:Url"] ?? "http://vigiloom-security";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<IRecordedAgentTargetReader, RecordedAgentTargets>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
@@ -132,6 +138,12 @@ if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory/status") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-status") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/baseline-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
@@ -141,6 +153,17 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
+app.MapAgentSecuritySettingsEndpoints();
+app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
+{
+    context.Response.Headers.CacheControl = "private, no-store";
+    var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
+    using var response = await clients.CreateClient("security").PostAsJsonAsync("internal/v1/yara-scans/next", identity, token);
+    if (response.StatusCode == System.Net.HttpStatusCode.NoContent) return Results.NoContent();
+    response.EnsureSuccessStatusCode();
+    var job = await response.Content.ReadFromJsonAsync<Vigiloom.Contracts.Agent.Security.YaraScanJob>(cancellationToken: token);
+    return job is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(job);
+});
 app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
 app.MapHostQueueCapacityEndpoints();

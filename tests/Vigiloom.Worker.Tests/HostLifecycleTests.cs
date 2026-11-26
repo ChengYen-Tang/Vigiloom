@@ -45,6 +45,44 @@ namespace Vigiloom.Worker.Tests;
 public sealed class HostLifecycleTests(TestContext testContext)
 {
     [TestMethod]
+    public void SecurityCutoverRetiresLegacySchedules()
+    {
+        var builder = WorkerHost.CreateBuilder(["--Services:Security:Url=http://security", "--Services:Security:IntelligenceEnabled=true"]);
+        var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        foreach (var name in new[] { "InventoryExpirySchedule", "IntegrityExpirySchedule", "IntelligenceRefreshSchedule", "DebianRefreshSchedule",
+            "UbuntuRefreshSchedule", "MsrcRefreshSchedule", "EpssRefreshSchedule", "LinuxReassessmentSchedule", "WindowsReassessmentSchedule",
+            "AdvisoryRefreshSchedule", "SigmaRefreshSchedule", "SignatureRefreshSchedule", "BaselineRefreshSchedule" })
+            Assert.DoesNotContain(name, hosted);
+        Assert.Contains("RetiredSecuritySchedule", hosted);
+        var legacy = WorkerHost.CreateBuilder(["--Services:Security:Url=http://security"]);
+        var legacyHosted = legacy.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        Assert.Contains("SigmaRefreshSchedule", legacyHosted);
+    }
+
+    [TestMethod]
+    public async Task SecurityCutoverSkipsAlreadyQueuedLegacyJobs()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Services:Security:Url"] = "http://security", ["Services:Security:IntelligenceEnabled"] = "true"
+        }).Build();
+        string[] names = ["InventoryExpiryJob", "IntegrityExpiryJob", "IntelligenceRefreshJob", "DebianRefreshJob", "UbuntuRefreshJob",
+            "MsrcRefreshJob", "EpssRefreshJob", "LinuxReassessmentJob", "WindowsReassessmentJob", "AdvisoryRefreshJob",
+            "SigmaRefreshJob", "SignatureRefreshJob", "BaselineRefreshJob"];
+        foreach (var name in names)
+        {
+            var type = typeof(WorkerHost).Assembly.GetType("Vigiloom.Worker.Hosting." + name, throwOnError: true)!;
+            var arguments = type.GetConstructors().Single().GetParameters()
+                .Select(parameter => parameter.ParameterType == typeof(IConfiguration) ? configuration : null).ToArray();
+            var job = Activator.CreateInstance(type, arguments)!;
+            var task = (Task)type.GetMethod("RunAsync")!.Invoke(job, [CancellationToken.None])!;
+            await task;
+        }
+    }
+
+    [TestMethod]
     public void HostCutoverRetiresLegacyMetricSchedules()
     {
         var builder = WorkerHost.CreateBuilder(["--Services:HostMonitoring:Url=http://host"]);
