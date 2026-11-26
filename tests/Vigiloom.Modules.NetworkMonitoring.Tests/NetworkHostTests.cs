@@ -1,5 +1,6 @@
 extern alias NetworkHost;
 extern alias GatewayHost;
+extern alias OperationsHost;
 
 using System.Data.Common;
 using System.Net;
@@ -27,6 +28,8 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Authentication;
@@ -45,6 +48,52 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 [TestCategory("Database")]
 public sealed class NetworkHostTests(TestContext context)
 {
+    [TestMethod]
+    [Timeout(90000, CooperativeCancellation = true)]
+    public Task ReportsScannerStateToIndependentOperationsService() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (networkDb, outer) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (operationsDb, token) =>
+        {
+            var networkOptions = new DbContextOptionsBuilder<NetworkDbContext>().UseSqlServer(networkDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options;
+            await using (var db = new NetworkDbContext(networkOptions)) await db.Database.MigrateAsync(token);
+            var scheduleOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(networkDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(scheduleOptions)) await db.Database.MigrateAsync(token);
+            var operationsOptions = new DbContextOptionsBuilder<OperationsDbContext>().UseSqlServer(operationsDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "operations")).Options;
+            await using (var db = new OperationsDbContext(operationsOptions)) await db.Database.MigrateAsync(token);
+            using var operations = new WebApplicationFactory<OperationsHost::Program>().WithWebHostBuilder(web =>
+            {
+                web.UseEnvironment("Production");
+                web.UseSetting("Hangfire:Enabled", "false");
+                web.UseSetting("Temporal:EnableOperationsWorker", "false");
+                web.UseSetting("ConnectionStrings:Operations", operationsDb.ConnectionString);
+                web.UseSetting("ConnectionStrings:Scheduling", operationsDb.ConnectionString);
+            });
+            operations.UseKestrel(0);
+            using var operationsClient = operations.CreateClient();
+            var address = operations.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            using var network = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(web =>
+            {
+                web.UseEnvironment("Production");
+                web.UseSetting("Hangfire:Enabled", "false");
+                web.UseSetting("Temporal:EnableNetworkWorker", "false");
+                web.UseSetting("ConnectionStrings:Network", networkDb.ConnectionString);
+                web.UseSetting("Services:Resources:Url", "http://127.0.0.1:1");
+                web.UseSetting("Services:Operations:Url", address);
+            });
+            using var networkClient = network.CreateClient();
+            WorkerDiagnosticsInfo? received = null;
+            for (var i = 0; i < 80; i++)
+            {
+                received = await operationsClient.GetFromJsonAsync<WorkerDiagnosticsInfo>("/internal/v1/diagnostics/workers", token);
+                if (received!.Workers.Any(x => x.Ping.LastSuccess != null || x.Ping.LastFailure != null)) break;
+                await Task.Delay(250, token);
+            }
+            Assert.IsTrue(received!.Workers.Any(x => x.Ping.LastSuccess != null || x.Ping.LastFailure != null));
+        }, outer), context.CancellationToken);
+
     [TestMethod]
     public Task IndependentHostRunsPingAndQueuesTransition() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {

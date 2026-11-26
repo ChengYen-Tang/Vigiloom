@@ -15,4 +15,8 @@ public sealed record EventTimelineDelivery(Guid MessageId, EventTimelineEntry En
 public static class EventTimelineWork
 {
     public const string Kind = "event-timeline.append.v1";
+    public const string BatchKind = "event-timeline.append-batch.v1";
 }
+
+/// <summary>A batch of timeline summaries delivered together.</summary>
+public sealed record EventTimelineBatch(EventTimelineDelivery[] Items);

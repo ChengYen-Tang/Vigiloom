@@ -55,6 +55,13 @@ builder.Services.AddModuleSqlServer<NetworkDbContext>(services => services.GetRe
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Network")
     ?? throw new InvalidOperationException("ConnectionStrings:Network is required."), "scheduling");
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<NetworkDiagnostics>();
+builder.Services.AddHttpClient("diagnostics", (services, client) =>
+{
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(5);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHostedService<NetworkDiagnosticsPublisher>();
 builder.Services.AddServiceDiscovery();
 builder.Services.AddHttpClient<IDevicePingSource, RemoteDevicePingSource>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))

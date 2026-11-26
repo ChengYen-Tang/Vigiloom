@@ -8,13 +8,13 @@ namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Transport-neutral OTLP operations; the source ID must come from successful authentication.</summary>
 public sealed class TelemetryExports(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates,
-    IApplicationLogDelivery? logDelivery = null)
+    IApplicationLogDelivery? logDelivery = null, ITraceTimelineSink? traceTimeline = null)
 {
     public Task<ExportResult> LogsAsync(AuthenticatedSource source, ExportLogsServiceRequest request, CancellationToken token) =>
         source.Version is { Length: 8 } ? new LogExport(contexts, candidates, logDelivery).WriteAsync(source.SourceId, request, token, source.Version) : Task.FromResult(new ExportResult(ExportStatus.Invalid, 0));
 
     public Task<ExportResult> TracesAsync(AuthenticatedSource source, ExportTraceServiceRequest request, CancellationToken token) =>
-        source.Version is { Length: 8 } ? new TraceExport(contexts, candidates).WriteAsync(source.SourceId, request, token, source.Version) : Task.FromResult(new ExportResult(ExportStatus.Invalid, 0));
+        source.Version is { Length: 8 } ? new TraceExport(contexts, candidates, traceTimeline).WriteAsync(source.SourceId, request, token, source.Version) : Task.FromResult(new ExportResult(ExportStatus.Invalid, 0));
 
     public Task<ExportResult> MetricsAsync(AuthenticatedSource source, ExportMetricsServiceRequest request, CancellationToken token) =>
         source.Version is { Length: 8 } ? new MetricExport(contexts, candidates).WriteAsync(source.SourceId, request, token, source.Version) : Task.FromResult(new ExportResult(ExportStatus.Invalid, 0));
