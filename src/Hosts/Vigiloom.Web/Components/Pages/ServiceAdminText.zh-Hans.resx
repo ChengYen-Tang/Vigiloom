@@ -948,4 +948,47 @@
   <data name="本機排除條件" xml:space="preserve"><value>本地排除条件</value></data>
   <data name="無法讀取排除條件。" xml:space="preserve"><value>无法读取排除条件。</value></data>
   <data name="無法載入規則證據，請稍後再試。" xml:space="preserve"><value>无法加载规则证据，请稍后重试。</value></data>
+  <data name="自訂安全基準" xml:space="preserve"><value>自定义安全基准</value></data>
+  <data name="建立唯讀檢查；儲存草稿後，審核並啟用才會下發給 Agent。" xml:space="preserve"><value>创建只读检查；保存草稿后，审核并启用才会下发给 Agent。</value></data>
+  <data name="返回情報來源與版本管理" xml:space="preserve"><value>返回情报来源与版本管理</value></data>
+  <data name="建立檢查草稿" xml:space="preserve"><value>创建检查草稿</value></data>
+  <data name="編輯檢查草稿" xml:space="preserve"><value>编辑检查草稿</value></data>
+  <data name="檢查名稱" xml:space="preserve"><value>检查名称</value></data>
+  <data name="適用作業系統" xml:space="preserve"><value>适用操作系统</value></data>
+  <data name="以上三種 Linux" xml:space="preserve"><value>以上三种 Linux</value></data>
+  <data name="Windows Server 2022 成員伺服器" xml:space="preserve"><value>Windows Server 2022 成员服务器</value></data>
+  <data name="檢查目標" xml:space="preserve"><value>检查目标</value></data>
+  <data name="Linux 輸入檔案絕對路徑；Windows 輸入 HKLM 登錄路徑與值名稱。" xml:space="preserve"><value>Linux 输入文件绝对路径；Windows 输入 HKLM 注册表路径与值名称。</value></data>
+  <data name="預期值" xml:space="preserve"><value>预期值</value></data>
+  <data name="Linux 輸入最大權限，例如 0640；Windows 輸入 DWORD 的十進位值。" xml:space="preserve"><value>Linux 输入最大权限，例如 0640；Windows 输入 DWORD 的十进制值。</value></data>
+  <data name="參考網址（選填）" xml:space="preserve"><value>参考网址（选填）</value></data>
+  <data name="來源與使用條件（選填）" xml:space="preserve"><value>来源与使用条件（选填）</value></data>
+  <data name="處理建議（選填）" xml:space="preserve"><value>处理建议（选填）</value></data>
+  <data name="儲存草稿" xml:space="preserve"><value>保存草稿</value></data>
+  <data name="審核與啟用" xml:space="preserve"><value>审核与启用</value></data>
+  <data name="請核對已儲存的版本，再啟用檢查；表單的修改須先儲存。" xml:space="preserve"><value>请核对已保存的版本，再启用检查；表单的更改须先保存。</value></data>
+  <data name="名稱" xml:space="preserve"><value>名称</value></data>
+  <data name="適用系統" xml:space="preserve"><value>适用系统</value></data>
+  <data name="目標" xml:space="preserve"><value>目标</value></data>
+  <data name="參考網址" xml:space="preserve"><value>参考网址</value></data>
+  <data name="來源與使用條件" xml:space="preserve"><value>来源与使用条件</value></data>
+  <data name="處理建議" xml:space="preserve"><value>处理建议</value></data>
+  <data name="此檢查已停用，請先至情報來源管理啟用。" xml:space="preserve"><value>此检查已停用，请先至情报来源管理启用。</value></data>
+  <data name="此版本目前已啟用。" xml:space="preserve"><value>此版本当前已启用。</value></data>
+  <data name="審核並啟用" xml:space="preserve"><value>审核并启用</value></data>
+  <data name="管理所有版本與回復" xml:space="preserve"><value>管理所有版本与回滚</value></data>
+  <data name="儲存後可查看完整檢查內容、選擇啟用或回復版本。發布動作會保留管理員與版本紀錄。" xml:space="preserve"><value>保存后可查看完整检查内容、选择启用或回滚版本。发布操作会保留管理员与版本记录。</value></data>
+  <data name="Linux 檢查檔案權限及 ACL；Windows 檢查 64 位元登錄檢視中的 DWORD。系統不執行指令或自動修改設定。" xml:space="preserve"><value>Linux 检查文件权限及 ACL；Windows 检查 64 位注册表视图中的 DWORD。系统不执行命令或自动修改设置。</value></data>
+  <data name="找不到此檢查版本。" xml:space="preserve"><value>找不到此检查版本。</value></data>
+  <data name="登入已失效，請重新登入。" xml:space="preserve"><value>登录已失效，请重新登录。</value></data>
+  <data name="請檢查作業系統、目標路徑與預期值格式。" xml:space="preserve"><value>请检查操作系统、目标路径与预期值格式。</value></data>
+  <data name="檢查已被其他人修改，請重新載入。" xml:space="preserve"><value>检查已被其他人修改，请重新加载。</value></data>
+  <data name="自訂檢查已達數量上限。" xml:space="preserve"><value>自定义检查已达数量上限。</value></data>
+  <data name="此內容已撤銷，請修改後重新送審。" xml:space="preserve"><value>此内容已撤销，请修改后重新送审。</value></data>
+  <data name="無法儲存此草稿，請重新整理後再試。" xml:space="preserve"><value>无法保存此草稿，请刷新后重试。</value></data>
+  <data name="無法儲存草稿，請稍後再試。" xml:space="preserve"><value>无法保存草稿，请稍后重试。</value></data>
+  <data name="無法核對此版本，請重新整理。" xml:space="preserve"><value>无法核对此版本，请刷新。</value></data>
+  <data name="版本已啟用。" xml:space="preserve"><value>版本已启用。</value></data>
+  <data name="無法啟用版本，請確認檢查狀態並重新整理。" xml:space="preserve"><value>无法启用版本，请确认检查状态并刷新。</value></data>
+  <data name="無法啟用版本，請稍後再試。" xml:space="preserve"><value>无法启用版本，请稍后重试。</value></data>
 </root>

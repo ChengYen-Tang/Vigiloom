@@ -948,4 +948,47 @@
   <data name="本機排除條件" xml:space="preserve"><value>Local exceptions</value></data>
   <data name="無法讀取排除條件。" xml:space="preserve"><value>Unable to load exceptions.</value></data>
   <data name="無法載入規則證據，請稍後再試。" xml:space="preserve"><value>Unable to load rule evidence. Try again later.</value></data>
+  <data name="自訂安全基準" xml:space="preserve"><value>Custom security baseline</value></data>
+  <data name="建立唯讀檢查；儲存草稿後，審核並啟用才會下發給 Agent。" xml:space="preserve"><value>Create read-only checks. Save a draft, then review and activate it before it is sent to Agents.</value></data>
+  <data name="返回情報來源與版本管理" xml:space="preserve"><value>Back to intelligence sources and versions</value></data>
+  <data name="建立檢查草稿" xml:space="preserve"><value>Create check draft</value></data>
+  <data name="編輯檢查草稿" xml:space="preserve"><value>Edit check draft</value></data>
+  <data name="檢查名稱" xml:space="preserve"><value>Check name</value></data>
+  <data name="適用作業系統" xml:space="preserve"><value>Applicable operating systems</value></data>
+  <data name="以上三種 Linux" xml:space="preserve"><value>All three Linux versions above</value></data>
+  <data name="Windows Server 2022 成員伺服器" xml:space="preserve"><value>Windows Server 2022 member server</value></data>
+  <data name="檢查目標" xml:space="preserve"><value>Check target</value></data>
+  <data name="Linux 輸入檔案絕對路徑；Windows 輸入 HKLM 登錄路徑與值名稱。" xml:space="preserve"><value>For Linux, enter an absolute file path; for Windows, enter an HKLM registry path and value name.</value></data>
+  <data name="預期值" xml:space="preserve"><value>Expected value</value></data>
+  <data name="Linux 輸入最大權限，例如 0640；Windows 輸入 DWORD 的十進位值。" xml:space="preserve"><value>For Linux, enter maximum permissions, e.g. 0640; for Windows, enter a decimal DWORD value.</value></data>
+  <data name="參考網址（選填）" xml:space="preserve"><value>Reference URL (optional)</value></data>
+  <data name="來源與使用條件（選填）" xml:space="preserve"><value>Source and terms of use (optional)</value></data>
+  <data name="處理建議（選填）" xml:space="preserve"><value>Remediation guidance (optional)</value></data>
+  <data name="儲存草稿" xml:space="preserve"><value>Save draft</value></data>
+  <data name="審核與啟用" xml:space="preserve"><value>Review and activate</value></data>
+  <data name="請核對已儲存的版本，再啟用檢查；表單的修改須先儲存。" xml:space="preserve"><value>Review the saved version before activation; save form changes first.</value></data>
+  <data name="名稱" xml:space="preserve"><value>Name</value></data>
+  <data name="適用系統" xml:space="preserve"><value>Applicable systems</value></data>
+  <data name="目標" xml:space="preserve"><value>Target</value></data>
+  <data name="參考網址" xml:space="preserve"><value>Reference URL</value></data>
+  <data name="來源與使用條件" xml:space="preserve"><value>Source and terms of use</value></data>
+  <data name="處理建議" xml:space="preserve"><value>Remediation guidance</value></data>
+  <data name="此檢查已停用，請先至情報來源管理啟用。" xml:space="preserve"><value>This check is disabled. Enable it in intelligence source management first.</value></data>
+  <data name="此版本目前已啟用。" xml:space="preserve"><value>This version is active.</value></data>
+  <data name="審核並啟用" xml:space="preserve"><value>Review and activate</value></data>
+  <data name="管理所有版本與回復" xml:space="preserve"><value>Manage all versions and rollback</value></data>
+  <data name="儲存後可查看完整檢查內容、選擇啟用或回復版本。發布動作會保留管理員與版本紀錄。" xml:space="preserve"><value>After saving, review the complete check and activate or roll back versions. Publication records the administrator and version.</value></data>
+  <data name="Linux 檢查檔案權限及 ACL；Windows 檢查 64 位元登錄檢視中的 DWORD。系統不執行指令或自動修改設定。" xml:space="preserve"><value>Linux checks file permissions and ACLs; Windows checks DWORDs in the 64-bit registry view. The system does not run commands or change settings automatically.</value></data>
+  <data name="找不到此檢查版本。" xml:space="preserve"><value>Check version not found.</value></data>
+  <data name="登入已失效，請重新登入。" xml:space="preserve"><value>Your session has expired. Sign in again.</value></data>
+  <data name="請檢查作業系統、目標路徑與預期值格式。" xml:space="preserve"><value>Check the operating system, target path, and expected value format.</value></data>
+  <data name="檢查已被其他人修改，請重新載入。" xml:space="preserve"><value>The check was modified by someone else. Reload it.</value></data>
+  <data name="自訂檢查已達數量上限。" xml:space="preserve"><value>The custom check limit has been reached.</value></data>
+  <data name="此內容已撤銷，請修改後重新送審。" xml:space="preserve"><value>This content was revoked. Modify it and submit it again.</value></data>
+  <data name="無法儲存此草稿，請重新整理後再試。" xml:space="preserve"><value>Unable to save this draft. Refresh and try again.</value></data>
+  <data name="無法儲存草稿，請稍後再試。" xml:space="preserve"><value>Unable to save the draft. Try again later.</value></data>
+  <data name="無法核對此版本，請重新整理。" xml:space="preserve"><value>Unable to verify this version. Refresh the page.</value></data>
+  <data name="版本已啟用。" xml:space="preserve"><value>Version activated.</value></data>
+  <data name="無法啟用版本，請確認檢查狀態並重新整理。" xml:space="preserve"><value>Unable to activate the version. Check the status and refresh.</value></data>
+  <data name="無法啟用版本，請稍後再試。" xml:space="preserve"><value>Unable to activate the version. Try again later.</value></data>
 </root>
