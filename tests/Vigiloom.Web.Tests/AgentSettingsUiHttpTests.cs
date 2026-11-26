@@ -867,6 +867,20 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains(service.Id.ToString("D"), approvedText);
             }
             var observationUrl = $"/api/v1/service-reception/collector-observations/{monitoredServiceId:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishReports = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
+            {
+                var englishText = await BodyTextAsync(englishReports, token);
+                Assert.Contains("Collector reports", englishText);
+                Assert.Contains("Instance reports", englishText);
+                Assert.Contains("Orders", englishText);
+                Assert.Contains("There are no identifiable instances on this page.", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedReports = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
+                Assert.Contains("实例回报", await BodyTextAsync(simplifiedReports, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var reportPage = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, reportPage.StatusCode);
