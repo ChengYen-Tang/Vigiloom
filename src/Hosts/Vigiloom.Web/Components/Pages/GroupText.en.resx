@@ -123,4 +123,190 @@
   <data xml:space="preserve" name="已有相同名稱的群組，請使用其他名稱。">
     <value>A group with this name already exists. Choose another name.</value>
   </data>
+  <data xml:space="preserve" name="群組詳情">
+    <value>Group details</value>
+  </data>
+  <data xml:space="preserve" name="← 返回群組">
+    <value>← Back to groups</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後再試。">
+    <value>Unable to load the group. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="找不到群組">
+    <value>Group not found</value>
+  </data>
+  <data xml:space="preserve" name="此群組不存在。">
+    <value>This group does not exist.</value>
+  </data>
+  <data xml:space="preserve" name="尚無說明">
+    <value>No description</value>
+  </data>
+  <data xml:space="preserve" name="公開設定">
+    <value>Public settings</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 台設備。">
+    <value>Devices in this group: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存。">
+    <value>Archived devices: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>Search by name or target</value>
+  </data>
+  <data xml:space="preserve" name="範圍">
+    <value>Scope</value>
+  </data>
+  <data xml:space="preserve" name="群組設備">
+    <value>Group devices</value>
+  </data>
+  <data xml:space="preserve" name="可加入設備">
+    <value>Available devices</value>
+  </data>
+  <data xml:space="preserve" name="全部設備">
+    <value>All devices</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>No devices match your search.</value>
+  </data>
+  <data xml:space="preserve" name="選取">
+    <value>Select</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>Primary target</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>Monitoring mode</value>
+  </data>
+  <data xml:space="preserve" name="群組歸屬">
+    <value>Membership</value>
+  </data>
+  <data xml:space="preserve" name="選取 {0}">
+    <value>Select {0}</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>Host monitoring</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>Ping only</value>
+  </data>
+  <data xml:space="preserve" name="已加入">
+    <value>Added</value>
+  </data>
+  <data xml:space="preserve" name="未加入">
+    <value>Not added</value>
+  </data>
+  <data xml:space="preserve" name="加入所選設備">
+    <value>Add selected devices</value>
+  </data>
+  <data xml:space="preserve" name="移出所選設備">
+    <value>Remove selected devices</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>Device pages</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 個服務。">
+    <value>Services in this group: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="搜尋服務或環境">
+    <value>Search services or environments</value>
+  </data>
+  <data xml:space="preserve" name="群組服務">
+    <value>Group services</value>
+  </data>
+  <data xml:space="preserve" name="可加入服務">
+    <value>Available services</value>
+  </data>
+  <data xml:space="preserve" name="全部服務">
+    <value>All services</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的服務。">
+    <value>No services match your search.</value>
+  </data>
+  <data xml:space="preserve" name="環境">
+    <value>Environment</value>
+  </data>
+  <data xml:space="preserve" name="健康狀態">
+    <value>Health status</value>
+  </data>
+  <data xml:space="preserve" name="加入所選服務">
+    <value>Add selected services</value>
+  </data>
+  <data xml:space="preserve" name="移出所選服務">
+    <value>Remove selected services</value>
+  </data>
+  <data xml:space="preserve" name="服務分頁">
+    <value>Service pages</value>
+  </data>
+  <data xml:space="preserve" name="刪除群組">
+    <value>Delete group</value>
+  </data>
+  <data xml:space="preserve" name="將移除 {0} 台設備、{1} 個服務的群組歸屬。">
+    <value>Membership will be removed from {0} devices and {1} services.</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存設備的歸屬也會移除。">
+    <value>Membership will also be removed from {0} archived devices.</value>
+  </data>
+  <data xml:space="preserve" name="不會刪除資源或歷史，也不會變更監控或公開設定。">
+    <value>Resources and history will not be deleted; monitoring and public settings will not change.</value>
+  </data>
+  <data xml:space="preserve" name="我了解以上影響">
+    <value>I understand these effects</value>
+  </data>
+  <data xml:space="preserve" name="確認刪除群組">
+    <value>Confirm group deletion</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取">
+    <value>Unable to load</value>
+  </data>
+  <data xml:space="preserve" name="未知或資料不足">
+    <value>Unknown or insufficient data</value>
+  </data>
+  <data xml:space="preserve" name="收集已停止">
+    <value>Collection stopped</value>
+  </data>
+  <data xml:space="preserve" name="來源已撤銷">
+    <value>Source revoked</value>
+  </data>
+  <data xml:space="preserve" name="健康檢查已停用">
+    <value>Health check disabled</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>Healthy</value>
+  </data>
+  <data xml:space="preserve" name="降級">
+    <value>Degraded</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>Unhealthy</value>
+  </data>
+  <data xml:space="preserve" name="請先選取服務。">
+    <value>Select a service first.</value>
+  </data>
+  <data xml:space="preserve" name="選取的服務無效或超過數量上限。">
+    <value>The selected services are invalid or exceed the limit.</value>
+  </data>
+  <data xml:space="preserve" name="請選擇要加入或移出的操作。">
+    <value>Choose whether to add or remove items.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認操作結果，請重新整理並檢查。">
+    <value>Unable to confirm the result. Refresh and check.</value>
+  </data>
+  <data xml:space="preserve" name="請先選取設備。">
+    <value>Select a device first.</value>
+  </data>
+  <data xml:space="preserve" name="選取的設備無效或超過數量上限。">
+    <value>The selected devices are invalid or exceed the limit.</value>
+  </data>
+  <data xml:space="preserve" name="請先確認操作影響。">
+    <value>Confirm that you understand the effects first.</value>
+  </data>
+  <data xml:space="preserve" name="服務不存在，請重新整理後再試。">
+    <value>The service does not exist. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="設備不存在或已封存，請重新整理後再試。">
+    <value>The device does not exist or is archived. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="每次最多處理 100 筆，且同一設備不能同時加入及移出。">
+    <value>At most 100 devices can be changed at a time; a device cannot be added and removed together.</value>
+  </data>
 </root>
