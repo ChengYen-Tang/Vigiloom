@@ -374,6 +374,10 @@ builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();
 builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddScoped<PlatformStatus>();
+builder.Services.AddScoped<Vigiloom.Web.Diagnostics.JobOverview>();
+builder.Services.AddHttpClient<Vigiloom.Web.Diagnostics.RemoteJobOverview>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingRetentionSettings>();
