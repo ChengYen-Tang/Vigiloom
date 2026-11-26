@@ -133,6 +133,14 @@ public sealed class PingHttpTests
         Assert.IsNotNull(initial);
         using (var noCsrf = await admin.PostAsJsonAsync("/api/v1/settings/host-metrics/retention/preview", new HostMetricRetentionPreviewRequest(10, 60, initial.Version), token))
             Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/agents/metric-retention", token))
+            Assert.Contains("Host performance data retention", await TextAsync(english, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/agents/metric-retention", token))
+            Assert.Contains("主机性能数据保留", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var page = await admin.GetAsync("/settings/agents/metric-retention", token);
         var fields = Hidden(await FormAsync(page, "host-metric-retention", token));
         fields["Input.RawDays"] = "10"; fields["Input.RollupDays"] = "60";
